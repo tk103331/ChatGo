@@ -7,12 +7,23 @@ import (
 	"time"
 )
 
+// ToolCall represents a tool invocation
+type ToolCall struct {
+	ID       string                 `json:"id"`       // Unique identifier for this tool call
+	Name     string                 `json:"name"`     // Tool name
+	Arguments string                `json:"arguments"` // Tool arguments as JSON string
+	Result   string                 `json:"result"`   // Tool execution result
+	Error    string                 `json:"error,omitempty"` // Error message if tool call failed
+	Metadata map[string]interface{} `json:"metadata,omitempty"` // Additional metadata
+}
+
 // Message represents a single message in a conversation
 type Message struct {
-	ID        string    `json:"id"`
-	Role      string    `json:"role"` // user, assistant, system
-	Content   string    `json:"content"`
-	Timestamp time.Time `json:"timestamp"`
+	ID        string     `json:"id"`
+	Role      string     `json:"role"` // user, assistant, system
+	Content   string     `json:"content"`
+	Timestamp time.Time  `json:"timestamp"`
+	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // Tool calls made by this message
 }
 
 // Conversation represents a chat conversation

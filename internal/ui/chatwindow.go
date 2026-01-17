@@ -6,10 +6,13 @@ package ui
 import (
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
+	"chatgo/internal/mcp"
 	"chatgo/pkg/models"
 	"context"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -18,6 +21,10 @@ import (
 	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
+
+	einomcp "github.com/cloudwego/eino-ext/components/tool/mcp"
+	"github.com/cloudwego/eino/components/tool"
+	"github.com/cloudwego/eino/schema"
 )
 
 // ChatWindow represents the main chat window of the application.
@@ -29,8 +36,10 @@ type ChatWindow struct {
 	config              *config.Config
 	convManager         *models.ConversationManager
 	mcpManager          *MCPManagerWrapper
+	toolSelectionMgr    *ToolSelectionManager
 	currentConversation *models.Conversation
 	llmClient           *llm.Client
+	reactClient         *llm.ReactClient
 
 	// UI components
 	convList          *widget.List
@@ -38,6 +47,7 @@ type ChatWindow struct {
 	messageEntry      *widget.Entry
 	sendButton        *widget.Button
 	providerSelect    *widget.Select
+	toolSelectBtn     *widget.Button
 	convListData      []models.Conversation
 	messagesContainer *fyne.Container
 
@@ -59,89 +69,32 @@ func NewChatWindow(app fyne.App, cfg *config.Config) (*ChatWindow, error) {
 	window := app.NewWindow("ChatGo - AI Chatbot")
 	window.Resize(fyne.NewSize(1000, 700))
 
+	mcpManager := NewMCPManagerWrapper()
+
 	cw := &ChatWindow{
 		app:         app,
 		window:      window,
 		config:      cfg,
 		convManager: convManager,
-		mcpManager:  NewMCPManagerWrapper(),
+		mcpManager:  mcpManager,
 		isHomeMode:  true,
 	}
+
+	// Initialize tool selection manager
+	cw.toolSelectionMgr = NewToolSelectionManager(cfg, mcpManager, window)
 
 	cw.setupHomeUI()
 	cw.loadConversations()
 
+	// Auto-initialize MCP servers
+	cw.initializeMCPServers()
+
 	return cw, nil
 }
 
-// setupHomeUI initializes the home page with a centered input box and send button.
+// setupHomeUI initializes the home page with a centered input box, send button, and recent conversations.
 // This is the initial view when the application starts, allowing users to quickly begin a conversation.
 // When a message is submitted, it switches to the full chat interface.
-func (cw *ChatWindow) setupHomeUI() {
-	// Create centered input for home page
-	cw.homeMessageEntry = widget.NewMultiLineEntry()
-	cw.homeMessageEntry.SetPlaceHolder("输入消息开始聊天...")
-	cw.homeMessageEntry.SetMinRowsVisible(3)
-
-	cw.homeMessageEntry.OnSubmitted = func(text string) {
-		cw.handleHomeMessageSubmit()
-	}
-
-	// Create send button
-	sendBtn := widget.NewButton("发送", func() {
-		cw.handleHomeMessageSubmit()
-	})
-
-	// Wrap input and button in a container
-	inputContainer := container.NewVBox(
-		cw.homeMessageEntry,
-		sendBtn,
-	)
-
-	// Create a vertically centered layout using VBox with spacers
-	centerContent := container.NewVBox(
-		layout.NewSpacer(),                  // Top spacer - pushes content to center
-		container.NewCenter(inputContainer), // Center horizontally
-		layout.NewSpacer(),                  // Bottom spacer - pushes content to center
-	)
-
-	cw.homeContainer = container.NewPadded(centerContent)
-	cw.window.SetContent(cw.homeContainer)
-}
-
-// handleHomeMessageSubmit handles message submission from the home page.
-// It switches to the chat UI, creates a new conversation, and sends the message.
-func (cw *ChatWindow) handleHomeMessageSubmit() {
-	text := cw.homeMessageEntry.Text
-	if text == "" {
-		return
-	}
-
-	// Switch to chat UI
-	cw.switchToChatUI()
-
-	// Create new conversation with current provider
-	cw.createNewConversation()
-
-	// Send the message
-	cw.messageEntry.SetText(text)
-	cw.sendMessage()
-}
-
-// switchToChatUI switches from home page mode to full chat interface mode.
-// This is called when the user submits their first message from the home page.
-func (cw *ChatWindow) switchToChatUI() {
-	if !cw.isHomeMode {
-		return
-	}
-
-	cw.isHomeMode = false
-	cw.setupUI()
-	cw.setupCurrentProvider()
-}
-
-// setupUI initializes the full chat interface with conversation list, message area, and input controls.
-// This creates the main chat layout with sidebar for conversations and main area for messages.
 func (cw *ChatWindow) setupUI() {
 	// Conversation list on the left
 	cw.convList = widget.NewList(
@@ -231,6 +184,16 @@ func (cw *ChatWindow) setupUI() {
 	})
 	cw.providerSelect.SetSelected(cw.config.CurrentProvider)
 
+	// Initialize tool selection manager
+	toolCheckGroup := cw.toolSelectionMgr.LoadToolCheckGroup()
+	cw.toolSelectionMgr.SetCheckGroup(toolCheckGroup)
+
+	// Tool selection button
+	cw.toolSelectBtn = widget.NewButton("选择工具 (0)", func() {
+		cw.toolSelectionMgr.ShowToolSelectionDialog()
+	})
+	cw.toolSelectionMgr.SetButton(cw.toolSelectBtn)
+
 	// Message entry
 	cw.messageEntry = widget.NewMultiLineEntry()
 	cw.messageEntry.SetPlaceHolder("Type your message here...")
@@ -243,17 +206,20 @@ func (cw *ChatWindow) setupUI() {
 		cw.sendMessage()
 	})
 
-	// Provider bar (above input)
-	providerBar := container.NewHBox(
+	// Provider and tool bar (above input)
+	providerToolBar := container.NewHBox(
 		widget.NewLabel("Model:"),
 		cw.providerSelect,
+		widget.NewSeparator(),
+		widget.NewLabel("Tools:"),
+		cw.toolSelectBtn,
 	)
 
 	// Input area
 	inputArea := container.NewBorder(nil, nil, nil, cw.sendButton, cw.messageEntry)
 	inputAreaContainer := container.NewVBox(
 		widget.NewSeparator(),
-		providerBar,
+		providerToolBar,
 		inputArea,
 	)
 
@@ -277,10 +243,23 @@ func (cw *ChatWindow) setupUI() {
 
 // loadConversations loads all conversations from the database and refreshes the UI list.
 // Safe to call in home mode as it checks if convList is initialized.
+// For home mode, only shows the 5 most recent conversations.
 func (cw *ChatWindow) loadConversations() {
 	conversations, err := cw.convManager.ListConversations()
 	if err != nil {
 		return
+	}
+
+	// Sort conversations by last message time (most recent first)
+	// We need to sort based on the last message timestamp
+	for i := 0; i < len(conversations); i++ {
+		for j := i + 1; j < len(conversations); j++ {
+			timeI := getConversationLastTime(conversations[i])
+			timeJ := getConversationLastTime(conversations[j])
+			if timeI.Before(timeJ) {
+				conversations[i], conversations[j] = conversations[j], conversations[i]
+			}
+		}
 	}
 
 	cw.convListData = conversations
@@ -319,14 +298,221 @@ func (cw *ChatWindow) setupCurrentProvider() {
 	// Find provider
 	for _, p := range cw.config.Providers {
 		if p.Name == cw.currentConversation.Provider {
-			client, err := llm.NewClient(p)
-			if err != nil {
-				return
+			// Check if React Agent is enabled
+			if cw.config.UseReactAgent {
+				err := cw.setupReactAgent(p)
+				if err != nil {
+					fmt.Printf("Failed to setup React Agent: %v\n", err)
+					// Fallback to regular client
+					client, err := llm.NewClient(p)
+					if err != nil {
+						return
+					}
+					cw.llmClient = client
+					cw.reactClient = nil
+				}
+			} else {
+				// Use regular client
+				client, err := llm.NewClient(p)
+				if err != nil {
+					return
+				}
+				cw.llmClient = client
+				cw.reactClient = nil
 			}
-			cw.llmClient = client
 			break
 		}
 	}
+}
+
+// setupReactAgent initializes the React Agent with available tools
+func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
+	ctx := context.Background()
+
+	fmt.Printf("[React Agent] ============================================\n")
+	fmt.Printf("[React Agent] Setting up React Agent for provider: %s\n", provider.Name)
+
+	// Get selected tools
+	selectedTools := cw.toolSelectionMgr.GetSelectedTools()
+	fmt.Printf("[React Agent] Selected tools: %d\n", len(selectedTools))
+	for i, tool := range selectedTools {
+		fmt.Printf("[React Agent]   [%d] %s\n", i+1, tool)
+	}
+
+	// Collect all Eino tools (both builtin and MCP)
+	einoTools := make([]tool.BaseTool, 0)
+	builtinCount := 0
+	mcpCount := 0
+
+	// Collect MCP tool names by server
+	mcpToolsByServer := make(map[string][]string)
+
+	for _, toolID := range selectedTools {
+		if strings.HasPrefix(toolID, "builtin:") {
+			// Handle builtin tools - create custom tool definitions
+			toolName := strings.TrimPrefix(toolID, "builtin:")
+			def, err := cw.createBuiltinToolDefinition(toolName)
+			if err != nil {
+				fmt.Printf("[React Agent] Warning: failed to create tool definition for %s: %v\n", toolName, err)
+				continue
+			}
+			// Wrap as Eino tool
+			wrappedTool := newBuiltinToolWrapper(def)
+			einoTools = append(einoTools, wrappedTool)
+			builtinCount++
+			fmt.Printf("[React Agent] Added builtin tool: %s - %s\n", toolName, def.Description)
+
+		} else if strings.HasPrefix(toolID, "mcp:") {
+			// Collect MCP tool names for batch processing
+			parts := strings.Split(toolID, ":")
+			if len(parts) >= 3 {
+				serverName := parts[1]
+				toolName := parts[2]
+				mcpToolsByServer[serverName] = append(mcpToolsByServer[serverName], toolName)
+			}
+		}
+	}
+
+	// Get MCP tools using Eino's mcp.GetTools() for each server
+	for serverName, toolNames := range mcpToolsByServer {
+		status, ok := cw.mcpManager.GetServerStatus(serverName)
+		if !ok || status.Status != "initialized" {
+			fmt.Printf("[React Agent] Warning: MCP server %s not initialized, skipping %d tools\n",
+				serverName, len(toolNames))
+			continue
+		}
+
+		// Use Eino's mcp.GetTools() to get properly formatted tools
+		mcpTools, err := einomcp.GetTools(ctx, &einomcp.Config{
+			Cli:          status.Client,
+			ToolNameList: toolNames,
+		})
+
+		if err != nil {
+			fmt.Printf("[React Agent] Warning: failed to get MCP tools from %s: %v\n", serverName, err)
+			continue
+		}
+
+		// Add MCP tools to our collection
+		for _, mcpTool := range mcpTools {
+			einoTools = append(einoTools, mcpTool)
+			mcpCount++
+			info, _ := mcpTool.Info(ctx)
+			fmt.Printf("[React Agent] Added MCP tool: %s:%s - %s\n", serverName, info.Name, info.Desc)
+		}
+	}
+
+	fmt.Printf("[React Agent] Successfully loaded %d builtin tools and %d MCP tools (total: %d)\n",
+		builtinCount, mcpCount, len(einoTools))
+
+	if len(einoTools) == 0 {
+		fmt.Println("[React Agent] Warning: No tools loaded. Agent will run without tools.")
+	}
+
+	// Create React Agent config
+	agentConfig := &llm.ReactAgentConfig{
+		MaxStep:      cw.config.ReactAgentMaxStep,
+		SystemPrompt: "You are a helpful AI assistant with access to various tools. Use tools when appropriate to help answer questions. When you use a tool, carefully consider the required parameters and provide accurate values.",
+	}
+
+	// Create React Client with Eino tools directly
+	reactClient, err := llm.NewReactClientWithEinoTools(provider, einoTools, agentConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create React client: %w", err)
+	}
+
+	cw.reactClient = reactClient
+	cw.llmClient = nil
+
+	fmt.Printf("[React Agent] Successfully initialized React Agent with max_step=%d\n", cw.config.ReactAgentMaxStep)
+	return nil
+}
+
+// createBuiltinToolDefinition creates a tool definition for a builtin tool
+func (cw *ChatWindow) createBuiltinToolDefinition(toolName string) (llm.ToolDefinition, error) {
+	// Find the tool in config
+	var builtinTool *config.BuiltinTool
+	for i, t := range cw.config.BuiltinTools {
+		if t.Name == toolName && t.Enabled {
+			builtinTool = &cw.config.BuiltinTools[i]
+			break
+		}
+	}
+
+	if builtinTool == nil {
+		return llm.ToolDefinition{}, fmt.Errorf("builtin tool %s not found or not enabled", toolName)
+	}
+
+	def := llm.ToolDefinition{
+		Name:        builtinTool.Name,
+		Description: config.GetBuiltinToolDescription(builtinTool.Type),
+		Parameters:  make(map[string]*schema.ParameterInfo),
+	}
+
+	// Build parameter info based on tool type
+	requiredFields := config.GetRequiredConfigFields(builtinTool.Type)
+	configFields := config.GetBuiltinToolConfigFields(builtinTool.Type)
+
+	for _, field := range configFields {
+		required := false
+		for _, reqField := range requiredFields {
+			if field == reqField {
+				required = true
+				break
+			}
+		}
+
+		def.Parameters[field] = &schema.ParameterInfo{
+			Type:     schema.String,
+			Desc:     fmt.Sprintf("%s parameter for %s tool", field, builtinTool.Name),
+			Required: required,
+		}
+	}
+
+	// Implement actual tool handler for builtin tools
+	// For now, return a placeholder handler
+	def.Handler = func(ctx context.Context, arguments string) (string, error) {
+		fmt.Printf("[Tool Execution] Executing builtin tool: %s with args: %s\n", toolName, arguments)
+
+		// TODO: Implement actual tool execution logic
+		// For now, return a simulated response
+		return fmt.Sprintf("Tool %s executed successfully with args: %s\n\n(Note: Actual tool execution not yet implemented)", toolName, arguments), nil
+	}
+
+	return def, nil
+}
+
+// newBuiltinToolWrapper creates an Eino tool wrapper for builtin tools
+func newBuiltinToolWrapper(def llm.ToolDefinition) tool.BaseTool {
+	return &builtinToolWrapper{
+		info: &schema.ToolInfo{
+			Name:        def.Name,
+			Desc:        def.Description,
+			ParamsOneOf: schema.NewParamsOneOfByParams(def.Parameters),
+		},
+		handler: def.Handler,
+	}
+}
+
+// builtinToolWrapper wraps a builtin tool as an Eino InvokableTool
+type builtinToolWrapper struct {
+	info    *schema.ToolInfo
+	handler func(ctx context.Context, arguments string) (string, error)
+}
+
+// Info returns the tool information
+func (w *builtinToolWrapper) Info(ctx context.Context) (*schema.ToolInfo, error) {
+	return w.info, nil
+}
+
+// InvokableRun executes the tool (required by InvokableTool interface)
+func (w *builtinToolWrapper) InvokableRun(ctx context.Context, arguments string) (string, error) {
+	return w.handler(ctx, arguments)
+}
+
+// StreamableRun executes the tool with streaming (optional, returns not supported)
+func (w *builtinToolWrapper) StreamableRun(ctx context.Context, arguments string) (*schema.StreamReader[string], error) {
+	return nil, fmt.Errorf("streaming not supported for this tool")
 }
 
 func (cw *ChatWindow) switchProvider(providerName string) {
@@ -471,7 +657,17 @@ func (cw *ChatWindow) deleteConversation(id widget.ListItemID) {
 // Streaming updates are sent through a channel to update the UI in real-time.
 func (cw *ChatWindow) sendMessage() {
 	text := cw.messageEntry.Text
-	if text == "" || cw.currentConversation == nil || cw.llmClient == nil {
+	if text == "" || cw.currentConversation == nil {
+		return
+	}
+
+	// Debug: Log which client is being used
+	if cw.reactClient != nil {
+		fmt.Printf("[DEBUG] Using React Client (Agent mode)\n")
+	} else if cw.llmClient != nil {
+		fmt.Printf("[DEBUG] Using Regular LLM Client\n")
+	} else {
+		fmt.Printf("[DEBUG] ERROR: No valid client available!\n")
 		return
 	}
 
@@ -536,9 +732,21 @@ func (cw *ChatWindow) sendMessage() {
 		defer close(doneChan)
 
 		ctx := context.Background()
-		response, err := cw.llmClient.Chat(ctx, messages, func(chunk string) {
-			chunkChan <- chunk
-		})
+		var response *llm.ChatResponse
+		var err error
+
+		// Use React Client if available, otherwise use regular client
+		if cw.reactClient != nil {
+			response, err = cw.reactClient.Chat(ctx, messages, func(chunk string) {
+				chunkChan <- chunk
+			})
+		} else if cw.llmClient != nil {
+			response, err = cw.llmClient.Chat(ctx, messages, func(chunk string) {
+				chunkChan <- chunk
+			})
+		} else {
+			err = fmt.Errorf("no valid client available")
+		}
 
 		if err != nil {
 			assistantMsg.Content = fmt.Sprintf("Error: %v", err)
@@ -558,15 +766,77 @@ func (cw *ChatWindow) addMessageToUI(msg models.Message) {
 	roleLabel := widget.NewLabel(msg.Role)
 	roleLabel.TextStyle = fyne.TextStyle{Bold: true}
 
+	// Build message container parts
+	parts := []fyne.CanvasObject{
+		container.NewHBox(roleLabel, widget.NewLabel(msg.Timestamp.Format("15:04"))),
+	}
+
+	// Add tool call information if present
+	if len(msg.ToolCalls) > 0 {
+		for i, toolCall := range msg.ToolCalls {
+			toolIcon := "🔧"
+			statusIcon := "✅"
+			if toolCall.Error != "" {
+				statusIcon = "❌"
+			}
+
+			toolLabel := widget.NewLabel(fmt.Sprintf("%s 工具调用 #%d: %s", toolIcon, i+1, toolCall.Name))
+			toolLabel.TextStyle = fyne.TextStyle{Bold: true}
+
+			// Create tool call details container
+			toolDetails := container.NewVBox()
+
+			// Add arguments if present
+			if toolCall.Arguments != "" {
+				argsLabel := widget.NewLabel(fmt.Sprintf("参数: %s", toolCall.Arguments))
+				argsLabel.Wrapping = fyne.TextWrapWord
+				argsLabel.TextStyle = fyne.TextStyle{Italic: true}
+				toolDetails.Add(argsLabel)
+			}
+
+			// Add result if present
+			if toolCall.Result != "" {
+				resultLabel := widget.NewLabel(fmt.Sprintf("结果: %s", toolCall.Result))
+				resultLabel.Wrapping = fyne.TextWrapWord
+				toolDetails.Add(resultLabel)
+			}
+
+			// Add error if present
+			if toolCall.Error != "" {
+				errorLabel := widget.NewLabel(fmt.Sprintf("错误: %s", toolCall.Error))
+				errorLabel.Wrapping = fyne.TextWrapWord
+				errorLabel.Importance = widget.DangerImportance
+				toolDetails.Add(errorLabel)
+			}
+
+			// Create expandable tool call container
+			toolContainer := container.NewVBox(
+				container.NewHBox(toolLabel, widget.NewLabel(statusIcon)),
+				container.NewPadded(toolDetails),
+				widget.NewSeparator(),
+			)
+
+			// Add a card-like border for tool calls
+			toolCard := container.NewBorder(
+				widget.NewSeparator(),
+				nil,
+				nil,
+				nil,
+				toolContainer,
+			)
+
+			parts = append(parts, toolCard)
+		}
+	}
+
+	// Add message content
 	contentLabel := widget.NewRichTextFromMarkdown(msg.Content)
 	// Enable text wrapping for RichText
 	contentLabel.Wrapping = fyne.TextWrapWord
 
-	container := container.NewVBox(
-		container.NewHBox(roleLabel, widget.NewLabel(msg.Timestamp.Format("15:04"))),
-		contentLabel,
-		widget.NewSeparator(),
-	)
+	parts = append(parts, contentLabel, widget.NewSeparator())
+
+	container := container.NewVBox(parts...)
 
 	cw.messagesContainer.Add(container)
 	cw.messagesContainer.Refresh()
@@ -593,608 +863,6 @@ func (cw *ChatWindow) addStreamingMessageToUI(msg models.Message) *widget.RichTe
 	return contentLabel
 }
 
-func (cw *ChatWindow) showSettings() {
-	// Create tabs for Providers and MCP Servers
-	providersTab := cw.createProvidersTab(cw.window)
-	mcpServersTab := cw.createMCPServersTab(cw.window)
-
-	tabs := container.NewAppTabs(
-		container.NewTabItem("Providers", providersTab),
-		container.NewTabItem("MCP Servers", mcpServersTab),
-	)
-
-	// Show as dialog
-	d := dialog.NewCustomConfirm("Settings", "Close", "", tabs, func(bool) {}, cw.window)
-	d.Resize(fyne.NewSize(800, 500))
-	d.Show()
-}
-
-func (cw *ChatWindow) createProvidersTab(parentWindow fyne.Window) fyne.CanvasObject {
-	// Track selected provider
-	var selectedProvider *config.Provider
-	var selectedProviderIndex int = -1
-
-	// Create form entries
-	nameEntry := widget.NewEntry()
-	typeEntry := widget.NewSelect([]string{"openai", "anthropic", "claude", "ollama", "custom", "qwen", "deepseek", "gemini"}, nil)
-	apiKeyEntry := widget.NewEntry()
-	apiKeyEntry.Password = true
-	baseURLEntry := widget.NewEntry()
-	modelEntry := widget.NewEntry()
-
-	// Provider list
-	providerList := widget.NewList(
-		func() int { return len(cw.config.Providers) },
-		func() fyne.CanvasObject {
-			return container.NewHBox(
-				widget.NewIcon(theme.DocumentIcon()),
-				widget.NewLabel(""),
-			)
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			container := obj.(*fyne.Container)
-			label := container.Objects[1].(*widget.Label)
-			if id < len(cw.config.Providers) {
-				provider := cw.config.Providers[id]
-				label.SetText(fmt.Sprintf("%s (%s)", provider.Name, provider.Type))
-			}
-		},
-	)
-
-	providerList.OnSelected = func(id widget.ListItemID) {
-		if id >= 0 && id < len(cw.config.Providers) {
-			selectedProvider = &cw.config.Providers[id]
-			selectedProviderIndex = id
-
-			// Populate form
-			nameEntry.SetText(selectedProvider.Name)
-			typeEntry.SetSelected(selectedProvider.Type)
-			apiKeyEntry.SetText(selectedProvider.APIKey)
-			baseURLEntry.SetText(selectedProvider.BaseURL)
-			modelEntry.SetText(selectedProvider.Model)
-		}
-	}
-
-	providerList.OnUnselected = func(id widget.ListItemID) {
-		if selectedProviderIndex == id {
-			selectedProvider = nil
-			selectedProviderIndex = -1
-
-			// Clear form
-			nameEntry.SetText("")
-			typeEntry.SetSelected("")
-			apiKeyEntry.SetText("")
-			baseURLEntry.SetText("")
-			modelEntry.SetText("")
-		}
-	}
-
-	// Form
-	form := container.NewVBox(
-		widget.NewLabel("Provider Details"),
-		widget.NewSeparator(),
-		container.NewGridWithColumns(2,
-			widget.NewLabel("Name:"), nameEntry,
-			widget.NewLabel("Type:"), typeEntry,
-			widget.NewLabel("API Key:"), apiKeyEntry,
-			widget.NewLabel("Base URL:"), baseURLEntry,
-			widget.NewLabel("Model:"), modelEntry,
-		),
-	)
-
-	// Buttons
-	addBtn := widget.NewButton("Add New", func() {
-		// Clear form and deselect
-		selectedProvider = nil
-		selectedProviderIndex = -1
-		providerList.UnselectAll()
-		nameEntry.SetText("")
-		typeEntry.SetSelected("")
-		apiKeyEntry.SetText("")
-		baseURLEntry.SetText("")
-		modelEntry.SetText("")
-	})
-
-	saveBtn := widget.NewButton("Save", func() {
-		if nameEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Provider name cannot be empty"), parentWindow)
-			return
-		}
-		if typeEntry.Selected == "" {
-			dialog.ShowError(fmt.Errorf("Provider type must be selected"), parentWindow)
-			return
-		}
-
-		newProvider := config.Provider{
-			Name:    nameEntry.Text,
-			Type:    typeEntry.Selected,
-			APIKey:  apiKeyEntry.Text,
-			BaseURL: baseURLEntry.Text,
-			Model:   modelEntry.Text,
-		}
-
-		if selectedProvider != nil {
-			// Update existing provider
-			*selectedProvider = newProvider
-		} else {
-			// Add new provider
-			cw.config.Providers = append(cw.config.Providers, newProvider)
-			selectedProviderIndex = len(cw.config.Providers) - 1
-			selectedProvider = &cw.config.Providers[selectedProviderIndex]
-		}
-
-		config.SaveConfig(cw.config)
-		providerList.Refresh()
-		cw.updateProviderSelector()
-
-		// Select the updated/new provider
-		providerList.Select(selectedProviderIndex)
-	})
-
-	deleteBtn := widget.NewButton("Delete", func() {
-		if selectedProvider == nil {
-			dialog.ShowError(fmt.Errorf("Please select a provider to delete"), parentWindow)
-			return
-		}
-
-		dialog.ShowConfirm(
-			"Delete Provider",
-			fmt.Sprintf("Are you sure you want to delete provider '%s'?", selectedProvider.Name),
-			func(confirmed bool) {
-				if confirmed {
-					// Remove provider
-					cw.config.Providers = append(cw.config.Providers[:selectedProviderIndex], cw.config.Providers[selectedProviderIndex+1:]...)
-					config.SaveConfig(cw.config)
-
-					// Reset selection and clear form
-					selectedProvider = nil
-					selectedProviderIndex = -1
-					nameEntry.SetText("")
-					typeEntry.SetSelected("")
-					apiKeyEntry.SetText("")
-					baseURLEntry.SetText("")
-					modelEntry.SetText("")
-
-					// Update UI
-					providerList.Refresh()
-					cw.updateProviderSelector()
-				}
-			},
-			parentWindow,
-		)
-	})
-
-	buttonContainer := container.NewHBox(addBtn, saveBtn, deleteBtn)
-
-	// Right side container with form and buttons
-	rightPanel := container.NewBorder(
-		nil,
-		buttonContainer,
-		nil,
-		nil,
-		form,
-	)
-
-	// Split left and right
-	split := container.NewHSplit(
-		providerList,
-		rightPanel,
-	)
-	split.SetOffset(0.4)
-
-	return split
-}
-
-func (cw *ChatWindow) showProviderDialog(settingsWin fyne.Window, provider *config.Provider, providerList *widget.List) {
-	title := "Add Provider"
-	if provider != nil {
-		title = "Edit Provider"
-	}
-
-	nameEntry := widget.NewEntry()
-	typeEntry := widget.NewSelect([]string{"openai", "anthropic", "claude", "ollama", "custom", "qwen", "deepseek", "gemini"}, nil)
-	apiKeyEntry := widget.NewEntry()
-	apiKeyEntry.Password = true
-	baseURLEntry := widget.NewEntry()
-	modelEntry := widget.NewEntry()
-
-	if provider != nil {
-		nameEntry.SetText(provider.Name)
-		typeEntry.SetSelected(provider.Type)
-		apiKeyEntry.SetText(provider.APIKey)
-		baseURLEntry.SetText(provider.BaseURL)
-		modelEntry.SetText(provider.Model)
-	}
-
-	form := container.NewGridWithColumns(2,
-		widget.NewLabel("Name:"), nameEntry,
-		widget.NewLabel("Type:"), typeEntry,
-		widget.NewLabel("API Key:"), apiKeyEntry,
-		widget.NewLabel("Base URL:"), baseURLEntry,
-		widget.NewLabel("Model:"), modelEntry,
-	)
-
-	saveBtn := widget.NewButton("Save", func() {
-		if nameEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Provider name cannot be empty"), settingsWin)
-			return
-		}
-		if typeEntry.Selected == "" {
-			dialog.ShowError(fmt.Errorf("Provider type must be selected"), settingsWin)
-			return
-		}
-
-		newProvider := config.Provider{
-			Name:    nameEntry.Text,
-			Type:    typeEntry.Selected,
-			APIKey:  apiKeyEntry.Text,
-			BaseURL: baseURLEntry.Text,
-			Model:   modelEntry.Text,
-		}
-
-		if provider != nil {
-			// Update existing provider
-			*provider = newProvider
-		} else {
-			// Add new provider
-			cw.config.Providers = append(cw.config.Providers, newProvider)
-		}
-
-		config.SaveConfig(cw.config)
-		providerList.Refresh()
-		cw.updateProviderSelector()
-	})
-
-	content := container.NewVBox(
-		form,
-		container.NewHBox(layout.NewSpacer(), saveBtn),
-	)
-
-	d := dialog.NewCustomConfirm(title, "Save", "Cancel", content, func(response bool) {
-		if response {
-			// Save is handled in saveBtn
-		}
-	}, settingsWin)
-
-	// Hook up save button to close dialog
-	saveBtn.OnTapped = func() {
-		if nameEntry.Text != "" && typeEntry.Selected != "" {
-			newProvider := config.Provider{
-				Name:    nameEntry.Text,
-				Type:    typeEntry.Selected,
-				APIKey:  apiKeyEntry.Text,
-				BaseURL: baseURLEntry.Text,
-				Model:   modelEntry.Text,
-			}
-
-			if provider != nil {
-				*provider = newProvider
-			} else {
-				cw.config.Providers = append(cw.config.Providers, newProvider)
-			}
-
-			config.SaveConfig(cw.config)
-			providerList.Refresh()
-			cw.updateProviderSelector()
-			d.Hide()
-		}
-	}
-
-	d.Show()
-}
-
-func (cw *ChatWindow) updateProviderSelector() {
-	providerNames := make([]string, len(cw.config.Providers))
-	for i, p := range cw.config.Providers {
-		providerNames[i] = p.Name
-	}
-	cw.providerSelect.Options = providerNames
-	cw.providerSelect.Refresh()
-}
-
-func (cw *ChatWindow) createMCPServersTab(parentWindow fyne.Window) fyne.CanvasObject {
-	// Track selected MCP server
-	var selectedServer *config.MCPServer
-	var selectedServerIndex int = -1
-
-	// Create form entries
-	nameEntry := widget.NewEntry()
-	commandEntry := widget.NewEntry()
-	argsEntry := widget.NewMultiLineEntry()
-	argsEntry.SetPlaceHolder("Enter arguments separated by new lines\ne.g.:\n-y\n@modelcontextprotocol/server-filesystem\n/path/to/files")
-	envEntry := widget.NewMultiLineEntry()
-	envEntry.SetPlaceHolder("Enter environment variables as KEY=VALUE, one per line\ne.g.:\nPATH=/usr/local/bin\nNODE_ENV=production")
-
-	// MCP Server list
-	mcpList := widget.NewList(
-		func() int { return len(cw.config.MCPServers) },
-		func() fyne.CanvasObject {
-			return container.NewHBox(
-				widget.NewIcon(theme.ComputerIcon()),
-				widget.NewLabel(""),
-			)
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			container := obj.(*fyne.Container)
-			label := container.Objects[1].(*widget.Label)
-			if id < len(cw.config.MCPServers) {
-				server := cw.config.MCPServers[id]
-				label.SetText(fmt.Sprintf("%s (%s)", server.Name, server.Command))
-			}
-		},
-	)
-
-	mcpList.OnSelected = func(id widget.ListItemID) {
-		if id >= 0 && id < len(cw.config.MCPServers) {
-			selectedServer = &cw.config.MCPServers[id]
-			selectedServerIndex = id
-
-			// Populate form
-			nameEntry.SetText(selectedServer.Name)
-			commandEntry.SetText(selectedServer.Command)
-			if len(selectedServer.Args) > 0 {
-				argsEntry.SetText(strings.Join(selectedServer.Args, "\n"))
-			} else {
-				argsEntry.SetText("")
-			}
-			if len(selectedServer.Env) > 0 {
-				envLines := make([]string, 0, len(selectedServer.Env))
-				for k, v := range selectedServer.Env {
-					envLines = append(envLines, fmt.Sprintf("%s=%s", k, v))
-				}
-				envEntry.SetText(strings.Join(envLines, "\n"))
-			} else {
-				envEntry.SetText("")
-			}
-		}
-	}
-
-	mcpList.OnUnselected = func(id widget.ListItemID) {
-		if selectedServerIndex == id {
-			selectedServer = nil
-			selectedServerIndex = -1
-
-			// Clear form
-			nameEntry.SetText("")
-			commandEntry.SetText("")
-			argsEntry.SetText("")
-			envEntry.SetText("")
-		}
-	}
-
-	// Form
-	form := container.NewVBox(
-		widget.NewLabel("MCP Server Details"),
-		widget.NewSeparator(),
-		container.NewGridWithColumns(2,
-			widget.NewLabel("Name:"), nameEntry,
-			widget.NewLabel("Command:"), commandEntry,
-		),
-		container.NewGridWithColumns(2,
-			widget.NewLabel("Args:"),
-			container.NewScroll(argsEntry),
-		),
-		container.NewGridWithColumns(2,
-			widget.NewLabel("Env:"),
-			container.NewScroll(envEntry),
-		),
-	)
-
-	// Set minimum sizes for multi-line entries
-	argsEntry.SetMinRowsVisible(3)
-	envEntry.SetMinRowsVisible(3)
-
-	// Buttons
-	addBtn := widget.NewButton("Add New", func() {
-		// Clear form and deselect
-		selectedServer = nil
-		selectedServerIndex = -1
-		mcpList.UnselectAll()
-		nameEntry.SetText("")
-		commandEntry.SetText("")
-		argsEntry.SetText("")
-		envEntry.SetText("")
-	})
-
-	saveBtn := widget.NewButton("Save", func() {
-		if nameEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Server name cannot be empty"), parentWindow)
-			return
-		}
-		if commandEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Command cannot be empty"), parentWindow)
-			return
-		}
-
-		// Parse args
-		args := []string{}
-		if strings.TrimSpace(argsEntry.Text) != "" {
-			args = strings.Split(strings.TrimSpace(argsEntry.Text), "\n")
-		}
-
-		// Parse env
-		env := make(map[string]string)
-		if strings.TrimSpace(envEntry.Text) != "" {
-			envLines := strings.Split(strings.TrimSpace(envEntry.Text), "\n")
-			for _, line := range envLines {
-				parts := strings.SplitN(line, "=", 2)
-				if len(parts) == 2 {
-					env[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-				}
-			}
-		}
-
-		newServer := config.MCPServer{
-			Name:    nameEntry.Text,
-			Command: commandEntry.Text,
-			Args:    args,
-			Env:     env,
-		}
-
-		if selectedServer != nil {
-			// Update existing server
-			*selectedServer = newServer
-		} else {
-			// Add new server
-			cw.config.MCPServers = append(cw.config.MCPServers, newServer)
-			selectedServerIndex = len(cw.config.MCPServers) - 1
-			selectedServer = &cw.config.MCPServers[selectedServerIndex]
-		}
-
-		config.SaveConfig(cw.config)
-		mcpList.Refresh()
-
-		// Select the updated/new server
-		mcpList.Select(selectedServerIndex)
-	})
-
-	deleteBtn := widget.NewButton("Delete", func() {
-		if selectedServer == nil {
-			dialog.ShowError(fmt.Errorf("Please select a server to delete"), parentWindow)
-			return
-		}
-
-		dialog.ShowConfirm(
-			"Delete MCP Server",
-			fmt.Sprintf("Are you sure you want to delete MCP server '%s'?", selectedServer.Name),
-			func(confirmed bool) {
-				if confirmed {
-					// Remove MCP server
-					cw.config.MCPServers = append(cw.config.MCPServers[:selectedServerIndex], cw.config.MCPServers[selectedServerIndex+1:]...)
-					config.SaveConfig(cw.config)
-
-					// Reset selection and clear form
-					selectedServer = nil
-					selectedServerIndex = -1
-					nameEntry.SetText("")
-					commandEntry.SetText("")
-					argsEntry.SetText("")
-					envEntry.SetText("")
-
-					mcpList.Refresh()
-				}
-			},
-			parentWindow,
-		)
-	})
-
-	buttonContainer := container.NewHBox(addBtn, saveBtn, deleteBtn)
-
-	// Right side container with form and buttons
-	rightPanel := container.NewBorder(
-		nil,
-		buttonContainer,
-		nil,
-		nil,
-		form,
-	)
-
-	// Split left and right
-	split := container.NewHSplit(
-		mcpList,
-		rightPanel,
-	)
-	split.SetOffset(0.4)
-
-	return split
-}
-
-func (cw *ChatWindow) showMCPServerDialog(settingsWin fyne.Window, server *config.MCPServer, mcpList *widget.List) {
-	title := "Add MCP Server"
-	if server != nil {
-		title = "Edit MCP Server"
-	}
-
-	nameEntry := widget.NewEntry()
-	commandEntry := widget.NewEntry()
-	argsEntry := widget.NewMultiLineEntry()
-	argsEntry.SetPlaceHolder("Enter arguments separated by new lines\ne.g.:\n-y\n@modelcontextprotocol/server-filesystem\n/path/to/files")
-	envEntry := widget.NewMultiLineEntry()
-	envEntry.SetPlaceHolder("Enter environment variables as KEY=VALUE, one per line\ne.g.:\nPATH=/usr/local/bin\nNODE_ENV=production")
-
-	if server != nil {
-		nameEntry.SetText(server.Name)
-		commandEntry.SetText(server.Command)
-		if len(server.Args) > 0 {
-			argsEntry.SetText(strings.Join(server.Args, "\n"))
-		}
-		if len(server.Env) > 0 {
-			envLines := make([]string, 0, len(server.Env))
-			for k, v := range server.Env {
-				envLines = append(envLines, fmt.Sprintf("%s=%s", k, v))
-			}
-			envEntry.SetText(strings.Join(envLines, "\n"))
-		}
-	}
-
-	form := container.NewGridWithColumns(2,
-		widget.NewLabel("Name:"), nameEntry,
-		widget.NewLabel("Command:"), commandEntry,
-		widget.NewLabel("Args:"), container.NewGridWithColumns(1, argsEntry),
-		widget.NewLabel("Env:"), container.NewGridWithColumns(1, envEntry),
-	)
-
-	content := container.NewVBox(
-		form,
-	)
-
-	var d dialog.Dialog
-
-	saveBtn := widget.NewButton("Save", func() {
-		if nameEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Server name cannot be empty"), settingsWin)
-			return
-		}
-		if commandEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Command cannot be empty"), settingsWin)
-			return
-		}
-
-		// Parse args
-		args := []string{}
-		if argsEntry.Text != "" {
-			args = strings.Split(strings.TrimSpace(argsEntry.Text), "\n")
-		}
-
-		// Parse env
-		env := make(map[string]string)
-		if envEntry.Text != "" {
-			envLines := strings.Split(strings.TrimSpace(envEntry.Text), "\n")
-			for _, line := range envLines {
-				parts := strings.SplitN(line, "=", 2)
-				if len(parts) == 2 {
-					env[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-				}
-			}
-		}
-
-		newServer := config.MCPServer{
-			Name:    nameEntry.Text,
-			Command: commandEntry.Text,
-			Args:    args,
-			Env:     env,
-		}
-
-		if server != nil {
-			*server = newServer
-		} else {
-			cw.config.MCPServers = append(cw.config.MCPServers, newServer)
-		}
-
-		config.SaveConfig(cw.config)
-		mcpList.Refresh()
-		d.Hide()
-	})
-
-	d = dialog.NewCustomConfirm(title, "Save", "Cancel", content, func(response bool) {
-		if response {
-			saveBtn.OnTapped()
-		}
-	}, settingsWin)
-
-	d.Show()
-}
-
 // Show displays the chat window
 func (cw *ChatWindow) Show() {
 	cw.window.ShowAndRun()
@@ -1202,9 +870,100 @@ func (cw *ChatWindow) Show() {
 
 // MCPManagerWrapper wraps the MCP manager for UI use
 type MCPManagerWrapper struct {
-	// Add MCP manager instance when needed
+	manager *mcp.Manager
 }
 
 func NewMCPManagerWrapper() *MCPManagerWrapper {
-	return &MCPManagerWrapper{}
+	return &MCPManagerWrapper{
+		manager: mcp.NewManager(),
+	}
+}
+
+// InitializeAllServers initializes all configured MCP servers
+func (m *MCPManagerWrapper) InitializeAllServers(servers []config.MCPServer) map[string]*mcp.MCPServerStatus {
+	return m.manager.InitializeAll(servers)
+}
+
+// GetServerStatus returns the status of a specific server
+func (m *MCPManagerWrapper) GetServerStatus(name string) (*mcp.MCPServerStatus, bool) {
+	return m.manager.GetServerStatus(name)
+}
+
+// GetAllStatus returns all server statuses
+func (m *MCPManagerWrapper) GetAllStatus() map[string]*mcp.MCPServerStatus {
+	return m.manager.GetAllStatus()
+}
+
+// GetServerTools returns the tools for a specific server
+func (m *MCPManagerWrapper) GetServerTools(name string) ([]mcp.MCPTool, bool) {
+	return m.manager.GetServerTools(name)
+}
+
+// GetAllTools returns all tools from all initialized servers
+func (m *MCPManagerWrapper) GetAllTools() map[string][]mcp.MCPTool {
+	return m.manager.GetAllTools()
+}
+
+// ReinitializeServer reinitializes a server
+func (m *MCPManagerWrapper) ReinitializeServer(cfg config.MCPServer) (*mcp.MCPServerStatus, error) {
+	return m.manager.ReinitializeServer(cfg)
+}
+
+// DisconnectServer disconnects a specific server
+func (m *MCPManagerWrapper) DisconnectServer(name string) error {
+	return m.manager.DisconnectServer(name)
+}
+
+// initializeMCPServers initializes all configured MCP servers on startup
+// This runs asynchronously to avoid blocking the UI
+func (cw *ChatWindow) initializeMCPServers() {
+	if len(cw.config.MCPServers) == 0 {
+		fmt.Println("No MCP servers configured")
+		return
+	}
+
+	fmt.Printf("Initializing %d MCP server(s)...\n", len(cw.config.MCPServers))
+
+	// Use a WaitGroup to track when all servers have been initialized
+	var wg sync.WaitGroup
+	successCount := int64(0)
+
+	// Initialize each server in its own goroutine for parallel execution
+	for _, server := range cw.config.MCPServers {
+		// Skip disabled servers
+		if !server.Enabled {
+			fmt.Printf("  ⊘ Skipping disabled MCP server '%s'\n", server.Name)
+			continue
+		}
+
+		wg.Add(1)
+		go func(srv config.MCPServer) {
+			defer wg.Done()
+			fmt.Printf("  Initializing MCP server '%s' (%s)...\n", srv.Name, srv.Type)
+			status, err := cw.mcpManager.manager.InitializeServer(srv)
+			if err != nil {
+				fmt.Printf("  ✗ Failed to initialize '%s': %v\n", srv.Name, err)
+			} else {
+				toolCount := len(status.Tools)
+				fmt.Printf("  ✓ Successfully initialized '%s' (%d tool%s)\n",
+					srv.Name, toolCount, map[bool]string{true: "s", false: ""}[toolCount != 1])
+				atomic.AddInt64(&successCount, 1)
+			}
+		}(server)
+	}
+
+	// Count enabled servers for final message
+	enabledCount := 0
+	for _, server := range cw.config.MCPServers {
+		if server.Enabled {
+			enabledCount++
+		}
+	}
+
+	// Wait for all servers to finish initialization in a separate goroutine
+	go func() {
+		wg.Wait()
+		fmt.Printf("MCP server initialization complete: %d/%d successful\n",
+			atomic.LoadInt64(&successCount), enabledCount)
+	}()
 }
