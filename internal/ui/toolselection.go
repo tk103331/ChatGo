@@ -9,7 +9,6 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 )
 
@@ -69,6 +68,7 @@ func (tm *ToolSelectionManager) LoadToolSelections() (builtinTools []ToolSelecti
 
 		// Check if server is initialized
 		status, ok := tm.mcpManager.manager.GetServerStatus(server.Name)
+
 		if ok && status.Status == "initialized" && len(status.Tools) > 0 {
 			serverTools := []ToolSelection{}
 			for _, tool := range status.Tools {
@@ -84,15 +84,18 @@ func (tm *ToolSelectionManager) LoadToolSelections() (builtinTools []ToolSelecti
 			mcpTools[fmt.Sprintf("MCP [%s] - %s", serverType, server.Name)] = serverTools
 		} else {
 			// Server not initialized, add disabled entry
-			mcpTools[fmt.Sprintf("MCP [%s] - %s", serverType, server.Name)] = []ToolSelection{
-				{
-					ID:          fmt.Sprintf("mcp:%s:uninitialized", server.Name),
-					DisplayName: fmt.Sprintf("(未初始化) %s", server.Name),
-					Group:       fmt.Sprintf("MCP [%s] - %s", serverType, server.Name),
-					Type:        "mcp",
-					Enabled:     false,
-					Description: "请先在设置中初始化此服务器",
-				},
+			// Check if server is enabled in config
+			if server.Enabled {
+				mcpTools[fmt.Sprintf("MCP [%s] - %s", serverType, server.Name)] = []ToolSelection{
+					{
+						ID:          fmt.Sprintf("mcp:%s:uninitialized", server.Name),
+						DisplayName: fmt.Sprintf("(未初始化) %s", server.Name),
+						Group:       fmt.Sprintf("MCP [%s] - %s", serverType, server.Name),
+						Type:        "mcp",
+						Enabled:     false,
+						Description: "请先在设置中初始化此服务器",
+					},
+				}
 			}
 		}
 	}
@@ -229,119 +232,88 @@ func (tm *ToolSelectionManager) ShowToolSelectionDialog() {
 	// Load tools by group
 	builtinTools, mcpTools := tm.LoadToolSelections()
 
-	fmt.Printf("[DEBUG] ShowToolSelectionDialog: builtinTools=%d, mcpTools=%d\n", len(builtinTools), len(mcpTools))
+	// Build tree data structure - using a simple string-based hierarchy
+	// We'll use a simple map approach instead of complex struct
 
-	// Build tree data structure
-	// Root node ID: "root"
-	// Group nodes: "group:Built-in", "group:MCP [stdio] - server1", etc.
-	// Tool nodes: actual tool IDs
+	// Build the tree hierarchy as a simple map
+	treeHierarchy := make(map[string][]string)
 
-	type ToolNode struct {
-		ID       string
-		IsBranch bool
-		Tool     *ToolSelection
-		Children []string
+	// Root level (empty string key) contains groups
+	rootChildren := []string{}
+
+	// Add built-in tools group
+	if len(builtinTools) > 0 {
+		groupID := "group:Built-in"
+		rootChildren = append(rootChildren, groupID)
+
+		// Add tools under this group
+		toolChildren := []string{}
+		for _, tool := range builtinTools {
+			toolChildren = append(toolChildren, tool.ID)
+		}
+		treeHierarchy[groupID] = toolChildren
+		fmt.Printf("[DEBUG] Group '%s' has %d tools\n", groupID, len(toolChildren))
 	}
 
-	treeData := make(map[string]*ToolNode)
+	// Add MCP server groups
+	for groupName, tools := range mcpTools {
+		groupID := "group:" + groupName
+		rootChildren = append(rootChildren, groupID)
+
+		// Add tools under this group
+		toolChildren := []string{}
+		for _, tool := range tools {
+			toolChildren = append(toolChildren, tool.ID)
+		}
+		treeHierarchy[groupID] = toolChildren
+	}
+
+	// Set root children
+	treeHierarchy[""] = rootChildren
 
 	// We need to declare tree variable first so callbacks can reference it
 	var tree *widget.Tree
 
 	childUIDs := func(uid widget.TreeNodeID) []widget.TreeNodeID {
 		uidStr := string(uid)
-		fmt.Printf("[DEBUG] childUIDs called for: %s\n", uidStr)
 
-		if uidStr == "root" {
-			// Return group IDs
-			groups := []widget.TreeNodeID{}
-			if len(builtinTools) > 0 {
-				groups = append(groups, "group:Built-in")
-				fmt.Printf("[DEBUG] Adding Built-in group\n")
+		if children, ok := treeHierarchy[uidStr]; ok {
+			result := make([]widget.TreeNodeID, len(children))
+			for i, child := range children {
+				result[i] = widget.TreeNodeID(child)
 			}
-			for groupName := range mcpTools {
-				groups = append(groups, widget.TreeNodeID("group:"+groupName))
-				fmt.Printf("[DEBUG] Adding MCP group: %s\n", groupName)
-			}
-			fmt.Printf("[DEBUG] Root has %d children\n", len(groups))
-			return groups
+			return result
 		}
 
-		node, ok := treeData[uidStr]
-		if !ok {
-			fmt.Printf("[DEBUG] Node not found: %s\n", uidStr)
-			return []widget.TreeNodeID{}
-		}
-
-		if !node.IsBranch {
-			fmt.Printf("[DEBUG] Node is not a branch: %s\n", uidStr)
-			return []widget.TreeNodeID{}
-		}
-
-		result := make([]widget.TreeNodeID, len(node.Children))
-		for i, child := range node.Children {
-			result[i] = widget.TreeNodeID(child)
-		}
-		fmt.Printf("[DEBUG] Branch %s has %d children\n", uidStr, len(result))
-		return result
-	}
-
-	// Create root
-	treeData["root"] = &ToolNode{
-		ID:       "root",
-		IsBranch: true,
-		Children: []string{},
-	}
-
-	// Create built-in tools group
-	builtinGroupID := "group:Built-in"
-	builtinToolIDs := []string{}
-	for _, tool := range builtinTools {
-		builtinToolIDs = append(builtinToolIDs, tool.ID)
-		treeData[tool.ID] = &ToolNode{
-			ID:       tool.ID,
-			IsBranch: false,
-			Tool:     &tool,
-			Children: []string{},
-		}
-		fmt.Printf("[DEBUG] Added builtin tool: %s\n", tool.ID)
-	}
-	if len(builtinToolIDs) > 0 {
-		treeData[builtinGroupID] = &ToolNode{
-			ID:       builtinGroupID,
-			IsBranch: true,
-			Children: builtinToolIDs,
-		}
-		treeData["root"].Children = append(treeData["root"].Children, builtinGroupID)
-	}
-
-	// Create MCP server groups
-	for groupName, tools := range mcpTools {
-		groupID := "group:" + groupName
-		toolIDs := []string{}
-		for _, tool := range tools {
-			toolIDs = append(toolIDs, tool.ID)
-			treeData[tool.ID] = &ToolNode{
-				ID:       tool.ID,
-				IsBranch: false,
-				Tool:     &tool,
-				Children: []string{},
-			}
-			fmt.Printf("[DEBUG] Added MCP tool: %s\n", tool.ID)
-		}
-		treeData[groupID] = &ToolNode{
-			ID:       groupID,
-			IsBranch: true,
-			Children: toolIDs,
-		}
-		treeData["root"].Children = append(treeData["root"].Children, groupID)
+		return []widget.TreeNodeID{}
 	}
 
 	isBranch := func(uid widget.TreeNodeID) bool {
-		if node, ok := treeData[string(uid)]; ok {
-			return node.IsBranch
+		uidStr := string(uid)
+
+		// Root is a branch
+		if uidStr == "" {
+			return true
 		}
+
+		// Groups (starts with "group:") are branches
+		if strings.HasPrefix(uidStr, "group:") {
+			return true
+		}
+
+		// Everything else (tools) are leaves
 		return false
+	}
+
+	// Create a tool lookup map
+	toolLookup := make(map[string]*ToolSelection)
+	for _, tool := range builtinTools {
+		toolLookup[tool.ID] = &tool
+	}
+	for _, tools := range mcpTools {
+		for _, tool := range tools {
+			toolLookup[tool.ID] = &tool
+		}
 	}
 
 	// Create node function
@@ -351,19 +323,22 @@ func (tm *ToolSelectionManager) ShowToolSelectionDialog() {
 			check := widget.NewCheck("", nil)
 			label := widget.NewLabel("")
 			label.TextStyle = fyne.TextStyle{Bold: true}
-			return container.NewBorder(nil, nil, check, label, layout.NewSpacer())
+			return container.NewHBox(check, label)
 		} else {
 			// Tool node: checkbox + label + description
+			// Use a simpler structure that's easier to update
 			check := widget.NewCheck("", nil)
 			nameLabel := widget.NewLabel("")
 			nameLabel.TextStyle = fyne.TextStyle{Bold: true}
 			descLabel := widget.NewLabel("")
 			descLabel.Wrapping = fyne.TextWrapWord
 			descLabel.TextStyle = fyne.TextStyle{Italic: true}
-			return container.NewVBox(
+			// Store description label in a way we can access it
+			vbox := container.NewVBox(
 				container.NewHBox(check, nameLabel),
-				container.NewPadded(descLabel),
+				descLabel,
 			)
+			return vbox
 		}
 	}
 
@@ -374,9 +349,9 @@ func (tm *ToolSelectionManager) ShowToolSelectionDialog() {
 		if branch {
 			// Group node
 			cont := obj.(*fyne.Container)
-			// For border container: [left, top, right, bottom, center]
+			// For HBox container
 			check := cont.Objects[0].(*widget.Check)
-			label := cont.Objects[2].(*widget.Label)
+			label := cont.Objects[1].(*widget.Label)
 
 			groupName := strings.TrimPrefix(uidStr, "group:")
 
@@ -431,31 +406,36 @@ func (tm *ToolSelectionManager) ShowToolSelectionDialog() {
 			}
 		} else {
 			// Tool node
-			toolNode := treeData[uidStr]
-			if toolNode == nil || toolNode.Tool == nil {
+			tool, ok := toolLookup[uidStr]
+			if !ok {
 				return
 			}
-			tool := toolNode.Tool
 
 			vbox := obj.(*fyne.Container)
+			if len(vbox.Objects) < 2 {
+				return
+			}
+
+			// First object is HBox with checkbox and name
 			checkContainer := vbox.Objects[0].(*fyne.Container)
 			check := checkContainer.Objects[0].(*widget.Check)
 			nameLabel := checkContainer.Objects[1].(*widget.Label)
 
+			// Second object is description label
+			descLabel := vbox.Objects[1].(*widget.Label)
+
 			nameLabel.SetText(tool.DisplayName)
+			descLabel.SetText(tool.Description)
 
 			if !tool.Enabled {
 				check.Hide()
+				check.Disable()
 				nameLabel.TextStyle = fyne.TextStyle{Italic: true}
-				if len(vbox.Objects) > 1 {
-					pad := vbox.Objects[1].(*fyne.Container)
-					descLabel := pad.Objects[0].(*widget.Label)
-					descLabel.SetText(tool.Description)
-				}
 				return
 			}
 
 			check.Show()
+			check.Enable()
 			nameLabel.TextStyle = fyne.TextStyle{Bold: true}
 
 			checked := currentSelections[tool.ID]
@@ -470,53 +450,45 @@ func (tm *ToolSelectionManager) ShowToolSelectionDialog() {
 				// Refresh parent group to update counts
 				tree.RefreshItem(widget.TreeNodeID("group:" + tool.Group))
 			}
-
-			// Update description
-			if len(vbox.Objects) > 1 {
-				pad := vbox.Objects[1].(*fyne.Container)
-				descLabel := pad.Objects[0].(*widget.Label)
-				descLabel.SetText(tool.Description)
-			}
 		}
 	}
 
 	// Create tree
-	tree = widget.NewTree(
-		childUIDs,
-		isBranch,
-		createNode,
-		updateNode,
-	)
+	tree = widget.NewTree(childUIDs, isBranch, createNode, updateNode)
 
-	// Open all branches by default
-	tree.OpenBranch("root")
-	if len(builtinTools) > 0 {
-		tree.OpenBranch("group:Built-in")
-	}
-	for groupName := range mcpTools {
-		tree.OpenBranch("group:" + groupName)
-	}
+	// Check if there are any tools to display
+	if len(builtinTools) == 0 && len(mcpTools) == 0 {
+		// Show a message that no tools are available
+		noToolsLabel := widget.NewLabel("没有可用的工具。\n\n请确保：\n1. 在设置中启用至少一个内置工具\n2. MCP 服务器已成功初始化")
+		noToolsLabel.Alignment = fyne.TextAlignCenter
 
-	// Debug: print tree structure
-	fmt.Printf("Tool Selection Dialog - Built-in tools: %d, MCP groups: %d\n", len(builtinTools), len(mcpTools))
-	fmt.Printf("Root children: %v\n", childUIDs("root"))
-	fmt.Printf("Total tree nodes: %d\n", len(treeData))
+		content := container.NewVBox(
+			widget.NewLabel("选择要使用的工具:"),
+			widget.NewSeparator(),
+			container.NewPadded(noToolsLabel),
+		)
+
+		dialog.NewCustomConfirm("选择工具", "确定", "", content, func(bool) {}, tm.window).Show()
+		return
+	}
 
 	// Create scroll container for tree with proper sizing
 	treeScroll := container.NewScroll(tree)
-	treeScroll.SetMinSize(fyne.NewSize(500, 350))
+	treeScroll.SetMinSize(fyne.NewSize(550, 400))
+	treeScroll.Resize(fyne.NewSize(550, 400))
 
-	// Create content with proper layout using Border to ensure tree fills space
+	// Set minimum size on tree itself
+	tree.Resize(fyne.NewSize(550, 400))
+
+	// Create content with proper layout
 	titleLabel := widget.NewLabel("选择要使用的工具:")
 	titleLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	// Use Border layout: title on top, tree fills the rest
-	content := container.NewBorder(
-		container.NewVBox(titleLabel, widget.NewSeparator()), // top
-		nil,           // bottom
-		nil,           // left
-		nil,           // right
-		tree,    // center (fills remaining space)
+	// Use VBox layout with scrollable tree
+	content := container.NewVBox(
+		titleLabel,
+		widget.NewSeparator(),
+		treeScroll,
 	)
 
 	// Show dialog
@@ -537,11 +509,19 @@ func (tm *ToolSelectionManager) ShowToolSelectionDialog() {
 	}, tm.window)
 
 	// Resize dialog to ensure content is visible
-	d.Resize(fyne.NewSize(550, 450))
+	d.Resize(fyne.NewSize(600, 500))
 
-	// Show dialog and refresh to ensure proper rendering
+	// Show dialog
 	d.Show()
 
-	// Force a refresh after showing to ensure tree renders
+	// Open branches after dialog is shown (still in main thread)
+	// This should happen after Show() returns
+	if len(builtinTools) > 0 {
+		tree.OpenBranch("group:Built-in")
+	}
+	for groupName := range mcpTools {
+		groupID := "group:" + groupName
+		tree.OpenBranch(groupID)
+	}
 	tree.Refresh()
 }

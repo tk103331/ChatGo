@@ -48,6 +48,7 @@ type ChatWindow struct {
 	sendButton        *widget.Button
 	providerSelect    *widget.Select
 	toolSelectBtn     *widget.Button
+	modeSwitch        *widget.Button
 	convListData      []models.Conversation
 	messagesContainer *fyne.Container
 
@@ -55,6 +56,9 @@ type ChatWindow struct {
 	homeContainer    *fyne.Container
 	homeMessageEntry *widget.Entry
 	isHomeMode       bool
+
+	// Mode state
+	isReactMode bool
 }
 
 // NewChatWindow creates a new chat window instance with the given app and configuration.
@@ -194,6 +198,16 @@ func (cw *ChatWindow) setupUI() {
 	})
 	cw.toolSelectionMgr.SetButton(cw.toolSelectBtn)
 
+	// Mode switch button (Chat vs React)
+	cw.isReactMode = cw.config.UseReactAgent
+	modeLabel := "Chat 模式"
+	if cw.isReactMode {
+		modeLabel = "React 模式"
+	}
+	cw.modeSwitch = widget.NewButton(modeLabel, func() {
+		cw.toggleMode()
+	})
+
 	// Message entry
 	cw.messageEntry = widget.NewMultiLineEntry()
 	cw.messageEntry.SetPlaceHolder("Type your message here...")
@@ -210,6 +224,9 @@ func (cw *ChatWindow) setupUI() {
 	providerToolBar := container.NewHBox(
 		widget.NewLabel("Model:"),
 		cw.providerSelect,
+		widget.NewSeparator(),
+		widget.NewLabel("Mode:"),
+		cw.modeSwitch,
 		widget.NewSeparator(),
 		widget.NewLabel("Tools:"),
 		cw.toolSelectBtn,
@@ -298,8 +315,8 @@ func (cw *ChatWindow) setupCurrentProvider() {
 	// Find provider
 	for _, p := range cw.config.Providers {
 		if p.Name == cw.currentConversation.Provider {
-			// Check if React Agent is enabled
-			if cw.config.UseReactAgent {
+			// Check if React Agent is enabled via mode switch
+			if cw.isReactMode {
 				err := cw.setupReactAgent(p)
 				if err != nil {
 					fmt.Printf("Failed to setup React Agent: %v\n", err)
@@ -537,6 +554,34 @@ func (cw *ChatWindow) switchProvider(providerName string) {
 	}
 
 	config.SaveConfig(cw.config)
+}
+
+// toggleMode switches between Chat mode and React mode
+func (cw *ChatWindow) toggleMode() {
+	cw.isReactMode = !cw.isReactMode
+
+	// Update button label
+	if cw.isReactMode {
+		cw.modeSwitch.SetText("React 模式")
+	} else {
+		cw.modeSwitch.SetText("Chat 模式")
+	}
+
+	// Save to config
+	cw.config.UseReactAgent = cw.isReactMode
+	config.SaveConfig(cw.config)
+
+	// Re-setup the current provider with the new mode
+	if cw.currentConversation != nil {
+		cw.setupCurrentProvider()
+	}
+
+	// Show notification
+	if cw.isReactMode {
+		fmt.Println("[Mode] Switched to React mode (Agent with tools)")
+	} else {
+		fmt.Println("[Mode] Switched to Chat mode (Direct conversation)")
+	}
 }
 
 func (cw *ChatWindow) createNewConversation() {
