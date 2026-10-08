@@ -36,3 +36,6 @@ Thumbs.db
 # Build output
 dist/
 build/
+
+# oh-my-opencode state
+.omo/

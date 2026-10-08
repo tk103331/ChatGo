@@ -11,12 +11,15 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Providers         []Provider         `yaml:"providers"`
-	MCPServers        []MCPServer        `yaml:"mcp_servers"`
-	BuiltinTools      []BuiltinTool      `yaml:"builtin_tools"`
-	CurrentProvider   string             `yaml:"current_provider"`
-	UseReactAgent     bool               `yaml:"use_react_agent"`
-	ReactAgentMaxStep int                `yaml:"react_agent_max_step"`
+	Providers         []Provider    `yaml:"providers"`
+	MCPServers        []MCPServer   `yaml:"mcp_servers"`
+	BuiltinTools      []BuiltinTool `yaml:"builtin_tools"`
+	CurrentProvider   string        `yaml:"current_provider"`
+	UseReactAgent     bool          `yaml:"use_react_agent"`
+	ReactAgentMaxStep int           `yaml:"react_agent_max_step"`
+	ThemeMode         string        `yaml:"theme_mode,omitempty"`
+	Density           string        `yaml:"density,omitempty"`
+	Locale            string        `yaml:"locale,omitempty"`
 }
 
 // Provider represents an LLM provider configuration
@@ -53,10 +56,10 @@ type MCPServer struct {
 
 // BuiltinTool represents a built-in tool configuration from Eino framework
 type BuiltinTool struct {
-	Name        string            `yaml:"name"`
-	Type        string            `yaml:"type"` // bingsearch, googlesearch, wikipedia, duckduckgosearch, httprequest, browseruse, commandline, sequentialthinking
-	Enabled     bool              `yaml:"enabled"`
-	Config      map[string]string `yaml:"config,omitempty"` // Tool-specific configuration
+	Name    string            `yaml:"name"`
+	Type    string            `yaml:"type"` // bingsearch, googlesearch, wikipedia, duckduckgosearch, httprequest, browseruse, commandline, sequentialthinking
+	Enabled bool              `yaml:"enabled"`
+	Config  map[string]string `yaml:"config,omitempty"` // Tool-specific configuration
 }
 
 // GetAvailableBuiltinTools returns a list of all available built-in tool types
@@ -76,14 +79,14 @@ func GetAvailableBuiltinTools() []string {
 // GetBuiltinToolDescription returns a description for the given tool type
 func GetBuiltinToolDescription(toolType string) string {
 	descriptions := map[string]string{
-		"bingsearch":          "Bing Search - Search the web using Bing search engine",
-		"googlesearch":        "Google Search - Search the web using Google search engine",
-		"wikipedia":           "Wikipedia - Search and retrieve information from Wikipedia",
-		"duckduckgosearch":    "DuckDuckGo Search - Private search using DuckDuckGo",
-		"httprequest":         "HTTP Request - Make HTTP requests to web services",
-		"browseruse":          "Browser Use - Automate browser interactions",
-		"commandline":         "Command Line - Execute shell commands (use with caution)",
-		"sequentialthinking":  "Sequential Thinking - Chain of thought reasoning tool",
+		"bingsearch":         "Bing Search - Search the web using Bing search engine",
+		"googlesearch":       "Google Search - Search the web using Google search engine",
+		"wikipedia":          "Wikipedia - Search and retrieve information from Wikipedia",
+		"duckduckgosearch":   "DuckDuckGo Search - Private search using DuckDuckGo",
+		"httprequest":        "HTTP Request - Make HTTP requests to web services",
+		"browseruse":         "Browser Use - Automate browser interactions",
+		"commandline":        "Command Line - Execute shell commands (use with caution)",
+		"sequentialthinking": "Sequential Thinking - Chain of thought reasoning tool",
 	}
 	if desc, ok := descriptions[toolType]; ok {
 		return desc
@@ -231,6 +234,9 @@ func LoadConfig() (*Config, error) {
 			CurrentProvider:   "OpenAI",
 			UseReactAgent:     false,
 			ReactAgentMaxStep: 40,
+			ThemeMode:         "system",
+			Density:           "default",
+			Locale:            "zh-CN",
 		}
 
 		data, err := yaml.Marshal(defaultConfig)

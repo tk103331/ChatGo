@@ -2,15 +2,15 @@
 
 **一个简单的AI聊天客户端，仅用于学习目的。**
 
-一个简单的跨平台AI聊天客户端，使用Go和Fyne构建，支持多种大语言模型提供商。
+一个简单的跨平台AI聊天客户端，使用 Go、[MyGo](https://github.com/egoist/mygo) 与 [MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI) 构建，支持多种大语言模型提供商。
 
-![ChatGo](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)
+![ChatGo](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
 ## ✨ 特性
 
-- 🎨 **现代化界面** - 简洁优雅的跨平台GUI，基于Fyne框架
+- 🎨 **现代化界面** - MyGo 原生 UI，GPU 自绘，MujicaUI 组件库（象牙白/炭黑酒红主题）
 - 🏠 **首页快速开始** - 居中的输入框，一键开始对话
 - 💬 **流式输出** - 实时显示AI响应，逐字逐句呈现
 - 🤖 **多模型支持** - 支持OpenAI、Claude、Ollama、Qwen、DeepSeek、Gemini等
@@ -40,17 +40,24 @@
 git clone https://github.com/tk103331/ChatGo.git
 cd ChatGo
 
-# 编译
-go build -o chatgo ./cmd/chatgo
+# 编译（项目需要 Go 1.27.1+，会自动下载匹配的工具链）
+go build -o chatgo .
 
 # 运行
 ./chatgo
 ```
 
+> **依赖提示**：MujicaUI 尚未发布到公共代理，首次拉取依赖请让 Go 直连 GitHub：
+> ```bash
+> go env -w GOPROXY=https://goproxy.cn,direct
+> go env -w GOPRIVATE=github.com/ZacharyZhang-NY/*
+> ```
+> MyGo 为纯 Go 实现（无 cgo），可在任意平台交叉编译原生 UI。
+
 #### 使用Go安装
 
 ```bash
-go install github.com/tk103331/ChatGo/cmd/chatgo@latest
+go install github.com/tk103331/ChatGo@latest
 ```
 
 ### 初次使用
@@ -146,23 +153,27 @@ current_provider: "OpenAI"
 
 ## 🛠️ 技术栈
 
-- **Go 1.21+** - 主要编程语言
-- **Fyne** - 跨平台GUI框架
-- **Cloudwego Eino** - LLM抽象层和组件库
-- **SQLite** - 对话历史存储
+- **Go 1.27.1+** - 主要编程语言
+- **[MyGo](https://github.com/egoist/mygo)** - 原生 UI 框架（GPU 自绘，无 webview、无 cgo）
+- **[MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI)** - MyGo 桌面组件库
+- **Cloudwego Eino** - LLM 抽象层与 React Agent 框架
+- **JSON 文件** - 对话历史存储（`~/.chatgo/conversations`）
 
 ## 📦 项目结构
 
 ```
 ChatGo/
-├── cmd/
-│   └── chatgo/
-│       └── main.go          # 应用入口
+├── main.go                  # 应用入口
 ├── internal/
 │   ├── config/              # 配置管理
-│   ├── llm/                 # LLM客户端
-│   ├── mcp/                 # MCP服务器支持
-│   └── ui/                  # 用户界面
+│   ├── llm/                 # LLM 客户端与 React Agent
+│   ├── mcp/                 # MCP 服务器支持
+│   └── ui/                  # MyGo + MujicaUI 界面
+│       ├── app.go           # 状态、视图入口、流式与客户端
+│       ├── home.go          # 首页
+│       ├── chat.go          # 聊天界面（侧栏/消息/输入）
+│       ├── settings.go      # 设置弹窗
+│       └── tools.go         # 工具选择
 ├── pkg/
 │   └── models/              # 数据模型
 └── README.md
@@ -178,8 +189,9 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 
 ## 🙏 致谢
 
-- [Fyne](https://fyne.io/) - 优秀的跨平台Go GUI框架
-- [Cloudwego Eino](https://github.com/cloudwego/eino) - 强大的LLM应用开发框架
+- [MyGo](https://github.com/egoist/mygo) - 原生 UI 框架
+- [MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI) - MyGo 桌面组件库
+- [Cloudwego Eino](https://github.com/cloudwego/eino) - 强大的 LLM 应用开发框架
 
 ## 📮 联系方式
 

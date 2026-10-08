@@ -1,1184 +1,584 @@
 package ui
 
 import (
-	"chatgo/internal/config"
-	"chatgo/internal/mcp"
 	"fmt"
 	"strings"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/container"
-	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/layout"
-	"fyne.io/fyne/v2/theme"
-	"fyne.io/fyne/v2/widget"
+	"chatgo/internal/config"
+
+	mgo "github.com/egoist/mygo/ui"
+
+	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
+	mfeedback "github.com/ZacharyZhang-NY/MujicaUI/feedback"
+	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
+	mnavigation "github.com/ZacharyZhang-NY/MujicaUI/navigation"
+	moverlay "github.com/ZacharyZhang-NY/MujicaUI/overlay"
+	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
-// showSettings displays the settings dialog with Providers, MCP Servers, and Built-in Tools tabs.
-func (cw *ChatWindow) showSettings() {
-	// Create tabs for Providers, MCP Servers, and Built-in Tools
-	providersTab := cw.createProvidersTab(cw.window)
-	mcpServersTab := cw.createMCPServersTab(cw.window)
-	builtinToolsTab := cw.createBuiltinToolsTab(cw.window)
-
-	tabs := container.NewAppTabs(
-		container.NewTabItem("Providers", providersTab),
-		container.NewTabItem("MCP Servers", mcpServersTab),
-		container.NewTabItem("Built-in Tools", builtinToolsTab),
-	)
-
-	// Create close button for top-right corner
-	closeBtn := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {})
-
-	// Create content with close button in top-right
-	content := container.NewBorder(
-		nil, // top
-		nil, // bottom
-		nil, // left
-		closeBtn, // right
-		tabs, // center
-	)
-
-	// Show as dialog without buttons
-	d := dialog.NewCustomWithoutButtons("Settings", content, cw.window)
-
-	// Hook up close button to hide dialog
-	closeBtn.OnTapped = func() {
-		// Update tool check group when settings close
-		cw.toolSelectionMgr.RefreshToolCheckGroup()
-		d.Hide()
-	}
-
-	d.Resize(fyne.NewSize(800, 500))
-	d.Show()
+// settingsState holds the settings dialog's open tab and edit forms.
+type settingsState struct {
+	open        bool
+	tab         int
+	prov        providerForm
+	mcp         mcpForm
+	builtin     builtinForm
+	provList    mgo.ListState
+	mcpList     mgo.ListState
+	builtinList mgo.ListState
 }
 
-// createBuiltinToolsTab creates the Built-in Tools configuration tab.
-// It displays a list of configured built-in tools from Eino framework and allows adding, editing, and deleting them.
-
-// createBuiltinToolsTab creates the Built-in Tools configuration tab.
-// Tools cannot be added or removed, only enabled/disabled and configured.
-func (cw *ChatWindow) createBuiltinToolsTab(parentWindow fyne.Window) fyne.CanvasObject {
-	var selectedTool *config.BuiltinTool
-	var selectedToolIndex int = -1
-	enabledCheck := widget.NewCheck("Enabled", nil)
-	configContainer := container.NewVBox()
-	var configEntries []*widget.Entry
-	var configFields []string
-
-	recreateConfigFields := func(toolType string) {
-		configContainer.Objects = nil
-		configEntries = nil
-		configFields = nil
-		fields := config.GetBuiltinToolConfigFields(toolType)
-		requiredFields := config.GetRequiredConfigFields(toolType)
-		configFields = fields
-
-		if len(fields) == 0 {
-			configContainer.Add(widget.NewLabel("No additional configuration required for this tool type."))
-			configContainer.Refresh()
-			return
-		}
-
-		form := container.NewGridWithColumns(2)
-		for _, field := range fields {
-			labelText := field + ":"
-			if contains(requiredFields, field) {
-				labelText = field + " *:"
-			}
-			label := widget.NewLabel(labelText)
-			entry := widget.NewEntry()
-			if selectedTool != nil && selectedTool.Config != nil {
-				if val, ok := selectedTool.Config[field]; ok {
-					entry.SetText(val)
-				}
-			}
-			configEntries = append(configEntries, entry)
-			form.Add(label)
-			form.Add(entry)
-		}
-		configContainer.Add(form)
-		configContainer.Refresh()
-	}
-
-	toolList := widget.NewList(
-		func() int { return len(cw.config.BuiltinTools) },
-		func() fyne.CanvasObject {
-			return container.NewHBox(widget.NewIcon(theme.ComputerIcon()), widget.NewLabel(""))
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			cont := obj.(*fyne.Container)
-			label := cont.Objects[1].(*widget.Label)
-			if id < len(cw.config.BuiltinTools) {
-				tool := cw.config.BuiltinTools[id]
-				status := "disabled"
-				if tool.Enabled {
-					status = "enabled"
-				}
-				label.SetText(fmt.Sprintf("%s - %s", tool.Type, status))
-			}
-		},
-	)
-
-	toolTypeLabel := widget.NewLabel("Tool Type:")
-	descLabel := widget.NewLabel("(Select a tool from the list)")
-
-	toolList.OnSelected = func(id widget.ListItemID) {
-		if id >= 0 && id < len(cw.config.BuiltinTools) {
-			selectedTool = &cw.config.BuiltinTools[id]
-			selectedToolIndex = id
-			enabledCheck.SetChecked(selectedTool.Enabled)
-			toolTypeLabel.SetText(fmt.Sprintf("Tool Type: %s", selectedTool.Type))
-			descLabel.SetText(config.GetBuiltinToolDescription(selectedTool.Type))
-			recreateConfigFields(selectedTool.Type)
-		}
-	}
-
-	toolList.OnUnselected = func(id widget.ListItemID) {
-		if selectedToolIndex == id {
-			selectedTool = nil
-			selectedToolIndex = -1
-			enabledCheck.SetChecked(false)
-			toolTypeLabel.SetText("Tool Type:")
-			descLabel.SetText("(Select a tool from the list)")
-			configContainer.Objects = nil
-			configContainer.Refresh()
-		}
-	}
-
-	form := container.NewVBox(
-		widget.NewLabel("Built-in Tool Configuration"),
-		widget.NewSeparator(),
-		toolTypeLabel,
-		descLabel,
-		widget.NewSeparator(),
-		container.NewGridWithColumns(2, widget.NewLabel(""), enabledCheck, widget.NewLabel(""), widget.NewLabel("")),
-		widget.NewSeparator(),
-		widget.NewLabel("Tool Configuration:"),
-		widget.NewLabel("* = Required field"),
-		configContainer,
-	)
-
-	saveBtn := widget.NewButton("Save Configuration", func() {
-		if selectedTool == nil {
-			dialog.ShowError(fmt.Errorf("Please select a tool to save"), parentWindow)
-			return
-		}
-		configMap := make(map[string]string)
-		for i, entry := range configEntries {
-			if i < len(configFields) {
-				configMap[configFields[i]] = entry.Text
-			}
-		}
-		selectedTool.Enabled = enabledCheck.Checked
-		selectedTool.Config = configMap
-		if selectedTool.Enabled {
-			if err := config.ValidateBuiltinToolConfig(*selectedTool); err != nil {
-				dialog.ShowError(fmt.Errorf("validation failed: %w", err), parentWindow)
-				return
-			}
-		}
-		config.SaveConfig(cw.config)
-		toolList.Refresh()
-		dialog.ShowInformation("Success", fmt.Sprintf("Configuration for '%s' has been saved.", selectedTool.Type), parentWindow)
-	})
-
-	rightPanel := container.NewBorder(nil, container.NewHBox(saveBtn), nil, nil, form)
-	split := container.NewHSplit(toolList, rightPanel)
-	split.SetOffset(0.4)
-	return split
+type providerForm struct {
+	editing int
+	name    string
+	typ     string
+	apiKey  string
+	baseURL string
+	model   string
+	enabled bool
 }
 
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
+type mcpForm struct {
+	editing int
+	name    string
+	typ     string
+	enabled bool
+	command string
+	args    string
+	env     string
+	url     string
+	headers string
+	timeout string
 }
-func (cw *ChatWindow) createProvidersTab(parentWindow fyne.Window) fyne.CanvasObject {
-	// Track selected provider
-	var selectedProvider *config.Provider
-	var selectedProviderIndex int = -1
 
-	// Create form entries
-	nameEntry := widget.NewEntry()
-	typeEntry := widget.NewSelect([]string{"openai", "anthropic", "claude", "ollama", "custom", "qwen", "deepseek", "gemini"}, nil)
-	apiKeyEntry := widget.NewEntry()
-	apiKeyEntry.Password = true
-	baseURLEntry := widget.NewEntry()
-	modelEntry := widget.NewEntry()
-	enabledCheck := widget.NewCheck("Enabled", nil)
+type builtinForm struct {
+	editing int
+	enabled bool
+	config  map[string]string
+}
 
-	// Provider list
-	providerList := widget.NewList(
-		func() int { return len(cw.config.Providers) },
-		func() fyne.CanvasObject {
-			return container.NewHBox(
-				widget.NewIcon(theme.DocumentIcon()),
-				widget.NewLabel(""),
-			)
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			container := obj.(*fyne.Container)
-			label := container.Objects[1].(*widget.Label)
-			if id < len(cw.config.Providers) {
-				provider := cw.config.Providers[id]
-				status := "enabled"
-				if !provider.Enabled {
-					status = "disabled"
-				}
-				label.SetText(fmt.Sprintf("%s (%s) - %s", provider.Name, provider.Type, status))
+// confirmState is a reusable confirmation dialog.
+type confirmState struct {
+	open   bool
+	active bool
+	title  string
+	desc   string
+	action func()
+}
+
+var providerTypes = []string{"openai", "anthropic", "claude", "ollama", "custom", "qwen", "deepseek", "gemini"}
+var mcpTypes = []string{"stdio", "sse", "streamable_http"}
+
+// settingsDialog opens the tabbed settings modal.
+func (cw *ChatWindow) settingsDialog(c *mgo.Context) {
+	moverlay.Dialog(c, &cw.settings.open, moverlay.DialogOptions{Title: "设置", Width: 860}, func() {
+		mnavigation.Tabs(c, &cw.settings.tab, []mnavigation.Tab{
+			{Label: "模型", Panel: func() { cw.providersTab(c) }},
+			{Label: "MCP 服务器", Panel: func() { cw.mcpTab(c) }},
+			{Label: "内置工具", Panel: func() { cw.builtinTab(c) }},
+			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
+		}, mnavigation.TabsOptions{})
+	})
+}
+
+// confirmDialog shows the pending confirmation and runs its action. It keeps
+// building for one frame after closing so the dialog releases the focus.
+func (cw *ChatWindow) confirmDialog(c *mgo.Context) {
+	if !cw.confirm.open && !cw.confirm.active {
+		return
+	}
+	res := moverlay.AlertDialog(c, &cw.confirm.open, moverlay.AlertDialogOptions{
+		Title:        cw.confirm.title,
+		Description:  cw.confirm.desc,
+		ConfirmLabel: "删除",
+	})
+	cw.confirm.active = cw.confirm.open
+	if res.Confirmed && cw.confirm.action != nil {
+		cw.confirm.action()
+		cw.confirm.action = nil
+	}
+}
+
+func (cw *ChatWindow) askConfirm(title, desc string, action func()) {
+	cw.confirm = confirmState{open: true, active: true, title: title, desc: desc, action: action}
+}
+
+// providersTab lists providers and edits the selected one.
+func (cw *ChatWindow) providersTab(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
+		mgo.Column(c).Width(280).Shrink(0).Children(func() {
+			mgo.List(c, &cw.settings.provList, len(cw.cfg.Providers), func(i int) {
+				cw.providerRow(c, i)
+			}).Fill()
+		})
+		cw.providerFormView(c)
+	})
+}
+
+func (cw *ChatWindow) providerRow(c *mgo.Context, i int) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	p := cw.cfg.Providers[i]
+	b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
+		Padding(u, u*2).Radius(mtheme.ControlRadius)
+	if cw.settings.prov.editing == i {
+		b.Background(k.Selection)
+	}
+	b.Children(func() {
+		mgo.Text(c, fmt.Sprintf("%s (%s)", p.Name, p.Type)).SingleLine()
+	})
+	if b.Clicked() {
+		cw.loadProviderForm(i)
+	}
+}
+
+func (cw *ChatWindow) providerFormView(c *mgo.Context) {
+	f := &cw.settings.prov
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
+		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Provider 名称"})
+		opts := make([]minput.SelectOption[string], 0, len(providerTypes))
+		for _, t := range providerTypes {
+			opts = append(opts, minput.SelectOption[string]{Value: t, Label: t})
+		}
+		minput.Select(c, &f.typ, opts, minput.SelectOptions{Placeholder: "类型", Label: "类型"})
+		minput.PasswordInput(c, &f.apiKey, minput.PasswordInputOptions{Label: "API Key", Placeholder: "API Key"})
+		minput.TextInput(c, &f.baseURL, minput.TextInputOptions{Label: "Base URL", Placeholder: "Base URL"})
+		minput.TextInput(c, &f.model, minput.TextInputOptions{Label: "模型", Placeholder: "模型"})
+		minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
+		mgo.Row(c).Gap(u).Children(func() {
+			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				cw.clearProviderForm()
 			}
-		},
-	)
-
-	providerList.OnSelected = func(id widget.ListItemID) {
-		if id >= 0 && id < len(cw.config.Providers) {
-			selectedProvider = &cw.config.Providers[id]
-			selectedProviderIndex = id
-
-			// Populate form
-			nameEntry.SetText(selectedProvider.Name)
-			typeEntry.SetSelected(selectedProvider.Type)
-			apiKeyEntry.SetText(selectedProvider.APIKey)
-			baseURLEntry.SetText(selectedProvider.BaseURL)
-			modelEntry.SetText(selectedProvider.Model)
-			enabledCheck.SetChecked(selectedProvider.Enabled)
-		}
-	}
-
-	providerList.OnUnselected = func(id widget.ListItemID) {
-		if selectedProviderIndex == id {
-			selectedProvider = nil
-			selectedProviderIndex = -1
-
-			// Clear form
-			nameEntry.SetText("")
-			typeEntry.SetSelected("")
-			apiKeyEntry.SetText("")
-			baseURLEntry.SetText("")
-			modelEntry.SetText("")
-			enabledCheck.SetChecked(false)
-		}
-	}
-
-	// Form
-	form := container.NewVBox(
-		widget.NewLabel("Provider Details"),
-		widget.NewSeparator(),
-		container.NewGridWithColumns(2,
-			widget.NewLabel("Name:"), nameEntry,
-			widget.NewLabel("Type:"), typeEntry,
-			widget.NewLabel("API Key:"), apiKeyEntry,
-			widget.NewLabel("Base URL:"), baseURLEntry,
-			widget.NewLabel("Model:"), modelEntry,
-			widget.NewLabel(""), enabledCheck,
-		),
-	)
-
-	// Buttons
-	addBtn := widget.NewButton("Add New", func() {
-		// Clear form and deselect
-		selectedProvider = nil
-		selectedProviderIndex = -1
-		providerList.UnselectAll()
-		nameEntry.SetText("")
-		typeEntry.SetSelected("")
-		apiKeyEntry.SetText("")
-		baseURLEntry.SetText("")
-		modelEntry.SetText("")
-		enabledCheck.SetChecked(true)
+			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+				cw.saveProvider()
+			}
+			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
+				cw.deleteProvider()
+			}
+		})
 	})
-
-	saveBtn := widget.NewButton("Save", func() {
-		if nameEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Provider name cannot be empty"), parentWindow)
-			return
-		}
-		if typeEntry.Selected == "" {
-			dialog.ShowError(fmt.Errorf("Provider type must be selected"), parentWindow)
-			return
-		}
-
-		newProvider := config.Provider{
-			Name:    nameEntry.Text,
-			Type:    typeEntry.Selected,
-			APIKey:  apiKeyEntry.Text,
-			BaseURL: baseURLEntry.Text,
-			Model:   modelEntry.Text,
-			Enabled: enabledCheck.Checked,
-		}
-
-		if selectedProvider != nil {
-			// Update existing provider
-			*selectedProvider = newProvider
-		} else {
-			// Add new provider
-			cw.config.Providers = append(cw.config.Providers, newProvider)
-			selectedProviderIndex = len(cw.config.Providers) - 1
-			selectedProvider = &cw.config.Providers[selectedProviderIndex]
-		}
-
-		config.SaveConfig(cw.config)
-		providerList.Refresh()
-		cw.updateProviderSelector()
-
-		// Select the updated/new provider
-		providerList.Select(selectedProviderIndex)
-	})
-
-	deleteBtn := widget.NewButton("Delete", func() {
-		if selectedProvider == nil {
-			dialog.ShowError(fmt.Errorf("Please select a provider to delete"), parentWindow)
-			return
-		}
-
-		dialog.ShowConfirm(
-			"Delete Provider",
-			fmt.Sprintf("Are you sure you want to delete provider '%s'?", selectedProvider.Name),
-			func(confirmed bool) {
-				if confirmed {
-					// Remove provider
-					cw.config.Providers = append(cw.config.Providers[:selectedProviderIndex], cw.config.Providers[selectedProviderIndex+1:]...)
-					config.SaveConfig(cw.config)
-
-					// Reset selection and clear form
-					selectedProvider = nil
-					selectedProviderIndex = -1
-					nameEntry.SetText("")
-					typeEntry.SetSelected("")
-					apiKeyEntry.SetText("")
-					baseURLEntry.SetText("")
-					modelEntry.SetText("")
-					enabledCheck.SetChecked(false)
-
-					// Update UI
-					providerList.Refresh()
-					cw.updateProviderSelector()
-				}
-			},
-			parentWindow,
-		)
-	})
-
-	buttonContainer := container.NewHBox(addBtn, saveBtn, deleteBtn)
-
-	// Right side container with form and buttons
-	rightPanel := container.NewBorder(
-		nil,
-		buttonContainer,
-		nil,
-		nil,
-		form,
-	)
-
-	// Split left and right
-	split := container.NewHSplit(
-		providerList,
-		rightPanel,
-	)
-	split.SetOffset(0.4)
-
-	return split
 }
 
-// showProviderDialog displays a dialog for adding or editing a provider.
-func (cw *ChatWindow) showProviderDialog(settingsWin fyne.Window, provider *config.Provider, providerList *widget.List) {
-	title := "Add Provider"
-	if provider != nil {
-		title = "Edit Provider"
+func (cw *ChatWindow) loadProviderForm(i int) {
+	p := cw.cfg.Providers[i]
+	cw.settings.prov = providerForm{
+		editing: i, name: p.Name, typ: p.Type, apiKey: p.APIKey,
+		baseURL: p.BaseURL, model: p.Model, enabled: p.Enabled,
 	}
+}
 
-	nameEntry := widget.NewEntry()
-	typeEntry := widget.NewSelect([]string{"openai", "anthropic", "claude", "ollama", "custom", "qwen", "deepseek", "gemini"}, nil)
-	apiKeyEntry := widget.NewEntry()
-	apiKeyEntry.Password = true
-	baseURLEntry := widget.NewEntry()
-	modelEntry := widget.NewEntry()
-	enabledCheck := widget.NewCheck("Enabled", nil)
+func (cw *ChatWindow) clearProviderForm() {
+	cw.settings.prov = providerForm{editing: -1, typ: "openai", enabled: true}
+}
 
-	if provider != nil {
-		nameEntry.SetText(provider.Name)
-		typeEntry.SetSelected(provider.Type)
-		apiKeyEntry.SetText(provider.APIKey)
-		baseURLEntry.SetText(provider.BaseURL)
-		modelEntry.SetText(provider.Model)
-		enabledCheck.SetChecked(provider.Enabled)
+func (cw *ChatWindow) saveProvider() {
+	f := &cw.settings.prov
+	if strings.TrimSpace(f.name) == "" {
+		cw.status = "名称不能为空"
+		return
+	}
+	p := config.Provider{
+		Name: f.name, Type: f.typ, APIKey: f.apiKey,
+		BaseURL: f.baseURL, Model: f.model, Enabled: f.enabled,
+	}
+	if f.editing >= 0 && f.editing < len(cw.cfg.Providers) {
+		cw.cfg.Providers[f.editing] = p
 	} else {
-		enabledCheck.SetChecked(true)
+		cw.cfg.Providers = append(cw.cfg.Providers, p)
+		f.editing = len(cw.cfg.Providers) - 1
 	}
-
-	form := container.NewGridWithColumns(2,
-		widget.NewLabel("Name:"), nameEntry,
-		widget.NewLabel("Type:"), typeEntry,
-		widget.NewLabel("API Key:"), apiKeyEntry,
-		widget.NewLabel("Base URL:"), baseURLEntry,
-		widget.NewLabel("Model:"), modelEntry,
-		widget.NewLabel(""), enabledCheck,
-	)
-
-	saveBtn := widget.NewButton("Save", func() {
-		if nameEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Provider name cannot be empty"), settingsWin)
-			return
-		}
-		if typeEntry.Selected == "" {
-			dialog.ShowError(fmt.Errorf("Provider type must be selected"), settingsWin)
-			return
-		}
-
-		newProvider := config.Provider{
-			Name:    nameEntry.Text,
-			Type:    typeEntry.Selected,
-			APIKey:  apiKeyEntry.Text,
-			BaseURL: baseURLEntry.Text,
-			Model:   modelEntry.Text,
-			Enabled: enabledCheck.Checked,
-		}
-
-		if provider != nil {
-			// Update existing provider
-			*provider = newProvider
-		} else {
-			// Add new provider
-			cw.config.Providers = append(cw.config.Providers, newProvider)
-		}
-
-		config.SaveConfig(cw.config)
-		providerList.Refresh()
-		cw.updateProviderSelector()
-	})
-
-	content := container.NewVBox(
-		form,
-		container.NewHBox(layout.NewSpacer(), saveBtn),
-	)
-
-	d := dialog.NewCustomConfirm(title, "Save", "Cancel", content, func(response bool) {
-		if response {
-			// Save is handled in saveBtn
-		}
-	}, settingsWin)
-
-	// Hook up save button to close dialog
-	saveBtn.OnTapped = func() {
-		if nameEntry.Text != "" && typeEntry.Selected != "" {
-			newProvider := config.Provider{
-				Name:    nameEntry.Text,
-				Type:    typeEntry.Selected,
-				APIKey:  apiKeyEntry.Text,
-				BaseURL: baseURLEntry.Text,
-				Model:   modelEntry.Text,
-				Enabled: enabledCheck.Checked,
-			}
-
-			if provider != nil {
-				*provider = newProvider
-			} else {
-				cw.config.Providers = append(cw.config.Providers, newProvider)
-			}
-
-			config.SaveConfig(cw.config)
-			providerList.Refresh()
-			cw.updateProviderSelector()
-			d.Hide()
-		}
+	_ = config.SaveConfig(cw.cfg)
+	cw.status = ""
+	cw.toast("已保存模型 "+p.Name, mcore.SeveritySuccess)
+	if cw.provider == p.Name {
+		cw.clientDirty.Store(true)
 	}
-
-	d.Show()
 }
 
-// updateProviderSelector updates the provider selector dropdown with current providers.
-func (cw *ChatWindow) updateProviderSelector() {
-	providerNames := make([]string, len(cw.config.Providers))
-	for i, p := range cw.config.Providers {
-		providerNames[i] = p.Name
+func (cw *ChatWindow) deleteProvider() {
+	f := &cw.settings.prov
+	if f.editing < 0 || f.editing >= len(cw.cfg.Providers) {
+		return
 	}
-	cw.providerSelect.Options = providerNames
-	cw.providerSelect.Refresh()
+	idx := f.editing
+	name := cw.cfg.Providers[idx].Name
+	cw.askConfirm("删除模型", "确定删除「"+name+"」？", func() {
+		cw.cfg.Providers = append(cw.cfg.Providers[:idx], cw.cfg.Providers[idx+1:]...)
+		_ = config.SaveConfig(cw.cfg)
+		cw.clearProviderForm()
+		if cw.provider == name {
+			cw.clientDirty.Store(true)
+		}
+	})
 }
 
-// createMCPServersTab creates the MCP Servers configuration tab.
-// It displays a list of configured MCP servers and allows adding, editing, and deleting them.
-// Also shows initialization status and tool list for each server.
-func (cw *ChatWindow) createMCPServersTab(parentWindow fyne.Window) fyne.CanvasObject {
-	// Track selected MCP server
-	var selectedServer *config.MCPServer
-	var selectedServerIndex int = -1
-	var currentTools []mcp.MCPTool
-	enabledCheck := widget.NewCheck("Enabled", nil)
-
-	// Status and tools display
-	statusLabel := widget.NewLabel("状态: 未选择")
-	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
-	toolsLabel := widget.NewLabel("工具列表: 未选择")
-
-	// Tools list
-	toolsList := widget.NewList(
-		func() int { return len(currentTools) },
-		func() fyne.CanvasObject {
-			nameLabel := widget.NewLabel("")
-			nameLabel.TextStyle = fyne.TextStyle{Bold: true}
-			descLabel := widget.NewLabel("")
-			descLabel.Wrapping = fyne.TextWrapWord
-			return container.NewVBox(
-				nameLabel,
-				descLabel,
-				widget.NewSeparator(),
-			)
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			cont := obj.(*fyne.Container)
-			if id < len(currentTools) {
-				tool := currentTools[id]
-				nameLabel := cont.Objects[0].(*widget.Label)
-				descLabel := cont.Objects[1].(*widget.Label)
-				nameLabel.SetText(fmt.Sprintf("• %s", tool.Name))
-				descLabel.SetText(tool.Description)
-			}
-		},
-	)
-
-	// Refresh status and tools for selected server
-	refreshServerStatus := func(serverName string) {
-		if serverName == "" {
-			statusLabel.SetText("状态: 未选择")
-			toolsLabel.SetText("工具列表: 未选择")
-			currentTools = nil
-			toolsList.Refresh()
-			return
-		}
-
-		status, ok := cw.mcpManager.manager.GetServerStatus(serverName)
-		if !ok {
-			statusLabel.SetText("状态: 未初始化")
-			toolsLabel.SetText("工具列表: 未初始化")
-			currentTools = nil
-			toolsList.Refresh()
-			return
-		}
-
-		// Update status
-		statusText := fmt.Sprintf("状态: %s", status.Status)
-		if status.Error != nil {
-			statusText += fmt.Sprintf(" - %s", status.Error.Error())
-		}
-		statusLabel.SetText(statusText)
-
-		// Update tools
-		if status.Status == "initialized" && len(status.Tools) > 0 {
-			toolsLabel.SetText(fmt.Sprintf("工具列表 (%d 个工具):", len(status.Tools)))
-			currentTools = status.Tools
-		} else {
-			toolsLabel.SetText("工具列表: 无可用工具")
-			currentTools = nil
-		}
-		toolsList.Refresh()
-	}
-
-	// Initialize server button
-	initBtn := widget.NewButton("初始化", func() {
-		if selectedServer == nil {
-			dialog.ShowError(fmt.Errorf("请先选择一个服务器"), parentWindow)
-			return
-		}
-
-		// Show loading dialog
-		progress := dialog.NewProgress("正在初始化", fmt.Sprintf("正在初始化 MCP 服务器 '%s'...", selectedServer.Name), parentWindow)
-		progress.Resize(fyne.NewSize(300, 100))
-		progress.Show()
-
-		// Initialize in goroutine to avoid blocking UI
-		go func() {
-			status, err := cw.mcpManager.manager.InitializeServer(*selectedServer)
-			progress.Hide()
-
-			if err != nil {
-				dialog.ShowError(fmt.Errorf("初始化失败: %w", err), parentWindow)
-			} else {
-				dialog.ShowInformation("成功", fmt.Sprintf("服务器 '%s' 初始化成功，获取到 %d 个工具", selectedServer.Name, len(status.Tools)), parentWindow)
-			}
-
-			// Refresh status display
-			refreshServerStatus(selectedServer.Name)
-		}()
+// mcpTab lists MCP servers and edits the selected one.
+func (cw *ChatWindow) mcpTab(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
+		mgo.Column(c).Width(280).Shrink(0).Children(func() {
+			mgo.List(c, &cw.settings.mcpList, len(cw.cfg.MCPServers), func(i int) {
+				cw.mcpRow(c, i)
+			}).Fill()
+		})
+		cw.mcpFormView(c)
 	})
-
-	// Disconnect server button
-	disconnectBtn := widget.NewButton("断开连接", func() {
-		if selectedServer == nil {
-			dialog.ShowError(fmt.Errorf("请先选择一个服务器"), parentWindow)
-			return
-		}
-
-		err := cw.mcpManager.manager.DisconnectServer(selectedServer.Name)
-		if err != nil {
-			dialog.ShowError(fmt.Errorf("断开连接失败: %w", err), parentWindow)
-		} else {
-			dialog.ShowInformation("成功", fmt.Sprintf("服务器 '%s' 已断开连接", selectedServer.Name), parentWindow)
-		}
-
-		// Refresh status display
-		refreshServerStatus(selectedServer.Name)
-	})
-
-	// Create form entries
-	nameEntry := widget.NewEntry()
-	typeSelect := widget.NewSelect([]string{"stdio", "sse", "streamable_http"}, nil)
-
-	// StdIO fields
-	commandEntry := widget.NewEntry()
-	argsEntry := widget.NewMultiLineEntry()
-	argsEntry.SetPlaceHolder("Enter arguments separated by new lines\ne.g.:\n-y\n@modelcontextprotocol/server-filesystem\n/path/to/files")
-	envEntry := widget.NewMultiLineEntry()
-	envEntry.SetPlaceHolder("Enter environment variables as KEY=VALUE, one per line\ne.g.:\nPATH=/usr/local/bin\nNODE_ENV=production")
-
-	// SSE and StreamableHTTP fields
-	urlEntry := widget.NewEntry()
-	headersEntry := widget.NewMultiLineEntry()
-	headersEntry.SetPlaceHolder("Enter HTTP headers as KEY=VALUE, one per line\ne.g.:\nAuthorization=Bearer token\nContent-Type=application/json")
-	timeoutEntry := widget.NewEntry()
-	timeoutEntry.SetPlaceHolder("30")
-	timeoutEntry.SetText("30")
-
-	// Containers for different type fields
-	stdioContainer := container.NewVBox()
-	httpContainer := container.NewVBox()
-
-	// Function to update form fields visibility based on selected type
-	updateFormFields := func(serverType string) {
-		if serverType == "stdio" {
-			stdioContainer.Objects = []fyne.CanvasObject{
-				widget.NewSeparator(),
-				widget.NewLabel("StdIO Configuration:"),
-				container.NewGridWithColumns(2,
-					widget.NewLabel("Command:"), commandEntry,
-				),
-				container.NewGridWithColumns(2,
-					widget.NewLabel("Args:"),
-					container.NewScroll(argsEntry),
-				),
-				container.NewGridWithColumns(2,
-					widget.NewLabel("Env:"),
-					container.NewScroll(envEntry),
-				),
-			}
-			httpContainer.Objects = nil
-		} else {
-			stdioContainer.Objects = nil
-			httpContainer.Objects = []fyne.CanvasObject{
-				widget.NewSeparator(),
-				widget.NewLabel(serverType + " Configuration:"),
-				container.NewGridWithColumns(2,
-					widget.NewLabel("URL:"), urlEntry,
-				),
-				container.NewGridWithColumns(2,
-					widget.NewLabel("Headers:"),
-					container.NewScroll(headersEntry),
-				),
-				container.NewGridWithColumns(2,
-					widget.NewLabel("Timeout (seconds):"), timeoutEntry,
-				),
-			}
-		}
-		stdioContainer.Refresh()
-		httpContainer.Refresh()
-	}
-
-	// MCP Server list
-	mcpList := widget.NewList(
-		func() int { return len(cw.config.MCPServers) },
-		func() fyne.CanvasObject {
-			return container.NewHBox(
-				widget.NewIcon(theme.ComputerIcon()),
-				widget.NewLabel(""),
-			)
-		},
-		func(id widget.ListItemID, obj fyne.CanvasObject) {
-			container := obj.(*fyne.Container)
-			label := container.Objects[1].(*widget.Label)
-			if id < len(cw.config.MCPServers) {
-				server := cw.config.MCPServers[id]
-				serverType := string(server.Type)
-				if serverType == "" {
-					serverType = "stdio"
-				}
-				status := "enabled"
-				if !server.Enabled {
-					status = "disabled"
-				}
-				label.SetText(fmt.Sprintf("%s (%s) - %s", server.Name, serverType, status))
-			}
-		},
-	)
-
-	mcpList.OnSelected = func(id widget.ListItemID) {
-		if id >= 0 && id < len(cw.config.MCPServers) {
-			selectedServer = &cw.config.MCPServers[id]
-			selectedServerIndex = id
-
-			// Populate form
-			nameEntry.SetText(selectedServer.Name)
-			serverType := string(selectedServer.Type)
-			if serverType == "" {
-				serverType = "stdio"
-			}
-			typeSelect.SetSelected(serverType)
-			enabledCheck.SetChecked(selectedServer.Enabled)
-			updateFormFields(serverType)
-
-			// Populate StdIO fields
-			commandEntry.SetText(selectedServer.Command)
-			if len(selectedServer.Args) > 0 {
-				argsEntry.SetText(strings.Join(selectedServer.Args, "\n"))
-			} else {
-				argsEntry.SetText("")
-			}
-			if len(selectedServer.Env) > 0 {
-				envLines := make([]string, 0, len(selectedServer.Env))
-				for k, v := range selectedServer.Env {
-					envLines = append(envLines, fmt.Sprintf("%s=%s", k, v))
-				}
-				envEntry.SetText(strings.Join(envLines, "\n"))
-			} else {
-				envEntry.SetText("")
-			}
-
-			// Populate HTTP fields
-			urlEntry.SetText(selectedServer.URL)
-			if len(selectedServer.Headers) > 0 {
-				headerLines := make([]string, 0, len(selectedServer.Headers))
-				for k, v := range selectedServer.Headers {
-					headerLines = append(headerLines, fmt.Sprintf("%s=%s", k, v))
-				}
-				headersEntry.SetText(strings.Join(headerLines, "\n"))
-			} else {
-				headersEntry.SetText("")
-			}
-			if selectedServer.TimeoutSeconds > 0 {
-				timeoutEntry.SetText(fmt.Sprintf("%d", selectedServer.TimeoutSeconds))
-			} else {
-				timeoutEntry.SetText("30")
-			}
-
-			// Refresh status and tools display
-			refreshServerStatus(selectedServer.Name)
-		}
-	}
-
-	mcpList.OnUnselected = func(id widget.ListItemID) {
-		if selectedServerIndex == id {
-			selectedServer = nil
-			selectedServerIndex = -1
-
-			// Clear form
-			nameEntry.SetText("")
-			typeSelect.SetSelected("")
-			commandEntry.SetText("")
-			argsEntry.SetText("")
-			envEntry.SetText("")
-			urlEntry.SetText("")
-			headersEntry.SetText("")
-			timeoutEntry.SetText("30")
-			updateFormFields("stdio")
-
-			// Clear status and tools display
-			refreshServerStatus("")
-		}
-	}
-
-	// Form
-	form := container.NewVBox(
-		widget.NewLabel("MCP Server Details"),
-		widget.NewSeparator(),
-		container.NewGridWithColumns(2,
-			widget.NewLabel("Name:"), nameEntry,
-			widget.NewLabel("Type:"), typeSelect,
-			widget.NewLabel(""), enabledCheck,
-		),
-	)
-
-	// Add type change handler
-	typeSelect.OnChanged = func(serverType string) {
-		updateFormFields(serverType)
-	}
-
-	form.Add(stdioContainer)
-	form.Add(httpContainer)
-
-	// Set minimum sizes for multi-line entries
-	argsEntry.SetMinRowsVisible(3)
-	envEntry.SetMinRowsVisible(3)
-	headersEntry.SetMinRowsVisible(3)
-
-	// Buttons
-	addBtn := widget.NewButton("Add New", func() {
-		// Clear form and deselect
-		selectedServer = nil
-		selectedServerIndex = -1
-		mcpList.UnselectAll()
-		nameEntry.SetText("")
-		typeSelect.SetSelected("stdio")
-		enabledCheck.SetChecked(true)
-		commandEntry.SetText("")
-		argsEntry.SetText("")
-		envEntry.SetText("")
-		urlEntry.SetText("")
-		headersEntry.SetText("")
-		timeoutEntry.SetText("30")
-		updateFormFields("stdio")
-		refreshServerStatus("")
-	})
-
-	saveBtn := widget.NewButton("Save", func() {
-		if nameEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Server name cannot be empty"), parentWindow)
-			return
-		}
-		if typeSelect.Selected == "" {
-			dialog.ShowError(fmt.Errorf("Server type must be selected"), parentWindow)
-			return
-		}
-
-		newServer := config.MCPServer{
-			Name:    nameEntry.Text,
-			Type:    config.MCPServerType(typeSelect.Selected),
-			Enabled: enabledCheck.Checked,
-		}
-
-		// Set type-specific fields
-		if typeSelect.Selected == "stdio" {
-			if commandEntry.Text == "" {
-				dialog.ShowError(fmt.Errorf("Command cannot be empty for StdIO type"), parentWindow)
-				return
-			}
-			newServer.Command = commandEntry.Text
-
-			// Parse args
-			if strings.TrimSpace(argsEntry.Text) != "" {
-				newServer.Args = strings.Split(strings.TrimSpace(argsEntry.Text), "\n")
-			}
-
-			// Parse env
-			if strings.TrimSpace(envEntry.Text) != "" {
-				env := make(map[string]string)
-				envLines := strings.Split(strings.TrimSpace(envEntry.Text), "\n")
-				for _, line := range envLines {
-					parts := strings.SplitN(line, "=", 2)
-					if len(parts) == 2 {
-						env[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-					}
-				}
-				newServer.Env = env
-			}
-		} else {
-			// SSE and StreamableHTTP
-			if urlEntry.Text == "" {
-				dialog.ShowError(fmt.Errorf("URL cannot be empty for %s type", typeSelect.Selected), parentWindow)
-				return
-			}
-			newServer.URL = urlEntry.Text
-
-			// Parse headers
-			if strings.TrimSpace(headersEntry.Text) != "" {
-				headers := make(map[string]string)
-				headerLines := strings.Split(strings.TrimSpace(headersEntry.Text), "\n")
-				for _, line := range headerLines {
-					parts := strings.SplitN(line, "=", 2)
-					if len(parts) == 2 {
-						headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-					}
-				}
-				newServer.Headers = headers
-			}
-
-			// Parse timeout
-			if strings.TrimSpace(timeoutEntry.Text) != "" {
-				var timeout int
-				if _, err := fmt.Sscanf(timeoutEntry.Text, "%d", &timeout); err == nil {
-					newServer.TimeoutSeconds = timeout
-				}
-			}
-		}
-
-		if selectedServer != nil {
-			// Update existing server
-			oldName := selectedServer.Name
-			*selectedServer = newServer
-
-			// If name changed, disconnect old connection
-			if oldName != newServer.Name {
-				_ = cw.mcpManager.manager.DisconnectServer(oldName)
-			}
-		} else {
-			// Add new server
-			cw.config.MCPServers = append(cw.config.MCPServers, newServer)
-			selectedServerIndex = len(cw.config.MCPServers) - 1
-			selectedServer = &cw.config.MCPServers[selectedServerIndex]
-		}
-
-		config.SaveConfig(cw.config)
-		mcpList.Refresh()
-
-		// Select the updated/new server
-		mcpList.Select(selectedServerIndex)
-	})
-
-	deleteBtn := widget.NewButton("Delete", func() {
-		if selectedServer == nil {
-			dialog.ShowError(fmt.Errorf("Please select a server to delete"), parentWindow)
-			return
-		}
-
-		dialog.ShowConfirm(
-			"Delete MCP Server",
-			fmt.Sprintf("Are you sure you want to delete MCP server '%s'?", selectedServer.Name),
-			func(confirmed bool) {
-				if confirmed {
-					// Disconnect if connected
-					_ = cw.mcpManager.manager.DisconnectServer(selectedServer.Name)
-
-					// Remove MCP server
-					cw.config.MCPServers = append(cw.config.MCPServers[:selectedServerIndex], cw.config.MCPServers[selectedServerIndex+1:]...)
-					config.SaveConfig(cw.config)
-
-					// Reset selection and clear form
-					selectedServer = nil
-					selectedServerIndex = -1
-					nameEntry.SetText("")
-					typeSelect.SetSelected("")
-					enabledCheck.SetChecked(false)
-					commandEntry.SetText("")
-					argsEntry.SetText("")
-					envEntry.SetText("")
-					urlEntry.SetText("")
-					headersEntry.SetText("")
-					timeoutEntry.SetText("30")
-					updateFormFields("stdio")
-					refreshServerStatus("")
-
-					mcpList.Refresh()
-				}
-			},
-			parentWindow,
-		)
-	})
-
-	buttonContainer := container.NewVBox(
-		container.NewHBox(addBtn, saveBtn, deleteBtn),
-		container.NewHBox(initBtn, disconnectBtn),
-	)
-
-	// Right side container with form and buttons
-	rightPanel := container.NewBorder(
-		nil,
-		buttonContainer,
-		nil,
-		nil,
-		form,
-	)
-
-	// Split left and right
-	split := container.NewHSplit(
-		mcpList,
-		rightPanel,
-	)
-	split.SetOffset(0.4)
-
-	return split
 }
 
-// showMCPServerDialog displays a dialog for adding or editing an MCP server.
-func (cw *ChatWindow) showMCPServerDialog(settingsWin fyne.Window, server *config.MCPServer, mcpList *widget.List) {
-	title := "Add MCP Server"
-	if server != nil {
-		title = "Edit MCP Server"
+func (cw *ChatWindow) mcpRow(c *mgo.Context, i int) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	s := cw.cfg.MCPServers[i]
+	b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
+		Padding(u, u*2).Radius(mtheme.ControlRadius)
+	if cw.settings.mcp.editing == i {
+		b.Background(k.Selection)
 	}
+	b.Children(func() {
+		mgo.Text(c, fmt.Sprintf("%s (%s)", s.Name, s.Type)).SingleLine()
+	})
+	if b.Clicked() {
+		cw.loadMCPForm(i)
+	}
+}
 
-	nameEntry := widget.NewEntry()
-	typeSelect := widget.NewSelect([]string{"stdio", "sse", "streamable_http"}, nil)
-	enabledCheck := widget.NewCheck("Enabled", nil)
-
-	// StdIO fields
-	commandEntry := widget.NewEntry()
-	argsEntry := widget.NewMultiLineEntry()
-	argsEntry.SetPlaceHolder("Enter arguments separated by new lines\ne.g.:\n-y\n@modelcontextprotocol/server-filesystem\n/path/to/files")
-	envEntry := widget.NewMultiLineEntry()
-	envEntry.SetPlaceHolder("Enter environment variables as KEY=VALUE, one per line\ne.g.:\nPATH=/usr/local/bin\nNODE_ENV=production")
-
-	// HTTP fields
-	urlEntry := widget.NewEntry()
-	headersEntry := widget.NewMultiLineEntry()
-	headersEntry.SetPlaceHolder("Enter HTTP headers as KEY=VALUE, one per line\ne.g.:\nAuthorization=Bearer token")
-	timeoutEntry := widget.NewEntry()
-	timeoutEntry.SetText("30")
-
-	// Containers for type-specific fields
-	stdioContainer := container.NewVBox()
-	httpContainer := container.NewVBox()
-
-	// Function to update form fields visibility
-	updateFormFields := func(serverType string) {
-		if serverType == "stdio" {
-			stdioContainer.Objects = []fyne.CanvasObject{
-				widget.NewLabel("Command:"), commandEntry,
-				widget.NewLabel("Args:"), container.NewGridWithColumns(1, argsEntry),
-				widget.NewLabel("Env:"), container.NewGridWithColumns(1, envEntry),
-			}
-			httpContainer.Objects = nil
-		} else {
-			stdioContainer.Objects = nil
-			httpContainer.Objects = []fyne.CanvasObject{
-				widget.NewLabel("URL:"), urlEntry,
-				widget.NewLabel("Headers:"), container.NewGridWithColumns(1, headersEntry),
-				widget.NewLabel("Timeout (sec):"), timeoutEntry,
+func (cw *ChatWindow) mcpFormView(c *mgo.Context) {
+	f := &cw.settings.mcp
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
+		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "服务器名称"})
+		typ := 0
+		for i, t := range mcpTypes {
+			if t == f.typ {
+				typ = i
 			}
 		}
-		stdioContainer.Refresh()
-		httpContainer.Refresh()
+		mnavigation.SegmentedControl(c, &typ, []mnavigation.Segment{
+			{Label: "stdio"}, {Label: "sse"}, {Label: "HTTP"},
+		}, mnavigation.SegmentedControlOptions{Label: "类型", Equal: true})
+		f.typ = mcpTypes[typ]
+		minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
+		if f.typ == "stdio" {
+			minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 npx"})
+			minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 72})
+			minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 72})
+		} else {
+			minput.TextInput(c, &f.url, minput.TextInputOptions{Label: "URL", Placeholder: "https://..."})
+			minput.TextArea(c, &f.headers, minput.TextAreaOptions{Label: "请求头", Placeholder: "KEY=VALUE，每行一个", MinHeight: 72})
+			minput.TextInput(c, &f.timeout, minput.TextInputOptions{Label: "超时（秒）", Placeholder: "30"})
+		}
+		mgo.Row(c).Gap(u).Children(func() {
+			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				cw.clearMCPForm()
+			}
+			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+				cw.saveMCP()
+			}
+			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
+				cw.deleteMCP()
+			}
+		})
+		if f.editing >= 0 && f.editing < len(cw.cfg.MCPServers) {
+			status, note := mcpStatus(cw, cw.cfg.MCPServers[f.editing].Name)
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				mfeedback.StatusIndicator(c, status, mfeedback.StatusIndicatorOptions{})
+				if note != "" {
+					mgo.Text(c, note).TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+				}
+			})
+		}
+	})
+}
+
+func (cw *ChatWindow) loadMCPForm(i int) {
+	s := cw.cfg.MCPServers[i]
+	typ := string(s.Type)
+	if typ == "" {
+		typ = "stdio"
 	}
+	timeout := "30"
+	if s.TimeoutSeconds > 0 {
+		timeout = fmt.Sprintf("%d", s.TimeoutSeconds)
+	}
+	cw.settings.mcp = mcpForm{
+		editing: i, name: s.Name, typ: typ, enabled: s.Enabled,
+		command: s.Command, args: strings.Join(s.Args, "\n"), env: joinKV(s.Env),
+		url: s.URL, headers: joinKV(s.Headers), timeout: timeout,
+	}
+}
 
-	// Set initial state
-	typeSelect.SetSelected("stdio")
-	typeSelect.OnChanged = updateFormFields
-	updateFormFields("stdio")
+func (cw *ChatWindow) clearMCPForm() {
+	cw.settings.mcp = mcpForm{editing: -1, typ: "stdio", enabled: true, timeout: "30"}
+}
 
-	if server != nil {
-		enabledCheck.SetChecked(server.Enabled)
+func (cw *ChatWindow) saveMCP() {
+	f := &cw.settings.mcp
+	if strings.TrimSpace(f.name) == "" {
+		cw.status = "名称不能为空"
+		return
+	}
+	s := config.MCPServer{Name: f.name, Type: config.MCPServerType(f.typ), Enabled: f.enabled}
+	if f.typ == "stdio" {
+		if strings.TrimSpace(f.command) == "" {
+			cw.status = "stdio 类型需要命令"
+			return
+		}
+		s.Command = f.command
+		s.Args = splitLines(f.args)
+		s.Env = parseKV(f.env)
 	} else {
-		enabledCheck.SetChecked(true)
-	}
-
-	if server != nil {
-		nameEntry.SetText(server.Name)
-		serverType := string(server.Type)
-		if serverType == "" {
-			serverType = "stdio"
-		}
-		typeSelect.SetSelected(serverType)
-		commandEntry.SetText(server.Command)
-		if len(server.Args) > 0 {
-			argsEntry.SetText(strings.Join(server.Args, "\n"))
-		}
-		if len(server.Env) > 0 {
-			envLines := make([]string, 0, len(server.Env))
-			for k, v := range server.Env {
-				envLines = append(envLines, fmt.Sprintf("%s=%s", k, v))
-			}
-			envEntry.SetText(strings.Join(envLines, "\n"))
-		}
-		urlEntry.SetText(server.URL)
-		if len(server.Headers) > 0 {
-			headerLines := make([]string, 0, len(server.Headers))
-			for k, v := range server.Headers {
-				headerLines = append(headerLines, fmt.Sprintf("%s=%s", k, v))
-			}
-			headersEntry.SetText(strings.Join(headerLines, "\n"))
-		}
-		if server.TimeoutSeconds > 0 {
-			timeoutEntry.SetText(fmt.Sprintf("%d", server.TimeoutSeconds))
-		}
-	}
-
-	form := container.NewVBox(
-		container.NewGridWithColumns(2,
-			widget.NewLabel("Name:"), nameEntry,
-			widget.NewLabel("Type:"), typeSelect,
-			widget.NewLabel(""), enabledCheck,
-		),
-	)
-	form.Add(stdioContainer)
-	form.Add(httpContainer)
-
-	content := container.NewVBox(
-		form,
-	)
-
-	var d dialog.Dialog
-
-	saveBtn := widget.NewButton("Save", func() {
-		if nameEntry.Text == "" {
-			dialog.ShowError(fmt.Errorf("Server name cannot be empty"), settingsWin)
+		if strings.TrimSpace(f.url) == "" {
+			cw.status = "该类型需要 URL"
 			return
 		}
-		if typeSelect.Selected == "" {
-			dialog.ShowError(fmt.Errorf("Server type must be selected"), settingsWin)
-			return
+		s.URL = f.url
+		s.Headers = parseKV(f.headers)
+		_, _ = fmt.Sscanf(strings.TrimSpace(f.timeout), "%d", &s.TimeoutSeconds)
+	}
+	if f.editing >= 0 && f.editing < len(cw.cfg.MCPServers) {
+		old := cw.cfg.MCPServers[f.editing].Name
+		cw.cfg.MCPServers[f.editing] = s
+		if old != s.Name {
+			_ = cw.mcpManager.manager.DisconnectServer(old)
 		}
+	} else {
+		cw.cfg.MCPServers = append(cw.cfg.MCPServers, s)
+		f.editing = len(cw.cfg.MCPServers) - 1
+	}
+	_ = config.SaveConfig(cw.cfg)
+	cw.status = ""
+	cw.toast("已保存 MCP 服务器 "+s.Name, mcore.SeveritySuccess)
+	cw.clientDirty.Store(true)
+}
 
-		newServer := config.MCPServer{
-			Name:    nameEntry.Text,
-			Type:    config.MCPServerType(typeSelect.Selected),
-			Enabled: enabledCheck.Checked,
-		}
-
-		if typeSelect.Selected == "stdio" {
-			if commandEntry.Text == "" {
-				dialog.ShowError(fmt.Errorf("Command cannot be empty for StdIO type"), settingsWin)
-				return
-			}
-			newServer.Command = commandEntry.Text
-
-			if argsEntry.Text != "" {
-				newServer.Args = strings.Split(strings.TrimSpace(argsEntry.Text), "\n")
-			}
-
-			if envEntry.Text != "" {
-				env := make(map[string]string)
-				envLines := strings.Split(strings.TrimSpace(envEntry.Text), "\n")
-				for _, line := range envLines {
-					parts := strings.SplitN(line, "=", 2)
-					if len(parts) == 2 {
-						env[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-					}
-				}
-				newServer.Env = env
-			}
-		} else {
-			if urlEntry.Text == "" {
-				dialog.ShowError(fmt.Errorf("URL cannot be empty for %s type", typeSelect.Selected), settingsWin)
-				return
-			}
-			newServer.URL = urlEntry.Text
-
-			if headersEntry.Text != "" {
-				headers := make(map[string]string)
-				headerLines := strings.Split(strings.TrimSpace(headersEntry.Text), "\n")
-				for _, line := range headerLines {
-					parts := strings.SplitN(line, "=", 2)
-					if len(parts) == 2 {
-						headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
-					}
-				}
-				newServer.Headers = headers
-			}
-
-			if timeoutEntry.Text != "" {
-				var timeout int
-				if _, err := fmt.Sscanf(timeoutEntry.Text, "%d", &timeout); err == nil {
-					newServer.TimeoutSeconds = timeout
-				}
-			}
-		}
-
-		if server != nil {
-			*server = newServer
-		} else {
-			cw.config.MCPServers = append(cw.config.MCPServers, newServer)
-		}
-
-		config.SaveConfig(cw.config)
-		mcpList.Refresh()
-		d.Hide()
+func (cw *ChatWindow) deleteMCP() {
+	f := &cw.settings.mcp
+	if f.editing < 0 || f.editing >= len(cw.cfg.MCPServers) {
+		return
+	}
+	idx := f.editing
+	name := cw.cfg.MCPServers[idx].Name
+	cw.askConfirm("删除 MCP 服务器", "确定删除「"+name+"」？", func() {
+		_ = cw.mcpManager.manager.DisconnectServer(name)
+		cw.cfg.MCPServers = append(cw.cfg.MCPServers[:idx], cw.cfg.MCPServers[idx+1:]...)
+		_ = config.SaveConfig(cw.cfg)
+		cw.clearMCPForm()
+		cw.clientDirty.Store(true)
 	})
+}
 
-	d = dialog.NewCustomConfirm(title, "Save", "Cancel", content, func(response bool) {
-		if response {
-			saveBtn.OnTapped()
+func splitLines(s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, "\n")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
 		}
-	}, settingsWin)
+	}
+	return out
+}
 
-	d.Show()
+func parseKV(s string) map[string]string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	m := map[string]string{}
+	for _, line := range strings.Split(s, "\n") {
+		kv := strings.SplitN(line, "=", 2)
+		if len(kv) == 2 {
+			m[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
+		}
+	}
+	return m
+}
+
+func joinKV(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(m))
+	for k, v := range m {
+		lines = append(lines, k+"="+v)
+	}
+	return strings.Join(lines, "\n")
+}
+
+// builtinTab lists the built-in tools and edits the selected one.
+func (cw *ChatWindow) builtinTab(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
+		mgo.Column(c).Width(280).Shrink(0).Children(func() {
+			mgo.List(c, &cw.settings.builtinList, len(cw.cfg.BuiltinTools), func(i int) {
+				cw.builtinRow(c, i)
+			}).Fill()
+		})
+		cw.builtinFormView(c)
+	})
+}
+
+func (cw *ChatWindow) builtinRow(c *mgo.Context, i int) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	t := cw.cfg.BuiltinTools[i]
+	b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
+		Padding(u, u*2).Radius(mtheme.ControlRadius)
+	if cw.settings.builtin.editing == i {
+		b.Background(k.Selection)
+	}
+	b.Children(func() {
+		status := "已禁用"
+		if t.Enabled {
+			status = "已启用"
+		}
+		mgo.Text(c, fmt.Sprintf("%s - %s", t.Type, status)).SingleLine()
+	})
+	if b.Clicked() {
+		cw.loadBuiltinForm(i)
+	}
+}
+
+func (cw *ChatWindow) builtinFormView(c *mgo.Context) {
+	f := &cw.settings.builtin
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
+		if f.editing < 0 || f.editing >= len(cw.cfg.BuiltinTools) {
+			mgo.Text(c, "从左侧选择一个内置工具进行配置").TextColor(k.TextMuted)
+			return
+		}
+		tool := cw.cfg.BuiltinTools[f.editing]
+		mgo.Text(c, tool.Type).FontWeight(600)
+		mgo.Text(c, config.GetBuiltinToolDescription(tool.Type)).TextColor(k.TextMuted).
+			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
+		required := config.GetRequiredConfigFields(tool.Type)
+		for _, field := range config.GetBuiltinToolConfigFields(tool.Type) {
+			label := field
+			for _, r := range required {
+				if r == field {
+					label = field + " *"
+				}
+			}
+			v := f.config[field]
+			minput.TextInput(c, &v, minput.TextInputOptions{Label: label, Placeholder: field})
+			f.config[field] = v
+		}
+		if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			cw.saveBuiltin()
+		}
+	})
+}
+
+func (cw *ChatWindow) loadBuiltinForm(i int) {
+	t := cw.cfg.BuiltinTools[i]
+	cfgMap := map[string]string{}
+	for k, v := range t.Config {
+		cfgMap[k] = v
+	}
+	cw.settings.builtin = builtinForm{editing: i, enabled: t.Enabled, config: cfgMap}
+}
+
+func (cw *ChatWindow) saveBuiltin() {
+	f := &cw.settings.builtin
+	if f.editing < 0 || f.editing >= len(cw.cfg.BuiltinTools) {
+		return
+	}
+	t := &cw.cfg.BuiltinTools[f.editing]
+	t.Enabled = f.enabled
+	t.Config = f.config
+	if t.Enabled {
+		if err := config.ValidateBuiltinToolConfig(*t); err != nil {
+			cw.status = err.Error()
+			return
+		}
+	}
+	_ = config.SaveConfig(cw.cfg)
+	cw.status = ""
+	cw.toast("已保存内置工具配置", mcore.SeveritySuccess)
+	cw.clientDirty.Store(true)
+}
+
+// appearanceTab changes the theme mode, density and language.
+func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
+		mgo.Text(c, "外观").Font(mtheme.SerifFont).FontWeight(600)
+		mgo.Text(c, "主题模式").FontSize(small).TextColor(k.TextMuted)
+		mode := int(cw.themeMode)
+		mnavigation.SegmentedControl(c, &mode, []mnavigation.Segment{
+			{Label: "跟随系统"}, {Label: "浅色"}, {Label: "深色"},
+		}, mnavigation.SegmentedControlOptions{Label: "主题模式", Equal: true})
+		if mcore.Mode(mode) != cw.themeMode {
+			cw.themeMode = mcore.Mode(mode)
+			cw.saveAppearance()
+		}
+		mgo.Text(c, "界面密度").FontSize(small).TextColor(k.TextMuted)
+		density := int(cw.density)
+		mnavigation.SegmentedControl(c, &density, []mnavigation.Segment{
+			{Label: "默认"}, {Label: "紧凑"}, {Label: "宽松"},
+		}, mnavigation.SegmentedControlOptions{Label: "界面密度", Equal: true})
+		if mtheme.Density(density) != cw.density {
+			cw.density = mtheme.Density(density)
+			cw.saveAppearance()
+		}
+		mgo.Text(c, "语言").FontSize(small).TextColor(k.TextMuted)
+		loc := 0
+		if cw.locale == mcore.EnUS {
+			loc = 1
+		}
+		mnavigation.SegmentedControl(c, &loc, []mnavigation.Segment{
+			{Label: "中文"}, {Label: "English"},
+		}, mnavigation.SegmentedControlOptions{Label: "语言", Equal: true})
+		want := mcore.ZhCN
+		if loc == 1 {
+			want = mcore.EnUS
+		}
+		if want != cw.locale {
+			cw.locale = want
+			cw.saveAppearance()
+		}
+	})
+}
+
+// mcpStatus maps a server's state to an indicator status and a note.
+func mcpStatus(cw *ChatWindow, name string) (mfeedback.Status, string) {
+	st, ok := cw.mcpManager.GetServerStatus(name)
+	if !ok {
+		return mfeedback.StatusOffline, "未初始化"
+	}
+	switch st.Status {
+	case "initialized":
+		return mfeedback.StatusSuccess, fmt.Sprintf("%d 个工具", len(st.Tools))
+	case "error":
+		note := "初始化失败"
+		if st.Error != nil {
+			note = st.Error.Error()
+		}
+		return mfeedback.StatusError, note
+	default:
+		return mfeedback.StatusBusy, st.Status
+	}
+}
+
+// askDeleteConversation opens the delete confirmation for a conversation.
+func (cw *ChatWindow) askDeleteConversation(id, title string) {
+	cw.askConfirm("删除会话", "确定删除「"+title+"」？此操作不可撤销。", func() {
+		_ = cw.convManager.DeleteConversation(id)
+		if cw.cur != nil && cw.cur.ID == id {
+			cw.cur = nil
+			cw.mode = modeHome
+		}
+		cw.reloadConvs()
+		cw.toast("会话已删除", mcore.SeveritySuccess)
+	})
 }
