@@ -17,13 +17,6 @@ import (
 func (cw *ChatWindow) sidebar(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Fill().Children(func() {
-		mgo.Row(c).FillWidth().Padding(u * 2).Gap(u).AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, "ChatGo").Font(mtheme.SerifFont).FontWeight(600).Grow(1)
-			cw.appearanceButton(c)
-			if mcore.IconAction(c, icons.Must("settings"), "设置").Clicked() {
-				cw.settings.open = true
-			}
-		})
 		mgo.Column(c).Padding(u*2, u).Children(func() {
 			b := minput.Button(c, "新对话", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")})
 			b.FillWidth()
@@ -36,21 +29,6 @@ func (cw *ChatWindow) sidebar(c *mgo.Context) {
 			cw.conversationList(c)
 		}
 	})
-}
-
-// appearanceButton cycles System -> Dark -> Light and persists the choice.
-func (cw *ChatWindow) appearanceButton(c *mgo.Context) {
-	name := "跟随系统"
-	icon := "palette"
-	switch cw.themeMode {
-	case mcore.Dark:
-		name, icon = "深色", "moon"
-	case mcore.Light:
-		name, icon = "浅色", "sun"
-	}
-	if mcore.IconAction(c, icons.Must(icon), "外观："+name).Clicked() {
-		cw.cycleTheme()
-	}
 }
 
 func (cw *ChatWindow) cycleTheme() {

@@ -20,6 +20,7 @@ import (
 	einomcp "github.com/cloudwego/eino-ext/components/tool/mcp"
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
+	acp "github.com/coder/acp-go-sdk"
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
@@ -48,7 +49,11 @@ type ChatWindow struct {
 	winMu  sync.Mutex
 	window *mygo.Window
 
-	mode pageMode
+	mode    pageMode
+	section navSection
+
+	currentAgent string
+	systemPrompt string
 
 	convs []models.Conversation
 	cur   *models.Conversation
@@ -84,6 +89,18 @@ type ChatWindow struct {
 	settings settingsState
 	confirm  confirmState
 
+	agentForm       agentForm
+	agentEditorOpen bool
+
+	acpList  mgo.ListState
+	acpForm  acpForm
+	acp      acpRuntime
+	acpInput string
+
+	permissionReq  *acp.RequestPermissionRequest
+	permissionCh   chan acp.RequestPermissionResponse
+	permissionShow bool
+
 	// clientDirty asks the next frame to rebuild the model client.
 	clientDirty atomic.Bool
 
@@ -112,6 +129,8 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.settings.prov.editing = -1
 	cw.settings.mcp.editing = -1
 	cw.settings.builtin.editing = -1
+	cw.agentForm.editing = -1
+	cw.acpForm.editing = -1
 	cw.reloadConvs()
 	cw.setupProvider(cw.provider)
 	go cw.startMCP()
@@ -139,13 +158,14 @@ func (cw *ChatWindow) view(c *mgo.Context) {
 	if cw.clientDirty.Swap(false) {
 		cw.setupProvider(cw.provider)
 	}
-	if cw.mode == modeHome {
-		cw.homeView(c)
-	} else {
-		cw.chatView(c)
-	}
-	cw.settingsDialog(c)
+	mgo.Row(c).Fill().AlignItems(mgo.Stretch).Children(func() {
+		cw.navRail(c)
+		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			cw.sectionView(c)
+		})
+	})
 	cw.confirmDialog(c)
+	cw.acpPermissionDialog(c)
 	cw.flushToast(c)
 	mfeedback.Toaster(c)
 }
@@ -283,9 +303,13 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 		einoTools = append(einoTools, mcpTools...)
 	}
 
+	systemPrompt := cw.systemPrompt
+	if systemPrompt == "" {
+		systemPrompt = "You are a helpful AI assistant with access to various tools. Use tools when appropriate. When you use a tool, provide accurate parameters."
+	}
 	agentConfig := &llm.ReactAgentConfig{
 		MaxStep:      cw.cfg.ReactAgentMaxStep,
-		SystemPrompt: "You are a helpful AI assistant with access to various tools. Use tools when appropriate. When you use a tool, provide accurate parameters.",
+		SystemPrompt: systemPrompt,
 	}
 	reactClient, err := llm.NewReactClientWithEinoTools(provider, einoTools, agentConfig)
 	if err != nil {
@@ -474,7 +498,7 @@ func (cw *ChatWindow) sendDraft() {
 	conv.UpdatedAt = time.Now()
 	idx := len(conv.Messages)
 	conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Timestamp: time.Now()})
-	msgs := buildMessages(conv, idx)
+	msgs := cw.chatMessages(conv, idx)
 	cw.draft = ""
 	_ = cw.convManager.SaveConversation(conv)
 	cw.msgList.ScrollToEnd()
@@ -631,6 +655,15 @@ func applyToolCall(m *models.Message, info llm.ToolCallInfo) {
 	m.ToolCalls = append(m.ToolCalls, tc)
 }
 
+// chatMessages are the conversation's turns with the active system prompt.
+func (cw *ChatWindow) chatMessages(conv *models.Conversation, upto int) []llm.ChatMessage {
+	out := buildMessages(conv, upto)
+	if cw.systemPrompt != "" {
+		out = append([]llm.ChatMessage{{Role: "system", Content: cw.systemPrompt}}, out...)
+	}
+	return out
+}
+
 // buildMessages converts stored messages up to upto into LLM chat messages.
 func buildMessages(conv *models.Conversation, upto int) []llm.ChatMessage {
 	out := make([]llm.ChatMessage, 0, upto)
@@ -657,12 +690,4 @@ func (cw *ChatWindow) switchProvider(name string) {
 	}
 	_ = config.SaveConfig(cw.cfg)
 	cw.setupProvider(name)
-}
-
-// setAgentMode toggles between plain chat and the tool-enabled React agent.
-func (cw *ChatWindow) setAgentMode(on bool) {
-	cw.agentMode = on
-	cw.cfg.UseReactAgent = on
-	_ = config.SaveConfig(cw.cfg)
-	cw.setupProvider(cw.provider)
 }

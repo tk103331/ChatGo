@@ -54,7 +54,7 @@ func TestChatViewRenders(t *testing.T) {
 
 func TestSettingsDialogRenders(t *testing.T) {
 	cw := testWindow()
-	cw.settings.open = true
+	cw.section = sectionSettings
 	cw.settings.prov.editing = 0
 	img := mgo.Render(cw.view, 1000, 700, 1)
 	if img == nil || img.Bounds().Dx() != 1000 {
@@ -79,10 +79,38 @@ func TestSidebarSearchRenders(t *testing.T) {
 
 func TestAppearanceTabRenders(t *testing.T) {
 	cw := testWindow()
-	cw.settings.open = true
+	cw.section = sectionSettings
 	cw.settings.tab = 3
 	img := mgo.Render(cw.view, 1000, 700, 1)
 	if img == nil || img.Bounds().Dx() != 1000 {
 		t.Fatalf("appearance render failed: %v", img)
+	}
+}
+
+func TestAgentPageRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionAgent
+	cw.cfg.Agents = []config.AgentDef{
+		{Name: "代码助手", Description: "帮助写代码", SystemPrompt: "You are a coding assistant.", Mode: "agent"},
+	}
+	cw.agentForm.editing = 0
+	cw.loadAgentForm(0)
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("agent render failed: %v", img)
+	}
+}
+
+func TestACPPageRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionACP
+	cw.cfg.ACPAgents = []config.ACPConnection{
+		{Name: "Claude Code", Command: "claude-code-acp"},
+	}
+	cw.acpForm.editing = 0
+	cw.loadACPForm(0)
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("acp render failed: %v", img)
 	}
 }
