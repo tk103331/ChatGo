@@ -14,6 +14,8 @@ import (
 	"github.com/ZacharyZhang-NY/MujicaUI/icons"
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 
+	"github.com/ZacharyZhang-NY/MujicaUI/agent"
+
 	"chatgo/pkg/models"
 )
 
@@ -72,6 +74,65 @@ func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, 
 			cw.regenerate(i)
 		}
 	})
+}
+
+// messageRowACP renders an ACP conversation turn with agent cards.
+func (cw *ChatWindow) messageRowACP(c *mgo.Context, i int, msg models.Message) {
+	u := mcore.Density(c).Unit()
+	streaming := cw.streaming && cw.cur != nil && i == len(cw.cur.Messages)-1 && msg.Role == "assistant"
+	switch msg.Role {
+	case "user":
+		mchat.MessageBubble(c, mchat.MessageUser, mchat.MessageBubbleOptions{}, func() {
+			r := mchat.MarkdownView(c, msg.Content)
+			if url, ok := r.Link(); ok {
+				c.OpenURL(url)
+			}
+		})
+	case "system":
+		mchat.MessageBubble(c, mchat.MessageSystem, mchat.MessageBubbleOptions{}, func() {
+			mchat.MarkdownView(c, msg.Content)
+		})
+	default:
+		card := agent.AgentCard(c)
+		card.FillWidth()
+		card.Children(func() {
+			mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+				state, label := agent.AgentDone, "回答完成"
+				if streaming {
+					state, label = agent.AgentRunning, "运行中"
+				}
+				agent.AgentStatus(c, state, agent.AgentStatusOptions{Label: label})
+				if cw.cur != nil {
+					agent.AgentCaption(c, strings.TrimPrefix(cw.cur.Agent, "acp:"))
+				}
+			})
+			for _, tc := range msg.ToolCalls {
+				if tc.Name == "" {
+					continue
+				}
+				state := agent.AgentDone
+				switch {
+				case tc.Error != "":
+					state = agent.AgentFailed
+				case tc.Result == "":
+					state = agent.AgentRunning
+				}
+				agent.ToolCallCard(c, agent.ToolCall{
+					ID: tc.ID, Name: tc.Name, Args: tc.Arguments,
+					Result: tc.Result, Error: tc.Error, State: state,
+				}, agent.ToolCallCardOptions{})
+			}
+			switch {
+			case strings.TrimSpace(msg.Content) != "":
+				r := mchat.MarkdownView(c, msg.Content)
+				if url, ok := r.Link(); ok {
+					c.OpenURL(url)
+				}
+			case streaming:
+				mchat.TypingIndicator(c, "Agent")
+			}
+		})
+	}
 }
 
 func roleOf(msg models.Message) mchat.MessageRole {

@@ -4,6 +4,8 @@ import (
 	"testing"
 	"time"
 
+	acp "github.com/coder/acp-go-sdk"
+
 	"chatgo/internal/config"
 	"chatgo/pkg/models"
 
@@ -17,11 +19,14 @@ func testWindow() *ChatWindow {
 		ReactAgentMaxStep: 20,
 	}
 	return &ChatWindow{
-		cfg:        cfg,
-		mcpManager: NewMCPManagerWrapper(),
-		provider:   "OpenAI",
-		toolOn:     map[string]bool{},
-		editingIdx: -1,
+		cfg:           cfg,
+		mcpManager:    NewMCPManagerWrapper(),
+		provider:      "OpenAI",
+		toolOn:        map[string]bool{},
+		editingIdx:    -1,
+		acpConvs:      map[string]*acpConv{},
+		acpConvBySess: map[acp.SessionId]string{},
+		acpConvObj:    map[string]*models.Conversation{},
 	}
 }
 
@@ -103,7 +108,8 @@ func TestAgentPageRenders(t *testing.T) {
 
 func TestACPPageRenders(t *testing.T) {
 	cw := testWindow()
-	cw.section = sectionACP
+	cw.section = sectionSettings
+	cw.settings.tab = 3
 	cw.cfg.ACPAgents = []config.ACPConnection{
 		{Name: "Claude Code", Command: "claude-code-acp"},
 	}
@@ -112,5 +118,47 @@ func TestACPPageRenders(t *testing.T) {
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("acp render failed: %v", img)
+	}
+}
+
+func TestACPChatRenders(t *testing.T) {
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.workspace = "/tmp/demo"
+	cw.cur = &models.Conversation{
+		ID: "acp1", Title: "ACP 会话", Workspace: "/tmp/demo", Agent: "acp:OpenCode",
+		Messages: []models.Message{
+			{ID: "u1", Role: "user", Content: "帮我改代码", Timestamp: time.Now()},
+			{ID: "a1", Role: "assistant", Content: "已经完成修改。", Timestamp: time.Now(),
+				ToolCalls: []models.ToolCall{{ID: "tc1", Name: "edit_file", Arguments: `{"path":"main.go"}`, Result: "done"}}},
+		},
+	}
+	cw.cfg.Workspaces = []string{"/tmp/demo"}
+	cw.cfg.ACPAgents = []config.ACPConnection{{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}}}
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("acp chat render failed: %v", img)
+	}
+}
+
+func TestACPControlsRender(t *testing.T) {
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.workspace = "/tmp/demo"
+	cw.cur = &models.Conversation{ID: "acp1", Title: "ACP", Workspace: "/tmp/demo", Agent: "acp:OpenCode",
+		Messages: []models.Message{{ID: "u1", Role: "user", Content: "hi", Timestamp: time.Now()}}}
+	cw.cfg.ACPAgents = []config.ACPConnection{{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}}}
+	cw.acpConvs["acp1"] = &acpConv{
+		modeID: "plan",
+		modes:  []acp.SessionMode{{Id: "plan", Name: "Plan"}, {Id: "build", Name: "Build"}},
+		configs: []acp.SessionConfigOption{
+			{Select: &acp.SessionConfigOptionSelect{Id: "model", Name: "Model", CurrentValue: "gpt-4",
+				Options: acp.SessionConfigSelectOptions{Ungrouped: &acp.SessionConfigSelectOptionsUngrouped{{Name: "GPT-4", Value: "gpt-4"}}}}},
+			{Boolean: &acp.SessionConfigOptionBoolean{Id: "auto", Name: "Auto", CurrentValue: true}},
+		},
+	}
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("acp controls render failed: %v", img)
 	}
 }

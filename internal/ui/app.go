@@ -6,6 +6,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -55,8 +56,9 @@ type ChatWindow struct {
 	currentAgent string
 	systemPrompt string
 
-	convs []models.Conversation
-	cur   *models.Conversation
+	convs     []models.Conversation
+	cur       *models.Conversation
+	workspace string
 
 	homeList mgo.ListState
 	convList mgo.ListState
@@ -92,10 +94,14 @@ type ChatWindow struct {
 	agentForm       agentForm
 	agentEditorOpen bool
 
-	acpList  mgo.ListState
-	acpForm  acpForm
-	acp      acpRuntime
-	acpInput string
+	acpList mgo.ListState
+	acpForm acpForm
+
+	acpMu         sync.Mutex
+	acpConvs      map[string]*acpConv
+	acpConvBySess map[acp.SessionId]string
+	acpConvObj    map[string]*models.Conversation
+	acpStarting   map[string]bool
 
 	permissionReq  *acp.RequestPermissionRequest
 	permissionCh   chan acp.RequestPermissionResponse
@@ -115,16 +121,23 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		return nil, fmt.Errorf("failed to create conversation manager: %w", err)
 	}
 	cw := &ChatWindow{
-		cfg:         cfg,
-		convManager: cm,
-		mcpManager:  NewMCPManagerWrapper(),
-		provider:    cfg.CurrentProvider,
-		agentMode:   cfg.UseReactAgent,
-		toolOn:      map[string]bool{},
-		themeMode:   parseThemeMode(cfg.ThemeMode),
-		density:     parseDensity(cfg.Density),
-		locale:      parseLocale(cfg.Locale),
-		editingIdx:  -1,
+		cfg:           cfg,
+		convManager:   cm,
+		mcpManager:    NewMCPManagerWrapper(),
+		provider:      cfg.CurrentProvider,
+		agentMode:     cfg.UseReactAgent,
+		toolOn:        map[string]bool{},
+		acpConvs:      map[string]*acpConv{},
+		acpConvBySess: map[acp.SessionId]string{},
+		acpConvObj:    map[string]*models.Conversation{},
+		acpStarting:   map[string]bool{},
+		themeMode:     parseThemeMode(cfg.ThemeMode),
+		density:       parseDensity(cfg.Density),
+		locale:        parseLocale(cfg.Locale),
+		editingIdx:    -1,
+	}
+	if wd, err := os.Getwd(); err == nil {
+		cw.workspace = wd
 	}
 	cw.settings.prov.editing = -1
 	cw.settings.mcp.editing = -1
@@ -132,7 +145,8 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.agentForm.editing = -1
 	cw.acpForm.editing = -1
 	cw.reloadConvs()
-	cw.setupProvider(cw.provider)
+	cw.currentAgent = ""
+	cw.applyAgent("")
 	go cw.startMCP()
 	return cw, nil
 }
@@ -440,8 +454,53 @@ func (cw *ChatWindow) initMCPServers() {
 	wg.Wait()
 }
 
-// newConversation creates an empty conversation with the current provider.
+// workspaces lists the configured workspaces, the current one first.
+func (cw *ChatWindow) workspaces() []string {
+	seen := map[string]bool{}
+	var out []string
+	add := func(w string) {
+		if w != "" && !seen[w] {
+			seen[w] = true
+			out = append(out, w)
+		}
+	}
+	add(cw.workspace)
+	for _, w := range cw.cfg.Workspaces {
+		add(w)
+	}
+	for _, conv := range cw.convs {
+		add(conv.Workspace)
+	}
+	return out
+}
+
+func (cw *ChatWindow) addWorkspace(dir string) {
+	if dir == "" || containsStr(cw.cfg.Workspaces, dir) {
+		cw.workspace = dir
+		return
+	}
+	cw.cfg.Workspaces = append(cw.cfg.Workspaces, dir)
+	_ = config.SaveConfig(cw.cfg)
+	cw.workspace = dir
+}
+
+func (cw *ChatWindow) removeWorkspace(dir string) {
+	for i, w := range cw.cfg.Workspaces {
+		if w == dir {
+			cw.cfg.Workspaces = append(cw.cfg.Workspaces[:i], cw.cfg.Workspaces[i+1:]...)
+			_ = config.SaveConfig(cw.cfg)
+			return
+		}
+	}
+}
+
+// newConversation creates a conversation in the current workspace.
 func (cw *ChatWindow) newConversation() {
+	cw.newConversationIn(cw.workspace, "")
+}
+
+// newConversationIn creates a conversation in ws, run by the chosen agent.
+func (cw *ChatWindow) newConversationIn(ws, agent string) {
 	name := cw.provider
 	if name == "" {
 		if p, ok := cw.firstEnabled(); ok {
@@ -457,11 +516,17 @@ func (cw *ChatWindow) newConversation() {
 		cw.status = "创建会话失败: " + err.Error()
 		return
 	}
+	conv.Workspace = ws
+	conv.Agent = agent
+	_ = cw.convManager.SaveConversation(conv)
 	cw.cur = conv
 	cw.provider = name
+	if ws != "" {
+		cw.workspace = ws
+	}
 	cw.mode = modeChat
 	cw.msgList.ScrollToEnd()
-	cw.setupProvider(name)
+	cw.applyConversationAgent(conv)
 	cw.reloadConvs()
 }
 
@@ -473,10 +538,10 @@ func (cw *ChatWindow) selectConversation(id string) {
 	}
 	cw.cur = conv
 	cw.mode = modeChat
-	if conv.Provider != "" {
-		cw.provider = conv.Provider
-		cw.setupProvider(conv.Provider)
+	if conv.Workspace != "" {
+		cw.workspace = conv.Workspace
 	}
+	cw.applyConversationAgent(conv)
 	cw.msgList.ScrollToEnd()
 }
 
@@ -498,14 +563,39 @@ func (cw *ChatWindow) sendDraft() {
 	conv.UpdatedAt = time.Now()
 	idx := len(conv.Messages)
 	conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Timestamp: time.Now()})
-	msgs := cw.chatMessages(conv, idx)
 	cw.draft = ""
+	if strings.HasPrefix(conv.Agent, "acp:") && conv.Title == defaultTitle {
+		conv.Title = titleFromText(text)
+	}
 	_ = cw.convManager.SaveConversation(conv)
 	cw.msgList.ScrollToEnd()
 	cw.streaming = true
+	if strings.HasPrefix(conv.Agent, "acp:") {
+		cw.reloadConvs()
+		cw.acpChatStart(conv, strings.TrimPrefix(conv.Agent, "acp:"), idx, text)
+		return
+	}
+	msgs := cw.chatMessages(conv, idx)
 	ctx, cancel := context.WithCancel(context.Background())
 	cw.streamCancel = cancel
 	go cw.runStream(ctx, conv, idx, msgs)
+}
+
+// applyConversationAgent restores the client state for a conversation's agent.
+func (cw *ChatWindow) applyConversationAgent(conv *models.Conversation) {
+	cw.currentAgent = ""
+	cw.systemPrompt = ""
+	switch {
+	case strings.HasPrefix(conv.Agent, "agent:"):
+		cw.currentAgent = strings.TrimPrefix(conv.Agent, "agent:")
+		cw.applyAgent(cw.currentAgent)
+	case strings.HasPrefix(conv.Agent, "acp:"):
+		cw.llmClient, cw.reactClient = nil, nil
+		cw.status = ""
+		cw.acpWarmup(conv)
+	default:
+		cw.applyAgent("")
+	}
 }
 
 // runStream drives one assistant reply, updating state on the main thread.
@@ -607,6 +697,16 @@ func firstExchange(conv *models.Conversation) (user, assistant string) {
 		}
 	}
 	return user, assistant
+}
+
+// titleFromText makes a short title from the user's first message.
+func titleFromText(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	r := []rune(s)
+	if len(r) > 24 {
+		return string(r[:24]) + "…"
+	}
+	return s
 }
 
 func cleanTitle(s string) string {

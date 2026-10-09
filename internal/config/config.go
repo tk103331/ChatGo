@@ -22,6 +22,7 @@ type Config struct {
 	Locale            string          `yaml:"locale,omitempty"`
 	Agents            []AgentDef      `yaml:"agents,omitempty"`
 	ACPAgents         []ACPConnection `yaml:"acp_agents,omitempty"`
+	Workspaces        []string        `yaml:"workspaces,omitempty"`
 }
 
 // AgentDef is a named assistant preset usable in a conversation.

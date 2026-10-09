@@ -43,7 +43,6 @@ func (cw *ChatWindow) agentsPage(c *mgo.Context) {
 		})
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			mgo.Grid(c).Columns(3).Gap(u * 3).Children(func() {
-				cw.chatAgentCard(c)
 				for i := range cw.cfg.Agents {
 					cw.agentCard(c, i)
 				}
@@ -51,26 +50,6 @@ func (cw *ChatWindow) agentsPage(c *mgo.Context) {
 		})
 	})
 	cw.agentEditor(c)
-}
-
-// chatAgentCard is the built-in default agent; it cannot be edited or deleted.
-func (cw *ChatWindow) chatAgentCard(c *mgo.Context) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Column(c).Key("agent:chat").Gap(u*2).Padding(u*3).FillWidth().
-		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
-		Children(func() {
-			mgo.Row(c).AlignItems(mgo.Center).Children(func() {
-				mgo.Text(c, chatAgentName).Font(mtheme.SerifFont).
-					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
-				mgo.Text(c, "内置").FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-			})
-			mgo.Text(c, "内置默认 Agent，纯对话模式。").TextColor(k.TextMuted).FontSize(caption)
-			mgo.Row(c).Gap(u).Wrap().Children(func() {
-				agentTag(c, "对话")
-			})
-		})
 }
 
 func (cw *ChatWindow) agentCard(c *mgo.Context, i int) {
@@ -254,7 +233,8 @@ func (cw *ChatWindow) agentSelector(c *mgo.Context) {
 	if len(cw.cfg.Agents) == 0 {
 		return
 	}
-	opts := []minput.SelectOption[string]{{Value: "", Label: chatAgentName}}
+	opts := make([]minput.SelectOption[string], 0, len(cw.cfg.Agents)+1)
+	opts = append(opts, minput.SelectOption[string]{Value: "", Label: chatAgentName})
 	for _, a := range cw.cfg.Agents {
 		opts = append(opts, minput.SelectOption[string]{Value: a.Name, Label: a.Name})
 	}

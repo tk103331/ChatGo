@@ -11,13 +11,19 @@ import (
 
 	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
+	"github.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	acp "github.com/coder/acp-go-sdk"
 )
 
 // chatView lays out the sidebar, message list and composer.
 func (cw *ChatWindow) chatView(c *mgo.Context) {
 	msgs := cw.messages()
+	row := func(i int) { cw.messageRow(c, i, msgs[i]) }
+	if cw.isACP() {
+		row = func(i int) { cw.messageRowACP(c, i, msgs[i]) }
+	}
 	mchat.ChatContainer(c, &cw.msgList, len(msgs), mchat.ChatContainerOptions{
 		List: mchat.MessageListOptions{
 			ID:    func(i int) string { return msgs[i].ID },
@@ -27,7 +33,12 @@ func (cw *ChatWindow) chatView(c *mgo.Context) {
 		Sidebar:      func() { cw.sidebar(c) },
 		Input:        func() { cw.composer(c) },
 		SidebarWidth: 280,
-	}, func(i int) { cw.messageRow(c, i, msgs[i]) })
+	}, row)
+}
+
+// isACP reports whether the current conversation runs through an ACP CLI.
+func (cw *ChatWindow) isACP() bool {
+	return cw.cur != nil && strings.HasPrefix(cw.cur.Agent, "acp:")
 }
 
 func (cw *ChatWindow) messages() []models.Message {
@@ -39,9 +50,16 @@ func (cw *ChatWindow) messages() []models.Message {
 
 // composer builds the message input with its model, mode and tool controls.
 func (cw *ChatWindow) composer(c *mgo.Context) {
+	if cw.isACP() {
+		cw.acpControls(c)
+	}
 	in := mchat.PromptComposer(c, &cw.draft, mchat.PromptComposerOptions{
 		Placeholder: "输入消息，Enter 发送，Shift+Enter 换行",
 		Tools: func() {
+			if cw.isACP() {
+				cw.acpBadge(c)
+				return
+			}
 			cw.agentSelector(c)
 			cw.modelSelector(c)
 			cw.toolMenu(c)
@@ -87,6 +105,62 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	if r.Changed() {
 		cw.switchProvider(cw.provider)
 	}
+}
+
+// acpControls shows the ACP session's modes and configuration options.
+func (cw *ChatWindow) acpControls(c *mgo.Context) {
+	if cw.cur == nil {
+		return
+	}
+	rt := cw.acpRuntimeFor(cw.cur.ID)
+	if rt == nil {
+		return
+	}
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).Gap(u * 2).Wrap().AlignItems(mgo.End).Children(func() {
+		if len(rt.modes) > 0 {
+			opts := make([]minput.SelectOption[string], 0, len(rt.modes))
+			for _, m := range rt.modes {
+				opts = append(opts, minput.SelectOption[string]{Value: string(m.Id), Label: m.Name})
+			}
+			sel := string(rt.modeID)
+			if minput.Select(c, &sel, opts, minput.SelectOptions{Label: "模式"}).Changed() {
+				cw.acpSetMode(rt, acp.SessionModeId(sel))
+			}
+		}
+		for _, opt := range rt.configs {
+			switch {
+			case opt.Select != nil:
+				s := opt.Select
+				sel := string(s.CurrentValue)
+				if minput.Select(c, &sel, acpSelectOptions(s.Options), minput.SelectOptions{Label: s.Name}).Changed() {
+					s.CurrentValue = acp.SessionConfigValueId(sel)
+					cw.acpSetConfigValue(rt, s.Id, acp.SessionConfigValueId(sel))
+				}
+			case opt.Boolean != nil:
+				b := opt.Boolean
+				val := b.CurrentValue
+				if minput.Switch(c, &val, b.Name, minput.SwitchOptions{}).Changed() {
+					b.CurrentValue = val
+					cw.acpSetConfigBool(rt, b.Id, val)
+				}
+			}
+		}
+	})
+}
+
+// acpBadge names the ACP connection driving the current conversation.
+func (cw *ChatWindow) acpBadge(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	name := ""
+	if cw.cur != nil {
+		name = strings.TrimPrefix(cw.cur.Agent, "acp:")
+	}
+	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+		mgo.Icon(c, icons.Must("terminal")).Size(14, 14).TextColor(k.AccentText)
+		mgo.Text(c, "ACP · "+name).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.AccentText).SingleLine()
+	})
 }
 
 func capsOf(p config.Provider) []string {

@@ -74,10 +74,15 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Text(c, "设置").Font(mtheme.SerifFont).
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
+		if cw.status != "" {
+			mgo.Text(c, cw.status).TextColor(mcore.Tokens(c).Danger).
+				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Shrink(0)
+		}
 		res := mnavigation.Tabs(c, &cw.settings.tab, []mnavigation.Tab{
 			{Label: "模型", Panel: func() { cw.providersTab(c) }},
 			{Label: "MCP 服务器", Panel: func() { cw.mcpTab(c) }},
 			{Label: "内置工具", Panel: func() { cw.builtinTab(c) }},
+			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
 		}, mnavigation.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)
@@ -179,7 +184,7 @@ func (cw *ChatWindow) clearProviderForm() {
 func (cw *ChatWindow) saveProvider() {
 	f := &cw.settings.prov
 	if strings.TrimSpace(f.name) == "" {
-		cw.status = "名称不能为空"
+		cw.fail("名称不能为空")
 		return
 	}
 	p := config.Provider{
@@ -320,13 +325,13 @@ func (cw *ChatWindow) clearMCPForm() {
 func (cw *ChatWindow) saveMCP() {
 	f := &cw.settings.mcp
 	if strings.TrimSpace(f.name) == "" {
-		cw.status = "名称不能为空"
+		cw.fail("名称不能为空")
 		return
 	}
 	s := config.MCPServer{Name: f.name, Type: config.MCPServerType(f.typ), Enabled: f.enabled}
 	if f.typ == "stdio" {
 		if strings.TrimSpace(f.command) == "" {
-			cw.status = "stdio 类型需要命令"
+			cw.fail("stdio 类型需要命令")
 			return
 		}
 		s.Command = f.command
@@ -334,7 +339,7 @@ func (cw *ChatWindow) saveMCP() {
 		s.Env = parseKV(f.env)
 	} else {
 		if strings.TrimSpace(f.url) == "" {
-			cw.status = "该类型需要 URL"
+			cw.fail("该类型需要 URL")
 			return
 		}
 		s.URL = f.url
@@ -499,7 +504,7 @@ func (cw *ChatWindow) saveBuiltin() {
 	t.Config = f.config
 	if t.Enabled {
 		if err := config.ValidateBuiltinToolConfig(*t); err != nil {
-			cw.status = err.Error()
+			cw.fail(err.Error())
 			return
 		}
 	}
@@ -576,6 +581,7 @@ func mcpStatus(cw *ChatWindow, name string) (mfeedback.Status, string) {
 // askDeleteConversation opens the delete confirmation for a conversation.
 func (cw *ChatWindow) askDeleteConversation(id, title string) {
 	cw.askConfirm("删除会话", "确定删除「"+title+"」？此操作不可撤销。", func() {
+		cw.acpConvClose(id)
 		_ = cw.convManager.DeleteConversation(id)
 		if cw.cur != nil && cw.cur.ID == id {
 			cw.cur = nil
@@ -584,4 +590,24 @@ func (cw *ChatWindow) askDeleteConversation(id, title string) {
 		cw.reloadConvs()
 		cw.toast("会话已删除", mcore.SeveritySuccess)
 	})
+}
+
+// acpTab configures the ACP connections used by ACP agents.
+func (cw *ChatWindow) acpTab(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
+		mgo.Column(c).Width(300).Shrink(0).Children(func() {
+			mgo.List(c, &cw.acpList, len(cw.cfg.ACPAgents), func(i int) {
+				cw.acpRow(c, i)
+			}).Fill()
+		})
+		mgo.Scroll(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			cw.acpFormView(c)
+		})
+	})
+}
+
+func (cw *ChatWindow) fail(msg string) {
+	cw.status = msg
+	cw.toast(msg, mcore.SeverityError)
 }
