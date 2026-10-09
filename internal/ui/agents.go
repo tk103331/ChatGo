@@ -27,6 +27,7 @@ type agentForm struct {
 	mode         int
 	builtinTools []string
 	mcpServers   []string
+	skills       []string
 }
 
 // agentsPage shows the agent presets as a card grid.
@@ -150,6 +151,17 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 				minput.Checkbox(c, &on, s.Name, minput.CheckboxOptions{})
 				f.mcpServers = setTool(f.mcpServers, s.Name, on)
 			}
+			if !cw.skillsLoaded {
+				cw.loadSkills()
+			}
+			if len(cw.skills) > 0 {
+				mgo.Text(c, "Skills").FontWeight(600).FontSize(small).TextColor(k.TextMuted)
+				for _, sk := range cw.skills {
+					on := containsStr(f.skills, sk.Name)
+					minput.Checkbox(c, &on, sk.Name, minput.CheckboxOptions{})
+					f.skills = setTool(f.skills, sk.Name, on)
+				}
+			}
 		})
 	})
 }
@@ -165,6 +177,7 @@ func (cw *ChatWindow) loadAgentForm(i int) {
 		systemPrompt: a.SystemPrompt, provider: a.Provider, mode: mode,
 		builtinTools: append([]string(nil), a.BuiltinTools...),
 		mcpServers:   append([]string(nil), a.MCPServers...),
+		skills:       append([]string(nil), a.Skills...),
 	}
 }
 
@@ -189,7 +202,7 @@ func (cw *ChatWindow) saveAgent() bool {
 	def := config.AgentDef{
 		Name: f.name, Description: f.description, SystemPrompt: f.systemPrompt,
 		Provider: f.provider, Mode: mode,
-		BuiltinTools: f.builtinTools, MCPServers: f.mcpServers,
+		BuiltinTools: f.builtinTools, MCPServers: f.mcpServers, Skills: f.skills,
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Agents) {
 		cw.cfg.Agents[f.editing] = def
@@ -270,6 +283,10 @@ func (cw *ChatWindow) applyAgent(name string) {
 			for _, m := range cw.toolMetas() {
 				cw.toolOn[m.ID] = agentAllowsTool(a, m.ID)
 			}
+		}
+		if len(a.Skills) > 0 && cw.cur != nil {
+			cw.cur.Skills = cw.skillIDsByName(a.Skills)
+			_ = cw.convManager.SaveConversation(cw.cur)
 		}
 		_ = config.SaveConfig(cw.cfg)
 		cw.setupProvider(cw.provider)

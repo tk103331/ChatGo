@@ -109,6 +109,12 @@ type ChatWindow struct {
 	mcpDetailOpen     bool
 	mcpDetail         mcpMarketServer
 
+	skills          []skill
+	skillsLoaded    bool
+	skillsSel       string
+	skillsQuery     string
+	skillsListState mgo.ListState
+
 	acpMu         sync.Mutex
 	acpConvs      map[string]*acpConv
 	acpConvBySess map[acp.SessionId]string
@@ -770,8 +776,15 @@ func applyToolCall(m *models.Message, info llm.ToolCallInfo) {
 // chatMessages are the conversation's turns with the active system prompt.
 func (cw *ChatWindow) chatMessages(conv *models.Conversation, upto int) []llm.ChatMessage {
 	out := buildMessages(conv, upto)
-	if cw.systemPrompt != "" {
-		out = append([]llm.ChatMessage{{Role: "system", Content: cw.systemPrompt}}, out...)
+	sys := cw.systemPrompt
+	if skills := cw.skillPrompt(); skills != "" {
+		if sys != "" {
+			sys += "\n\n"
+		}
+		sys += skills
+	}
+	if sys != "" {
+		out = append([]llm.ChatMessage{{Role: "system", Content: sys}}, out...)
 	}
 	return out
 }

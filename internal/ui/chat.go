@@ -63,6 +63,7 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 			cw.agentSelector(c)
 			cw.modelSelector(c)
 			cw.toolMenu(c)
+			cw.skillMenu(c)
 		},
 		Actions: func() {
 			r := mchat.SendButton(c, mchat.SendButtonOptions{

@@ -23,6 +23,7 @@ type Config struct {
 	Agents            []AgentDef      `yaml:"agents,omitempty"`
 	ACPAgents         []ACPConnection `yaml:"acp_agents,omitempty"`
 	Workspaces        []string        `yaml:"workspaces,omitempty"`
+	SkillsEnabled     []string        `yaml:"skills_enabled,omitempty"`
 }
 
 // AgentDef is a named assistant preset usable in a conversation.
@@ -34,6 +35,7 @@ type AgentDef struct {
 	Mode         string   `yaml:"mode,omitempty"` // chat or agent
 	BuiltinTools []string `yaml:"builtin_tools,omitempty"`
 	MCPServers   []string `yaml:"mcp_servers,omitempty"`
+	Skills       []string `yaml:"skills,omitempty"`
 }
 
 // ACPConnection is a local coding CLI spoken to over the Agent Client Protocol.
