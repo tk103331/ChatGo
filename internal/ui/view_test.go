@@ -109,7 +109,7 @@ func TestAgentPageRenders(t *testing.T) {
 func TestACPPageRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	cw.settings.tab = 3
+	cw.settings.tab = 2
 	cw.cfg.ACPAgents = []config.ACPConnection{
 		{Name: "Claude Code", Command: "claude-code-acp"},
 	}
@@ -160,5 +160,26 @@ func TestACPControlsRender(t *testing.T) {
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("acp controls render failed: %v", img)
+	}
+}
+
+func TestMCPPageRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionMCP
+	cw.cfg.MCPServers = []config.MCPServer{{Name: "filesystem", Type: "stdio", Command: "npx"}}
+	cw.mcpMarketLoaded = true
+	cw.mcpMarket = []mcpMarketServer{
+		{ID: "github", Name: "GitHub", Description: "GitHub MCP", Command: "npx", Args: []string{"-y", "@modelcontextprotocol/server-github"}},
+		{ID: "sqlite", Name: "SQLite", Description: "SQLite MCP", Command: "uvx", Args: []string{"mcp-server-sqlite"}},
+	}
+	cw.mcpTabSel = 1
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("mcp render failed: %v", img)
+	}
+	cw.mcpTabSel = 0
+	img2 := mgo.Render(cw.view, 1280, 820, 1)
+	if img2 == nil || img2.Bounds().Dx() != 1280 {
+		t.Fatalf("mcp servers render failed: %v", img2)
 	}
 }

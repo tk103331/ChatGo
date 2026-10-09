@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"chatgo/internal/config"
@@ -9,7 +10,9 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
+	"github.com/ZacharyZhang-NY/MujicaUI/devtools"
 	mfeedback "github.com/ZacharyZhang-NY/MujicaUI/feedback"
+	"github.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
 	mnavigation "github.com/ZacharyZhang-NY/MujicaUI/navigation"
 	moverlay "github.com/ZacharyZhang-NY/MujicaUI/overlay"
@@ -23,7 +26,6 @@ type settingsState struct {
 	mcp         mcpForm
 	builtin     builtinForm
 	provList    mgo.ListState
-	mcpList     mgo.ListState
 	builtinList mgo.ListState
 }
 
@@ -44,10 +46,11 @@ type mcpForm struct {
 	enabled bool
 	command string
 	args    string
-	env     string
+	env     []devtools.KeyValue
 	url     string
-	headers string
+	headers []devtools.KeyValue
 	timeout string
+	hint    string
 }
 
 type builtinForm struct {
@@ -80,7 +83,6 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 		}
 		res := mnavigation.Tabs(c, &cw.settings.tab, []mnavigation.Tab{
 			{Label: "模型", Panel: func() { cw.providersTab(c) }},
-			{Label: "MCP 服务器", Panel: func() { cw.mcpTab(c) }},
 			{Label: "内置工具", Panel: func() { cw.builtinTab(c) }},
 			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
@@ -222,41 +224,147 @@ func (cw *ChatWindow) deleteProvider() {
 	})
 }
 
-// mcpTab lists MCP servers and edits the selected one.
+// mcpTab shows the configured MCP servers as a card grid.
 func (cw *ChatWindow) mcpTab(c *mgo.Context) {
-	u := mcore.Density(c).Unit()
-	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-		mgo.Column(c).Width(280).Shrink(0).Children(func() {
-			mgo.List(c, &cw.settings.mcpList, len(cw.cfg.MCPServers), func(i int) {
-				cw.mcpRow(c, i)
-			}).Fill()
-		})
-		cw.mcpFormView(c)
-	})
-}
-
-func (cw *ChatWindow) mcpRow(c *mgo.Context, i int) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	s := cw.cfg.MCPServers[i]
-	b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
-		Padding(u, u*2).Radius(mtheme.ControlRadius)
-	if cw.settings.mcp.editing == i {
-		b.Background(k.Selection)
-	}
-	b.Children(func() {
-		mgo.Text(c, fmt.Sprintf("%s (%s)", s.Name, s.Type)).SingleLine()
+	mgo.Column(c).Grow(1).MinWidth(0).MinHeight(0).Gap(u * 3).Children(func() {
+		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
+			mgo.Text(c, fmt.Sprintf("已配置 %d 个服务", len(cw.cfg.MCPServers))).
+				TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Grow(1)
+			if minput.Button(c, "新增服务", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
+				cw.clearMCPForm()
+				cw.mcpEditorOpen = true
+			}
+		})
+		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			mgo.Grid(c).Columns(3).Gap(u * 3).Children(func() {
+				for i := range cw.cfg.MCPServers {
+					cw.mcpServerCard(c, i)
+				}
+			})
+		})
 	})
-	if b.Clicked() {
-		cw.loadMCPForm(i)
-	}
 }
 
-func (cw *ChatWindow) mcpFormView(c *mgo.Context) {
+func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	s := cw.cfg.MCPServers[i]
+	typ := string(s.Type)
+	if typ == "" {
+		typ = "stdio"
+	}
+	mgo.Column(c).Key("mcp:"+s.Name).Gap(u*2).Padding(u*3).FillWidth().
+		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
+		Children(func() {
+			mgo.Row(c).AlignItems(mgo.Center).Gap(u).Children(func() {
+				mgo.Text(c, s.Name).Font(mtheme.SerifFont).
+					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
+				status, _ := mcpStatus(cw, s.Name)
+				mfeedback.StatusIndicator(c, status, mfeedback.StatusIndicatorOptions{})
+			})
+			mgo.Row(c).Gap(u).Wrap().Children(func() {
+				agentTag(c, mcpTypeLabel(typ))
+				agentTag(c, map[bool]string{true: "已启用", false: "已禁用"}[s.Enabled])
+			})
+			if s.Command != "" {
+				mgo.Text(c, s.Command+" "+strings.Join(s.Args, " ")).TextColor(k.TextMuted).
+					FontSize(caption).SingleLine().Ellipsis("…").MaxLines(1)
+			} else if s.URL != "" {
+				mgo.Text(c, s.URL).TextColor(k.TextMuted).FontSize(caption).SingleLine().Ellipsis("…").MaxLines(1)
+			}
+			mgo.Row(c).Gap(u).Wrap().Children(func() {
+				if minput.Button(c, "编辑", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+					cw.loadMCPForm(i)
+					cw.mcpEditorOpen = true
+				}
+				if minput.Button(c, "初始化", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+					cw.initMCPServer(s.Name)
+				}
+				if minput.Button(c, "断开", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+					_ = cw.mcpManager.manager.DisconnectServer(s.Name)
+					cw.toast("已断开 "+s.Name, mcore.SeverityInfo)
+				}
+				if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger}).Clicked() {
+					cw.deleteMCPServer(s.Name)
+				}
+			})
+		})
+}
+
+func (cw *ChatWindow) initMCPServer(name string) {
+	s, ok := cw.findMCPServer(name)
+	if !ok {
+		return
+	}
+	go func() {
+		status, err := cw.mcpManager.manager.InitializeServer(s)
+		cw.postMain(func() {
+			switch {
+			case err != nil:
+				cw.toast("初始化失败："+err.Error(), mcore.SeverityError)
+			default:
+				cw.toast(fmt.Sprintf("%s 初始化成功（%d 个工具）", name, len(status.Tools)), mcore.SeveritySuccess)
+			}
+			cw.clientDirty.Store(true)
+		})
+	}()
+}
+
+func (cw *ChatWindow) findMCPServer(name string) (config.MCPServer, bool) {
+	for _, s := range cw.cfg.MCPServers {
+		if s.Name == name {
+			return s, true
+		}
+	}
+	return config.MCPServer{}, false
+}
+
+func (cw *ChatWindow) deleteMCPServer(name string) {
+	cw.askConfirm("删除 MCP 服务器", "确定删除「"+name+"」？", func() {
+		_ = cw.mcpManager.manager.DisconnectServer(name)
+		for i, s := range cw.cfg.MCPServers {
+			if s.Name == name {
+				cw.cfg.MCPServers = append(cw.cfg.MCPServers[:i], cw.cfg.MCPServers[i+1:]...)
+				break
+			}
+		}
+		_ = config.SaveConfig(cw.cfg)
+		cw.clientDirty.Store(true)
+		cw.toast("已删除 "+name, mcore.SeveritySuccess)
+	})
+}
+
+// mcpEditor is the create/edit dialog for a server.
+func (cw *ChatWindow) mcpEditor(c *mgo.Context) {
+	f := &cw.settings.mcp
+	moverlay.Dialog(c, &cw.mcpEditorOpen, moverlay.DialogOptions{
+		Title: "MCP 服务配置",
+		Width: 560,
+		Actions: func() {
+			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+				if cw.saveMCP() {
+					cw.mcpEditorOpen = false
+				}
+			}
+			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
+				cw.deleteMCP()
+			}
+		},
+	}, func() { cw.mcpFormFields(c) })
+}
+
+func (cw *ChatWindow) mcpFormFields(c *mgo.Context) {
 	f := &cw.settings.mcp
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
+	mgo.Column(c).Gap(u * 2).Children(func() {
+		if f.hint != "" {
+			mgo.Text(c, f.hint).TextColor(k.TextMuted).
+				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Font(mtheme.MonoFont)
+		}
 		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "服务器名称"})
 		typ := 0
 		for i, t := range mcpTypes {
@@ -265,30 +373,21 @@ func (cw *ChatWindow) mcpFormView(c *mgo.Context) {
 			}
 		}
 		mnavigation.SegmentedControl(c, &typ, []mnavigation.Segment{
-			{Label: "stdio"}, {Label: "sse"}, {Label: "HTTP"},
+			{Label: "STDIO"}, {Label: "SSE"}, {Label: "HTTP"},
 		}, mnavigation.SegmentedControlOptions{Label: "类型", Equal: true})
 		f.typ = mcpTypes[typ]
 		minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
 		if f.typ == "stdio" {
 			minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 npx"})
 			minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 72})
-			minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 72})
+			mgo.Text(c, "环境变量").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+			devtools.KeyValueInput(c, &f.env, devtools.KeyValueInputOptions{Label: "环境变量", KeyPlaceholder: "KEY", ValuePlaceholder: "VALUE"})
 		} else {
 			minput.TextInput(c, &f.url, minput.TextInputOptions{Label: "URL", Placeholder: "https://..."})
-			minput.TextArea(c, &f.headers, minput.TextAreaOptions{Label: "请求头", Placeholder: "KEY=VALUE，每行一个", MinHeight: 72})
+			mgo.Text(c, "请求头").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+			devtools.KeyValueInput(c, &f.headers, devtools.KeyValueInputOptions{Label: "请求头", KeyPlaceholder: "Header", ValuePlaceholder: "Value"})
 			minput.TextInput(c, &f.timeout, minput.TextInputOptions{Label: "超时（秒）", Placeholder: "30"})
 		}
-		mgo.Row(c).Gap(u).Children(func() {
-			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-				cw.clearMCPForm()
-			}
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
-				cw.saveMCP()
-			}
-			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
-				cw.deleteMCP()
-			}
-		})
 		if f.editing >= 0 && f.editing < len(cw.cfg.MCPServers) {
 			status, note := mcpStatus(cw, cw.cfg.MCPServers[f.editing].Name)
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
@@ -313,8 +412,8 @@ func (cw *ChatWindow) loadMCPForm(i int) {
 	}
 	cw.settings.mcp = mcpForm{
 		editing: i, name: s.Name, typ: typ, enabled: s.Enabled,
-		command: s.Command, args: strings.Join(s.Args, "\n"), env: joinKV(s.Env),
-		url: s.URL, headers: joinKV(s.Headers), timeout: timeout,
+		command: s.Command, args: strings.Join(s.Args, "\n"), env: kvList(s.Env),
+		url: s.URL, headers: kvList(s.Headers), timeout: timeout,
 	}
 }
 
@@ -322,28 +421,28 @@ func (cw *ChatWindow) clearMCPForm() {
 	cw.settings.mcp = mcpForm{editing: -1, typ: "stdio", enabled: true, timeout: "30"}
 }
 
-func (cw *ChatWindow) saveMCP() {
+func (cw *ChatWindow) saveMCP() bool {
 	f := &cw.settings.mcp
 	if strings.TrimSpace(f.name) == "" {
 		cw.fail("名称不能为空")
-		return
+		return false
 	}
 	s := config.MCPServer{Name: f.name, Type: config.MCPServerType(f.typ), Enabled: f.enabled}
 	if f.typ == "stdio" {
 		if strings.TrimSpace(f.command) == "" {
 			cw.fail("stdio 类型需要命令")
-			return
+			return false
 		}
 		s.Command = f.command
 		s.Args = splitLines(f.args)
-		s.Env = parseKV(f.env)
+		s.Env = kvMap(f.env)
 	} else {
 		if strings.TrimSpace(f.url) == "" {
 			cw.fail("该类型需要 URL")
-			return
+			return false
 		}
 		s.URL = f.url
-		s.Headers = parseKV(f.headers)
+		s.Headers = kvMap(f.headers)
 		_, _ = fmt.Sscanf(strings.TrimSpace(f.timeout), "%d", &s.TimeoutSeconds)
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.MCPServers) {
@@ -360,8 +459,8 @@ func (cw *ChatWindow) saveMCP() {
 	cw.status = ""
 	cw.toast("已保存 MCP 服务器 "+s.Name, mcore.SeveritySuccess)
 	cw.clientDirty.Store(true)
+	return true
 }
-
 func (cw *ChatWindow) deleteMCP() {
 	f := &cw.settings.mcp
 	if f.editing < 0 || f.editing >= len(cw.cfg.MCPServers) {
@@ -374,6 +473,7 @@ func (cw *ChatWindow) deleteMCP() {
 		cw.cfg.MCPServers = append(cw.cfg.MCPServers[:idx], cw.cfg.MCPServers[idx+1:]...)
 		_ = config.SaveConfig(cw.cfg)
 		cw.clearMCPForm()
+		cw.mcpEditorOpen = false
 		cw.clientDirty.Store(true)
 	})
 }
@@ -391,6 +491,46 @@ func splitLines(s string) []string {
 		}
 	}
 	return out
+}
+
+func mcpTypeLabel(typ string) string {
+	switch typ {
+	case "stdio":
+		return "STDIO"
+	case "sse":
+		return "SSE"
+	default:
+		return "HTTP"
+	}
+}
+
+func kvList(m map[string]string) []devtools.KeyValue {
+	if len(m) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]devtools.KeyValue, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, devtools.KeyValue{Key: k, Value: m[k], Enabled: true})
+	}
+	return out
+}
+
+func kvMap(rows []devtools.KeyValue) map[string]string {
+	m := map[string]string{}
+	for _, r := range rows {
+		if r.Enabled && strings.TrimSpace(r.Key) != "" {
+			m[strings.TrimSpace(r.Key)] = r.Value
+		}
+	}
+	if len(m) == 0 {
+		return nil
+	}
+	return m
 }
 
 func parseKV(s string) map[string]string {
@@ -514,7 +654,7 @@ func (cw *ChatWindow) saveBuiltin() {
 	cw.clientDirty.Store(true)
 }
 
-// appearanceTab changes the theme mode, density and language.
+// appearanceTab changes the theme mode and language.
 func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -528,15 +668,6 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 		}, mnavigation.SegmentedControlOptions{Label: "主题模式", Equal: true})
 		if mcore.Mode(mode) != cw.themeMode {
 			cw.themeMode = mcore.Mode(mode)
-			cw.saveAppearance()
-		}
-		mgo.Text(c, "界面密度").FontSize(small).TextColor(k.TextMuted)
-		density := int(cw.density)
-		mnavigation.SegmentedControl(c, &density, []mnavigation.Segment{
-			{Label: "默认"}, {Label: "紧凑"}, {Label: "宽松"},
-		}, mnavigation.SegmentedControlOptions{Label: "界面密度", Equal: true})
-		if mtheme.Density(density) != cw.density {
-			cw.density = mtheme.Density(density)
 			cw.saveAppearance()
 		}
 		mgo.Text(c, "语言").FontSize(small).TextColor(k.TextMuted)
