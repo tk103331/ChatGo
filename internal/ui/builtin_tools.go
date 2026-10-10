@@ -49,7 +49,7 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 
 // builtinToolHandler returns the executor for a builtin tool, reading its
 // runtime settings from the tool config.
-func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool) func(context.Context, string) (string, error) {
+func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) func(context.Context, string) (string, error) {
 	params := builtinToolParams(tool.Type)
 	keys := make([]string, 0, len(params))
 	for k := range params {
@@ -85,12 +85,11 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool) func(context.
 			if in.Command == "" {
 				in.Command = strings.TrimSpace(args)
 			}
-			out, err := runCommand(ctx, in.Command, allowed)
+			out, err := runCommand(ctx, in.Command, allowed, root)
 			log.Printf("[builtin] commandline command=%q out=%q err=%v", in.Command, out, err)
 			return out, err
 		}
 	case "filesystem":
-		root := cw.fileRoot()
 		return func(_ context.Context, args string) (string, error) {
 			var raw map[string]any
 			if err := json.Unmarshal([]byte(args), &raw); err != nil {
@@ -258,7 +257,7 @@ func httpRequest(ctx context.Context, method, url, headers, body string, timeout
 }
 
 // runCommand runs a shell command when its program is in the allow list.
-func runCommand(ctx context.Context, command string, allowed []string) (string, error) {
+func runCommand(ctx context.Context, command string, allowed []string, dir string) (string, error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return "", fmt.Errorf("缺少必填参数 command")
@@ -272,7 +271,11 @@ func runCommand(ctx context.Context, command string, allowed []string) (string, 
 	}
 	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	out, err := exec.CommandContext(cctx, "sh", "-c", command).CombinedOutput()
+	c := exec.CommandContext(cctx, "sh", "-c", command)
+	if dir != "" {
+		c.Dir = dir
+	}
+	out, err := c.CombinedOutput()
 	result := strings.TrimSpace(string(out))
 	if err != nil {
 		return result + "\n" + err.Error(), nil

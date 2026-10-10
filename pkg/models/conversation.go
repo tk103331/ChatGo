@@ -40,6 +40,7 @@ type Conversation struct {
 	ACPMode   string            `json:"acp_mode,omitempty"`
 	ACPConfig map[string]string `json:"acp_config,omitempty"`
 	Skills    []string          `json:"skills,omitempty"`
+	TaskID    string            `json:"task_id,omitempty"`
 }
 
 // ConversationManager manages conversation storage

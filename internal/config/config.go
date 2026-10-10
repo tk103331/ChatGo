@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -26,6 +27,32 @@ type Config struct {
 	SkillsEnabled     []string        `yaml:"skills_enabled,omitempty"`
 	Chat              Selection       `yaml:"chat,omitempty"`
 	ChatInitialized   bool            `yaml:"chat_initialized,omitempty"`
+	AutoTasks         []AutoTask      `yaml:"auto_tasks,omitempty"`
+}
+
+// Schedule is when an AutoTask runs: daily at Hour:Minute, weekly on Weekday,
+// or monthly on Day.
+type Schedule struct {
+	Kind    string `yaml:"kind"`    // daily | weekly | monthly
+	Hour    int    `yaml:"hour"`    // 0-23
+	Minute  int    `yaml:"minute"`  // 0-59
+	Weekday int    `yaml:"weekday"` // 0=Sunday .. 6=Saturday (weekly)
+	Day     int    `yaml:"day"`     // 1-31 (monthly)
+}
+
+// AutoTask runs an agent on a prompt on a schedule, in its own conversations.
+type AutoTask struct {
+	ID        string    `yaml:"id"`
+	Name      string    `yaml:"name"`
+	Agent     string    `yaml:"agent,omitempty"` // "" = built-in Chat, "agent:<name>"
+	Prompt    string    `yaml:"prompt"`
+	Workspace string    `yaml:"workspace,omitempty"`
+	Schedule  Schedule  `yaml:"schedule"`
+	Reuse     bool      `yaml:"reuse"`                     // reuse one conversation
+	ConvID    string    `yaml:"conversation_id,omitempty"` // reused conversation id
+	Enabled   bool      `yaml:"enabled"`
+	LastRun   time.Time `yaml:"last_run,omitempty"`
+	LastNote  string    `yaml:"last_note,omitempty"`
 }
 
 // Selection is the models and tools an agent may use. For the built-in Chat it

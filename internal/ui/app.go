@@ -85,6 +85,7 @@ type ChatWindow struct {
 	homeAgent    string
 
 	convs       []models.Conversation
+	taskConvs   []models.Conversation
 	cur         *models.Conversation
 	workspace   string
 	wsCollapsed map[string]bool
@@ -128,6 +129,10 @@ type ChatWindow struct {
 	agentSecTools   bool
 	agentSecMCP     bool
 	agentSecSkills  bool
+
+	autoTaskEditorOpen bool
+	autoForm           autoForm
+	autoRunning        map[string]bool
 
 	avatarMu  sync.Mutex
 	avatarPNG map[string]*mgo.Bitmap
@@ -207,6 +212,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		agentSecMCP:    true,
 		agentSecSkills: true,
 		avatarPNG:      map[string]*mgo.Bitmap{},
+		autoRunning:    map[string]bool{},
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd
@@ -220,6 +226,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.currentAgent = ""
 	cw.applyAgent("")
 	go cw.startMCP()
+	go cw.autoTaskLoop()
 	return cw, nil
 }
 
@@ -325,16 +332,26 @@ func (cw *ChatWindow) newID() string {
 	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), n)
 }
 
-// reloadConvs lists saved conversations, newest activity first.
+// reloadConvs lists saved conversations, newest activity first, split into
+// normal and task conversations.
 func (cw *ChatWindow) reloadConvs() {
-	convs, err := cw.convManager.ListConversations()
+	all, err := cw.convManager.ListConversations()
 	if err != nil {
 		return
 	}
-	sort.SliceStable(convs, func(i, j int) bool {
-		return convLast(convs[i]).After(convLast(convs[j]))
+	sort.SliceStable(all, func(i, j int) bool {
+		return convLast(all[i]).After(convLast(all[j]))
 	})
-	cw.convs = convs
+	var normal, tasks []models.Conversation
+	for _, conv := range all {
+		if conv.TaskID == "" {
+			normal = append(normal, conv)
+		} else {
+			tasks = append(tasks, conv)
+		}
+	}
+	cw.convs = normal
+	cw.taskConvs = tasks
 }
 
 func convLast(conv models.Conversation) time.Time {
@@ -405,17 +422,37 @@ func (cw *ChatWindow) setupProvider(name string) {
 
 // setupReactAgent builds the tool-enabled React agent from cfg and tool state.
 func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
-	ctx := context.Background()
-	selected := cw.selectedToolIDs()
+	einoTools := cw.buildEinoTools(cw.selectedToolIDs(), cw.fileRoot())
+	systemPrompt := cw.systemPrompt
+	if systemPrompt == "" {
+		systemPrompt = defaultSystemPrompt
+	}
+	agentConfig := &llm.ReactAgentConfig{
+		MaxStep:      cw.cfg.ReactAgentMaxStep,
+		SystemPrompt: systemPrompt,
+	}
+	reactClient, err := llm.NewReactClientWithEinoTools(provider, einoTools, agentConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create React client: %w", err)
+	}
+	cw.reactClient = reactClient
+	cw.llmClient = nil
+	return nil
+}
 
+// defaultSystemPrompt is used when an agent has no system prompt.
+const defaultSystemPrompt = "You are a helpful AI assistant with access to various tools. Use tools when appropriate. When you use a tool, provide accurate parameters."
+
+// buildEinoTools builds the Eino tools for the given builtin/MCP ids, running
+// file tools under root.
+func (cw *ChatWindow) buildEinoTools(toolIDs []string, root string) []tool.BaseTool {
+	ctx := context.Background()
 	einoTools := make([]tool.BaseTool, 0)
 	mcpServers := make(map[string]bool)
-
-	for _, toolID := range selected {
+	for _, toolID := range toolIDs {
 		switch {
 		case strings.HasPrefix(toolID, "builtin:"):
-			name := strings.TrimPrefix(toolID, "builtin:")
-			def, err := cw.createBuiltinToolDefinition(name)
+			def, err := cw.createBuiltinToolDefinition(strings.TrimPrefix(toolID, "builtin:"), root)
 			if err != nil {
 				continue
 			}
@@ -424,7 +461,6 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 			mcpServers[strings.TrimPrefix(toolID, "mcp:")] = true
 		}
 	}
-
 	for serverName := range mcpServers {
 		status, ok := cw.mcpManager.GetServerStatus(serverName)
 		if !ok || status.Status != "initialized" {
@@ -442,26 +478,11 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 			einoTools = append(einoTools, llm.ObserveTool(t))
 		}
 	}
-
-	systemPrompt := cw.systemPrompt
-	if systemPrompt == "" {
-		systemPrompt = "You are a helpful AI assistant with access to various tools. Use tools when appropriate. When you use a tool, provide accurate parameters."
-	}
-	agentConfig := &llm.ReactAgentConfig{
-		MaxStep:      cw.cfg.ReactAgentMaxStep,
-		SystemPrompt: systemPrompt,
-	}
-	reactClient, err := llm.NewReactClientWithEinoTools(provider, einoTools, agentConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create React client: %w", err)
-	}
-	cw.reactClient = reactClient
-	cw.llmClient = nil
-	return nil
+	return einoTools
 }
 
 // createBuiltinToolDefinition builds an Eino tool definition for a builtin tool.
-func (cw *ChatWindow) createBuiltinToolDefinition(toolName string) (llm.ToolDefinition, error) {
+func (cw *ChatWindow) createBuiltinToolDefinition(toolName, root string) (llm.ToolDefinition, error) {
 	var builtin *config.BuiltinTool
 	for i := range cw.cfg.BuiltinTools {
 		if cw.cfg.BuiltinTools[i].Name == toolName && cw.cfg.BuiltinTools[i].Enabled {
@@ -476,7 +497,7 @@ func (cw *ChatWindow) createBuiltinToolDefinition(toolName string) (llm.ToolDefi
 		Name:        builtin.Name,
 		Description: config.GetBuiltinToolDescription(builtin.Type),
 		Parameters:  builtinToolParams(builtin.Type),
-		Handler:     cw.builtinToolHandler(builtin),
+		Handler:     cw.builtinToolHandler(builtin, root),
 	}, nil
 }
 
