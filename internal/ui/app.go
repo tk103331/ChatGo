@@ -95,6 +95,7 @@ type ChatWindow struct {
 
 	draft     string
 	provider  string
+	model     string
 	agentMode bool
 
 	searchQuery string
@@ -107,7 +108,8 @@ type ChatWindow struct {
 	streaming    bool
 	streamCancel context.CancelFunc
 
-	toolOn map[string]bool
+	toolOn  map[string]bool
+	skillOn map[string]bool
 
 	status        string
 	toastText     string
@@ -143,6 +145,8 @@ type ChatWindow struct {
 	skillsSel       string
 	skillsQuery     string
 	skillsListState mgo.ListState
+	toolQuery       string
+	skillMenuQuery  string
 
 	skillFiles      []string
 	skillFilesFor   string
@@ -180,6 +184,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		provider:      cfg.CurrentProvider,
 		agentMode:     cfg.UseReactAgent,
 		toolOn:        map[string]bool{},
+		skillOn:       map[string]bool{},
 		acpConvs:      map[string]*acpConv{},
 		acpConvBySess: map[acp.SessionId]string{},
 		acpConvObj:    map[string]*models.Conversation{},
@@ -359,7 +364,18 @@ func (cw *ChatWindow) setupProvider(name string) {
 	}
 	cw.provider = p.Name
 	cw.cfg.CurrentProvider = p.Name
-	if cw.agentMode {
+	if cw.model == "" {
+		if ms := p.ModelsList(); len(ms) > 0 {
+			cw.model = ms[0]
+		}
+	}
+	p.Model = cw.model
+	if p.Model == "" {
+		cw.llmClient, cw.reactClient = nil, nil
+		cw.status = "Provider「" + p.Name + "」尚未配置模型"
+		return
+	}
+	if cw.agentMode || len(cw.selectedToolIDs()) > 0 {
 		if err := cw.setupReactAgent(p); err == nil {
 			cw.status = ""
 			return
@@ -381,7 +397,7 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 	selected := cw.selectedToolIDs()
 
 	einoTools := make([]tool.BaseTool, 0)
-	mcpByServer := make(map[string][]string)
+	mcpServers := make(map[string]bool)
 
 	for _, toolID := range selected {
 		switch {
@@ -393,17 +409,18 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 			}
 			einoTools = append(einoTools, newBuiltinToolWrapper(def))
 		case strings.HasPrefix(toolID, "mcp:"):
-			parts := strings.Split(toolID, ":")
-			if len(parts) >= 3 {
-				mcpByServer[parts[1]] = append(mcpByServer[parts[1]], parts[2])
-			}
+			mcpServers[strings.TrimPrefix(toolID, "mcp:")] = true
 		}
 	}
 
-	for serverName, names := range mcpByServer {
+	for serverName := range mcpServers {
 		status, ok := cw.mcpManager.GetServerStatus(serverName)
 		if !ok || status.Status != "initialized" {
 			continue
+		}
+		names := make([]string, 0, len(status.Tools))
+		for _, tl := range status.Tools {
+			names = append(names, tl.Name)
 		}
 		mcpTools, err := einomcp.GetTools(ctx, &einomcp.Config{Cli: status.Client, ToolNameList: names})
 		if err != nil {
@@ -602,9 +619,11 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 			name = p.Name
 		}
 	}
-	model := ""
-	if p, ok := cw.findProvider(name); ok {
-		model = p.Model
+	model := cw.model
+	if p, ok := cw.findProvider(name); ok && model == "" {
+		if ms := p.ModelsList(); len(ms) > 0 {
+			model = ms[0]
+		}
 	}
 	conv, err := cw.convManager.CreateConversation(defaultTitle, name, model)
 	if err != nil {
@@ -885,8 +904,13 @@ func (cw *ChatWindow) switchProvider(name string) {
 	cw.cfg.CurrentProvider = name
 	if cw.cur != nil {
 		cw.cur.Provider = name
-		if p, ok := cw.findProvider(name); ok {
-			cw.cur.Model = p.Model
+		cw.cur.Model = cw.model
+		if cw.cur.Model == "" {
+			if p, ok := cw.findProvider(name); ok {
+				if ms := p.ModelsList(); len(ms) > 0 {
+					cw.cur.Model = ms[0]
+				}
+			}
 		}
 		_ = cw.convManager.SaveConversation(cw.cur)
 	}

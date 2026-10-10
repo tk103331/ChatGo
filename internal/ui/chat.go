@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
 	"github.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
+	moverlay "github.com/ZacharyZhang-NY/MujicaUI/overlay"
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 	acp "github.com/coder/acp-go-sdk"
 )
@@ -153,25 +155,44 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 	}
 }
 
-// modelSelector chooses among the enabled providers.
+// modelSelector chooses among the models the active agent may use.
 func (cw *ChatWindow) modelSelector(c *mgo.Context) {
+	refs := cw.agentModelRefs()
 	var models []mchat.ModelOption
-	for _, p := range cw.cfg.Providers {
-		if !p.Enabled || p.Name == "" {
-			continue
-		}
-		models = append(models, mchat.ModelOption{ID: p.Name, Name: p.Name, Capabilities: capsOf(p)})
+	for _, ref := range refs {
+		models = append(models, mchat.ModelOption{ID: ref, Name: modelLabel(ref), Capabilities: capsOf(cw.providerForRef(ref))})
 	}
 	if len(models) == 0 {
 		if minput.Button(c, "配置模型", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
 			cw.section = sectionSettings
+			cw.settings.tab = 0
 		}
 		return
 	}
-	r := mchat.ModelSelector(c, &cw.provider, models, mchat.ModelSelectorOptions{Label: "模型"})
+	cur := cw.currentModelRef()
+	if !containsStr(refs, cur) {
+		cur = refs[0]
+	}
+	r := mchat.ModelSelector(c, &cur, models, mchat.ModelSelectorOptions{Label: "模型"})
 	if r.Changed() {
+		cw.setModelRef(cur)
+		if cw.currentAgent == "" {
+			cw.saveChatSelection()
+		}
 		cw.switchProvider(cw.provider)
 	}
+}
+
+// providerForRef returns the provider a model reference belongs to.
+func (cw *ChatWindow) providerForRef(ref string) config.Provider {
+	name, _ := splitModelRef(ref)
+	if name == "" {
+		name = cw.provider
+	}
+	if p, ok := cw.findProvider(name); ok {
+		return p
+	}
+	return config.Provider{}
 }
 
 // acpControls shows the ACP session's modes and configuration options.
@@ -241,22 +262,78 @@ func capsOf(p config.Provider) []string {
 	return []string{p.Type}
 }
 
-// toolMenu lists the available builtin and MCP tools as toggles.
+// toolMenu toggles builtin tools and MCP servers, grouped in a popover.
 func (cw *ChatWindow) toolMenu(c *mgo.Context) {
 	metas := cw.toolMetas()
 	if len(metas) == 0 {
+		if minput.Button(c, "配置工具", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("sliders-horizontal")}).Clicked() {
+			cw.section = sectionSettings
+			cw.settings.tab = 1
+		}
 		return
 	}
-	ons := make([]bool, len(metas))
-	items := make([]mchat.ToolItem, len(metas))
-	for i, mt := range metas {
-		ons[i] = cw.toolEnabled(mt.ID)
-		items[i] = mchat.ToolItem{ID: mt.ID, Label: mt.Label, Description: mt.Desc, On: &ons[i]}
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	on := 0
+	for _, mt := range metas {
+		if cw.toolEnabled(mt.ID) {
+			on++
+		}
 	}
-	r := mchat.ToolToggleMenu(c, items)
-	if _, ok := r.Changed(); ok {
-		for i, mt := range metas {
-			cw.toolOn[mt.ID] = ons[i]
+	label := "工具"
+	if on > 0 {
+		label = "工具 (" + strconv.Itoa(on) + ")"
+	}
+	b := mgo.ButtonBase(c).MinHeight(mtheme.MinHitSize).Padding(0, u*2).Gap(u).
+		Radius(mtheme.ControlRadius).Label(label).TextColor(k.TextMuted).Role(mgo.RolePopUpButton)
+	open := mgo.Local(b, "tools", func() bool { return false })
+	if b.Clicked() {
+		*open = !*open
+	}
+	b.Children(func() {
+		mgo.Icon(c, icons.Must("sliders-horizontal")).Size(16, 16)
+		if on > 0 {
+			mgo.Text(c, strconv.Itoa(on)).FontWeight(600).TextColor(k.AccentText).SingleLine()
+		}
+	})
+	var builtins, mcp []toolMeta
+	for _, mt := range metas {
+		if strings.HasPrefix(mt.ID, "mcp:") {
+			mcp = append(mcp, mt)
+		} else {
+			builtins = append(builtins, mt)
+		}
+	}
+	changed := false
+	moverlay.Popover(c, b, open, moverlay.PopoverOptions{Title: "工具", Width: 340}, func() {
+		agentSearch(c, &cw.toolQuery, "搜索工具").Height(mcore.Density(c).ControlHeight() - 6)
+		section := func(title string, list []toolMeta) {
+			list = filterMetas(list, cw.toolQuery)
+			if len(list) == 0 {
+				return
+			}
+			mgo.Text(c, title).FontWeight(600).FontSize(small).TextColor(k.TextMuted)
+			for _, mt := range list {
+				mt := mt
+				v := cw.toolEnabled(mt.ID)
+				mgo.Column(c).Gap(0).Children(func() {
+					if minput.Switch(c, &v, mt.Label, minput.SwitchOptions{}).Changed() {
+						cw.toolOn[mt.ID] = v
+						changed = true
+					}
+					if mt.Desc != "" {
+						mgo.Text(c, mt.Desc).FontSize(small).TextColor(k.TextMuted).MaxLines(1).Ellipsis("…")
+					}
+				})
+			}
+		}
+		section("内置工具", builtins)
+		section("MCP", mcp)
+	})
+	if changed {
+		if cw.currentAgent == "" {
+			cw.saveChatSelection()
 		}
 		cw.clientDirty.Store(true)
 		c.Invalidate()

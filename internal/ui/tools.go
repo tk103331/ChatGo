@@ -1,40 +1,34 @@
 package ui
 
-import "chatgo/internal/config"
+import (
+	"strings"
 
-// toolMeta describes one selectable tool: a builtin tool or an MCP tool.
+	"chatgo/internal/config"
+)
+
+// toolMeta describes one selectable tool: a builtin tool or a whole MCP server.
 type toolMeta struct {
 	ID    string
 	Label string
 	Desc  string
 }
 
-// toolMetas lists every currently available tool: enabled builtins plus the
-// tools of initialized MCP servers.
+// toolMetas lists every tool the active agent may use: the enabled builtin
+// tools and MCP servers, narrowed to the agent's whitelist when it has one.
 func (cw *ChatWindow) toolMetas() []toolMeta {
 	var out []toolMeta
-	for _, t := range cw.cfg.BuiltinTools {
-		if !t.Enabled {
-			continue
+	for _, name := range cw.visibleBuiltinToolNames() {
+		desc := ""
+		for _, t := range cw.cfg.BuiltinTools {
+			if t.Name == name {
+				desc = config.GetBuiltinToolDescription(t.Type)
+				break
+			}
 		}
-		out = append(out, toolMeta{
-			ID:    "builtin:" + t.Name,
-			Label: t.Name,
-			Desc:  config.GetBuiltinToolDescription(t.Type),
-		})
+		out = append(out, toolMeta{ID: "builtin:" + name, Label: name, Desc: desc})
 	}
-	for _, s := range cw.cfg.MCPServers {
-		status, ok := cw.mcpManager.GetServerStatus(s.Name)
-		if !ok || status.Status != "initialized" {
-			continue
-		}
-		for _, tl := range status.Tools {
-			out = append(out, toolMeta{
-				ID:    "mcp:" + s.Name + ":" + tl.Name,
-				Label: tl.Name,
-				Desc:  tl.Description,
-			})
-		}
+	for _, name := range cw.visibleMCPServerNames() {
+		out = append(out, toolMeta{ID: "mcp:" + name, Label: name, Desc: "MCP 服务器"})
 	}
 	return out
 }
@@ -45,6 +39,21 @@ func (cw *ChatWindow) toolEnabled(id string) bool {
 		return v
 	}
 	return true
+}
+
+// filterMetas returns the tools whose label or description contains query.
+func filterMetas(list []toolMeta, query string) []toolMeta {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return list
+	}
+	var out []toolMeta
+	for _, m := range list {
+		if strings.Contains(strings.ToLower(m.Label), q) || strings.Contains(strings.ToLower(m.Desc), q) {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // selectedToolIDs returns the IDs of the tools the user has left on.
