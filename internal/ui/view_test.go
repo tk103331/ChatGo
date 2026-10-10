@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -190,5 +191,27 @@ func TestSkillPageRenders(t *testing.T) {
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("skill render failed: %v", img)
+	}
+}
+
+func TestPreviewClose(t *testing.T) {
+	wd, _ := os.Getwd()
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.workspace = wd
+	cw.rightPanel = true
+	cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: wd,
+		Messages: []models.Message{{ID: "u", Role: "user", Content: "hi", Timestamp: time.Now()}}}
+	cw.convs = []models.Conversation{*cw.cur}
+	cw.openPreview(wd + "/chat.go")
+	cw.openPreview(wd + "/nav.go")
+	tr := mgo.NewTester(cw.view, 1400, 800)
+	tr.Frame()
+	if err := tr.Click("关闭预览"); err != nil {
+		t.Fatalf("click close: %v", err)
+	}
+	tr.Frame()
+	if len(cw.previewTabs) != 1 {
+		t.Fatalf("expected 1 tab, got %d", len(cw.previewTabs))
 	}
 }

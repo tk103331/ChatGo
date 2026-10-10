@@ -11,23 +11,37 @@ import (
 	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
 	"github.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	mnavigation "github.com/ZacharyZhang-NY/MujicaUI/navigation"
 	moverlay "github.com/ZacharyZhang-NY/MujicaUI/overlay"
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 const chatAgentName = "Chat"
 
+const chatAgentIcon = "message-square"
+
 type agentForm struct {
 	editing      int
 	name         string
 	description  string
+	icon         string
 	systemPrompt string
 	provider     string
-	mode         int
 	builtinTools []string
 	mcpServers   []string
 	skills       []string
+}
+
+var agentIcons = []string{
+	"bot", "user", "brain", "star", "telescope", "terminal",
+	"command", "git-branch", "shield-check", "key-round", "globe",
+	"layout-grid", "sliders-horizontal", "folder", "file-code", "archive",
+}
+
+func agentIcon(name string) string {
+	if name == "" {
+		return "bot"
+	}
+	return name
 }
 
 // agentsPage shows the agent presets as a card grid.
@@ -60,8 +74,11 @@ func (cw *ChatWindow) agentCard(c *mgo.Context, i int) {
 	mgo.Column(c).Key("agent:"+a.Name).Gap(u*2).Padding(u*3).FillWidth().
 		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
 		Children(func() {
-			mgo.Text(c, a.Name).Font(mtheme.SerifFont).
-				FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).SingleLine()
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				mgo.Icon(c, icons.Must(agentIcon(a.Icon))).Size(20, 20).TextColor(k.AccentText)
+				mgo.Text(c, a.Name).Font(mtheme.SerifFont).
+					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
+			})
 			if a.Description != "" {
 				mgo.Text(c, a.Description).TextColor(k.TextMuted).
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize)).MaxLines(2)
@@ -120,6 +137,20 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 		mgo.Column(c).Gap(mcore.Density(c).Unit() * 2).Children(func() {
 			minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Agent 名称"})
 			minput.TextInput(c, &f.description, minput.TextInputOptions{Label: "描述", Placeholder: "一句话说明"})
+			mgo.Text(c, "头像").FontSize(small).TextColor(k.TextMuted)
+			mgo.Row(c).Gap(mcore.Density(c).Unit()).Wrap().Children(func() {
+				for _, ic := range agentIcons {
+					ic := ic
+					b := mgo.ButtonBase(c).Size(36, 36).Shrink(0).Radius(mtheme.ControlRadius).Label(ic)
+					if agentIcon(f.icon) == ic {
+						b.Background(k.Selection).Border(mtheme.BorderWidth, k.AccentText)
+					}
+					b.Children(func() { mgo.Icon(c, icons.Must(ic)).Size(18, 18) })
+					if b.Clicked() {
+						f.icon = ic
+					}
+				}
+			})
 			provOpts := []minput.SelectOption[string]{{Value: "", Label: "（默认当前模型）"}}
 			for _, p := range cw.cfg.Providers {
 				if p.Enabled && p.Name != "" {
@@ -127,9 +158,6 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 				}
 			}
 			minput.Select(c, &f.provider, provOpts, minput.SelectOptions{Label: "Provider"})
-			mnavigation.SegmentedControl(c, &f.mode, []mnavigation.Segment{
-				{Label: "对话"}, {Label: "Agents"},
-			}, mnavigation.SegmentedControlOptions{Label: "模式", Equal: true})
 			minput.TextArea(c, &f.systemPrompt, minput.TextAreaOptions{
 				Label: "系统提示词", Placeholder: "设定该 Agent 的角色与行为", MinHeight: 120,
 			})
@@ -168,13 +196,9 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 
 func (cw *ChatWindow) loadAgentForm(i int) {
 	a := cw.cfg.Agents[i]
-	mode := 0
-	if a.Mode == "agent" {
-		mode = 1
-	}
 	cw.agentForm = agentForm{
-		editing: i, name: a.Name, description: a.Description,
-		systemPrompt: a.SystemPrompt, provider: a.Provider, mode: mode,
+		editing: i, name: a.Name, description: a.Description, icon: a.Icon,
+		systemPrompt: a.SystemPrompt, provider: a.Provider,
 		builtinTools: append([]string(nil), a.BuiltinTools...),
 		mcpServers:   append([]string(nil), a.MCPServers...),
 		skills:       append([]string(nil), a.Skills...),
@@ -196,11 +220,11 @@ func (cw *ChatWindow) saveAgent() bool {
 		return false
 	}
 	mode := "chat"
-	if f.mode == 1 {
+	if len(f.builtinTools) > 0 || len(f.mcpServers) > 0 {
 		mode = "agent"
 	}
 	def := config.AgentDef{
-		Name: f.name, Description: f.description, SystemPrompt: f.systemPrompt,
+		Name: f.name, Description: f.description, Icon: f.icon, SystemPrompt: f.systemPrompt,
 		Provider: f.provider, Mode: mode,
 		BuiltinTools: f.builtinTools, MCPServers: f.mcpServers, Skills: f.skills,
 	}
@@ -285,8 +309,11 @@ func (cw *ChatWindow) applyAgent(name string) {
 			}
 		}
 		if len(a.Skills) > 0 && cw.cur != nil {
-			cw.cur.Skills = cw.skillIDsByName(a.Skills)
-			_ = cw.convManager.SaveConversation(cw.cur)
+			ids := cw.skillIDsByName(a.Skills)
+			if !sameStrings(ids, cw.cur.Skills) {
+				cw.cur.Skills = ids
+				_ = cw.convManager.SaveConversation(cw.cur)
+			}
 		}
 		_ = config.SaveConfig(cw.cfg)
 		cw.setupProvider(cw.provider)
@@ -305,6 +332,18 @@ func agentAllowsTool(a config.AgentDef, id string) bool {
 		}
 	}
 	return false
+}
+
+func sameStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 func containsStr(s []string, v string) bool {

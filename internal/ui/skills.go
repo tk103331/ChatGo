@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -13,6 +14,7 @@ import (
 
 	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
+	"github.com/ZacharyZhang-NY/MujicaUI/data"
 	"github.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "github.com/ZacharyZhang-NY/MujicaUI/overlay"
@@ -39,19 +41,23 @@ type skillFrontmatter struct {
 func skillDirs() []string {
 	var dirs []string
 	if home, err := os.UserHomeDir(); err == nil {
-		for _, d := range []string{".agents/skills", ".claude/skills", ".opencode/skill", ".opencode/skills"} {
-			dirs = append(dirs, filepath.Join(home, d))
-		}
+		dirs = append(dirs, filepath.Join(home, ".agents", "skills"))
 	}
 	if wd, err := os.Getwd(); err == nil {
-		dirs = append(dirs, filepath.Join(wd, ".claude", "skills"), filepath.Join(wd, ".agents", "skills"))
+		dirs = append(dirs, filepath.Join(wd, ".agents", "skills"), filepath.Join(wd, ".claude", "skills"))
+	}
+	if home, err := os.UserHomeDir(); err == nil {
+		for _, d := range []string{".claude/skills", ".opencode/skill", ".opencode/skills"} {
+			dirs = append(dirs, filepath.Join(home, d))
+		}
 	}
 	return dirs
 }
 
-// loadSkills scans the skill directories.
+// loadSkills scans the skill directories, deduplicating by name.
 func (cw *ChatWindow) loadSkills() {
-	seen := map[string]bool{}
+	seenPath := map[string]bool{}
+	seenName := map[string]bool{}
 	var out []skill
 	for _, dir := range skillDirs() {
 		entries, err := os.ReadDir(dir)
@@ -61,11 +67,17 @@ func (cw *ChatWindow) loadSkills() {
 		for _, e := range entries {
 			path := filepath.Join(dir, e.Name(), "SKILL.md")
 			data, err := os.ReadFile(path)
-			if err != nil || seen[path] {
+			if err != nil || seenPath[path] {
 				continue
 			}
-			seen[path] = true
-			out = append(out, parseSkill(path, dir, data))
+			seenPath[path] = true
+			s := parseSkill(path, dir, data)
+			key := strings.ToLower(s.Name)
+			if seenName[key] {
+				continue
+			}
+			seenName[key] = true
+			out = append(out, s)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -191,10 +203,127 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 		}
 		mgo.Text(c, s.Path).Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).
 			SingleLine().Ellipsis("…")
+		dir := filepath.Dir(s.Path)
+		if cw.skillFilesFor != s.ID {
+			cw.skillFiles = listSkillFiles(dir)
+			cw.skillFilesFor = s.ID
+			cw.skillFileSel = "SKILL.md"
+			cw.skillFileBodyOf = ""
+		}
+		if cw.skillFileSel == "" {
+			cw.skillFileSel = "SKILL.md"
+		}
+		if len(cw.skillFiles) > 0 {
+			mgo.Scroll(c).MaxHeight(180).Children(func() {
+				cw.skillFileTree(c, dir)
+			})
+		}
+		if cw.skillFileBodyOf != cw.skillFileSel {
+			data, err := os.ReadFile(filepath.Join(dir, cw.skillFileSel))
+			if err != nil {
+				cw.skillFileBody = "读取失败：" + err.Error()
+			} else {
+				cw.skillFileBody = string(data)
+			}
+			cw.skillFileBodyOf = cw.skillFileSel
+		}
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			mchat.MarkdownView(c, s.Body)
+			if strings.HasSuffix(strings.ToLower(cw.skillFileSel), ".md") {
+				mchat.MarkdownView(c, cw.skillFileBody)
+			} else {
+				mgo.Text(c, cw.skillFileBody).Font(mtheme.MonoFont).FontSize(caption)
+			}
 		})
 	})
+}
+
+func (cw *ChatWindow) skillFileTree(c *mgo.Context, dir string) {
+	select_ := func(f string) {
+		cw.skillFileSel = f
+		cw.skillFileBodyOf = ""
+	}
+	skillTreeInto(c, dir, "", cw.skillFiles, cw.skillFileSel, select_)
+}
+
+// skillTreeInto renders files of a directory as a tree of folders and files.
+func skillTreeInto(c *mgo.Context, dir, prefix string, files []string, sel string, onSelect func(string)) {
+	u := mcore.Density(c).Unit()
+	var root []string
+	sub := map[string][]string{}
+	for _, f := range files {
+		if i := strings.IndexByte(f, '/'); i >= 0 {
+			sub[f[:i]] = append(sub[f[:i]], f[i+1:])
+		} else {
+			root = append(root, f)
+		}
+	}
+	sort.Strings(root)
+	for _, f := range root {
+		skillFileButton(c, prefix+f, sel, onSelect)
+	}
+	names := make([]string, 0, len(sub))
+	for n := range sub {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		n := name
+		open := mgo.Local(c.Root(), "skilldir:"+dir+"/"+prefix+n, func() bool { return true })
+		data.Collapsible(c, open, data.CollapsibleOptions{Title: n}, func() {
+			mgo.Column(c).Margin(0, 0, 0, u*3).Children(func() {
+				skillTreeInto(c, dir, prefix+n+"/", sub[n], sel, onSelect)
+			})
+		})
+	}
+}
+
+func skillFileButton(c *mgo.Context, rel, sel string, onSelect func(string)) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	b := mgo.ButtonBase(c).Row().FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
+		Padding(u, u*2).Gap(u).AlignItems(mgo.Center).Justify(mgo.Start).Radius(mtheme.ControlRadius).Label(rel)
+	switch {
+	case sel == rel:
+		b.Background(k.Selection)
+	case b.Hovered():
+		b.Background(k.SurfaceHover)
+	}
+	b.Children(func() {
+		mgo.Icon(c, icons.Must("file-text")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
+		mgo.Text(c, filepath.Base(rel)).SingleLine()
+	})
+	if b.Clicked() {
+		onSelect(rel)
+	}
+}
+
+// listSkillFiles lists a skill directory's files, relative and sorted.
+func listSkillFiles(dir string) []string {
+	var files []string
+	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		name := d.Name()
+		if d.IsDir() {
+			if path != dir && strings.HasPrefix(name, ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasPrefix(name, ".") {
+			return nil
+		}
+		if rel, err := filepath.Rel(dir, path); err == nil {
+			files = append(files, rel)
+		}
+		if len(files) >= 300 {
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	sort.Strings(files)
+	return files
 }
 
 func (cw *ChatWindow) skillIDsByName(names []string) []string {

@@ -8,6 +8,8 @@ import (
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
+const navItemSize float32 = 44
+
 type navSection int
 
 const (
@@ -25,8 +27,6 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 	mgo.Column(c).Width(60).Shrink(0).FillHeight().Background(k.Surface).
 		BorderWidth(0, mtheme.BorderWidth, 0, 0).BorderColor(k.Border).
 		Padding(u).Gap(u).AlignItems(mgo.Center).Children(func() {
-		mgo.Text(c, "CG").Font(mtheme.SerifFont).FontSize(mcore.FontSize(c, mtheme.BodySize)).
-			FontWeight(600).Margin(u, 0, u*2, 0)
 		cw.navItem(c, "对话", "message-square", sectionChat)
 		cw.navItem(c, "Agent", "bot", sectionAgent)
 		cw.navItem(c, "Skill", "brain", sectionSkill)
@@ -42,7 +42,7 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 
 func (cw *ChatWindow) navItem(c *mgo.Context, label, icon string, section navSection) {
 	k := mcore.Tokens(c)
-	b := mgo.ButtonBase(c).Size(44, 44).Shrink(0).Radius(mtheme.ControlRadius).Label(label).Tooltip(label)
+	b := mgo.ButtonBase(c).Size(navItemSize, navItemSize).Shrink(0).Radius(mtheme.ControlRadius).Label(label).Tooltip(label)
 	if cw.section == section {
 		b.Background(k.Selection).TextColor(k.Text)
 	} else {

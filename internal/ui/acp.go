@@ -2,11 +2,13 @@ package ui
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -21,6 +23,34 @@ import (
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
+//go:embed assets/claude.png
+var claudeLogoPNG []byte
+
+//go:embed assets/opencode.png
+var opencodeLogoPNG []byte
+
+var (
+	logoOnce   sync.Once
+	logoClaude *mgo.Bitmap
+	logoOpen   *mgo.Bitmap
+)
+
+// acpLogo returns the official logo of a known ACP agent by name.
+func acpLogo(name string) *mgo.Bitmap {
+	logoOnce.Do(func() {
+		logoClaude, _ = mgo.DecodeBitmap(claudeLogoPNG)
+		logoOpen, _ = mgo.DecodeBitmap(opencodeLogoPNG)
+	})
+	low := strings.ToLower(name)
+	switch {
+	case strings.Contains(low, "claude"):
+		return logoClaude
+	case strings.Contains(low, "opencode"):
+		return logoOpen
+	}
+	return nil
+}
+
 type acpForm struct {
 	editing int
 	name    string
@@ -34,12 +64,15 @@ func (cw *ChatWindow) acpRow(c *mgo.Context, i int) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	a := cw.cfg.ACPAgents[i]
-	b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
-		Padding(u, u*2).Radius(mtheme.ControlRadius)
+	b := mgo.ButtonBase(c).Row().FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
+		Padding(u, u*2).Gap(u).AlignItems(mgo.Center).Radius(mtheme.ControlRadius)
 	if cw.acpForm.editing == i {
 		b.Background(k.Selection)
 	}
 	b.Children(func() {
+		if logo := acpLogo(a.Name); logo != nil {
+			mgo.Image(c, logo).Size(18, 18)
+		}
 		mgo.Text(c, a.Name).SingleLine()
 	})
 	if b.Clicked() {
