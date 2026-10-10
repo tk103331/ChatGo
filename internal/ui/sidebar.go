@@ -7,6 +7,8 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/pkg/models"
+
 	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
 	"github.com/ZacharyZhang-NY/MujicaUI/icons"
@@ -19,9 +21,9 @@ import (
 func (cw *ChatWindow) sidebar(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Fill().Children(func() {
-		mgo.Column(c).Padding(u*2, u).Gap(u).Children(func() {
+		mgo.Row(c).Padding(u*2, u).Gap(u).AlignItems(mgo.Center).Children(func() {
 			w := minput.Button(c, "新增工作区", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("folder")})
-			w.FillWidth()
+			w.Grow(1)
 			if w.Clicked() {
 				cw.pickWorkspace()
 			}
@@ -173,6 +175,9 @@ func (cw *ChatWindow) groupedConvRows() []convRow {
 	var rows []convRow
 	for _, ws := range list {
 		rows = append(rows, convRow{header: true, ws: ws})
+		if cw.wsCollapsed[ws] {
+			continue
+		}
 		for _, i := range groups[ws] {
 			rows = append(rows, convRow{index: i})
 		}
@@ -185,30 +190,36 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Row(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).Padding(u, u).Gap(u).
-		AlignItems(mgo.Center).Background(k.Surface).Children(func() {
-		mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
-		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(600).TextColor(k.TextMuted).
+	chev := "chevron-down"
+	if cw.wsCollapsed[ws] {
+		chev = "chevron-right"
+	}
+	mgo.Row(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()*1.2).Padding(u, u).Gap(u).
+		AlignItems(mgo.Center).Background(k.Background).Children(func() {
+		if mcore.IconAction(c, icons.Must(chev), "折叠/展开工作区").Clicked() {
+			cw.wsCollapsed[ws] = !cw.wsCollapsed[ws]
+		}
+		mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.AccentText).Shrink(0)
+		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(700).TextColor(k.Text).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(ws)
 		plus := mcore.IconAction(c, icons.Must("plus"), "新建会话")
 		open := mgo.Local(plus, "agents", func() bool { return false })
 		if plus.Clicked() {
 			*open = !*open
 		}
-		moverlay.PopupMenuOpen(c, plus, open, func(m *moverlay.PopupMenu) {
-			if m.Item(chatAgentName, moverlay.PopupMenuItemOptions{}) {
-				cw.newConversationIn(ws, "")
-			}
+		pick := func(agent string) {
+			*open = false
+			cw.newConversationIn(ws, agent)
+		}
+		moverlay.Popover(c, plus, open, moverlay.PopoverOptions{Title: "新建会话", Width: 240}, func() {
+			menuItem(c, iconLeading(c, chatAgentIcon), chatAgentName, func() { pick("") })
 			for _, a := range cw.cfg.Agents {
 				name := a.Name
-				if m.Item(name, moverlay.PopupMenuItemOptions{}) {
-					cw.newConversationIn(ws, "agent:"+name)
-				}
+				menuItem(c, iconLeading(c, agentIcon(a.Icon)), name, func() { pick("agent:" + name) })
 			}
 			for _, a := range cw.cfg.ACPAgents {
-				if m.Item("ACP · "+a.Name, moverlay.PopupMenuItemOptions{}) {
-					cw.newConversationIn(ws, "acp:"+a.Name)
-				}
+				name := a.Name
+				menuItem(c, logoLeading(c, name), "ACP · "+name, func() { pick("acp:" + name) })
 			}
 		})
 		if containsStr(cw.cfg.Workspaces, ws) {
@@ -234,7 +245,13 @@ func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	conv := cw.convs[i]
 	mc := mchat.ChatConversation{ID: conv.ID, Title: conv.Title, Updated: convLast(conv)}
 	selected := cw.cur != nil && cw.cur.ID == conv.ID
-	v := mchat.ConversationItem(c, &mc, mchat.ConversationItemOptions{Selected: selected})
+	var v mchat.ConversationItemView
+	mgo.Row(c).FillWidth().Margin(0, 0, 0, mcore.Density(c).Unit()*3).AlignItems(mgo.Center).Children(func() {
+		cw.convLeading(c, conv)
+		mgo.Box(c).Grow(1).MinWidth(0).Children(func() {
+			v = mchat.ConversationItem(c, &mc, mchat.ConversationItemOptions{Selected: selected})
+		})
+	})
 	switch {
 	case v.Opened:
 		cw.selectConversation(conv.ID)
@@ -268,4 +285,55 @@ func (cw *ChatWindow) exportConversation(c *mgo.Context, id string) {
 	}
 	c.WriteClipboard(mchat.ExportConversation(conv.Title, msgs, mchat.ExportMarkdown))
 	cw.toast("已复制「"+conv.Title+"」的 Markdown", mcore.SeveritySuccess)
+}
+
+// menuItem is one row of a new-conversation menu, with an optional leading mark.
+func menuItem(c *mgo.Context, leading func(), label string, action func()) {
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+		if leading != nil {
+			leading()
+		}
+		b := minput.Button(c, label, minput.ButtonOptions{Variant: minput.Ghost})
+		b.FillWidth()
+		if b.Clicked() {
+			action()
+		}
+	})
+}
+
+func iconLeading(c *mgo.Context, name string) func() {
+	return func() {
+		mgo.Icon(c, icons.Must(name)).Size(16, 16).TextColor(mcore.Tokens(c).AccentText)
+	}
+}
+
+func logoLeading(c *mgo.Context, name string) func() {
+	return func() {
+		if logo := acpLogo(name); logo != nil {
+			mgo.Image(c, logo).Size(16, 16)
+		}
+	}
+}
+
+// convLeading shows the conversation agent's logo or icon.
+func (cw *ChatWindow) convLeading(c *mgo.Context, conv models.Conversation) {
+	u := mcore.Density(c).Unit()
+	switch {
+	case strings.HasPrefix(conv.Agent, "acp:"):
+		if logo := acpLogo(strings.TrimPrefix(conv.Agent, "acp:")); logo != nil {
+			mgo.Image(c, logo).Size(16, 16).Margin(0, 0, 0, u)
+		}
+	case strings.HasPrefix(conv.Agent, "agent:"):
+		name := strings.TrimPrefix(conv.Agent, "agent:")
+		ic := "bot"
+		for _, a := range cw.cfg.Agents {
+			if a.Name == name {
+				ic = agentIcon(a.Icon)
+			}
+		}
+		mgo.Icon(c, icons.Must(ic)).Size(16, 16).TextColor(mcore.Tokens(c).AccentText).Margin(0, 0, 0, u)
+	default:
+		mgo.Icon(c, icons.Must(chatAgentIcon)).Size(16, 16).TextColor(mcore.Tokens(c).AccentText).Margin(0, 0, 0, u)
+	}
 }

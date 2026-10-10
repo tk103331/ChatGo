@@ -28,6 +28,7 @@ import (
 	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
 	mfeedback "github.com/ZacharyZhang-NY/MujicaUI/feedback"
+	"github.com/ZacharyZhang-NY/MujicaUI/icons"
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
@@ -53,12 +54,40 @@ type ChatWindow struct {
 	mode    pageMode
 	section navSection
 
+	rightPanel bool
+	rightTab   int
+	leftHidden bool
+	leftW      float32
+
+	termOpen    bool
+	terms       []*termTab
+	termActive  int
+	termH       float32
+	treeW       float32
+	previewW    float32
+	chatW       float32
+	lastWinW    float32
+	lastRightW  float32
+	lastPreview bool
+
+	previewTabs []previewTab
+	previewSel  int
+
+	gitRepo    bool
+	gitBranch  string
+	gitChanges []string
+	gitLog     []string
+	gitLoaded  bool
+	gitFor     string
+
 	currentAgent string
 	systemPrompt string
+	homeAgent    string
 
-	convs     []models.Conversation
-	cur       *models.Conversation
-	workspace string
+	convs       []models.Conversation
+	cur         *models.Conversation
+	workspace   string
+	wsCollapsed map[string]bool
 
 	homeList mgo.ListState
 	convList mgo.ListState
@@ -115,6 +144,12 @@ type ChatWindow struct {
 	skillsQuery     string
 	skillsListState mgo.ListState
 
+	skillFiles      []string
+	skillFilesFor   string
+	skillFileSel    string
+	skillFileBody   string
+	skillFileBodyOf string
+
 	acpMu         sync.Mutex
 	acpConvs      map[string]*acpConv
 	acpConvBySess map[acp.SessionId]string
@@ -149,6 +184,8 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		acpConvBySess: map[acp.SessionId]string{},
 		acpConvObj:    map[string]*models.Conversation{},
 		acpStarting:   map[string]bool{},
+		rightPanel:    false,
+		wsCollapsed:   map[string]bool{},
 		themeMode:     parseThemeMode(cfg.ThemeMode),
 		density:       mtheme.Compact,
 		locale:        parseLocale(cfg.Locale),
@@ -172,16 +209,19 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 // Show creates the MyGo window; call it from mygo.App.WhenReady.
 func (cw *ChatWindow) Show() {
 	w := mygo.NewWindow(mygo.WindowOptions{
-		Title:     "ChatGo",
-		Width:     1000,
-		Height:    700,
-		MinWidth:  720,
-		MinHeight: 520,
-		Content:   mgo.View(cw.view),
+		Title:         "ChatGo",
+		Width:         1000,
+		Height:        700,
+		MinWidth:      720,
+		MinHeight:     520,
+		TitleBarStyle: mygo.TitleBarHiddenInset,
+		Content:       mgo.View(cw.view),
 	})
 	cw.winMu.Lock()
 	cw.window = w
 	cw.winMu.Unlock()
+	_ = w.SetIcon(logoPNG)
+	_ = mygo.App.Dock.SetIcon(logoPNG)
 }
 
 // view builds the whole interface for the frame.
@@ -190,10 +230,13 @@ func (cw *ChatWindow) view(c *mgo.Context) {
 	if cw.clientDirty.Swap(false) {
 		cw.setupProvider(cw.provider)
 	}
-	mgo.Row(c).Fill().AlignItems(mgo.Stretch).Children(func() {
-		cw.navRail(c)
-		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
-			cw.sectionView(c)
+	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Children(func() {
+		cw.titleBar(c)
+		mgo.Row(c).Grow(1).MinHeight(0).AlignItems(mgo.Stretch).Children(func() {
+			cw.navRail(c)
+			mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+				cw.sectionView(c)
+			})
 		})
 	})
 	cw.confirmDialog(c)
@@ -215,6 +258,40 @@ func (cw *ChatWindow) flushToast(c *mgo.Context) {
 	}
 	mfeedback.ShowToast(c, mfeedback.ToastMessage{Message: cw.toastText, Severity: cw.toastSeverity})
 	cw.toastText = ""
+}
+
+// titleBar draws the self-drawn title bar under the window controls.
+func (cw *ChatWindow) titleBar(c *mgo.Context) {
+	bar := c.TitleBar()
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	h := navItemSize
+	mgo.Row(c).FillWidth().Height(h).Shrink(0).
+		Padding(0, bar.Right+u*2, 0, bar.Left+u*2).DragWindow().
+		AlignItems(mgo.Center).Gap(u).Background(k.Background).
+		BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
+		mgo.Image(c, brandBitmap()).Size(16, 16)
+		mgo.Text(c, cw.windowTitle()).FontSize(mcore.FontSize(c, mtheme.BodySize)).FontWeight(600).
+			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		if cw.section == sectionChat {
+			if mcore.IconAction(c, icons.Must("panel-left"), "会话列表").Clicked() {
+				cw.leftHidden = !cw.leftHidden
+			}
+			if mcore.IconAction(c, icons.Must("terminal"), "终端").Clicked() {
+				cw.toggleTerminal()
+			}
+			if mcore.IconAction(c, panelRight(), "文件树").Clicked() {
+				cw.rightPanel = !cw.rightPanel
+			}
+		}
+	})
+}
+
+func (cw *ChatWindow) windowTitle() string {
+	if cw.mode == modeChat && cw.cur != nil && cw.cur.Title != "" {
+		return "ChatGo · " + cw.cur.Title
+	}
+	return "ChatGo"
 }
 
 func (cw *ChatWindow) invalidate() {
@@ -245,7 +322,7 @@ func (cw *ChatWindow) reloadConvs() {
 
 func convLast(conv models.Conversation) time.Time {
 	if len(conv.Messages) == 0 {
-		return conv.UpdatedAt
+		return conv.CreatedAt
 	}
 	return conv.Messages[len(conv.Messages)-1].Timestamp
 }

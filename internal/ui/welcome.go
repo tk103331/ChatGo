@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"strings"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -16,7 +17,8 @@ import (
 func (cw *ChatWindow) homeView(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	var view mchat.CapabilityCardsView
-	mgo.Column(c).Fill().Justify(mgo.Center).Children(func() {
+	mgo.Column(c).Fill().Justify(mgo.Center).AlignItems(mgo.Center).Gap(mcore.Density(c).Unit() * 3).Children(func() {
+		mgo.Image(c, brandBitmap()).Size(72, 72)
 		view = cw.welcome(c)
 	})
 	if view.Example != "" {
@@ -32,7 +34,7 @@ func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
 		Greeting: "ChatGo",
 		Subtitle: "基于 MyGo 与 MujicaUI 的 AI 对话客户端",
 		Cards: []mchat.CapabilityCard{
-			{Title: "多模型", Description: "OpenAI / Claude / Qwen / DeepSeek / Gemini / Ollama", Icon: icons.Must("bot"), Examples: []string{"用一句话介绍你自己"}},
+			{Title: "多模型", Description: "OpenAI、Claude、Gemini 等主流模型", Icon: icons.Must("bot"), Examples: []string{"用一句话介绍你自己"}},
 			{Title: "Agents 工具", Description: "内置工具与 MCP 服务器，按需自动调用", Icon: icons.Must("terminal"), Examples: []string{"帮我看看这个项目有哪些文件"}},
 			{Title: "多会话", Description: "会话自动保存，支持搜索、重命名与导出", Icon: icons.Must("message-square"), Examples: []string{"写一个 Go 的快速排序"}},
 		},
@@ -40,6 +42,7 @@ func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
 			in := mchat.PromptComposer(c, &cw.draft, mchat.PromptComposerOptions{
 				Placeholder: "输入消息，Enter 开始对话",
 				MaxHeight:   160,
+				Tools:       func() { cw.homeSelectors(c) },
 				Actions: func() {
 					r := mchat.SendButton(c, mchat.SendButtonOptions{Disabled: strings.TrimSpace(cw.draft) == ""})
 					if r.Sent() {
@@ -47,7 +50,7 @@ func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
 					}
 				},
 			})
-			in.Element.FillWidth().MaxWidth(640)
+			in.Element.FillWidth()
 			if in.Submitted() {
 				cw.startFromHome()
 			}
@@ -56,12 +59,39 @@ func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
 	})
 }
 
+// homeSelectors chooses the workspace and agent for a chat started from home.
+func (cw *ChatWindow) homeSelectors(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).Gap(u * 3).AlignItems(mgo.Center).Children(func() {
+		wsOpts := make([]minput.SelectOption[string], 0, len(cw.workspaces()))
+		for _, ws := range cw.workspaces() {
+			label := filepath.Base(ws)
+			if label == "" || label == "." || label == string(filepath.Separator) {
+				label = ws
+			}
+			wsOpts = append(wsOpts, minput.SelectOption[string]{Value: ws, Label: label})
+		}
+		if len(wsOpts) > 0 {
+			minput.Select(c, &cw.workspace, wsOpts, minput.SelectOptions{Label: "项目", Placeholder: "选择项目"})
+		}
+		agOpts := make([]minput.SelectOption[string], 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+1)
+		agOpts = append(agOpts, minput.SelectOption[string]{Value: "", Label: chatAgentName})
+		for _, a := range cw.cfg.Agents {
+			agOpts = append(agOpts, minput.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
+		}
+		for _, a := range cw.cfg.ACPAgents {
+			agOpts = append(agOpts, minput.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
+		}
+		minput.Select(c, &cw.homeAgent, agOpts, minput.SelectOptions{Label: "Agent", Placeholder: "选择 Agent"})
+	})
+}
+
 // startFromHome creates a conversation and sends whatever is in the composer.
 func (cw *ChatWindow) startFromHome() {
 	if strings.TrimSpace(cw.draft) == "" {
 		return
 	}
-	cw.newConversation()
+	cw.newConversationIn(cw.workspace, cw.homeAgent)
 	cw.sendDraft()
 }
 

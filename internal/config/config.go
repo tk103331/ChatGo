@@ -30,6 +30,7 @@ type Config struct {
 type AgentDef struct {
 	Name         string   `yaml:"name"`
 	Description  string   `yaml:"description,omitempty"`
+	Icon         string   `yaml:"icon,omitempty"`
 	SystemPrompt string   `yaml:"system_prompt,omitempty"`
 	Provider     string   `yaml:"provider,omitempty"`
 	Mode         string   `yaml:"mode,omitempty"` // chat or agent

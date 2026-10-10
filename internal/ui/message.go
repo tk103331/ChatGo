@@ -31,7 +31,11 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 	if streaming {
 		status = mchat.MessageStreaming
 	}
-	mchat.MessageBubble(c, role, mchat.MessageBubbleOptions{}, func() {
+	opts := mchat.MessageBubbleOptions{}
+	if role == mchat.MessageAssistant {
+		opts.Avatar = cw.agentAvatar(c)
+	}
+	mchat.MessageBubble(c, role, opts, func() {
 		model := ""
 		if msg.Role == "assistant" && cw.cur != nil {
 			model = cw.cur.Model
@@ -87,6 +91,7 @@ func (cw *ChatWindow) messageRowACP(c *mgo.Context, i int, msg models.Message) {
 			if url, ok := r.Link(); ok {
 				c.OpenURL(url)
 			}
+			cw.messageActions(c, i, msg, false)
 		})
 	case "system":
 		mchat.MessageBubble(c, mchat.MessageSystem, mchat.MessageBubbleOptions{}, func() {
@@ -131,6 +136,7 @@ func (cw *ChatWindow) messageRowACP(c *mgo.Context, i int, msg models.Message) {
 			case streaming:
 				mchat.TypingIndicator(c, "Agent")
 			}
+			cw.messageActions(c, i, msg, streaming)
 		})
 	}
 }
@@ -245,10 +251,24 @@ func (cw *ChatWindow) resendFrom(i int) {
 	}
 	conv := cw.cur
 	conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Timestamp: time.Now()})
-	msgs := cw.chatMessages(conv, i)
 	cw.streaming = true
 	cw.msgList.ScrollToEnd()
+	if strings.HasPrefix(conv.Agent, "acp:") {
+		_ = cw.convManager.SaveConversation(conv)
+		cw.acpChatStart(conv, strings.TrimPrefix(conv.Agent, "acp:"), i, lastUserText(conv, i))
+		return
+	}
+	msgs := cw.chatMessages(conv, i)
 	ctx, cancel := context.WithCancel(context.Background())
 	cw.streamCancel = cancel
 	go cw.runStream(ctx, conv, i, msgs)
+}
+
+func lastUserText(conv *models.Conversation, before int) string {
+	for j := before - 1; j >= 0; j-- {
+		if conv.Messages[j].Role == "user" {
+			return conv.Messages[j].Content
+		}
+	}
+	return ""
 }
