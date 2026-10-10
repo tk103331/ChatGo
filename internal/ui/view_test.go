@@ -183,3 +183,12 @@ func TestMCPPageRenders(t *testing.T) {
 		t.Fatalf("mcp servers render failed: %v", img2)
 	}
 }
+
+func TestSkillPageRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionSkill
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("skill render failed: %v", img)
+	}
+}
