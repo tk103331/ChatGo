@@ -29,17 +29,6 @@ func themeModeName(m mcore.Mode) string {
 	}
 }
 
-func parseDensity(s string) mtheme.Density {
-	switch s {
-	case "compact":
-		return mtheme.Compact
-	case "comfortable":
-		return mtheme.Comfortable
-	default:
-		return mtheme.Default
-	}
-}
-
 func densityName(d mtheme.Density) string {
 	switch d {
 	case mtheme.Compact:

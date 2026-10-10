@@ -97,6 +97,18 @@ type ChatWindow struct {
 	acpList mgo.ListState
 	acpForm acpForm
 
+	mcpTabSel         int
+	mcpEditorOpen     bool
+	mcpMarket         []mcpMarketServer
+	mcpMarketList     mgo.ListState
+	mcpMarketLoading  bool
+	mcpMarketLoaded   bool
+	mcpMarketErr      string
+	mcpMarketQuery    string
+	mcpMarketCategory string
+	mcpDetailOpen     bool
+	mcpDetail         mcpMarketServer
+
 	acpMu         sync.Mutex
 	acpConvs      map[string]*acpConv
 	acpConvBySess map[acp.SessionId]string
@@ -132,7 +144,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		acpConvObj:    map[string]*models.Conversation{},
 		acpStarting:   map[string]bool{},
 		themeMode:     parseThemeMode(cfg.ThemeMode),
-		density:       parseDensity(cfg.Density),
+		density:       mtheme.Compact,
 		locale:        parseLocale(cfg.Locale),
 		editingIdx:    -1,
 	}

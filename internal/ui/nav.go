@@ -13,6 +13,7 @@ type navSection int
 const (
 	sectionChat navSection = iota
 	sectionAgent
+	sectionMCP
 	sectionSettings
 )
 
@@ -27,6 +28,7 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 			FontWeight(600).Margin(u, 0, u*2, 0)
 		cw.navItem(c, "对话", "message-square", sectionChat)
 		cw.navItem(c, "Agent", "bot", sectionAgent)
+		cw.navItem(c, "MCP", "layout-grid", sectionMCP)
 		mgo.Spacer(c)
 		label := "外观：" + themeModeLabel(cw.themeMode)
 		if mcore.IconAction(c, icons.Must(themeModeIcon(cw.themeMode)), label).Tooltip(label).Clicked() {
@@ -58,6 +60,8 @@ func (cw *ChatWindow) sectionView(c *mgo.Context) {
 	switch cw.section {
 	case sectionAgent:
 		cw.agentsPage(c)
+	case sectionMCP:
+		cw.mcpPage(c)
 	case sectionSettings:
 		cw.settingsPage(c)
 	default:

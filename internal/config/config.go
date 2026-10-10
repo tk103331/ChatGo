@@ -259,7 +259,7 @@ func LoadConfig() (*Config, error) {
 			UseReactAgent:     false,
 			ReactAgentMaxStep: 40,
 			ThemeMode:         "system",
-			Density:           "default",
+			Density:           "compact",
 			Locale:            "zh-CN",
 		}
 
