@@ -2,7 +2,7 @@
 
 **A simple AI chat client built for learning purposes.**
 
-A simple cross-platform AI chat client built with Go, [MyGo](https://github.com/egoist/mygo) and [MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI), supporting multiple LLM providers.
+A simple cross-platform AI chat client built with Go, [MyGo](https://github.com/egoist/mygo) and [MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI), with multi-provider models, Agents, tools, MCP, ACP and a built-in terminal.
 
 ![ChatGo](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -10,24 +10,24 @@ A simple cross-platform AI chat client built with Go, [MyGo](https://github.com/
 
 ## ✨ Features
 
-- 🎨 **Modern UI** - Native MyGo UI drawn on the GPU, with the MujicaUI component library (ivory/charcoal and wine-red theme)
-- 🏠 **Quick Start Home** - Centered input box for instant conversations
-- 💬 **Streaming Output** - Real-time AI responses, word by word
-- 🤖 **Multi-Model Support** - Supports OpenAI, Claude, Ollama, Qwen, DeepSeek, Gemini, and more
-- 💾 **Chat Persistence** - Auto-save chat history with multi-session management
-- ⚙️ **Flexible Configuration** - Visual configuration interface for easy API key and model management
-- 🔧 **Custom Provider** - Support for OpenAI-compatible API endpoints
-- 🚀 **Async Processing** - Non-blocking UI for smooth user experience
+- 🎨 **Native UI** - MyGo GPU-drawn interface with the MujicaUI component library (ivory/charcoal and wine-red theme) and a self-drawn title bar
+- 🏠 **Quick Start Home** - Centered composer with capability cards and project (workspace) / Agent selectors
+- 🤖 **Multi-Provider, Multi-Model** - OpenAI, Anthropic, Claude, Ollama, Qwen, DeepSeek, Gemini and any OpenAI-compatible API. Each provider holds a list of models; every type ships a disabled example config with its brand logo
+- 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills) and ACP Agents (local coding CLIs)
+- 🔧 **Tools & MCP** - Built-in tools and whole MCP servers toggle per chat/agent, with search; an MCP marketplace is bundled
+- 📚 **Skills** - Scans local SKILL directories, with per-agent selection and search
+- 🗂️ **Workspaces & Panels** - Sessions grouped by workspace and collapsible; resizable chat / preview / file panels with a multi-tab file preview and a Git diff panel
+- ⌨️ **Terminal** - Multi-tab bottom terminal (Ghostty VT)
+- 💬 **Streaming Output** - Real-time streaming responses with Markdown rendering
+- 💾 **Persistence** - Config and chat history live under `~/.chatgo`
 
 ## 📸 Screenshots
 
-### Home Page
-Clean home page design with centered input box for quick conversation start
+### Home
+Centered composer with capability cards, plus project and Agent selectors.
 
-### Chat Interface
-- Session list on the left, supporting create, edit, and delete operations
-- Message area on the right with Markdown rendering and streaming output
-- Model selector at the top for quick LLM switching
+### Chat
+Workspace-grouped session list, Markdown message area, model / Agent / tool / Skill controls, optional file-preview and Git panels, and a bottom terminal.
 
 ## 🚀 Quick Start
 
@@ -52,7 +52,7 @@ go build -o chatgo .
 > go env -w GOPROXY=https://goproxy.cn,direct
 > go env -w GOPRIVATE=github.com/ZacharyZhang-NY/*
 > ```
-> MyGo is pure Go (no cgo), so the native UI cross-compiles from any platform.
+> MyGo is pure Go (no cgo), so the native UI cross-compiles from any platform. The built-in terminal loads Ghostty's `libghostty-vt` at run time (downloaded once into the user cache, or bundled by `mygo build`).
 
 #### Install with Go
 
@@ -62,30 +62,30 @@ go install github.com/tk103331/ChatGo@latest
 
 ### First Use
 
-1. After launching the app, you'll see a centered input box on the home page
-2. Type your message and click "Send" or press Enter
-3. The system will automatically create a new session and enter the chat interface
-4. Click the "Settings" button to configure your API keys and models
+1. Launch the app; the home page shows a centered composer
+2. Optionally pick a project and an Agent, type a message, press Enter
+3. Configure providers, tools and Agents from the Settings page
 
 ## ⚙️ Configuration
 
 ### Supported Providers
 
-ChatGo supports the following LLM providers:
-
 | Provider | Type | Description |
 |----------|------|-------------|
-| **OpenAI** | `openai` | OpenAI Official API (GPT-4, GPT-3.5, etc.) |
-| **Claude** | `claude` | Anthropic Claude (Claude 3.5 Sonnet, etc.) |
+| **OpenAI** | `openai` | OpenAI (GPT-4o, o1, …) and OpenAI-compatible endpoints |
+| **Anthropic** | `anthropic` | Anthropic Messages API |
+| **Claude** | `claude` | Anthropic Claude |
 | **Ollama** | `ollama` | Locally deployed open-source models |
 | **Qwen** | `qwen` | Alibaba Tongyi Qianwen |
 | **DeepSeek** | `deepseek` | DeepSeek AI |
 | **Gemini** | `gemini` | Google Gemini |
 | **Custom** | `custom` | Any OpenAI-compatible API |
 
+Each provider can list several models, and the model selector shows them all.
+
 ### Configuration File
 
-The configuration file is automatically saved at `~/.chatgo/config.yaml` on every platform (chat history lives in `~/.chatgo/conversations`).
+The configuration is saved at `~/.chatgo/config.yaml` on every platform; chat history lives in `~/.chatgo/conversations`.
 
 ### Configuration Example
 
@@ -95,22 +95,14 @@ providers:
     type: "openai"
     api_key: "sk-..."
     base_url: "https://api.openai.com/v1"
-    model: "gpt-4"
-
-  - name: "Claude"
-    type: "claude"
-    api_key: "sk-ant-..."
-    model: "claude-3-5-sonnet-20241022"
+    model: "gpt-4o"
+    models: ["gpt-4o", "gpt-4o-mini"]
 
   - name: "Ollama"
     type: "ollama"
     base_url: "http://localhost:11434"
     model: "llama3.2"
-
-  - name: "Qwen"
-    type: "qwen"
-    api_key: "sk-..."
-    model: "qwen-max"
+    enabled: true
 
 mcp_servers: []
 current_provider: "OpenAI"
@@ -118,41 +110,44 @@ current_provider: "OpenAI"
 
 ### Configure in UI
 
-1. Click the "Settings" button in the bottom right corner
-2. Select the "Providers" tab
-3. Click "Add New" to add a new Provider
-4. Fill in the configuration:
-   - **Name**: Provider name (arbitrary)
-   - **Type**: Select provider type
-   - **API Key**: API key (not required for some providers)
-   - **Base URL**: API endpoint (optional)
-   - **Model**: Model name
-5. Click "Save" to save
+- **Settings → Models**: add/edit providers and their model lists (each row shows the provider logo)
+- **Settings → Built-in tools**: enable built-in tools and fill their config
+- **Settings → ACP**: manage local ACP connections (Claude Code, OpenCode, …)
+- **Settings → Appearance**: theme mode and language
+- **Agent** page: create custom Agents (models, built-in tools, MCP servers, Skills)
+- **MCP** page: your servers plus an embedded marketplace
 
-## 💡 Usage Tips
+## 💡 Usage
 
 ### Shortcuts
 
-- **Enter**: Send message
-- **Shift + Enter**: New line in input box
+- **Enter**: send
+- **Shift + Enter**: new line
 
-### Session Management
+### Sessions
 
-- **New Session**: Click the "New Chat" button in the top left
-- **Switch Session**: Click on a session in the left list
-- **Edit Title**: Click the edit icon next to the session
-- **Delete Session**: Click the delete icon next to the session
+Grouped by workspace; create, rename, delete, and search. Hide or show the list from the title bar.
 
-### Switching Models
+### Agents
 
-- Select a different Provider from the dropdown menu above the message input box
-- New messages will use the selected model after switching
+- **Built-in Chat** remembers its global model / tool / MCP / Skill selection and reloads it on start
+- **Custom Agents** define an availability whitelist in Settings (models are multi-select), all enabled by default and temporary toggles in chat
+- **ACP Agents** expose the modes and options the protocol provides
+
+### Tools, MCP & Skills
+
+Toggle built-in tools and whole MCP servers, and pick Skills, from the composer; each menu has a search box.
+
+### Panels & Terminal
+
+The title bar toggles the session list, the file tree and the terminal. Double-click a file for a tabbed preview (code, image, SVG, diff); the terminal supports multiple tabs.
 
 ## 🛠️ Tech Stack
 
 - **Go 1.27.1+** - Main programming language
 - **[MyGo](https://github.com/egoist/mygo)** - Native UI framework (GPU-drawn, no webview, no cgo)
 - **[MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI)** - Desktop component library for MyGo
+- **Ghostty VT** - Terminal emulator via MyGo's terminal plugin
 - **Cloudwego Eino** - LLM abstraction layer and React Agent framework
 - **JSON files** - Chat history storage (`~/.chatgo/conversations`)
 
@@ -162,15 +157,26 @@ current_provider: "OpenAI"
 ChatGo/
 ├── main.go                  # Application entry point
 ├── internal/
-│   ├── config/              # Configuration management
+│   ├── config/              # Configuration (providers, agents, tools, presets)
 │   ├── llm/                 # LLM client and React Agent
 │   ├── mcp/                 # MCP server support
 │   └── ui/                  # MyGo + MujicaUI interface
 │       ├── app.go           # State, view entry, streaming and clients
-│       ├── home.go          # Landing page
-│       ├── chat.go          # Chat view (sidebar/messages/composer)
-│       ├── settings.go      # Settings dialog
-│       └── tools.go         # Tool selection
+│       ├── welcome.go       # Home page
+│       ├── chat.go          # Chat composer and toolbar
+│       ├── chatpanel.go     # File tree, preview tabs and Git panel
+│       ├── sidebar.go       # Workspace-grouped session list
+│       ├── message.go       # Message rows and actions
+│       ├── agents.go        # Agent management and editor
+│       ├── skills.go        # Skill scanning and selection
+│       ├── mcp.go           # MCP page and marketplace
+│       ├── acp.go           # ACP connections and sessions
+│       ├── terminal.go      # Multi-tab terminal panel
+│       ├── settings.go      # Settings tabs
+│       ├── selection.go     # Availability whitelists
+│       ├── models.go        # Model references
+│       ├── provider_icons.go# Provider logos
+│       └── theme.go         # Theme tokens
 ├── pkg/
 │   └── models/              # Data models
 └── README.md
@@ -189,6 +195,7 @@ MIT License - See [LICENSE](LICENSE) file for details
 - [MyGo](https://github.com/egoist/mygo) - Native UI framework
 - [MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI) - Desktop component library for MyGo
 - [Cloudwego Eino](https://github.com/cloudwego/eino) - Powerful LLM application development framework
+- [simple-icons](https://simpleicons.org) - Provider brand marks
 
 ## 📮 Contact
 
