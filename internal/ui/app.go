@@ -29,6 +29,8 @@ import (
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
+const defaultTitle = "新会话"
+
 // pageMode is which of the two windows the app shows.
 type pageMode int
 
@@ -426,7 +428,7 @@ func (cw *ChatWindow) newConversation() {
 	if p, ok := cw.findProvider(name); ok {
 		model = p.Model
 	}
-	conv, err := cw.convManager.CreateConversation(fmt.Sprintf("Chat-%s", time.Now().Format("20060102150405")), name, model)
+	conv, err := cw.convManager.CreateConversation(defaultTitle, name, model)
 	if err != nil {
 		cw.status = "创建会话失败: " + err.Error()
 		return
@@ -514,7 +516,85 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 		conv.UpdatedAt = time.Now()
 		_ = cw.convManager.SaveConversation(conv)
 		cw.reloadConvs()
+		cw.generateTitle(conv)
 	})
+}
+
+const titleSystemPrompt = "你是会话标题生成助手。根据用户与助手的对话，输出一个不超过 16 个字的中文简短标题，只输出标题本身，不要引号、标点或解释。"
+
+// generateTitle asks the model for a short title after the first exchange.
+func (cw *ChatWindow) generateTitle(conv *models.Conversation) {
+	if conv.Title != defaultTitle || len(conv.Messages) < 2 {
+		return
+	}
+	user, assistant := firstExchange(conv)
+	if user == "" || assistant == "" || strings.HasPrefix(assistant, "⚠️") {
+		return
+	}
+	provider, ok := cw.findProvider(conv.Provider)
+	if !ok {
+		provider, ok = cw.firstEnabled()
+	}
+	if !ok {
+		return
+	}
+	client, err := llm.NewClient(provider)
+	if err != nil {
+		return
+	}
+	go func() {
+		resp, err := client.Chat(context.Background(), []llm.ChatMessage{
+			{Role: "system", Content: titleSystemPrompt},
+			{Role: "user", Content: "用户：" + user + "\n助手：" + assistant},
+		}, nil)
+		if err != nil || resp == nil {
+			return
+		}
+		title := cleanTitle(resp.Content)
+		if title == "" {
+			return
+		}
+		cw.postMain(func() {
+			if conv.Title != defaultTitle {
+				return
+			}
+			conv.Title = title
+			conv.UpdatedAt = time.Now()
+			_ = cw.convManager.SaveConversation(conv)
+			cw.reloadConvs()
+		})
+	}()
+}
+
+func firstExchange(conv *models.Conversation) (user, assistant string) {
+	for _, m := range conv.Messages {
+		switch m.Role {
+		case "user":
+			if user == "" {
+				user = m.Content
+			}
+		case "assistant":
+			if assistant == "" {
+				assistant = m.Content
+			}
+		}
+		if user != "" && assistant != "" {
+			break
+		}
+	}
+	return user, assistant
+}
+
+func cleanTitle(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.Trim(s, "「」\"'“”‘’《》#*`")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.TrimSpace(s)
+	r := []rune(s)
+	if len(r) > 20 {
+		r = r[:20]
+	}
+	return strings.TrimSpace(string(r))
 }
 
 // stopStreaming cancels the reply being generated.

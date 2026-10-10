@@ -47,9 +47,29 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 		case streaming:
 			mchat.TypingIndicator(c, "Assistant")
 		}
-		actions := mchat.MessageActions(c, role, mchat.MessageActionsOptions{})
-		if a, ok := actions.Action(); ok && !streaming {
-			cw.handleMessageAction(c, i, msg, a)
+		cw.messageActions(c, i, msg, streaming)
+	})
+}
+
+func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, streaming bool) {
+	if streaming {
+		return
+	}
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+		if mcore.IconAction(c, icons.Must("copy"), "复制").Tooltip("复制").Clicked() {
+			c.WriteClipboard(msg.Content)
+			cw.toast("已复制到剪贴板", mcore.SeveritySuccess)
+		}
+		if msg.Role == "user" {
+			if mcore.IconAction(c, icons.Must("pencil"), "编辑").Tooltip("编辑").Clicked() {
+				cw.editingIdx = i
+				cw.editDraft = msg.Content
+			}
+			return
+		}
+		if mcore.IconAction(c, icons.Must("refresh-cw"), "重新生成").Tooltip("重新生成").Clicked() {
+			cw.regenerate(i)
 		}
 	})
 }
@@ -119,20 +139,6 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return string(r[:n]) + "…"
-}
-
-// handleMessageAction runs the action chosen on a message.
-func (cw *ChatWindow) handleMessageAction(c *mgo.Context, i int, msg models.Message, a mchat.MessageAction) {
-	switch a {
-	case mchat.ActionCopy:
-		c.WriteClipboard(msg.Content)
-		cw.toast("已复制到剪贴板", mcore.SeveritySuccess)
-	case mchat.ActionEdit:
-		cw.editingIdx = i
-		cw.editDraft = msg.Content
-	case mchat.ActionRegenerate:
-		cw.regenerate(i)
-	}
 }
 
 // editMessage edits a sent user message in place.
