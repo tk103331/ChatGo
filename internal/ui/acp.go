@@ -52,12 +52,13 @@ func acpLogo(name string) *mgo.Bitmap {
 }
 
 type acpForm struct {
-	editing int
-	name    string
-	command string
-	args    string
-	env     string
-	cwd     string
+	editing  int
+	name     string
+	command  string
+	args     string
+	env      string
+	cwd      string
+	disabled bool
 }
 
 func (cw *ChatWindow) acpRow(c *mgo.Context, i int) {
@@ -73,7 +74,12 @@ func (cw *ChatWindow) acpRow(c *mgo.Context, i int) {
 		if logo := acpLogo(a.Name); logo != nil {
 			mgo.Image(c, logo).Size(18, 18)
 		}
-		mgo.Text(c, a.Name).SingleLine()
+		mgo.Text(c, a.Name).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
+		status, col := "启用", k.Success
+		if a.Disabled {
+			status, col = "禁用", k.TextMuted
+		}
+		mgo.Text(c, status).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(col).Shrink(0)
 	})
 	if b.Clicked() {
 		cw.loadACPForm(i)
@@ -84,15 +90,17 @@ func (cw *ChatWindow) acpFormView(c *mgo.Context) {
 	f := &cw.acpForm
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Gap(u).Children(func() {
-		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称"})
+		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称", ReadOnly: true})
 		minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 claude-code-acp 或 gemini"})
 		minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
 		minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
 		minput.TextInput(c, &f.cwd, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前目录"})
+		enabled := !f.disabled
+		if minput.Switch(c, &enabled, "启用", minput.SwitchOptions{}).Changed() {
+			f.disabled = !enabled
+			cw.saveACP()
+		}
 		mgo.Row(c).Gap(u).Wrap().Children(func() {
-			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-				cw.clearACPForm()
-			}
 			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
 				cw.saveACP()
 			}
@@ -107,7 +115,7 @@ func (cw *ChatWindow) loadACPForm(i int) {
 	a := cw.cfg.ACPAgents[i]
 	cw.acpForm = acpForm{
 		editing: i, name: a.Name, command: a.Command,
-		args: strings.Join(a.Args, "\n"), env: joinKV(a.Env), cwd: a.Cwd,
+		args: strings.Join(a.Args, "\n"), env: joinKV(a.Env), cwd: a.Cwd, disabled: a.Disabled,
 	}
 }
 
@@ -123,7 +131,7 @@ func (cw *ChatWindow) saveACP() {
 	}
 	conn := config.ACPConnection{
 		Name: f.name, Command: f.command, Args: splitLines(f.args),
-		Env: parseKV(f.env), Cwd: f.cwd,
+		Env: parseKV(f.env), Cwd: f.cwd, Disabled: f.disabled,
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.ACPAgents) {
 		cw.cfg.ACPAgents[f.editing] = conn

@@ -48,6 +48,86 @@ type ToolCallInfo struct {
 // ToolCallCallback is called when a tool is invoked
 type ToolCallCallback func(info ToolCallInfo)
 
+// streamToolCallChecker reports whether a streamed model message contains tool
+// calls, reading the whole stream instead of only the first chunk. Models that
+// emit text before tool calls (Claude, some OpenAI-compatible endpoints) need
+// this, or the agent ends before running its tools.
+func streamToolCallChecker(_ context.Context, sr *schema.StreamReader[*schema.Message]) (bool, error) {
+	defer sr.Close()
+	for {
+		msg, err := sr.Recv()
+		if err == io.EOF {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if len(msg.ToolCalls) > 0 {
+			return true, nil
+		}
+	}
+}
+
+// toolObserverKey carries the tool-call callback through the run context.
+type toolObserverKey struct{}
+
+// WithToolObserver attaches cb to ctx so wrapped tools report their calls.
+func WithToolObserver(ctx context.Context, cb ToolCallCallback) context.Context {
+	if cb == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, toolObserverKey{}, cb)
+}
+
+func toolObserverOf(ctx context.Context) ToolCallCallback {
+	cb, _ := ctx.Value(toolObserverKey{}).(ToolCallCallback)
+	return cb
+}
+
+// observedTool reports every execution of the tool it wraps to the observer in
+// the context, which is how the UI learns a tool ran and what it returned.
+type observedTool struct {
+	inner tool.BaseTool
+	info  *schema.ToolInfo
+}
+
+// ObserveTool wraps a tool so its calls are reported to WithToolObserver.
+func ObserveTool(inner tool.BaseTool) tool.BaseTool {
+	info, _ := inner.Info(context.Background())
+	return &observedTool{inner: inner, info: info}
+}
+
+func (t *observedTool) Info(ctx context.Context) (*schema.ToolInfo, error) { return t.inner.Info(ctx) }
+
+func (t *observedTool) InvokableRun(ctx context.Context, args string, opts ...tool.Option) (string, error) {
+	cb := toolObserverOf(ctx)
+	id := compose.GetToolCallID(ctx)
+	name := ""
+	if t.info != nil {
+		name = t.info.Name
+	}
+	inv, ok := t.inner.(tool.InvokableTool)
+	if !ok {
+		return "", fmt.Errorf("tool %s is not invokable", name)
+	}
+	if cb != nil {
+		cb(ToolCallInfo{ID: id, Name: name, Arguments: args})
+	}
+	out, err := inv.InvokableRun(ctx, args, opts...)
+	if cb != nil {
+		cb(ToolCallInfo{ID: id, Name: name, Arguments: args, Result: out, Error: err})
+	}
+	if err != nil {
+		// Hand the failure to the model as the tool result instead of failing
+		// the whole run, so it can retry or adjust.
+		if strings.TrimSpace(out) == "" {
+			out = "工具执行失败: " + err.Error()
+		}
+		return out, nil
+	}
+	return out, nil
+}
+
 // ToolDefinition defines a tool for the React Agent
 type ToolDefinition struct {
 	Name        string
@@ -119,8 +199,9 @@ func createReactClientWithTools(ctx context.Context, toolableModel model.ToolCal
 
 	// Create agent config
 	cfg := &react.AgentConfig{
-		ToolCallingModel: toolableModel,
-		ToolsConfig:      *toolsConfig,
+		ToolCallingModel:      toolableModel,
+		ToolsConfig:           *toolsConfig,
+		StreamToolCallChecker: streamToolCallChecker,
 	}
 
 	// Apply optional configurations
@@ -189,6 +270,7 @@ func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk 
 
 // chatWithStream sends a streaming chat completion request via React Agent
 func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Message, onChunk func(string), onToolCall ToolCallCallback) (*ChatResponse, error) {
+	ctx = WithToolObserver(ctx, onToolCall)
 	// Create stream reader
 	streamReader, err := c.agent.Stream(ctx, messages)
 	if err != nil {
@@ -198,7 +280,6 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 	defer streamReader.Close()
 
 	var fullContent strings.Builder
-	toolCallTracker := make(map[string]*ToolCallInfo)
 
 	// Read from stream
 	for {
@@ -215,45 +296,10 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 			continue
 		}
 
-		// Debug: log chunk details
-		log.Printf("[React Agent] Received chunk - Role: %s, ContentLen: %d, ToolCalls: %d",
-			chunk.Role, len(chunk.Content), len(chunk.ToolCalls))
-
-		// Handle content
 		if chunk.Content != "" {
 			fullContent.WriteString(chunk.Content)
 			if onChunk != nil {
 				onChunk(chunk.Content)
-			}
-		}
-
-		// Handle tool calls
-		if len(chunk.ToolCalls) > 0 && onToolCall != nil {
-			for _, tc := range chunk.ToolCalls {
-				// Track tool call
-				info := &ToolCallInfo{
-					ID:        tc.ID,
-					Name:      tc.Function.Name,
-					Arguments: tc.Function.Arguments,
-				}
-				toolCallTracker[tc.ID] = info
-
-				// Log tool call start
-				log.Printf("[React Agent] Tool call started: %s (ID: %s), args: %s", tc.Function.Name, tc.ID, tc.Function.Arguments)
-
-				// Notify callback
-				onToolCall(*info)
-			}
-		}
-
-		// Handle tool call results (ToolMessage role indicates a tool result)
-		if chunk.Role == schema.Tool && chunk.ToolCallID != "" && onToolCall != nil {
-			if info, exists := toolCallTracker[chunk.ToolCallID]; exists {
-				info.Result = chunk.Content
-				log.Printf("[React Agent] Tool call completed: %s (ID: %s), result length: %d", info.Name, info.ID, len(info.Result))
-
-				// Notify callback with result
-				onToolCall(*info)
 			}
 		}
 	}

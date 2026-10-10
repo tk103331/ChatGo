@@ -35,6 +35,7 @@ type Selection struct {
 	Providers    []string `yaml:"providers,omitempty"`
 	Provider     string   `yaml:"provider,omitempty"`
 	Model        string   `yaml:"model,omitempty"`
+	Workspace    string   `yaml:"workspace,omitempty"`
 	BuiltinTools []string `yaml:"builtin_tools,omitempty"`
 	MCPServers   []string `yaml:"mcp_servers,omitempty"`
 	Skills       []string `yaml:"skills,omitempty"`
@@ -50,6 +51,7 @@ type AgentDef struct {
 	Providers    []string `yaml:"providers,omitempty"` // deprecated: use Models
 	Models       []string `yaml:"models,omitempty"`    // "provider::model" or "::model"
 	Mode         string   `yaml:"mode,omitempty"`      // chat or agent
+	Workspace    string   `yaml:"workspace,omitempty"`
 	BuiltinTools []string `yaml:"builtin_tools,omitempty"`
 	MCPServers   []string `yaml:"mcp_servers,omitempty"`
 	Skills       []string `yaml:"skills,omitempty"`
@@ -57,11 +59,12 @@ type AgentDef struct {
 
 // ACPConnection is a local coding CLI spoken to over the Agent Client Protocol.
 type ACPConnection struct {
-	Name    string            `yaml:"name"`
-	Command string            `yaml:"command"`
-	Args    []string          `yaml:"args,omitempty"`
-	Env     map[string]string `yaml:"env,omitempty"`
-	Cwd     string            `yaml:"cwd,omitempty"`
+	Name     string            `yaml:"name"`
+	Command  string            `yaml:"command"`
+	Args     []string          `yaml:"args,omitempty"`
+	Env      map[string]string `yaml:"env,omitempty"`
+	Cwd      string            `yaml:"cwd,omitempty"`
+	Disabled bool              `yaml:"disabled,omitempty"`
 }
 
 // Provider represents an LLM provider configuration
@@ -73,6 +76,8 @@ type Provider struct {
 	Model   string   `yaml:"model"`
 	Models  []string `yaml:"models,omitempty"`
 	Enabled bool     `yaml:"enabled"`
+	// Preset marks a shipped example whose name and type are fixed.
+	Preset bool `yaml:"preset,omitempty"`
 }
 
 // ModelsList returns the provider's models, falling back to the single Model.
@@ -126,6 +131,7 @@ func GetAvailableBuiltinTools() []string {
 		"httprequest",
 		"browseruse",
 		"commandline",
+		"filesystem",
 		"sequentialthinking",
 	}
 }
@@ -140,6 +146,7 @@ func GetBuiltinToolDescription(toolType string) string {
 		"httprequest":        "HTTP Request - Make HTTP requests to web services",
 		"browseruse":         "Browser Use - Automate browser interactions",
 		"commandline":        "Command Line - Execute shell commands (use with caution)",
+		"filesystem":         "Filesystem - Read, write or list files under the working directory",
 		"sequentialthinking": "Sequential Thinking - Chain of thought reasoning tool",
 	}
 	if desc, ok := descriptions[toolType]; ok {
@@ -239,14 +246,13 @@ func ensureProviderPresets(existing []Provider) []Provider {
 // type, so a fresh configuration shows a template of each.
 func ProviderPresets() []Provider {
 	return []Provider{
-		{Name: "OpenAI", Type: "openai", BaseURL: "https://api.openai.com/v1", Model: "gpt-4o", Models: []string{"gpt-4o"}, Enabled: false},
-		{Name: "Anthropic", Type: "anthropic", BaseURL: "https://api.anthropic.com", Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false},
-		{Name: "Claude", Type: "claude", Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false},
-		{Name: "Ollama", Type: "ollama", BaseURL: "http://localhost:11434", Model: "llama3.2", Models: []string{"llama3.2"}, Enabled: false},
-		{Name: "Qwen", Type: "qwen", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-max", Models: []string{"qwen-max"}, Enabled: false},
-		{Name: "DeepSeek", Type: "deepseek", BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat", Models: []string{"deepseek-chat"}, Enabled: false},
-		{Name: "Gemini", Type: "gemini", Model: "gemini-2.0-flash", Models: []string{"gemini-2.0-flash"}, Enabled: false},
-		{Name: "Custom", Type: "custom", BaseURL: "", Model: "", Enabled: false},
+		{Name: "OpenAI", Type: "openai", BaseURL: "https://api.openai.com/v1", Model: "gpt-4o", Models: []string{"gpt-4o"}, Enabled: false, Preset: true},
+		{Name: "Anthropic", Type: "anthropic", BaseURL: "https://api.anthropic.com", Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false, Preset: true},
+		{Name: "Claude", Type: "claude", Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false, Preset: true},
+		{Name: "Ollama", Type: "ollama", BaseURL: "http://localhost:11434", Model: "llama3.2", Models: []string{"llama3.2"}, Enabled: false, Preset: true},
+		{Name: "Qwen", Type: "qwen", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-max", Models: []string{"qwen-max"}, Enabled: false, Preset: true},
+		{Name: "DeepSeek", Type: "deepseek", BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat", Models: []string{"deepseek-chat"}, Enabled: false, Preset: true},
+		{Name: "Gemini", Type: "gemini", Model: "gemini-2.0-flash", Models: []string{"gemini-2.0-flash"}, Enabled: false, Preset: true},
 	}
 }
 
@@ -259,9 +265,6 @@ func LoadConfig() (*Config, error) {
 
 	// Create default config if it doesn't exist
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
-		if migrateLegacyConfig(configPath) {
-			return loadFile(configPath)
-		}
 		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 			return nil, err
 		}
@@ -332,6 +335,9 @@ func loadFile(path string) (*Config, error) {
 		if len(p.Models) == 0 && p.Model != "" {
 			p.Models = []string{p.Model}
 		}
+		if p.Enabled && p.APIKey == "" && p.Type != "ollama" && p.Type != "custom" {
+			p.Enabled = false
+		}
 	}
 	for i := range config.Agents {
 		a := &config.Agents[i]
@@ -346,24 +352,10 @@ func loadFile(path string) (*Config, error) {
 		}
 	}
 
+	if err := writeConfig(path, &config); err != nil {
+		return nil, err
+	}
 	return &config, nil
-}
-
-// migrateLegacyConfig copies a config from the old OS config dir into the new
-// ~/.chatgo location, reporting whether it did.
-func migrateLegacyConfig(dst string) bool {
-	dir, err := os.UserConfigDir()
-	if err != nil {
-		return false
-	}
-	data, err := os.ReadFile(filepath.Join(dir, "chatgo", "config.yaml"))
-	if err != nil {
-		return false
-	}
-	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
-		return false
-	}
-	return os.WriteFile(dst, data, 0644) == nil
 }
 
 // firstModel returns the first model of the named provider.
@@ -402,20 +394,30 @@ func ensureDefaultACPAgents(existing []ACPConnection) []ACPConnection {
 	return out
 }
 
+// defaultBuiltinTool is the shipped state of one built-in tool: httprequest and
+// commandline start enabled with sensible defaults, the rest disabled.
+func defaultBuiltinTool(toolType string) BuiltinTool {
+	t := BuiltinTool{Name: toolType, Type: toolType, Enabled: false, Config: map[string]string{}}
+	switch toolType {
+	case "httprequest":
+		t.Enabled = true
+		t.Config = map[string]string{"timeout": "30", "max_redirects": "5"}
+	case "commandline":
+		t.Enabled = true
+		t.Config = map[string]string{"allowed_commands": "ls, pwd, cat, echo, grep, find, head, tail, wc"}
+	case "filesystem":
+		t.Enabled = true
+	}
+	return t
+}
+
 // createDefaultBuiltinTools creates the default list of built-in tools
 func createDefaultBuiltinTools() []BuiltinTool {
 	tools := GetAvailableBuiltinTools()
 	builtinTools := make([]BuiltinTool, len(tools))
-
 	for i, toolType := range tools {
-		builtinTools[i] = BuiltinTool{
-			Name:    toolType,
-			Type:    toolType,
-			Enabled: false,
-			Config:  make(map[string]string),
-		}
+		builtinTools[i] = defaultBuiltinTool(toolType)
 	}
-
 	return builtinTools
 }
 
@@ -435,13 +437,7 @@ func ensureAllBuiltinTools(existing []BuiltinTool) []BuiltinTool {
 		if tool, exists := existingMap[toolType]; exists {
 			result = append(result, tool)
 		} else {
-			// Add missing tool as disabled
-			result = append(result, BuiltinTool{
-				Name:    toolType,
-				Type:    toolType,
-				Enabled: false,
-				Config:  make(map[string]string),
-			})
+			result = append(result, defaultBuiltinTool(toolType))
 		}
 	}
 
@@ -454,15 +450,17 @@ func SaveConfig(config *Config) error {
 	if err != nil {
 		return err
 	}
+	return writeConfig(configPath, config)
+}
 
-	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+// writeConfig marshals and writes a configuration to path, creating its dir.
+func writeConfig(path string, config *Config) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-
 	data, err := yaml.Marshal(config)
 	if err != nil {
 		return err
 	}
-
-	return os.WriteFile(configPath, data, 0644)
+	return os.WriteFile(path, data, 0644)
 }

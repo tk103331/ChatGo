@@ -63,6 +63,20 @@ func (cw *ChatWindow) pickWorkspace() {
 	}()
 }
 
+// pickDirectory opens a native directory chooser and hands the path to cb.
+func (cw *ChatWindow) pickDirectory(title string, cb func(string)) {
+	cw.winMu.Lock()
+	w := cw.window
+	cw.winMu.Unlock()
+	go func() {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: w, Title: title, Directory: true})
+		if err != nil || len(paths) == 0 {
+			return
+		}
+		cw.postMain(func() { cb(paths[0]) })
+	}()
+}
+
 // sidebarSearch filters conversations and opens a hit.
 func (cw *ChatWindow) sidebarSearch(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
@@ -218,6 +232,9 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 				menuItem(c, iconLeading(c, agentIcon(a.Icon)), name, func() { pick("agent:" + name) })
 			}
 			for _, a := range cw.cfg.ACPAgents {
+				if a.Disabled {
+					continue
+				}
 				name := a.Name
 				menuItem(c, logoLeading(c, name), "ACP · "+name, func() { pick("acp:" + name) })
 			}

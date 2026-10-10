@@ -38,6 +38,7 @@ type providerForm struct {
 	models   []string
 	newModel string
 	enabled  bool
+	preset   bool
 }
 
 type mcpForm struct {
@@ -118,7 +119,10 @@ func (cw *ChatWindow) askConfirm(title, desc string, action func()) {
 func (cw *ChatWindow) providersTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-		mgo.Column(c).Width(280).Shrink(0).Children(func() {
+		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
+			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
+				cw.clearProviderForm()
+			}
 			mgo.List(c, &cw.settings.provList, len(cw.cfg.Providers), func(i int) {
 				cw.providerRow(c, i)
 			}).Fill()
@@ -137,13 +141,18 @@ func (cw *ChatWindow) providerRow(c *mgo.Context, i int) {
 		b.Background(k.Selection)
 	}
 	b.Children(func() {
-		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+		mgo.Row(c).FillWidth().Justify(mgo.Start).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if svg := providerLogo(p.Type); svg != nil {
-				mgo.Icon(c, svg).Size(16, 16).TextColor(k.Text)
+				mgo.Icon(c, svg).Size(16, 16).TextColor(k.Text).Shrink(0)
 			} else {
-				mgo.Icon(c, icons.Must("sliders-horizontal")).Size(16, 16).TextColor(k.TextMuted)
+				mgo.Icon(c, icons.Must("sliders-horizontal")).Size(16, 16).TextColor(k.TextMuted).Shrink(0)
 			}
-			mgo.Text(c, fmt.Sprintf("%s (%s)", p.Name, p.Type)).SingleLine().MinWidth(0).Ellipsis("…")
+			mgo.Text(c, fmt.Sprintf("%s (%s)", p.Name, p.Type)).SingleLine().MinWidth(0).Grow(1).Ellipsis("…")
+			status, col := "禁用", k.TextMuted
+			if p.Enabled {
+				status, col = "启用", k.Success
+			}
+			mgo.Text(c, status).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(col).Shrink(0)
 		})
 	})
 	if b.Clicked() {
@@ -154,50 +163,68 @@ func (cw *ChatWindow) providerRow(c *mgo.Context, i int) {
 func (cw *ChatWindow) providerFormView(c *mgo.Context) {
 	f := &cw.settings.prov
 	u := mcore.Density(c).Unit()
+	changed := false
 	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
-		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Provider 名称"})
-		opts := make([]minput.SelectOption[string], 0, len(providerTypes))
-		for _, t := range providerTypes {
-			opts = append(opts, minput.SelectOption[string]{Value: t, Label: t})
-		}
-		minput.Select(c, &f.typ, opts, minput.SelectOptions{Placeholder: "类型", Label: "类型"})
-		minput.PasswordInput(c, &f.apiKey, minput.PasswordInputOptions{Label: "API Key", Placeholder: "API Key"})
-		minput.TextInput(c, &f.baseURL, minput.TextInputOptions{Label: "Base URL", Placeholder: "Base URL"})
-		mgo.Text(c, "模型").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
-		for _, m := range f.models {
-			m := m
-			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				mgo.Text(c, m).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				if mcore.IconAction(c, icons.Must("x"), "移除模型").Clicked() {
-					f.models = removeStr(f.models, m)
+		mgo.Scroll(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			mgo.Column(c).Gap(u * 2).Children(func() {
+				if r := minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Provider 名称", ReadOnly: f.preset}); r.Changed() {
+					changed = true
 				}
-			})
-		}
-		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-			in := minput.TextInput(c, &f.newModel, minput.TextInputOptions{Placeholder: "添加模型名"})
-			in.Element.Grow(1)
-			if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-				if name := strings.TrimSpace(f.newModel); name != "" {
-					if !containsStr(f.models, name) {
-						f.models = append(f.models, name)
+				opts := make([]minput.SelectOption[string], 0, len(providerTypes))
+				for _, t := range providerTypes {
+					opts = append(opts, minput.SelectOption[string]{Value: t, Label: t})
+				}
+				if r := minput.Select(c, &f.typ, opts, minput.SelectOptions{Placeholder: "类型", Label: "类型", Disabled: f.preset}); r.Changed() {
+					changed = true
+				}
+				if r := minput.PasswordInput(c, &f.apiKey, minput.PasswordInputOptions{Label: "API Key", Placeholder: "API Key"}); r.Changed() {
+					changed = true
+				}
+				if r := minput.TextInput(c, &f.baseURL, minput.TextInputOptions{Label: "Base URL", Placeholder: "Base URL"}); r.Changed() {
+					changed = true
+				}
+				mgo.Text(c, "模型").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
+				for _, m := range f.models {
+					m := m
+					mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+						mgo.Text(c, m).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+						if mcore.IconAction(c, icons.Must("x"), "移除模型").Clicked() {
+							f.models = removeStr(f.models, m)
+							changed = true
+						}
+					})
+				}
+				mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
+					in := minput.TextInput(c, &f.newModel, minput.TextInputOptions{Placeholder: "添加模型名"})
+					in.Element.Grow(1)
+					if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+						if name := strings.TrimSpace(f.newModel); name != "" {
+							if !containsStr(f.models, name) {
+								f.models = append(f.models, name)
+							}
+							f.newModel = ""
+							changed = true
+						}
 					}
-					f.newModel = ""
-				}
-			}
+				})
+			})
 		})
-		minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
-		mgo.Row(c).Gap(u).Children(func() {
-			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-				cw.clearProviderForm()
-			}
+		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
 				cw.saveProvider()
 			}
 			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
 				cw.deleteProvider()
 			}
+			mgo.Box(c).Grow(1)
+			if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
+				changed = true
+			}
 		})
 	})
+	if changed && f.editing >= 0 {
+		cw.persistProvider()
+	}
 }
 
 func (cw *ChatWindow) loadProviderForm(i int) {
@@ -205,18 +232,36 @@ func (cw *ChatWindow) loadProviderForm(i int) {
 	cw.settings.prov = providerForm{
 		editing: i, name: p.Name, typ: p.Type, apiKey: p.APIKey,
 		baseURL: p.BaseURL, models: append([]string(nil), p.ModelsList()...), enabled: p.Enabled,
+		preset: p.Preset || providerIsPreset(p),
 	}
 }
 
+// providerIsPreset reports whether a provider matches a shipped example.
+func providerIsPreset(p config.Provider) bool {
+	for _, pr := range config.ProviderPresets() {
+		if pr.Name == p.Name && pr.Type == p.Type {
+			return true
+		}
+	}
+	return false
+}
+
 func (cw *ChatWindow) clearProviderForm() {
-	cw.settings.prov = providerForm{editing: -1, typ: "openai", enabled: true}
+	cw.settings.prov = providerForm{editing: -1, typ: "openai", enabled: false}
 }
 
 func (cw *ChatWindow) saveProvider() {
+	if cw.persistProvider() {
+		cw.status = ""
+		cw.toast("已保存模型 "+cw.settings.prov.name, mcore.SeveritySuccess)
+	}
+}
+
+// persistProvider writes the edited provider into cfg and saves it.
+func (cw *ChatWindow) persistProvider() bool {
 	f := &cw.settings.prov
 	if strings.TrimSpace(f.name) == "" {
-		cw.fail("名称不能为空")
-		return
+		return false
 	}
 	model := ""
 	if len(f.models) > 0 {
@@ -224,7 +269,7 @@ func (cw *ChatWindow) saveProvider() {
 	}
 	p := config.Provider{
 		Name: f.name, Type: f.typ, APIKey: f.apiKey,
-		BaseURL: f.baseURL, Model: model, Models: append([]string(nil), f.models...), Enabled: f.enabled,
+		BaseURL: f.baseURL, Model: model, Models: append([]string(nil), f.models...), Enabled: f.enabled, Preset: f.preset,
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Providers) {
 		cw.cfg.Providers[f.editing] = p
@@ -232,12 +277,14 @@ func (cw *ChatWindow) saveProvider() {
 		cw.cfg.Providers = append(cw.cfg.Providers, p)
 		f.editing = len(cw.cfg.Providers) - 1
 	}
-	_ = config.SaveConfig(cw.cfg)
-	cw.status = ""
-	cw.toast("已保存模型 "+p.Name, mcore.SeveritySuccess)
+	if err := config.SaveConfig(cw.cfg); err != nil {
+		cw.fail("保存失败: " + err.Error())
+		return false
+	}
 	if cw.provider == p.Name {
 		cw.clientDirty.Store(true)
 	}
+	return true
 }
 
 // removeStr returns s without v.
@@ -628,11 +675,14 @@ func (cw *ChatWindow) builtinRow(c *mgo.Context, i int) {
 		b.Background(k.Selection)
 	}
 	b.Children(func() {
-		status := "已禁用"
-		if t.Enabled {
-			status = "已启用"
-		}
-		mgo.Text(c, fmt.Sprintf("%s - %s", t.Type, status)).SingleLine()
+		mgo.Row(c).FillWidth().Justify(mgo.Start).Gap(u).AlignItems(mgo.Center).Children(func() {
+			mgo.Text(c, fmt.Sprintf("%s (%s)", t.Name, t.Type)).SingleLine().MinWidth(0).Grow(1).Ellipsis("…")
+			status, col := "禁用", k.TextMuted
+			if t.Enabled {
+				status, col = "启用", k.Success
+			}
+			mgo.Text(c, status).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(col).Shrink(0)
+		})
 	})
 	if b.Clicked() {
 		cw.loadBuiltinForm(i)

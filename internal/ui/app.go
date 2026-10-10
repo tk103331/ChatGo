@@ -407,7 +407,7 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 			if err != nil {
 				continue
 			}
-			einoTools = append(einoTools, newBuiltinToolWrapper(def))
+			einoTools = append(einoTools, llm.ObserveTool(newBuiltinToolWrapper(def)))
 		case strings.HasPrefix(toolID, "mcp:"):
 			mcpServers[strings.TrimPrefix(toolID, "mcp:")] = true
 		}
@@ -426,7 +426,9 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 		if err != nil {
 			continue
 		}
-		einoTools = append(einoTools, mcpTools...)
+		for _, t := range mcpTools {
+			einoTools = append(einoTools, llm.ObserveTool(t))
+		}
 	}
 
 	systemPrompt := cw.systemPrompt
@@ -458,27 +460,12 @@ func (cw *ChatWindow) createBuiltinToolDefinition(toolName string) (llm.ToolDefi
 	if builtin == nil {
 		return llm.ToolDefinition{}, fmt.Errorf("builtin tool %s not found or disabled", toolName)
 	}
-	def := llm.ToolDefinition{
+	return llm.ToolDefinition{
 		Name:        builtin.Name,
 		Description: config.GetBuiltinToolDescription(builtin.Type),
-		Parameters:  make(map[string]*schema.ParameterInfo),
-	}
-	required := config.GetRequiredConfigFields(builtin.Type)
-	for _, field := range config.GetBuiltinToolConfigFields(builtin.Type) {
-		req := false
-		for _, r := range required {
-			if r == field {
-				req = true
-				break
-			}
-		}
-		def.Parameters[field] = &schema.ParameterInfo{Type: schema.String, Desc: field + " parameter", Required: req}
-	}
-	name := toolName
-	def.Handler = func(ctx context.Context, arguments string) (string, error) {
-		return fmt.Sprintf("Tool %s executed with args: %s\n\n(Actual execution not implemented)", name, arguments), nil
-	}
-	return def, nil
+		Parameters:  builtinToolParams(builtin.Type),
+		Handler:     cw.builtinToolHandler(builtin),
+	}, nil
 }
 
 // postMain runs fn on the main thread and redraws, if the window exists yet.
@@ -613,6 +600,9 @@ func (cw *ChatWindow) newConversation() {
 
 // newConversationIn creates a conversation in ws, run by the chosen agent.
 func (cw *ChatWindow) newConversationIn(ws, agent string) {
+	if aw := cw.agentWorkspace(agent); aw != "" {
+		ws = aw
+	}
 	name := cw.provider
 	if name == "" {
 		if p, ok := cw.firstEnabled(); ok {

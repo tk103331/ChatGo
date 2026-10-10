@@ -25,6 +25,7 @@ type agentForm struct {
 	description  string
 	icon         string
 	systemPrompt string
+	workspace    string
 	models       []string
 	newModel     string
 	builtinTools []string
@@ -168,6 +169,13 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 			})
 			minput.TextArea(c, &f.systemPrompt, minput.TextAreaOptions{
 				Label: "系统提示词", Placeholder: "设定该 Agent 的角色与行为", MinHeight: 96,
+			})
+			mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
+				in := minput.TextInput(c, &f.workspace, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前项目"})
+				in.Element.Grow(1)
+				if minput.Button(c, "选择", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+					cw.pickDirectory("选择工作目录", func(path string) { f.workspace = path })
+				}
 			})
 			agentSection(c, "可用模型", countSelected(f.models, models), len(models), func(all bool) {
 				f.models = toggleAll(models, all)
@@ -322,7 +330,7 @@ func (cw *ChatWindow) loadAgentForm(i int) {
 	a := cw.cfg.Agents[i]
 	cw.agentForm = agentForm{
 		editing: i, name: a.Name, description: a.Description, icon: a.Icon,
-		systemPrompt: a.SystemPrompt, models: append([]string(nil), a.Models...),
+		systemPrompt: a.SystemPrompt, workspace: a.Workspace, models: append([]string(nil), a.Models...),
 		builtinTools: append([]string(nil), a.BuiltinTools...),
 		mcpServers:   append([]string(nil), a.MCPServers...),
 		skills:       append([]string(nil), a.Skills...),
@@ -362,7 +370,7 @@ func (cw *ChatWindow) saveAgent() bool {
 	}
 	def := config.AgentDef{
 		Name: f.name, Description: f.description, Icon: f.icon, SystemPrompt: f.systemPrompt,
-		Models: append([]string(nil), f.models...), Mode: mode,
+		Workspace: f.workspace, Models: append([]string(nil), f.models...), Mode: mode,
 		BuiltinTools: f.builtinTools, MCPServers: f.mcpServers, Skills: f.skills,
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Agents) {
@@ -438,6 +446,9 @@ func (cw *ChatWindow) applyAgent(name string) {
 		cw.loadChatSelection()
 		cw.provider = cw.cfg.Chat.Provider
 		cw.model = cw.cfg.Chat.Model
+		if cw.cfg.Chat.Workspace != "" {
+			cw.workspace = cw.cfg.Chat.Workspace
+		}
 		cw.setupProvider(cw.provider)
 		return
 	}
@@ -450,6 +461,9 @@ func (cw *ChatWindow) applyAgent(name string) {
 		cw.cfg.UseReactAgent = cw.agentMode
 		cw.toolOn = map[string]bool{}
 		cw.skillOn = map[string]bool{}
+		if a.Workspace != "" {
+			cw.workspace = a.Workspace
+		}
 		if refs := cw.agentModelRefs(); len(refs) > 0 {
 			cw.setModelRef(refs[0])
 		}

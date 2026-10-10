@@ -1,6 +1,31 @@
 package ui
 
-import "chatgo/internal/config"
+import (
+	"strings"
+
+	"chatgo/internal/config"
+)
+
+// agentWorkspace is the directory an agent runs in, or empty for the caller's.
+func (cw *ChatWindow) agentWorkspace(agent string) string {
+	switch {
+	case strings.HasPrefix(agent, "agent:"):
+		name := strings.TrimPrefix(agent, "agent:")
+		for _, a := range cw.cfg.Agents {
+			if a.Name == name {
+				return a.Workspace
+			}
+		}
+	case strings.HasPrefix(agent, "acp:"):
+		name := strings.TrimPrefix(agent, "acp:")
+		for _, a := range cw.cfg.ACPAgents {
+			if a.Name == name {
+				return a.Cwd
+			}
+		}
+	}
+	return ""
+}
 
 // currentAgentDef returns the custom agent driving the conversation, if any.
 func (cw *ChatWindow) currentAgentDef() (config.AgentDef, bool) {
@@ -112,6 +137,9 @@ func (cw *ChatWindow) loadChatSelection() {
 func (cw *ChatWindow) saveChatSelection() {
 	cw.cfg.Chat.Provider = cw.provider
 	cw.cfg.Chat.Model = cw.model
+	if cw.workspace != "" {
+		cw.cfg.Chat.Workspace = cw.workspace
+	}
 	cw.cfg.Chat.BuiltinTools = nil
 	for _, name := range cw.visibleBuiltinToolNames() {
 		if cw.toolEnabled("builtin:" + name) {

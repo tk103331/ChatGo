@@ -62,17 +62,24 @@ func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
 // homeSelectors chooses the workspace and agent for a chat started from home.
 func (cw *ChatWindow) homeSelectors(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
+	label := func(text string) {
+		mgo.Text(c, text).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+			TextColor(mcore.Tokens(c).TextMuted).Shrink(0)
+	}
 	mgo.Row(c).Gap(u * 3).AlignItems(mgo.Center).Children(func() {
 		wsOpts := make([]minput.SelectOption[string], 0, len(cw.workspaces()))
 		for _, ws := range cw.workspaces() {
-			label := filepath.Base(ws)
-			if label == "" || label == "." || label == string(filepath.Separator) {
-				label = ws
+			name := filepath.Base(ws)
+			if name == "" || name == "." || name == string(filepath.Separator) {
+				name = ws
 			}
-			wsOpts = append(wsOpts, minput.SelectOption[string]{Value: ws, Label: label})
+			wsOpts = append(wsOpts, minput.SelectOption[string]{Value: ws, Label: name})
 		}
 		if len(wsOpts) > 0 {
-			minput.Select(c, &cw.workspace, wsOpts, minput.SelectOptions{Label: "项目", Placeholder: "选择项目"})
+			label("项目")
+			if minput.Select(c, &cw.workspace, wsOpts, minput.SelectOptions{Label: "项目", Placeholder: "选择项目"}).Changed() && cw.currentAgent == "" {
+				cw.saveChatSelection()
+			}
 		}
 		agOpts := make([]minput.SelectOption[string], 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+1)
 		agOpts = append(agOpts, minput.SelectOption[string]{Value: "", Label: chatAgentName})
@@ -80,8 +87,12 @@ func (cw *ChatWindow) homeSelectors(c *mgo.Context) {
 			agOpts = append(agOpts, minput.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
 		}
 		for _, a := range cw.cfg.ACPAgents {
+			if a.Disabled {
+				continue
+			}
 			agOpts = append(agOpts, minput.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
 		}
+		label("Agent")
 		minput.Select(c, &cw.homeAgent, agOpts, minput.SelectOptions{Label: "Agent", Placeholder: "选择 Agent"})
 	})
 }
