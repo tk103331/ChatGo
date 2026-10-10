@@ -11,15 +11,37 @@ import (
 
 // Config represents the application configuration
 type Config struct {
-	Providers         []Provider    `yaml:"providers"`
-	MCPServers        []MCPServer   `yaml:"mcp_servers"`
-	BuiltinTools      []BuiltinTool `yaml:"builtin_tools"`
-	CurrentProvider   string        `yaml:"current_provider"`
-	UseReactAgent     bool          `yaml:"use_react_agent"`
-	ReactAgentMaxStep int           `yaml:"react_agent_max_step"`
-	ThemeMode         string        `yaml:"theme_mode,omitempty"`
-	Density           string        `yaml:"density,omitempty"`
-	Locale            string        `yaml:"locale,omitempty"`
+	Providers         []Provider      `yaml:"providers"`
+	MCPServers        []MCPServer     `yaml:"mcp_servers"`
+	BuiltinTools      []BuiltinTool   `yaml:"builtin_tools"`
+	CurrentProvider   string          `yaml:"current_provider"`
+	UseReactAgent     bool            `yaml:"use_react_agent"`
+	ReactAgentMaxStep int             `yaml:"react_agent_max_step"`
+	ThemeMode         string          `yaml:"theme_mode,omitempty"`
+	Density           string          `yaml:"density,omitempty"`
+	Locale            string          `yaml:"locale,omitempty"`
+	Agents            []AgentDef      `yaml:"agents,omitempty"`
+	ACPAgents         []ACPConnection `yaml:"acp_agents,omitempty"`
+}
+
+// AgentDef is a named assistant preset usable in a conversation.
+type AgentDef struct {
+	Name         string   `yaml:"name"`
+	Description  string   `yaml:"description,omitempty"`
+	SystemPrompt string   `yaml:"system_prompt,omitempty"`
+	Provider     string   `yaml:"provider,omitempty"`
+	Mode         string   `yaml:"mode,omitempty"` // chat or agent
+	BuiltinTools []string `yaml:"builtin_tools,omitempty"`
+	MCPServers   []string `yaml:"mcp_servers,omitempty"`
+}
+
+// ACPConnection is a local coding CLI spoken to over the Agent Client Protocol.
+type ACPConnection struct {
+	Name    string            `yaml:"name"`
+	Command string            `yaml:"command"`
+	Args    []string          `yaml:"args,omitempty"`
+	Env     map[string]string `yaml:"env,omitempty"`
+	Cwd     string            `yaml:"cwd,omitempty"`
 }
 
 // Provider represents an LLM provider configuration
@@ -231,6 +253,7 @@ func LoadConfig() (*Config, error) {
 				},
 			},
 			BuiltinTools:      builtinTools,
+			ACPAgents:         defaultACPAgents(),
 			CurrentProvider:   "OpenAI",
 			UseReactAgent:     false,
 			ReactAgentMaxStep: 40,
@@ -267,8 +290,32 @@ func LoadConfig() (*Config, error) {
 	} else {
 		config.BuiltinTools = ensureAllBuiltinTools(config.BuiltinTools)
 	}
+	config.ACPAgents = ensureDefaultACPAgents(config.ACPAgents)
 
 	return &config, nil
+}
+
+// defaultACPAgents returns the ACP connections shipped by default.
+func defaultACPAgents() []ACPConnection {
+	return []ACPConnection{
+		{Name: "Claude Code", Command: "npx", Args: []string{"-y", "@zed-industries/claude-code-acp"}},
+		{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}},
+	}
+}
+
+// ensureDefaultACPAgents adds the shipped ACP connections that are missing.
+func ensureDefaultACPAgents(existing []ACPConnection) []ACPConnection {
+	have := make(map[string]bool, len(existing))
+	for _, a := range existing {
+		have[a.Name] = true
+	}
+	out := append([]ACPConnection(nil), existing...)
+	for _, d := range defaultACPAgents() {
+		if !have[d.Name] {
+			out = append(out, d)
+		}
+	}
+	return out
 }
 
 // createDefaultBuiltinTools creates the default list of built-in tools

@@ -12,7 +12,6 @@ import (
 	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
 	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	mnavigation "github.com/ZacharyZhang-NY/MujicaUI/navigation"
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
@@ -43,8 +42,8 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 	in := mchat.PromptComposer(c, &cw.draft, mchat.PromptComposerOptions{
 		Placeholder: "输入消息，Enter 发送，Shift+Enter 换行",
 		Tools: func() {
+			cw.agentSelector(c)
 			cw.modelSelector(c)
-			cw.modeSelector(c)
 			cw.toolMenu(c)
 		},
 		Actions: func() {
@@ -80,7 +79,7 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	}
 	if len(models) == 0 {
 		if minput.Button(c, "配置模型", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
-			cw.settings.open = true
+			cw.section = sectionSettings
 		}
 		return
 	}
@@ -95,21 +94,6 @@ func capsOf(p config.Provider) []string {
 		return nil
 	}
 	return []string{p.Type}
-}
-
-// modeSelector toggles between plain chat and the tool-enabled agent.
-func (cw *ChatWindow) modeSelector(c *mgo.Context) {
-	sel := 0
-	if cw.agentMode {
-		sel = 1
-	}
-	mnavigation.SegmentedControl(c, &sel, []mnavigation.Segment{
-		{Label: "对话"},
-		{Label: "Agents"},
-	}, mnavigation.SegmentedControlOptions{Label: "模式"})
-	if (sel == 1) != cw.agentMode {
-		cw.setAgentMode(sel == 1)
-	}
 }
 
 // toolMenu lists the available builtin and MCP tools as toggles.

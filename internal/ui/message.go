@@ -184,7 +184,7 @@ func (cw *ChatWindow) resendFrom(i int) {
 	}
 	conv := cw.cur
 	conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Timestamp: time.Now()})
-	msgs := buildMessages(conv, i)
+	msgs := cw.chatMessages(conv, i)
 	cw.streaming = true
 	cw.msgList.ScrollToEnd()
 	ctx, cancel := context.WithCancel(context.Background())

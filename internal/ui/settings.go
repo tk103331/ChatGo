@@ -18,7 +18,6 @@ import (
 
 // settingsState holds the settings dialog's open tab and edit forms.
 type settingsState struct {
-	open        bool
 	tab         int
 	prov        providerForm
 	mcp         mcpForm
@@ -69,15 +68,19 @@ type confirmState struct {
 var providerTypes = []string{"openai", "anthropic", "claude", "ollama", "custom", "qwen", "deepseek", "gemini"}
 var mcpTypes = []string{"stdio", "sse", "streamable_http"}
 
-// settingsDialog opens the tabbed settings modal.
-func (cw *ChatWindow) settingsDialog(c *mgo.Context) {
-	moverlay.Dialog(c, &cw.settings.open, moverlay.DialogOptions{Title: "设置", Width: 860}, func() {
-		mnavigation.Tabs(c, &cw.settings.tab, []mnavigation.Tab{
+// settingsPage shows the tabbed configuration page.
+func (cw *ChatWindow) settingsPage(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
+		mgo.Text(c, "设置").Font(mtheme.SerifFont).
+			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
+		res := mnavigation.Tabs(c, &cw.settings.tab, []mnavigation.Tab{
 			{Label: "模型", Panel: func() { cw.providersTab(c) }},
 			{Label: "MCP 服务器", Panel: func() { cw.mcpTab(c) }},
 			{Label: "内置工具", Panel: func() { cw.builtinTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
 		}, mnavigation.TabsOptions{})
+		res.Element.Grow(1).MinHeight(0)
 	})
 }
 
