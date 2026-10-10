@@ -85,6 +85,12 @@ func (cw *ChatWindow) loadSkills() {
 	})
 	cw.skills = out
 	cw.skillsLoaded = true
+	if len(cw.cfg.SkillsEnabled) == 0 && len(out) > 0 {
+		for _, s := range out {
+			cw.cfg.SkillsEnabled = append(cw.cfg.SkillsEnabled, s.ID)
+		}
+		_ = config.SaveConfig(cw.cfg)
+	}
 }
 
 func parseSkill(path, source string, data []byte) skill {
@@ -345,18 +351,30 @@ func (cw *ChatWindow) skillEnabled(id string) bool {
 	return containsStr(cw.cfg.SkillsEnabled, id)
 }
 
+// skillRuntime reports whether a skill is switched on for the active agent;
+// unknown skills default on.
+func (cw *ChatWindow) skillRuntime(id string) bool {
+	if v, ok := cw.skillOn[id]; ok {
+		return v
+	}
+	return true
+}
+
 func (cw *ChatWindow) setSkillEnabled(id string, on bool) {
 	cw.cfg.SkillsEnabled = setTool(cw.cfg.SkillsEnabled, id, on)
 	_ = config.SaveConfig(cw.cfg)
 }
 
-// skillPrompt returns the bodies of the conversation's selected skills.
+// skillPrompt returns the bodies of the active agent's enabled skills.
 func (cw *ChatWindow) skillPrompt() string {
-	if cw.cur == nil || len(cw.cur.Skills) == 0 {
+	if cw.cur == nil {
 		return ""
 	}
 	var parts []string
-	for _, id := range cw.cur.Skills {
+	for _, id := range cw.visibleSkillIDs() {
+		if !cw.skillRuntime(id) {
+			continue
+		}
 		for i := range cw.skills {
 			if cw.skills[i].ID == id && cw.skills[i].Body != "" {
 				parts = append(parts, "## Skill: "+cw.skills[i].Name+"\n\n"+cw.skills[i].Body)
@@ -366,19 +384,27 @@ func (cw *ChatWindow) skillPrompt() string {
 	return strings.Join(parts, "\n\n")
 }
 
-// skillMenu chooses the skills injected into the current conversation.
+// skillMenu chooses the skills active for the current agent.
 func (cw *ChatWindow) skillMenu(c *mgo.Context) {
-	if len(cw.skills) == 0 || cw.cur == nil {
+	ids := cw.visibleSkillIDs()
+	if len(ids) == 0 || cw.cur == nil {
 		return
 	}
-	count := len(cw.cur.Skills)
+	k := mcore.Tokens(c)
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	count := 0
+	for _, id := range ids {
+		if cw.skillRuntime(id) {
+			count++
+		}
+	}
 	label := "Skills"
 	if count > 0 {
 		label = "Skills (" + strconv.Itoa(count) + ")"
 	}
 	b := mgo.ButtonBase(c).MinHeight(mtheme.MinHitSize).Padding(0, mcore.Density(c).Unit()*2).
 		Gap(mcore.Density(c).Unit()).Radius(mtheme.ControlRadius).Label(label).
-		TextColor(mcore.Tokens(c).TextMuted).Role(mgo.RolePopUpButton)
+		TextColor(k.TextMuted).Role(mgo.RolePopUpButton)
 	open := mgo.Local(b, "skills", func() bool { return false })
 	if b.Clicked() {
 		*open = !*open
@@ -386,21 +412,51 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 	b.Children(func() {
 		mgo.Icon(c, icons.Must("brain")).Size(16, 16)
 		if count > 0 {
-			mgo.Text(c, strconv.Itoa(count)).FontWeight(600).TextColor(mcore.Tokens(c).AccentText).SingleLine()
+			mgo.Text(c, strconv.Itoa(count)).FontWeight(600).TextColor(k.AccentText).SingleLine()
 		}
 	})
-	moverlay.PopupMenuOpen(c, b, open, func(m *moverlay.PopupMenu) {
-		for i := range cw.skills {
-			s := cw.skills[i]
-			on := containsStr(cw.cur.Skills, s.ID)
-			mark := "  "
-			if on {
-				mark = "✓ "
+	changed := false
+	moverlay.Popover(c, b, open, moverlay.PopoverOptions{Title: "Skills", Width: 320}, func() {
+		agentSearch(c, &cw.skillMenuQuery, "搜索 Skill").Height(mcore.Density(c).ControlHeight() - 6)
+		q := strings.ToLower(strings.TrimSpace(cw.skillMenuQuery))
+		for _, id := range ids {
+			s := cw.skillByID(id)
+			if s == nil {
+				continue
 			}
-			if m.Item(mark+s.Name, moverlay.PopupMenuItemOptions{}) {
-				cw.cur.Skills = setTool(cw.cur.Skills, s.ID, !on)
-				_ = cw.convManager.SaveConversation(cw.cur)
+			if q != "" && !strings.Contains(strings.ToLower(s.Name+" "+s.Description), q) {
+				continue
 			}
+			v := cw.skillRuntime(id)
+			mgo.Column(c).Gap(0).Children(func() {
+				if minput.Switch(c, &v, s.Name, minput.SwitchOptions{}).Changed() {
+					cw.skillOn[id] = v
+					changed = true
+				}
+				if s.Description != "" {
+					mgo.Text(c, s.Description).FontSize(small).TextColor(k.TextMuted).MaxLines(1).Ellipsis("…")
+				}
+			})
 		}
 	})
+	if changed {
+		if cw.currentAgent == "" {
+			cw.saveChatSelection()
+		}
+		cw.clientDirty.Store(true)
+		c.Invalidate()
+	}
+}
+
+// skillByID returns the loaded skill with the given ID.
+func (cw *ChatWindow) skillByID(id string) *skill {
+	if !cw.skillsLoaded {
+		cw.loadSkills()
+	}
+	for i := range cw.skills {
+		if cw.skills[i].ID == id {
+			return &cw.skills[i]
+		}
+	}
+	return nil
 }

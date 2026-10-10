@@ -30,13 +30,14 @@ type settingsState struct {
 }
 
 type providerForm struct {
-	editing int
-	name    string
-	typ     string
-	apiKey  string
-	baseURL string
-	model   string
-	enabled bool
+	editing  int
+	name     string
+	typ      string
+	apiKey   string
+	baseURL  string
+	models   []string
+	newModel string
+	enabled  bool
 }
 
 type mcpForm struct {
@@ -136,7 +137,14 @@ func (cw *ChatWindow) providerRow(c *mgo.Context, i int) {
 		b.Background(k.Selection)
 	}
 	b.Children(func() {
-		mgo.Text(c, fmt.Sprintf("%s (%s)", p.Name, p.Type)).SingleLine()
+		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if svg := providerLogo(p.Type); svg != nil {
+				mgo.Icon(c, svg).Size(16, 16).TextColor(k.Text)
+			} else {
+				mgo.Icon(c, icons.Must("sliders-horizontal")).Size(16, 16).TextColor(k.TextMuted)
+			}
+			mgo.Text(c, fmt.Sprintf("%s (%s)", p.Name, p.Type)).SingleLine().MinWidth(0).Ellipsis("…")
+		})
 	})
 	if b.Clicked() {
 		cw.loadProviderForm(i)
@@ -155,7 +163,28 @@ func (cw *ChatWindow) providerFormView(c *mgo.Context) {
 		minput.Select(c, &f.typ, opts, minput.SelectOptions{Placeholder: "类型", Label: "类型"})
 		minput.PasswordInput(c, &f.apiKey, minput.PasswordInputOptions{Label: "API Key", Placeholder: "API Key"})
 		minput.TextInput(c, &f.baseURL, minput.TextInputOptions{Label: "Base URL", Placeholder: "Base URL"})
-		minput.TextInput(c, &f.model, minput.TextInputOptions{Label: "模型", Placeholder: "模型"})
+		mgo.Text(c, "模型").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
+		for _, m := range f.models {
+			m := m
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				mgo.Text(c, m).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				if mcore.IconAction(c, icons.Must("x"), "移除模型").Clicked() {
+					f.models = removeStr(f.models, m)
+				}
+			})
+		}
+		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
+			in := minput.TextInput(c, &f.newModel, minput.TextInputOptions{Placeholder: "添加模型名"})
+			in.Element.Grow(1)
+			if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				if name := strings.TrimSpace(f.newModel); name != "" {
+					if !containsStr(f.models, name) {
+						f.models = append(f.models, name)
+					}
+					f.newModel = ""
+				}
+			}
+		})
 		minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
 		mgo.Row(c).Gap(u).Children(func() {
 			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
@@ -175,7 +204,7 @@ func (cw *ChatWindow) loadProviderForm(i int) {
 	p := cw.cfg.Providers[i]
 	cw.settings.prov = providerForm{
 		editing: i, name: p.Name, typ: p.Type, apiKey: p.APIKey,
-		baseURL: p.BaseURL, model: p.Model, enabled: p.Enabled,
+		baseURL: p.BaseURL, models: append([]string(nil), p.ModelsList()...), enabled: p.Enabled,
 	}
 }
 
@@ -189,9 +218,13 @@ func (cw *ChatWindow) saveProvider() {
 		cw.fail("名称不能为空")
 		return
 	}
+	model := ""
+	if len(f.models) > 0 {
+		model = f.models[0]
+	}
 	p := config.Provider{
 		Name: f.name, Type: f.typ, APIKey: f.apiKey,
-		BaseURL: f.baseURL, Model: f.model, Enabled: f.enabled,
+		BaseURL: f.baseURL, Model: model, Models: append([]string(nil), f.models...), Enabled: f.enabled,
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Providers) {
 		cw.cfg.Providers[f.editing] = p
@@ -205,6 +238,17 @@ func (cw *ChatWindow) saveProvider() {
 	if cw.provider == p.Name {
 		cw.clientDirty.Store(true)
 	}
+}
+
+// removeStr returns s without v.
+func removeStr(s []string, v string) []string {
+	out := s[:0:0]
+	for _, x := range s {
+		if x != v {
+			out = append(out, x)
+		}
+	}
+	return out
 }
 
 func (cw *ChatWindow) deleteProvider() {
@@ -376,7 +420,9 @@ func (cw *ChatWindow) mcpFormFields(c *mgo.Context) {
 			{Label: "STDIO"}, {Label: "SSE"}, {Label: "HTTP"},
 		}, mnavigation.SegmentedControlOptions{Label: "类型", Equal: true})
 		f.typ = mcpTypes[typ]
-		minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
+		if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
+			cw.saveMCP()
+		}
 		if f.typ == "stdio" {
 			minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 npx"})
 			minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 72})
@@ -606,7 +652,9 @@ func (cw *ChatWindow) builtinFormView(c *mgo.Context) {
 		mgo.Text(c, tool.Type).FontWeight(600)
 		mgo.Text(c, config.GetBuiltinToolDescription(tool.Type)).TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
+		if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
+			cw.saveBuiltin()
+		}
 		required := config.GetRequiredConfigFields(tool.Type)
 		for _, field := range config.GetBuiltinToolConfigFields(tool.Type) {
 			label := field
@@ -639,15 +687,16 @@ func (cw *ChatWindow) saveBuiltin() {
 	if f.editing < 0 || f.editing >= len(cw.cfg.BuiltinTools) {
 		return
 	}
-	t := &cw.cfg.BuiltinTools[f.editing]
+	t := cw.cfg.BuiltinTools[f.editing]
 	t.Enabled = f.enabled
 	t.Config = f.config
 	if t.Enabled {
-		if err := config.ValidateBuiltinToolConfig(*t); err != nil {
+		if err := config.ValidateBuiltinToolConfig(t); err != nil {
 			cw.fail(err.Error())
 			return
 		}
 	}
+	cw.cfg.BuiltinTools[f.editing] = t
 	_ = config.SaveConfig(cw.cfg)
 	cw.status = ""
 	cw.toast("已保存内置工具配置", mcore.SeveritySuccess)

@@ -24,6 +24,20 @@ type Config struct {
 	ACPAgents         []ACPConnection `yaml:"acp_agents,omitempty"`
 	Workspaces        []string        `yaml:"workspaces,omitempty"`
 	SkillsEnabled     []string        `yaml:"skills_enabled,omitempty"`
+	Chat              Selection       `yaml:"chat,omitempty"`
+	ChatInitialized   bool            `yaml:"chat_initialized,omitempty"`
+}
+
+// Selection is the models and tools an agent may use. For the built-in Chat it
+// is the persisted choice; for a custom Agent it is the configured whitelist,
+// all enabled unless the user turns one off while chatting.
+type Selection struct {
+	Providers    []string `yaml:"providers,omitempty"`
+	Provider     string   `yaml:"provider,omitempty"`
+	Model        string   `yaml:"model,omitempty"`
+	BuiltinTools []string `yaml:"builtin_tools,omitempty"`
+	MCPServers   []string `yaml:"mcp_servers,omitempty"`
+	Skills       []string `yaml:"skills,omitempty"`
 }
 
 // AgentDef is a named assistant preset usable in a conversation.
@@ -32,8 +46,10 @@ type AgentDef struct {
 	Description  string   `yaml:"description,omitempty"`
 	Icon         string   `yaml:"icon,omitempty"`
 	SystemPrompt string   `yaml:"system_prompt,omitempty"`
-	Provider     string   `yaml:"provider,omitempty"`
-	Mode         string   `yaml:"mode,omitempty"` // chat or agent
+	Provider     string   `yaml:"provider,omitempty"`  // deprecated: use Models
+	Providers    []string `yaml:"providers,omitempty"` // deprecated: use Models
+	Models       []string `yaml:"models,omitempty"`    // "provider::model" or "::model"
+	Mode         string   `yaml:"mode,omitempty"`      // chat or agent
 	BuiltinTools []string `yaml:"builtin_tools,omitempty"`
 	MCPServers   []string `yaml:"mcp_servers,omitempty"`
 	Skills       []string `yaml:"skills,omitempty"`
@@ -50,12 +66,24 @@ type ACPConnection struct {
 
 // Provider represents an LLM provider configuration
 type Provider struct {
-	Name    string `yaml:"name"`
-	Type    string `yaml:"type"` // openai, anthropic, ollama, etc.
-	APIKey  string `yaml:"api_key"`
-	BaseURL string `yaml:"base_url,omitempty"`
-	Model   string `yaml:"model"`
-	Enabled bool   `yaml:"enabled"`
+	Name    string   `yaml:"name"`
+	Type    string   `yaml:"type"` // openai, anthropic, ollama, etc.
+	APIKey  string   `yaml:"api_key"`
+	BaseURL string   `yaml:"base_url,omitempty"`
+	Model   string   `yaml:"model"`
+	Models  []string `yaml:"models,omitempty"`
+	Enabled bool     `yaml:"enabled"`
+}
+
+// ModelsList returns the provider's models, falling back to the single Model.
+func (p Provider) ModelsList() []string {
+	if len(p.Models) > 0 {
+		return p.Models
+	}
+	if p.Model != "" {
+		return []string{p.Model}
+	}
+	return nil
 }
 
 // MCPServerType represents the type of MCP server connection
@@ -182,17 +210,58 @@ func ValidateBuiltinToolConfig(tool BuiltinTool) error {
 	return nil
 }
 
+// configFile returns the configuration path under the user's ~/.chatgo.
+func configFile() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".chatgo", "config.yaml"), nil
+}
+
+// ensureProviderPresets adds a disabled example for every type not yet present.
+func ensureProviderPresets(existing []Provider) []Provider {
+	have := make(map[string]bool, len(existing))
+	for _, p := range existing {
+		have[p.Type] = true
+	}
+	out := existing
+	for _, p := range ProviderPresets() {
+		if !have[p.Type] {
+			out = append(out, p)
+			have[p.Type] = true
+		}
+	}
+	return out
+}
+
+// ProviderPresets returns one disabled example provider for every supported
+// type, so a fresh configuration shows a template of each.
+func ProviderPresets() []Provider {
+	return []Provider{
+		{Name: "OpenAI", Type: "openai", BaseURL: "https://api.openai.com/v1", Model: "gpt-4o", Models: []string{"gpt-4o"}, Enabled: false},
+		{Name: "Anthropic", Type: "anthropic", BaseURL: "https://api.anthropic.com", Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false},
+		{Name: "Claude", Type: "claude", Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false},
+		{Name: "Ollama", Type: "ollama", BaseURL: "http://localhost:11434", Model: "llama3.2", Models: []string{"llama3.2"}, Enabled: false},
+		{Name: "Qwen", Type: "qwen", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-max", Models: []string{"qwen-max"}, Enabled: false},
+		{Name: "DeepSeek", Type: "deepseek", BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat", Models: []string{"deepseek-chat"}, Enabled: false},
+		{Name: "Gemini", Type: "gemini", Model: "gemini-2.0-flash", Models: []string{"gemini-2.0-flash"}, Enabled: false},
+		{Name: "Custom", Type: "custom", BaseURL: "", Model: "", Enabled: false},
+	}
+}
+
 // LoadConfig loads the configuration from the default location
 func LoadConfig() (*Config, error) {
-	configDir, err := os.UserConfigDir()
+	configPath, err := configFile()
 	if err != nil {
 		return nil, err
 	}
 
-	configPath := filepath.Join(configDir, "chatgo", "config.yaml")
-
 	// Create default config if it doesn't exist
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		if migrateLegacyConfig(configPath) {
+			return loadFile(configPath)
+		}
 		if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 			return nil, err
 		}
@@ -201,51 +270,7 @@ func LoadConfig() (*Config, error) {
 		builtinTools := createDefaultBuiltinTools()
 
 		defaultConfig := &Config{
-			Providers: []Provider{
-				{
-					Name:    "OpenAI",
-					Type:    "openai",
-					APIKey:  "",
-					BaseURL: "https://api.openai.com/v1",
-					Model:   "gpt-4",
-					Enabled: true,
-				},
-				{
-					Name:    "Claude",
-					Type:    "claude",
-					APIKey:  "",
-					Model:   "claude-3-5-sonnet-20241022",
-					Enabled: true,
-				},
-				{
-					Name:    "Ollama",
-					Type:    "ollama",
-					BaseURL: "http://localhost:11434",
-					Model:   "llama3.2",
-					Enabled: true,
-				},
-				{
-					Name:    "Qwen",
-					Type:    "qwen",
-					APIKey:  "",
-					Model:   "qwen-max",
-					Enabled: false,
-				},
-				{
-					Name:    "DeepSeek",
-					Type:    "deepseek",
-					APIKey:  "",
-					Model:   "deepseek-chat",
-					Enabled: false,
-				},
-				{
-					Name:    "Gemini",
-					Type:    "gemini",
-					APIKey:  "",
-					Model:   "gemini-2.0-flash-exp",
-					Enabled: false,
-				},
-			},
+			Providers: ProviderPresets(),
 			MCPServers: []MCPServer{
 				{
 					Name:    "filesystem",
@@ -258,7 +283,7 @@ func LoadConfig() (*Config, error) {
 			},
 			BuiltinTools:      builtinTools,
 			ACPAgents:         defaultACPAgents(),
-			CurrentProvider:   "OpenAI",
+			CurrentProvider:   "",
 			UseReactAgent:     false,
 			ReactAgentMaxStep: 40,
 			ThemeMode:         "system",
@@ -278,7 +303,12 @@ func LoadConfig() (*Config, error) {
 		return defaultConfig, nil
 	}
 
-	data, err := os.ReadFile(configPath)
+	return loadFile(configPath)
+}
+
+// loadFile reads and normalizes a configuration file.
+func loadFile(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -295,8 +325,58 @@ func LoadConfig() (*Config, error) {
 		config.BuiltinTools = ensureAllBuiltinTools(config.BuiltinTools)
 	}
 	config.ACPAgents = ensureDefaultACPAgents(config.ACPAgents)
+	config.Providers = ensureProviderPresets(config.Providers)
+
+	for i := range config.Providers {
+		p := &config.Providers[i]
+		if len(p.Models) == 0 && p.Model != "" {
+			p.Models = []string{p.Model}
+		}
+	}
+	for i := range config.Agents {
+		a := &config.Agents[i]
+		if len(a.Providers) == 0 && a.Provider != "" {
+			a.Providers = []string{a.Provider}
+		}
+		if len(a.Models) == 0 {
+			for _, pn := range a.Providers {
+				model := firstModel(config.Providers, pn)
+				a.Models = append(a.Models, pn+"::"+model)
+			}
+		}
+	}
 
 	return &config, nil
+}
+
+// migrateLegacyConfig copies a config from the old OS config dir into the new
+// ~/.chatgo location, reporting whether it did.
+func migrateLegacyConfig(dst string) bool {
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return false
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "chatgo", "config.yaml"))
+	if err != nil {
+		return false
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return false
+	}
+	return os.WriteFile(dst, data, 0644) == nil
+}
+
+// firstModel returns the first model of the named provider.
+func firstModel(providers []Provider, name string) string {
+	for _, p := range providers {
+		if p.Name == name {
+			if ms := p.ModelsList(); len(ms) > 0 {
+				return ms[0]
+			}
+			return ""
+		}
+	}
+	return ""
 }
 
 // defaultACPAgents returns the ACP connections shipped by default.
@@ -370,12 +450,14 @@ func ensureAllBuiltinTools(existing []BuiltinTool) []BuiltinTool {
 
 // SaveConfig saves the configuration to the default location
 func SaveConfig(config *Config) error {
-	configDir, err := os.UserConfigDir()
+	configPath, err := configFile()
 	if err != nil {
 		return err
 	}
 
-	configPath := filepath.Join(configDir, "chatgo", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return err
+	}
 
 	data, err := yaml.Marshal(config)
 	if err != nil {

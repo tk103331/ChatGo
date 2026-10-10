@@ -85,10 +85,7 @@ ChatGo supports the following LLM providers:
 
 ### Configuration File
 
-The configuration file is automatically saved at:
-- **Windows**: `C:\Users\<User>\AppData\Roaming\chatgo\config.yaml`
-- **macOS**: `~/Library/Application Support/chatgo/config.yaml`
-- **Linux**: `~/.config/chatgo/config.yaml`
+The configuration file is automatically saved at `~/.chatgo/config.yaml` on every platform (chat history lives in `~/.chatgo/conversations`).
 
 ### Configuration Example
 
