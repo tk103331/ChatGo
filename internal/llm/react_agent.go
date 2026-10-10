@@ -5,7 +5,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"strings"
+	"time"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/components/tool"
@@ -16,10 +18,10 @@ import (
 
 // ReactClient wraps a React Agent for tool-enabled conversations
 type ReactClient struct {
-	agent   *react.Agent
-	model   model.ToolCallingChatModel
-	tools   *compose.ToolsNodeConfig
-	config  *ReactAgentConfig
+	agent  *react.Agent
+	model  model.ToolCallingChatModel
+	tools  *compose.ToolsNodeConfig
+	config *ReactAgentConfig
 }
 
 // ReactAgentConfig holds configuration for the React Agent
@@ -28,7 +30,23 @@ type ReactAgentConfig struct {
 	MessageModifier    func(ctx context.Context, input []*schema.Message) []*schema.Message
 	ToolReturnDirectly map[string]struct{}
 	SystemPrompt       string
+	Timeout            time.Duration
+	EnableRetry        bool
+	MaxRetryAttempts   int
 }
+
+// ToolCallInfo contains information about a tool call
+type ToolCallInfo struct {
+	ID        string // Unique identifier for this tool call
+	Name      string
+	Arguments string
+	Result    string
+	Error     error
+	Duration  time.Duration
+}
+
+// ToolCallCallback is called when a tool is invoked
+type ToolCallCallback func(info ToolCallInfo)
 
 // ToolDefinition defines a tool for the React Agent
 type ToolDefinition struct {
@@ -124,6 +142,16 @@ func createReactClientWithTools(ctx context.Context, toolableModel model.ToolCal
 		return nil, fmt.Errorf("failed to create react agent: %w", err)
 	}
 
+	log.Printf("[React Agent] Created successfully with %d tools", len(einoTools))
+	if agentConfig != nil {
+		if agentConfig.Timeout > 0 {
+			log.Printf("[React Agent] Timeout configured: %v", agentConfig.Timeout)
+		}
+		if agentConfig.EnableRetry {
+			log.Printf("[React Agent] Retry enabled with max attempts: %d", agentConfig.MaxRetryAttempts)
+		}
+	}
+
 	return &ReactClient{
 		agent:  agent,
 		model:  toolableModel,
@@ -133,7 +161,14 @@ func createReactClientWithTools(ctx context.Context, toolableModel model.ToolCal
 }
 
 // Chat sends a chat completion request with streaming support using React Agent
-func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk func(string)) (*ChatResponse, error) {
+func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk func(string), onToolCall ToolCallCallback) (*ChatResponse, error) {
+	// Apply timeout if configured
+	if c.config != nil && c.config.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.config.Timeout)
+		defer cancel()
+	}
+
 	// Convert messages to eino format
 	einoMessages := make([]*schema.Message, len(messages))
 	for i, msg := range messages {
@@ -144,8 +179,8 @@ func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk 
 	}
 
 	// If streaming callback is provided, use Stream
-	if onChunk != nil {
-		return c.chatWithStream(ctx, einoMessages, onChunk)
+	if onChunk != nil || onToolCall != nil {
+		return c.chatWithStream(ctx, einoMessages, onChunk, onToolCall)
 	}
 
 	// Otherwise use Generate
@@ -153,7 +188,7 @@ func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk 
 }
 
 // chatWithStream sends a streaming chat completion request via React Agent
-func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Message, onChunk func(string)) (*ChatResponse, error) {
+func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Message, onChunk func(string), onToolCall ToolCallCallback) (*ChatResponse, error) {
 	// Create stream reader
 	streamReader, err := c.agent.Stream(ctx, messages)
 	if err != nil {
@@ -163,20 +198,63 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 	defer streamReader.Close()
 
 	var fullContent strings.Builder
+	toolCallTracker := make(map[string]*ToolCallInfo)
 
 	// Read from stream
 	for {
 		chunk, err := streamReader.Recv()
 		if err != nil {
 			if err == io.EOF {
+				log.Printf("[React Agent] Stream ended (EOF)")
 				break
 			}
 			return nil, fmt.Errorf("failed to receive from stream: %w", err)
 		}
 
-		if chunk != nil && chunk.Content != "" {
+		if chunk == nil {
+			continue
+		}
+
+		// Debug: log chunk details
+		log.Printf("[React Agent] Received chunk - Role: %s, ContentLen: %d, ToolCalls: %d",
+			chunk.Role, len(chunk.Content), len(chunk.ToolCalls))
+
+		// Handle content
+		if chunk.Content != "" {
 			fullContent.WriteString(chunk.Content)
-			onChunk(chunk.Content)
+			if onChunk != nil {
+				onChunk(chunk.Content)
+			}
+		}
+
+		// Handle tool calls
+		if len(chunk.ToolCalls) > 0 && onToolCall != nil {
+			for _, tc := range chunk.ToolCalls {
+				// Track tool call
+				info := &ToolCallInfo{
+					ID:        tc.ID,
+					Name:      tc.Function.Name,
+					Arguments: tc.Function.Arguments,
+				}
+				toolCallTracker[tc.ID] = info
+
+				// Log tool call start
+				log.Printf("[React Agent] Tool call started: %s (ID: %s), args: %s", tc.Function.Name, tc.ID, tc.Function.Arguments)
+
+				// Notify callback
+				onToolCall(*info)
+			}
+		}
+
+		// Handle tool call results (ToolMessage role indicates a tool result)
+		if chunk.Role == schema.Tool && chunk.ToolCallID != "" && onToolCall != nil {
+			if info, exists := toolCallTracker[chunk.ToolCallID]; exists {
+				info.Result = chunk.Content
+				log.Printf("[React Agent] Tool call completed: %s (ID: %s), result length: %d", info.Name, info.ID, len(info.Result))
+
+				// Notify callback with result
+				onToolCall(*info)
+			}
 		}
 	}
 
@@ -213,25 +291,66 @@ func (c *ReactClient) UpdateTools(tools []ToolDefinition) error {
 		einoTools[i] = newToolWrapper(toolDef)
 	}
 
+	// Build new tools config
+	toolsConfig := &compose.ToolsNodeConfig{
+		Tools: einoTools,
+	}
+
 	// Update tools in the model
 	toolInfos := make([]*schema.ToolInfo, len(einoTools))
 	for i, t := range einoTools {
-		info, _ := t.Info(context.Background())
+		info, err := t.Info(context.Background())
+		if err != nil {
+			return fmt.Errorf("failed to get tool info for tool %d: %w", i, err)
+		}
 		toolInfos[i] = info
 	}
 
-	_, err := c.model.WithTools(toolInfos)
+	updatedModel, err := c.model.WithTools(toolInfos)
 	if err != nil {
 		return fmt.Errorf("failed to update tools in model: %w", err)
 	}
 
+	// Recreate agent with updated model and tools
+	cfg := &react.AgentConfig{
+		ToolCallingModel: updatedModel,
+		ToolsConfig:      *toolsConfig,
+	}
+
+	// Apply existing configurations
+	if c.config != nil {
+		if c.config.MaxStep > 0 {
+			cfg.MaxStep = c.config.MaxStep
+		}
+		if c.config.MessageModifier != nil {
+			cfg.MessageModifier = c.config.MessageModifier
+		}
+		if c.config.ToolReturnDirectly != nil {
+			cfg.ToolReturnDirectly = c.config.ToolReturnDirectly
+		}
+	}
+
+	// Create new agent
+	agent, err := react.NewAgent(context.Background(), cfg)
+	if err != nil {
+		return fmt.Errorf("failed to recreate agent with new tools: %w", err)
+	}
+
+	// Update client
+	c.agent = agent
+	c.tools = toolsConfig
+	c.model = updatedModel
+
+	log.Printf("[React Agent] Tools updated successfully: %d tools", len(tools))
 	return nil
 }
 
 // toolWrapper wraps a ToolDefinition as an Eino InvokableTool
 type toolWrapper struct {
-	info    *schema.ToolInfo
-	handler func(ctx context.Context, arguments string) (string, error)
+	info        *schema.ToolInfo
+	handler     func(ctx context.Context, arguments string) (string, error)
+	retry       bool
+	maxAttempts int
 }
 
 func newToolWrapper(def ToolDefinition) *toolWrapper {
@@ -247,8 +366,18 @@ func newToolWrapper(def ToolDefinition) *toolWrapper {
 			Desc:        def.Description,
 			ParamsOneOf: schema.NewParamsOneOfByParams(params),
 		},
-		handler: def.Handler,
+		handler:     def.Handler,
+		retry:       false,
+		maxAttempts: 1,
 	}
+}
+
+// newToolWrapperWithRetry creates a tool wrapper with retry support
+func newToolWrapperWithRetry(def ToolDefinition, maxAttempts int) *toolWrapper {
+	wrapper := newToolWrapper(def)
+	wrapper.retry = maxAttempts > 1
+	wrapper.maxAttempts = maxAttempts
+	return wrapper
 }
 
 // Info returns the tool information
@@ -257,8 +386,57 @@ func (w *toolWrapper) Info(ctx context.Context) (*schema.ToolInfo, error) {
 }
 
 // InvokableRun executes the tool (required by InvokableTool interface)
-func (w *toolWrapper) InvokableRun(ctx context.Context, arguments string) (string, error) {
-	return w.handler(ctx, arguments)
+func (w *toolWrapper) InvokableRun(ctx context.Context, arguments string, opts ...tool.Option) (string, error) {
+	var lastErr error
+	attempts := w.maxAttempts
+	if attempts < 1 {
+		attempts = 1
+	}
+
+	for i := 0; i < attempts; i++ {
+		start := time.Now()
+		result, err := w.handler(ctx, arguments)
+		duration := time.Since(start)
+
+		if err == nil {
+			log.Printf("[Tool] %s executed successfully in %v (attempt %d/%d)", w.info.Name, duration, i+1, attempts)
+			return result, nil
+		}
+
+		lastErr = err
+		log.Printf("[Tool] %s failed on attempt %d/%d: %v", w.info.Name, i+1, attempts, err)
+
+		// If context is cancelled or deadline exceeded, don't retry
+		if ctx.Err() != nil {
+			return "", fmt.Errorf("tool %s execution cancelled: %w", w.info.Name, ctx.Err())
+		}
+
+		// If retry is disabled or this is the last attempt, return error
+		if !w.retry || i == attempts-1 {
+			break
+		}
+
+		// Wait before retry (exponential backoff)
+		backoff := time.Duration(i+1) * 100 * time.Millisecond
+		select {
+		case <-ctx.Done():
+			return "", fmt.Errorf("tool %s execution cancelled during retry: %w", w.info.Name, ctx.Err())
+		case <-time.After(backoff):
+			// Continue to next attempt
+		}
+	}
+
+	// Return detailed error
+	return "", fmt.Errorf("tool %s failed after %d attempts: %w (args: %s)",
+		w.info.Name, attempts, lastErr, truncateString(arguments, 100))
+}
+
+// truncateString truncates a string to a maximum length
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }
 
 // StreamableRun executes the tool with streaming (optional, returns not supported)

@@ -1,33 +1,33 @@
+// markdown_demo renders a sample document with MyGo and MujicaUI.
+//
+//	go run ./examples/markdown_demo.go
 package main
 
 import (
-	"chatgo/internal/ui"
+	"log"
 
-	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/container"
+	"github.com/egoist/mygo"
+	mgo "github.com/egoist/mygo/ui"
+
+	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
+	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
 )
 
-func main() {
-	a := app.New()
-	w := a.NewWindow("Markdown Rendering Demo")
+const markdownContent = `# Welcome to ChatGo
 
-	// Example markdown content
-	markdownContent := `# Welcome to ChatGo
-
-This is a **demo** of markdown rendering using Fyne's RichText component.
+This is a **demo** of markdown rendering with MujicaUI's MarkdownView.
 
 ## Features
 
 - **Bold text** and *italic text*
-- ` + "`" + `Inline code` + "`" + `
+- ` + "`Inline code`" + `
 - [Links](https://github.com)
 
 ### Code Block
 
 ` + "```go" + `
 func main() {
-    println("Hello, Fyne!")
+    println("Hello, MyGo!")
 }
 ` + "```" + `
 
@@ -47,17 +47,25 @@ func main() {
 Enjoy using ChatGo!
 `
 
-	// Create RichText widget from markdown
-	config := ui.DefaultRichTextConfig()
-	richText := ui.CreateMarkdownRichText(markdownContent, config)
+type demo struct{}
 
-	// Create a scrollable container
-	scroll := container.NewScroll(richText)
+func (demo) view(c *mgo.Context) {
+	mcore.Use(c, mcore.Settings{Locale: mcore.ZhCN})
+	mgo.Scroll(c).Fill().Padding(24).Children(func() {
+		mchat.MarkdownView(c, markdownContent)
+	})
+}
 
-	// Add some padding
-	content := container.NewPadded(scroll)
-
-	w.SetContent(content)
-	w.Resize(fyne.NewSize(800, 600))
-	w.ShowAndRun()
+func main() {
+	mygo.App.WhenReady(func() {
+		mygo.NewWindow(mygo.WindowOptions{
+			Title:   "Markdown Rendering Demo",
+			Width:   800,
+			Height:  600,
+			Content: mgo.View(demo{}.view),
+		})
+	})
+	if err := mygo.App.Run(); err != nil {
+		log.Fatal(err)
+	}
 }

@@ -2,15 +2,15 @@
 
 **A simple AI chat client built for learning purposes.**
 
-A simple cross-platform AI chat client built with Go and Fyne, supporting multiple LLM providers.
+A simple cross-platform AI chat client built with Go, [MyGo](https://github.com/egoist/mygo) and [MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI), supporting multiple LLM providers.
 
-![ChatGo](https://img.shields.io/badge/Go-1.21+-00ADD8?style=flat&logo=go)
+![ChatGo](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 
 ## ✨ Features
 
-- 🎨 **Modern UI** - Clean and elegant cross-platform GUI based on Fyne
+- 🎨 **Modern UI** - Native MyGo UI drawn on the GPU, with the MujicaUI component library (ivory/charcoal and wine-red theme)
 - 🏠 **Quick Start Home** - Centered input box for instant conversations
 - 💬 **Streaming Output** - Real-time AI responses, word by word
 - 🤖 **Multi-Model Support** - Supports OpenAI, Claude, Ollama, Qwen, DeepSeek, Gemini, and more
@@ -40,17 +40,24 @@ Clean home page design with centered input box for quick conversation start
 git clone https://github.com/tk103331/ChatGo.git
 cd ChatGo
 
-# Build
-go build -o chatgo ./cmd/chatgo
+# Build (requires Go 1.27.1+; the matching toolchain is downloaded automatically)
+go build -o chatgo .
 
 # Run
 ./chatgo
 ```
 
+> **Dependency note:** MujicaUI is not yet on the public proxy, so let Go reach GitHub directly the first time:
+> ```bash
+> go env -w GOPROXY=https://goproxy.cn,direct
+> go env -w GOPRIVATE=github.com/ZacharyZhang-NY/*
+> ```
+> MyGo is pure Go (no cgo), so the native UI cross-compiles from any platform.
+
 #### Install with Go
 
 ```bash
-go install github.com/tk103331/ChatGo/cmd/chatgo@latest
+go install github.com/tk103331/ChatGo@latest
 ```
 
 ### First Use
@@ -146,23 +153,27 @@ current_provider: "OpenAI"
 
 ## 🛠️ Tech Stack
 
-- **Go 1.21+** - Main programming language
-- **Fyne** - Cross-platform GUI framework
-- **Cloudwego Eino** - LLM abstraction layer and component library
-- **SQLite** - Chat history storage
+- **Go 1.27.1+** - Main programming language
+- **[MyGo](https://github.com/egoist/mygo)** - Native UI framework (GPU-drawn, no webview, no cgo)
+- **[MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI)** - Desktop component library for MyGo
+- **Cloudwego Eino** - LLM abstraction layer and React Agent framework
+- **JSON files** - Chat history storage (`~/.chatgo/conversations`)
 
 ## 📦 Project Structure
 
 ```
 ChatGo/
-├── cmd/
-│   └── chatgo/
-│       └── main.go          # Application entry point
+├── main.go                  # Application entry point
 ├── internal/
 │   ├── config/              # Configuration management
-│   ├── llm/                 # LLM client
+│   ├── llm/                 # LLM client and React Agent
 │   ├── mcp/                 # MCP server support
-│   └── ui/                  # User interface
+│   └── ui/                  # MyGo + MujicaUI interface
+│       ├── app.go           # State, view entry, streaming and clients
+│       ├── home.go          # Landing page
+│       ├── chat.go          # Chat view (sidebar/messages/composer)
+│       ├── settings.go      # Settings dialog
+│       └── tools.go         # Tool selection
 ├── pkg/
 │   └── models/              # Data models
 └── README.md
@@ -178,7 +189,8 @@ MIT License - See [LICENSE](LICENSE) file for details
 
 ## 🙏 Acknowledgments
 
-- [Fyne](https://fyne.io/) - Excellent cross-platform Go GUI framework
+- [MyGo](https://github.com/egoist/mygo) - Native UI framework
+- [MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI) - Desktop component library for MyGo
 - [Cloudwego Eino](https://github.com/cloudwego/eino) - Powerful LLM application development framework
 
 ## 📮 Contact
