@@ -9,12 +9,12 @@ import (
 
 // ToolCall represents a tool invocation
 type ToolCall struct {
-	ID       string                 `json:"id"`       // Unique identifier for this tool call
-	Name     string                 `json:"name"`     // Tool name
-	Arguments string                `json:"arguments"` // Tool arguments as JSON string
-	Result   string                 `json:"result"`   // Tool execution result
-	Error    string                 `json:"error,omitempty"` // Error message if tool call failed
-	Metadata map[string]interface{} `json:"metadata,omitempty"` // Additional metadata
+	ID        string                 `json:"id"`                 // Unique identifier for this tool call
+	Name      string                 `json:"name"`               // Tool name
+	Arguments string                 `json:"arguments"`          // Tool arguments as JSON string
+	Result    string                 `json:"result"`             // Tool execution result
+	Error     string                 `json:"error,omitempty"`    // Error message if tool call failed
+	Metadata  map[string]interface{} `json:"metadata,omitempty"` // Additional metadata
 }
 
 // Message represents a single message in a conversation
@@ -28,13 +28,17 @@ type Message struct {
 
 // Conversation represents a chat conversation
 type Conversation struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Messages    []Message `json:"messages"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	Provider    string    `json:"provider"`
-	Model       string    `json:"model"`
+	ID        string            `json:"id"`
+	Title     string            `json:"title"`
+	Messages  []Message         `json:"messages"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
+	Provider  string            `json:"provider"`
+	Model     string            `json:"model"`
+	Workspace string            `json:"workspace,omitempty"`
+	Agent     string            `json:"agent,omitempty"`
+	ACPMode   string            `json:"acp_mode,omitempty"`
+	ACPConfig map[string]string `json:"acp_config,omitempty"`
 }
 
 // ConversationManager manages conversation storage
