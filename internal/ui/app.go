@@ -124,6 +124,13 @@ type ChatWindow struct {
 
 	agentForm       agentForm
 	agentEditorOpen bool
+	agentSecModels  bool
+	agentSecTools   bool
+	agentSecMCP     bool
+	agentSecSkills  bool
+
+	avatarMu  sync.Mutex
+	avatarPNG map[string]*mgo.Bitmap
 
 	acpList mgo.ListState
 	acpForm acpForm
@@ -178,23 +185,28 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		return nil, fmt.Errorf("failed to create conversation manager: %w", err)
 	}
 	cw := &ChatWindow{
-		cfg:           cfg,
-		convManager:   cm,
-		mcpManager:    NewMCPManagerWrapper(),
-		provider:      cfg.CurrentProvider,
-		agentMode:     cfg.UseReactAgent,
-		toolOn:        map[string]bool{},
-		skillOn:       map[string]bool{},
-		acpConvs:      map[string]*acpConv{},
-		acpConvBySess: map[acp.SessionId]string{},
-		acpConvObj:    map[string]*models.Conversation{},
-		acpStarting:   map[string]bool{},
-		rightPanel:    false,
-		wsCollapsed:   map[string]bool{},
-		themeMode:     parseThemeMode(cfg.ThemeMode),
-		density:       mtheme.Compact,
-		locale:        parseLocale(cfg.Locale),
-		editingIdx:    -1,
+		cfg:            cfg,
+		convManager:    cm,
+		mcpManager:     NewMCPManagerWrapper(),
+		provider:       cfg.CurrentProvider,
+		agentMode:      cfg.UseReactAgent,
+		toolOn:         map[string]bool{},
+		skillOn:        map[string]bool{},
+		acpConvs:       map[string]*acpConv{},
+		acpConvBySess:  map[acp.SessionId]string{},
+		acpConvObj:     map[string]*models.Conversation{},
+		acpStarting:    map[string]bool{},
+		rightPanel:     false,
+		wsCollapsed:    map[string]bool{},
+		themeMode:      parseThemeMode(cfg.ThemeMode),
+		density:        mtheme.Compact,
+		locale:         parseLocale(cfg.Locale),
+		editingIdx:     -1,
+		agentSecModels: true,
+		agentSecTools:  true,
+		agentSecMCP:    true,
+		agentSecSkills: true,
+		avatarPNG:      map[string]*mgo.Bitmap{},
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd

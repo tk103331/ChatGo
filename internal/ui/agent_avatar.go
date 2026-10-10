@@ -21,12 +21,8 @@ func (cw *ChatWindow) agentAvatar(c *mgo.Context) func() {
 		}
 	case strings.HasPrefix(cw.cur.Agent, "agent:"):
 		name := strings.TrimPrefix(cw.cur.Agent, "agent:")
-		for _, a := range cw.cfg.Agents {
-			if a.Name == name {
-				ic := agentIcon(a.Icon)
-				return func() { mgo.Icon(c, icons.Must(ic)).Size(24, 24).TextColor(mcore.Tokens(c).AccentText) }
-			}
-		}
+		seed := cw.agentSeedByName(name)
+		return func() { cw.drawAgentAvatar(c, seed, 24) }
 	default:
 		return func() { mgo.Icon(c, icons.Must(chatAgentIcon)).Size(24, 24).TextColor(mcore.Tokens(c).AccentText) }
 	}

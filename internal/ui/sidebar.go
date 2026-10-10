@@ -229,7 +229,7 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 			menuItem(c, iconLeading(c, chatAgentIcon), chatAgentName, func() { pick("") })
 			for _, a := range cw.cfg.Agents {
 				name := a.Name
-				menuItem(c, iconLeading(c, agentIcon(a.Icon)), name, func() { pick("agent:" + name) })
+				menuItem(c, cw.agentLeading(c, agentSeed(a)), name, func() { pick("agent:" + name) })
 			}
 			for _, a := range cw.cfg.ACPAgents {
 				if a.Disabled {
@@ -333,7 +333,7 @@ func logoLeading(c *mgo.Context, name string) func() {
 	}
 }
 
-// convLeading shows the conversation agent's logo or icon.
+// convLeading shows the conversation agent's logo or generated avatar.
 func (cw *ChatWindow) convLeading(c *mgo.Context, conv models.Conversation) {
 	u := mcore.Density(c).Unit()
 	switch {
@@ -343,13 +343,9 @@ func (cw *ChatWindow) convLeading(c *mgo.Context, conv models.Conversation) {
 		}
 	case strings.HasPrefix(conv.Agent, "agent:"):
 		name := strings.TrimPrefix(conv.Agent, "agent:")
-		ic := "bot"
-		for _, a := range cw.cfg.Agents {
-			if a.Name == name {
-				ic = agentIcon(a.Icon)
-			}
+		if bmp := cw.agentBitmap(cw.agentSeedByName(name)); bmp != nil {
+			mgo.Image(c, bmp).Size(16, 16).Margin(0, 0, 0, u)
 		}
-		mgo.Icon(c, icons.Must(ic)).Size(16, 16).TextColor(mcore.Tokens(c).AccentText).Margin(0, 0, 0, u)
 	default:
 		mgo.Icon(c, icons.Must(chatAgentIcon)).Size(16, 16).TextColor(mcore.Tokens(c).AccentText).Margin(0, 0, 0, u)
 	}

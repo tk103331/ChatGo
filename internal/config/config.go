@@ -52,6 +52,7 @@ type AgentDef struct {
 	Models       []string `yaml:"models,omitempty"`    // "provider::model" or "::model"
 	Mode         string   `yaml:"mode,omitempty"`      // chat or agent
 	Workspace    string   `yaml:"workspace,omitempty"`
+	AvatarSeed   string   `yaml:"avatar_seed,omitempty"`
 	BuiltinTools []string `yaml:"builtin_tools,omitempty"`
 	MCPServers   []string `yaml:"mcp_servers,omitempty"`
 	Skills       []string `yaml:"skills,omitempty"`
@@ -352,9 +353,6 @@ func loadFile(path string) (*Config, error) {
 		}
 	}
 
-	if err := writeConfig(path, &config); err != nil {
-		return nil, err
-	}
 	return &config, nil
 }
 

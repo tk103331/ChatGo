@@ -12,7 +12,9 @@ require (
 	github.com/cloudwego/eino-ext/components/model/qwen v0.1.4
 	github.com/cloudwego/eino-ext/components/tool/mcp v0.0.8
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.13
+	github.com/coder/acp-go-sdk v0.13.5
 	github.com/egoist/mygo v0.2.10
+	github.com/issue9/identicon v1.2.1
 	github.com/mark3labs/mcp-go v0.43.2
 	google.golang.org/genai v1.36.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -44,7 +46,6 @@ require (
 	github.com/bytedance/sonic v1.15.4 // indirect
 	github.com/bytedance/sonic/loader v0.5.2 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
-	github.com/coder/acp-go-sdk v0.13.5 // indirect
 	github.com/cohesion-org/deepseek-go v1.3.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
