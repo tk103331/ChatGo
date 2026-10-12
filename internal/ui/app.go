@@ -191,6 +191,7 @@ type ChatWindow struct {
 	acpConvBySess map[acp.SessionId]string
 	acpConvObj    map[string]*models.Conversation
 	acpStarting   map[string]bool
+	channelSess   map[acp.SessionId]bool
 
 	permissionReq  *acp.RequestPermissionRequest
 	permissionCh   chan acp.RequestPermissionResponse
@@ -205,6 +206,12 @@ type ChatWindow struct {
 	toolCacheKey string
 
 	quickShortcut string
+
+	channelMu      sync.Mutex
+	channelRunning bool
+	channelCancel  context.CancelFunc
+	channelState   feishuConnState
+	channelNote    string
 
 	idMu  sync.Mutex
 	idSeq uint64
@@ -239,6 +246,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		acpConvBySess:  map[acp.SessionId]string{},
 		acpConvObj:     map[string]*models.Conversation{},
 		acpStarting:    map[string]bool{},
+		channelSess:    map[acp.SessionId]bool{},
 		rightPanel:     false,
 		wsCollapsed:    map[string]bool{},
 		themeMode:      parseThemeMode(cfg.ThemeMode),
@@ -258,6 +266,8 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.settings.prov.editing = -1
 	cw.settings.mcp.editing = -1
 	cw.settings.builtin.editing = -1
+	cw.settings.channel.editing = -1
+	cw.settings.channel.typ = "feishu"
 	cw.settings.shortcut.value = cw.quickChatShortcut()
 	cw.agentForm.editing = -1
 	cw.acpForm.editing = -1
@@ -266,6 +276,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.applyAgent("")
 	go cw.startMCP()
 	go cw.autoTaskLoop()
+	go cw.startFeishuChannel()
 	return cw, nil
 }
 

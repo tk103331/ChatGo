@@ -21,7 +21,9 @@ require (
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/egoist/mygo v0.2.10
 	github.com/issue9/identicon v1.2.1
+	github.com/larksuite/oapi-sdk-go/v3 v3.12.0
 	github.com/mark3labs/mcp-go v1.2.1
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	google.golang.org/genai v1.36.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -72,6 +74,7 @@ require (
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect

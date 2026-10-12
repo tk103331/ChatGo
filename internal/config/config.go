@@ -29,6 +29,22 @@ type Config struct {
 	Chat              Selection       `yaml:"chat,omitempty"`
 	ChatInitialized   bool            `yaml:"chat_initialized,omitempty"`
 	AutoTasks         []AutoTask      `yaml:"auto_tasks,omitempty"`
+	Channels          []Channel       `yaml:"channels,omitempty"`
+}
+
+// Channel is an IM channel configuration that can trigger Agent execution.
+type Channel struct {
+	ID         string   `yaml:"id"`
+	Type       string   `yaml:"type"` // "feishu"
+	Name       string   `yaml:"name"`
+	Enabled    bool     `yaml:"enabled"`
+	Agent      string   `yaml:"agent,omitempty"` // "agent:Name" / "acp:Name" / "" = built-in Chat
+	AppID      string   `yaml:"app_id,omitempty"`
+	AppSecret  string   `yaml:"app_secret,omitempty"`
+	Workspace  string   `yaml:"workspace,omitempty"`
+	ConvID     string   `yaml:"conversation_id,omitempty"`
+	ConvIDs    []string `yaml:"conversation_ids,omitempty"`
+	ActiveConv int      `yaml:"active_conv,omitempty"`
 }
 
 // Schedule is when an AutoTask runs: daily at Hour:Minute, weekly on Weekday,

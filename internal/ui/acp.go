@@ -260,6 +260,14 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 }
 
 func (a acpClient) RequestPermission(ctx context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
+	a.cw.acpMu.Lock()
+	auto := a.cw.channelSess[p.SessionId]
+	a.cw.acpMu.Unlock()
+	if auto {
+		if r, ok := acpAutoApprove(p); ok {
+			return r, nil
+		}
+	}
 	reply := make(chan acp.RequestPermissionResponse, 1)
 	req := p
 	a.cw.postMain(func() {
@@ -273,6 +281,30 @@ func (a acpClient) RequestPermission(ctx context.Context, p acp.RequestPermissio
 	case <-ctx.Done():
 		return acpCancelled(), ctx.Err()
 	}
+}
+
+func acpAutoApprove(p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, bool) {
+	var id acp.PermissionOptionId
+	for _, opt := range p.Options {
+		if opt.Kind == acp.PermissionOptionKindAllowAlways {
+			id = opt.OptionId
+			break
+		}
+	}
+	if id == "" {
+		for _, opt := range p.Options {
+			if opt.Kind == acp.PermissionOptionKindAllowOnce {
+				id = opt.OptionId
+				break
+			}
+		}
+	}
+	if id == "" {
+		return acpCancelled(), false
+	}
+	return acp.RequestPermissionResponse{
+		Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: id}},
+	}, true
 }
 
 func (a acpClient) ReadTextFile(ctx context.Context, p acp.ReadTextFileRequest) (acp.ReadTextFileResponse, error) {

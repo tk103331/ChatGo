@@ -28,8 +28,23 @@ type settingsState struct {
 	mcp         mcpForm
 	builtin     builtinForm
 	shortcut    shortcutForm
+	channel     channelForm
 	provList    mgo.ListState
 	builtinList mgo.ListState
+	channelList mgo.ListState
+}
+
+type channelForm struct {
+	editing   int
+	name      string
+	typ       string
+	agent     string
+	appID     string
+	appSecret string
+	enabled   bool
+	scanning  bool
+	qr        *mgo.Bitmap
+	qrTip     string
 }
 
 type shortcutForm struct {
@@ -96,6 +111,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
 			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
+			{Label: "渠道", Panel: func() { cw.channelTab(c) }},
 		}, mnavigation.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)
 	})
@@ -881,6 +897,189 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 			cw.saveAppearance()
 		}
 	})
+}
+
+func (cw *ChatWindow) channelTab(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
+		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
+			cw.feishuStatusLine(c)
+			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
+				cw.clearChannelForm()
+			}
+			mgo.List(c, &cw.settings.channelList, len(cw.cfg.Channels), func(i int) {
+				cw.channelRow(c, i)
+			}).Fill()
+		})
+		cw.channelFormView(c)
+	})
+}
+
+func (cw *ChatWindow) feishuStatusLine(c *mgo.Context) {
+	state, note := cw.feishuStatus()
+	st, label := feishuStatusView(state, note)
+	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
+	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+		mgo.Text(c, "飞书连接").Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+		mfeedback.StatusIndicator(c, st, mfeedback.StatusIndicatorOptions{})
+		mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+	})
+}
+
+func feishuStatusView(state feishuConnState, note string) (mfeedback.Status, string) {
+	switch state {
+	case feishuConnected:
+		return mfeedback.StatusSuccess, "已连接 · " + note
+	case feishuConnecting:
+		return mfeedback.StatusBusy, "正在连接…"
+	case feishuReconnecting:
+		return mfeedback.StatusBusy, "重连中…"
+	case feishuError:
+		return mfeedback.StatusError, "连接失败：" + note
+	default:
+		return mfeedback.StatusOffline, "未连接"
+	}
+}
+
+func (cw *ChatWindow) channelRow(c *mgo.Context, i int) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	ch := cw.cfg.Channels[i]
+	b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
+		Padding(u, u*2).Radius(mtheme.ControlRadius)
+	if cw.settings.channel.editing == i {
+		b.Background(k.Selection)
+	}
+	b.Children(func() {
+		mgo.Row(c).FillWidth().Justify(mgo.Start).Gap(u).AlignItems(mgo.Center).Children(func() {
+			mgo.Text(c, fmt.Sprintf("%s (%s)", ch.Name, ch.Type)).SingleLine().MinWidth(0).Grow(1).Ellipsis("…")
+			status, col := "禁用", k.TextMuted
+			if ch.Enabled {
+				status, col = "启用", k.Success
+			}
+			mgo.Text(c, status).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(col).Shrink(0)
+		})
+	})
+	if b.Clicked() {
+		cw.loadChannelForm(i)
+	}
+}
+
+func (cw *ChatWindow) channelFormView(c *mgo.Context) {
+	f := &cw.settings.channel
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
+		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "渠道名称"})
+		minput.Select(c, &f.typ, []minput.SelectOption[string]{{Value: "feishu", Label: "飞书"}}, minput.SelectOptions{Label: "类型"})
+		minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "AppID", Placeholder: "飞书应用 App ID"})
+		minput.PasswordInput(c, &f.appSecret, minput.PasswordInputOptions{Label: "AppSecret", Placeholder: "飞书应用 App Secret"})
+		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if minput.Button(c, "扫码创建应用", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
+				cw.startFeishuRegister()
+			}
+			if f.scanning {
+				mgo.Text(c, "等待飞书扫码授权…").TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+			}
+		})
+		mgo.Text(c, "提示：请在飞书开发者后台 → 事件与回调 → 订阅方式，选择「使用长连接接收事件/回调」，并添加事件 im.message.receive_v1（保存时需本地长连接在线）。").
+			TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		if f.qr != nil {
+			mgo.Image(c, f.qr).Size(220, 220)
+		}
+		if f.qrTip != "" {
+			mgo.Text(c, f.qrTip).TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		}
+		agentOpts := []minput.SelectOption[string]{{Value: "", Label: chatAgentName}}
+		for _, a := range cw.cfg.Agents {
+			agentOpts = append(agentOpts, minput.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
+		}
+		for _, a := range cw.cfg.ACPAgents {
+			if a.Disabled {
+				continue
+			}
+			agentOpts = append(agentOpts, minput.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
+		}
+		minput.Select(c, &f.agent, agentOpts, minput.SelectOptions{Label: "触发 Agent"})
+		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+				cw.saveChannel()
+			}
+			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
+				cw.deleteChannel()
+			}
+			mgo.Box(c).Grow(1)
+			if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
+				cw.applyChannel()
+			}
+		})
+	})
+}
+
+func (cw *ChatWindow) clearChannelForm() {
+	cw.settings.channel = channelForm{editing: -1, typ: "feishu", enabled: true}
+}
+
+func (cw *ChatWindow) loadChannelForm(i int) {
+	ch := cw.cfg.Channels[i]
+	cw.settings.channel = channelForm{
+		editing: i, name: ch.Name, typ: ch.Type, agent: ch.Agent,
+		appID: ch.AppID, appSecret: ch.AppSecret, enabled: ch.Enabled,
+	}
+}
+
+func (cw *ChatWindow) saveChannel() {
+	f := &cw.settings.channel
+	if strings.TrimSpace(f.name) == "" {
+		cw.fail("渠道名称不能为空")
+		return
+	}
+	typ := f.typ
+	if typ == "" {
+		typ = "feishu"
+	}
+	ch := config.Channel{Type: typ, Name: f.name, Agent: f.agent, AppID: f.appID, AppSecret: f.appSecret, Enabled: f.enabled}
+	if f.editing >= 0 && f.editing < len(cw.cfg.Channels) {
+		ch.ID = cw.cfg.Channels[f.editing].ID
+		cw.cfg.Channels[f.editing] = ch
+	} else {
+		ch.ID = cw.newID()
+		cw.cfg.Channels = append(cw.cfg.Channels, ch)
+		f.editing = len(cw.cfg.Channels) - 1
+	}
+	_ = config.SaveConfig(cw.cfg)
+	cw.toast("已保存渠道 "+ch.Name, mcore.SeveritySuccess)
+	cw.restartFeishu()
+}
+
+func (cw *ChatWindow) applyChannel() {
+	f := &cw.settings.channel
+	if f.editing < 0 || f.editing >= len(cw.cfg.Channels) {
+		return
+	}
+	cw.cfg.Channels[f.editing].Enabled = f.enabled
+	_ = config.SaveConfig(cw.cfg)
+	cw.restartFeishu()
+}
+
+func (cw *ChatWindow) deleteChannel() {
+	f := &cw.settings.channel
+	if f.editing < 0 || f.editing >= len(cw.cfg.Channels) {
+		return
+	}
+	idx := f.editing
+	name := cw.cfg.Channels[idx].Name
+	cw.askConfirm("删除渠道", "确定删除「"+name+"」？", func() {
+		cw.cfg.Channels = append(cw.cfg.Channels[:idx], cw.cfg.Channels[idx+1:]...)
+		_ = config.SaveConfig(cw.cfg)
+		cw.clearChannelForm()
+		cw.restartFeishu()
+	})
+}
+
+func (cw *ChatWindow) restartFeishu() {
+	cw.stopFeishuChannel()
+	cw.startFeishuChannel()
 }
 
 // mcpStatus maps a server's state to an indicator status and a note.
