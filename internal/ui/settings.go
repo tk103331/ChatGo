@@ -39,6 +39,7 @@ type channelForm struct {
 	name      string
 	typ       string
 	agent     string
+	workspace string
 	appID     string
 	appSecret string
 	enabled   bool
@@ -1001,6 +1002,13 @@ func (cw *ChatWindow) channelFormView(c *mgo.Context) {
 			agentOpts = append(agentOpts, minput.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
 		}
 		minput.Select(c, &f.agent, agentOpts, minput.SelectOptions{Label: "触发 Agent"})
+		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
+			in := minput.TextInput(c, &f.workspace, minput.TextInputOptions{Label: "默认工作区", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})
+			in.Element.Grow(1)
+			if minput.Button(c, "选择", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				cw.pickDirectory("选择默认工作区", func(path string) { f.workspace = path })
+			}
+		})
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
 				cw.saveChannel()
@@ -1023,7 +1031,7 @@ func (cw *ChatWindow) clearChannelForm() {
 func (cw *ChatWindow) loadChannelForm(i int) {
 	ch := cw.cfg.Channels[i]
 	cw.settings.channel = channelForm{
-		editing: i, name: ch.Name, typ: ch.Type, agent: ch.Agent,
+		editing: i, name: ch.Name, typ: ch.Type, agent: ch.Agent, workspace: ch.Workspace,
 		appID: ch.AppID, appSecret: ch.AppSecret, enabled: ch.Enabled,
 	}
 }
@@ -1038,9 +1046,13 @@ func (cw *ChatWindow) saveChannel() {
 	if typ == "" {
 		typ = "feishu"
 	}
-	ch := config.Channel{Type: typ, Name: f.name, Agent: f.agent, AppID: f.appID, AppSecret: f.appSecret, Enabled: f.enabled}
+	ch := config.Channel{Type: typ, Name: f.name, Agent: f.agent, Workspace: strings.TrimSpace(f.workspace), AppID: f.appID, AppSecret: f.appSecret, Enabled: f.enabled}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Channels) {
-		ch.ID = cw.cfg.Channels[f.editing].ID
+		old := cw.cfg.Channels[f.editing]
+		ch.ID = old.ID
+		ch.ConvID = old.ConvID
+		ch.ConvIDs = old.ConvIDs
+		ch.ActiveConv = old.ActiveConv
 		cw.cfg.Channels[f.editing] = ch
 	} else {
 		ch.ID = cw.newID()
