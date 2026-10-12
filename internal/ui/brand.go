@@ -13,6 +13,9 @@ var logoPNG []byte
 //go:embed assets/panel-right.svg
 var panelRightSVG []byte
 
+//go:embed assets/mcp.svg
+var mcpSVG []byte
+
 var (
 	brandOnce sync.Once
 	brandBmp  *mgo.Bitmap
@@ -24,6 +27,17 @@ func LogoPNG() []byte { return logoPNG }
 func brandBitmap() *mgo.Bitmap {
 	brandOnce.Do(func() { brandBmp, _ = mgo.DecodeBitmap(logoPNG) })
 	return brandBmp
+}
+
+var (
+	mcpOnce sync.Once
+	mcpIcon *mgo.SVG
+)
+
+// mcpLogo is the official Model Context Protocol mark, tinted by TextColor.
+func mcpLogo() *mgo.SVG {
+	mcpOnce.Do(func() { mcpIcon, _ = mgo.ParseSVG(mcpSVG) })
+	return mcpIcon
 }
 
 var (
