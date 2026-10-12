@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -22,6 +23,10 @@ import (
 	moverlay "github.com/ZacharyZhang-NY/MujicaUI/overlay"
 	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
 )
+
+// acpHandshakeTimeout bounds Initialize and NewSession so a stuck CLI cannot
+// hang the warmup goroutine forever.
+const acpHandshakeTimeout = 60 * time.Second
 
 //go:embed assets/claude.png
 var claudeLogoPNG []byte
@@ -539,6 +544,12 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 		env = append(env, k+"="+v)
 	}
 	cmd.Env = env
+	// Own process group so the whole tree (npx → node) dies together.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// stderr is drained into a bounded buffer: inheriting it can block or
+	// write to an invalid descriptor in a GUI launch.
+	var errBuf acpTailBuffer
+	cmd.Stderr = &errBuf
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, err
@@ -547,24 +558,34 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 	if err != nil {
 		return nil, err
 	}
-	cmd.Stderr = os.Stderr
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+	rt := &acpConv{cmd: cmd, convID: conv.ID}
+	go func() {
+		_ = cmd.Wait()
+		cw.acpReap(rt)
+	}()
 	clientConn := acp.NewClientSideConnection(acpClient{cw: cw}, stdin, stdout)
-	rt := &acpConv{cmd: cmd, conn: clientConn, convID: conv.ID}
-	ctx := context.Background()
+	rt.conn = clientConn
+	fail := func(err error) (*acpConv, error) {
+		cw.acpKillProcess(rt)
+		if msg := errBuf.String(); msg != "" {
+			return nil, fmt.Errorf("%w: %s", err, msg)
+		}
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), acpHandshakeTimeout)
+	defer cancel()
 	if _, err := clientConn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion:    acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{},
 	}); err != nil {
-		_ = cmd.Process.Kill()
-		return nil, err
+		return fail(err)
 	}
 	resp, err := clientConn.NewSession(ctx, acp.NewSessionRequest{Cwd: cwd, McpServers: []acp.McpServer{}})
 	if err != nil {
-		_ = cmd.Process.Kill()
-		return nil, err
+		return fail(err)
 	}
 	rt.sessionID = resp.SessionId
 	rt.configs = resp.ConfigOptions
@@ -579,6 +600,55 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 	cw.acpApplySaved(rt, conv)
 	cw.invalidate()
 	return rt, nil
+}
+
+// acpKillProcess kills the session's whole process group and reaps it.
+func (cw *ChatWindow) acpKillProcess(rt *acpConv) {
+	if rt == nil || rt.cmd == nil || rt.cmd.Process == nil {
+		return
+	}
+	pid := rt.cmd.Process.Pid
+	// Negative pid targets the group made in acpEnsureSession.
+	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	_ = rt.cmd.Process.Kill()
+}
+
+// acpReap drops a session whose CLI exited so a later warmup restarts it.
+func (cw *ChatWindow) acpReap(rt *acpConv) {
+	cw.acpMu.Lock()
+	if cur := cw.acpConvs[rt.convID]; cur == rt {
+		delete(cw.acpConvs, rt.convID)
+	}
+	if rt.sessionID != "" {
+		delete(cw.acpConvBySess, rt.sessionID)
+	}
+	cw.acpMu.Unlock()
+	cw.invalidate()
+}
+
+// acpTailBuffer keeps the last cap bytes written, for diagnosing a CLI that
+// fails at startup without unbounded memory.
+type acpTailBuffer struct {
+	mu  sync.Mutex
+	buf []byte
+}
+
+const acpTailCap = 4096
+
+func (b *acpTailBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.buf = append(b.buf, p...)
+	if len(b.buf) > acpTailCap {
+		b.buf = b.buf[len(b.buf)-acpTailCap:]
+	}
+	return len(p), nil
+}
+
+func (b *acpTailBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return strings.TrimSpace(string(b.buf))
 }
 
 // acpApplySaved restores a conversation's saved mode and config choices.
@@ -657,7 +727,7 @@ func (cw *ChatWindow) acpConvClose(convID string) {
 	}
 	cw.acpMu.Unlock()
 	delete(cw.acpConvObj, convID)
-	if rt != nil && rt.cmd != nil && rt.cmd.Process != nil {
-		_ = rt.cmd.Process.Kill()
+	if rt != nil {
+		cw.acpKillProcess(rt)
 	}
 }
