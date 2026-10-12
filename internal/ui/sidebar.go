@@ -9,12 +9,12 @@ import (
 
 	"chatgo/pkg/models"
 
-	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	"github.com/ZacharyZhang-NY/MujicaUI/icons"
-	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	moverlay "github.com/ZacharyZhang-NY/MujicaUI/overlay"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // sidebar builds the brand row, new-chat action, search and conversation list.

@@ -25,11 +25,11 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
-	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	mfeedback "github.com/ZacharyZhang-NY/MujicaUI/feedback"
-	"github.com/ZacharyZhang-NY/MujicaUI/icons"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 const defaultTitle = "新会话"

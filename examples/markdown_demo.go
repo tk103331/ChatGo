@@ -9,8 +9,8 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
-	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
+	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 )
 
 const markdownContent = `# Welcome to ChatGo

@@ -12,11 +12,11 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	mdatetime "github.com/ZacharyZhang-NY/MujicaUI/datetime"
-	"github.com/ZacharyZhang-NY/MujicaUI/icons"
-	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mdatetime "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/datetime"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // autoForm is the auto-task editor's working copy.

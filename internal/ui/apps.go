@@ -13,10 +13,10 @@ import (
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/cloudwego/eino/schema"
 
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	"github.com/ZacharyZhang-NY/MujicaUI/icons"
-	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // appDef describes one Agent-driven application in the Apps menu: a set of

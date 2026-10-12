@@ -10,14 +10,14 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
-	"github.com/ZacharyZhang-NY/MujicaUI/code"
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	"github.com/ZacharyZhang-NY/MujicaUI/data"
-	"github.com/ZacharyZhang-NY/MujicaUI/icons"
-	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	mnavigation "github.com/ZacharyZhang-NY/MujicaUI/navigation"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // previewTab is one open file or diff in the preview area.

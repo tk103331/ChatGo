@@ -2,10 +2,11 @@
 
 ## MujicaUI（本地补丁副本）
 
-`MujicaUI/` 是上游模块的本地副本，通过根目录 `go.mod` 的 `replace` 使用：
+`MujicaUI/` 是上游模块 `git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI` 的本地副本，
+通过根目录 `go.mod` 的 `replace` 使用：
 
 ```
-replace github.com/ZacharyZhang-NY/MujicaUI => ./third_party/MujicaUI
+replace git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI => ./third_party/MujicaUI
 ```
 
 该目录未纳入版本控制（见 `.gitignore`），因为它是整模块副本（约 25 MB）。
@@ -27,11 +28,12 @@ replace github.com/ZacharyZhang-NY/MujicaUI => ./third_party/MujicaUI
 ### 重建副本
 
 ```sh
-MOD=$(go env GOMODCACHE)/github.com/!zachary!zhang-!n!y/!mujica!u!i@v0.0.0-20261005202320-8c561ba15ede
+go get git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI@<version>
+MOD=$(go env GOMODCACHE)/git.zacharyzhang.com/\!zachary\!zhang-\!n\!y/\!mujica\!u\!i@<version>
 mkdir -p third_party/MujicaUI
 cp -R "$MOD"/. third_party/MujicaUI/
 chmod -R u+w third_party/MujicaUI
 # 然后按上文重新应用 highlight.go 补丁
 ```
 
-完成后 `go build ./...` 即可。若上游修复了该 bug，删除 `replace` 与副本即可。
+完成后 `go build ./...` 即可。若上游修复了该 bug，删除 `replace`、副本，并把 import 改回直属依赖即可。

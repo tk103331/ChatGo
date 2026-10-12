@@ -10,11 +10,11 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	mdata "github.com/ZacharyZhang-NY/MujicaUI/data"
-	"github.com/ZacharyZhang-NY/MujicaUI/icons"
-	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mdata "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 const chatAgentName = "Chat"

@@ -18,10 +18,10 @@ import (
 	"chatgo/internal/config"
 	"chatgo/pkg/models"
 
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	moverlay "github.com/ZacharyZhang-NY/MujicaUI/overlay"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // acpHandshakeTimeout bounds Initialize and NewSession so a stuck CLI cannot

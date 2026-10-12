@@ -3,9 +3,9 @@ package ui
 import (
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // composerOptions configure the in-box prompt composer.

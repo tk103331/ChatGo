@@ -9,12 +9,12 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	"github.com/ZacharyZhang-NY/MujicaUI/devtools"
-	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	mnavigation "github.com/ZacharyZhang-NY/MujicaUI/navigation"
-	moverlay "github.com/ZacharyZhang-NY/MujicaUI/overlay"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/devtools"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
+	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 //go:embed mcp_servers.json

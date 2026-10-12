@@ -3,8 +3,8 @@ package ui
 import (
 	"chatgo/internal/config"
 
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 func parseThemeMode(s string) mcore.Mode {

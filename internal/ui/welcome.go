@@ -6,11 +6,11 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	"github.com/ZacharyZhang-NY/MujicaUI/icons"
-	minput "github.com/ZacharyZhang-NY/MujicaUI/input"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // homeView is the welcome page: capability cards, the composer and recent chats.

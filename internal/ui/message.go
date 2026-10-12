@@ -8,13 +8,13 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mchat "github.com/ZacharyZhang-NY/MujicaUI/chat"
-	mcore "github.com/ZacharyZhang-NY/MujicaUI/core"
-	"github.com/ZacharyZhang-NY/MujicaUI/data"
-	"github.com/ZacharyZhang-NY/MujicaUI/icons"
-	mtheme "github.com/ZacharyZhang-NY/MujicaUI/theme"
+	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 
-	"github.com/ZacharyZhang-NY/MujicaUI/agent"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/agent"
 
 	"chatgo/pkg/models"
 )
