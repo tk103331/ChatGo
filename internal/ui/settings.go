@@ -3,9 +3,11 @@ package ui
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"chatgo/internal/config"
+	"chatgo/internal/mcp"
 
 	mgo "github.com/egoist/mygo/ui"
 
@@ -25,8 +27,13 @@ type settingsState struct {
 	prov        providerForm
 	mcp         mcpForm
 	builtin     builtinForm
+	shortcut    shortcutForm
 	provList    mgo.ListState
 	builtinList mgo.ListState
+}
+
+type shortcutForm struct {
+	value string
 }
 
 type providerForm struct {
@@ -87,6 +94,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "模型", Panel: func() { cw.providersTab(c) }},
 			{Label: "内置工具", Panel: func() { cw.builtinTab(c) }},
 			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
+			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
 		}, mnavigation.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)
@@ -351,6 +359,9 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
 		Children(func() {
 			mgo.Row(c).AlignItems(mgo.Center).Gap(u).Children(func() {
+				if svg := mcpLogo(); svg != nil {
+					mgo.Icon(c, svg).Size(18, 18).TextColor(k.Text)
+				}
 				mgo.Text(c, s.Name).Font(mtheme.SerifFont).
 					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
 				status, _ := mcpStatus(cw, s.Name)
@@ -367,6 +378,11 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 				mgo.Text(c, s.URL).TextColor(k.TextMuted).FontSize(caption).SingleLine().Ellipsis("…").MaxLines(1)
 			}
 			mgo.Row(c).Gap(u).Wrap().Children(func() {
+				if st, ok := cw.mcpManager.GetServerStatus(s.Name); ok && st.Status == "initialized" && len(st.Tools) > 0 {
+					if minput.Button(c, "工具 ("+strconv.Itoa(len(st.Tools))+")", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+						cw.openMCPTools(s.Name)
+					}
+				}
 				if minput.Button(c, "编辑", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
 					cw.loadMCPForm(i)
 					cw.mcpEditorOpen = true
@@ -383,6 +399,51 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 				}
 			})
 		})
+}
+
+// openMCPTools snapshots an initialized server's tools for the dialog.
+func (cw *ChatWindow) openMCPTools(name string) {
+	st, ok := cw.mcpManager.GetServerStatus(name)
+	if !ok {
+		return
+	}
+	cw.mcpToolsServer = name
+	cw.mcpTools = append([]mcp.MCPTool(nil), st.Tools...)
+	cw.mcpToolsOpen = true
+}
+
+// mcpToolsDialog lists the tools an initialized server exposes.
+func (cw *ChatWindow) mcpToolsDialog(c *mgo.Context) {
+	if !cw.mcpToolsOpen {
+		return
+	}
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	moverlay.Dialog(c, &cw.mcpToolsOpen, moverlay.DialogOptions{
+		Title: cw.mcpToolsServer + " · 工具 (" + strconv.Itoa(len(cw.mcpTools)) + ")",
+		Width: 640,
+	}, func() {
+		mgo.Scroll(c).MaxHeight(420).Children(func() {
+			mgo.Column(c).Gap(u * 2).Children(func() {
+				if len(cw.mcpTools) == 0 {
+					mgo.Text(c, "该服务器没有可用工具").TextColor(k.TextMuted)
+					return
+				}
+				for _, tl := range cw.mcpTools {
+					tl := tl
+					mgo.Column(c).Gap(u).Padding(u*2).FillWidth().
+						Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
+						Children(func() {
+							mgo.Text(c, tl.Name).FontWeight(600).Font(mtheme.MonoFont)
+							if tl.Description != "" {
+								mgo.Text(c, tl.Description).TextColor(k.TextMuted).FontSize(caption)
+							}
+						})
+				}
+			})
+		})
+	})
 }
 
 func (cw *ChatWindow) initMCPServer(name string) {
@@ -751,6 +812,40 @@ func (cw *ChatWindow) saveBuiltin() {
 	cw.status = ""
 	cw.toast("已保存内置工具配置", mcore.SeveritySuccess)
 	cw.clientDirty.Store(true)
+}
+
+// shortcutTab edits the global shortcut that opens the focused interface.
+func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
+		mgo.Text(c, "快捷键").Font(mtheme.SerifFont).FontWeight(600)
+		if cw.status != "" {
+			mgo.Text(c, cw.status).TextColor(k.Danger).FontSize(small).
+				Font(mtheme.MonoFont)
+		}
+		mgo.Text(c, "快捷对话").FontSize(small).TextColor(k.TextMuted)
+		f := &cw.settings.shortcut
+		minput.TextInput(c, &f.value, minput.TextInputOptions{
+			Label: "快捷对话快捷键", Placeholder: defaultQuickShortcut,
+		})
+		mgo.Text(c, "示例：CmdOrCtrl+Shift+Space、Alt+Space、CmdOrCtrl+Shift+K").
+			FontSize(small).TextColor(k.TextMuted)
+		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+				cw.cfg.QuickChatShortcut = strings.TrimSpace(f.value)
+				cw.saveQuickShortcut()
+				cw.toast("快捷键已更新", mcore.SeveritySuccess)
+			}
+			if minput.Button(c, "恢复默认", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+				f.value = defaultQuickShortcut
+				cw.cfg.QuickChatShortcut = defaultQuickShortcut
+				cw.saveQuickShortcut()
+				cw.toast("已恢复默认快捷键", mcore.SeveritySuccess)
+			}
+		})
+	})
 }
 
 // appearanceTab changes the theme mode and language.

@@ -14,6 +14,7 @@ type navSection int
 
 const (
 	sectionChat navSection = iota
+	sectionApps
 	sectionAgent
 	sectionSkill
 	sectionAuto
@@ -32,7 +33,7 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 		cw.navItem(c, "Agent", "bot", sectionAgent)
 		cw.navItem(c, "Skill", "brain", sectionSkill)
 		cw.navItem(c, "自动任务", "clock", sectionAuto)
-		cw.navItem(c, "MCP", "layout-grid", sectionMCP)
+		cw.navItemSVG(c, "MCP", mcpLogo(), sectionMCP)
 		mgo.Spacer(c)
 		label := "外观：" + themeModeLabel(cw.themeMode)
 		if mcore.IconAction(c, icons.Must(themeModeIcon(cw.themeMode)), label).Tooltip(label).Clicked() {
@@ -55,13 +56,54 @@ func (cw *ChatWindow) navItem(c *mgo.Context, label, icon string, section navSec
 	}
 	b.Children(func() { mgo.Icon(c, icons.Must(icon)).Size(20, 20) })
 	if b.Clicked() {
-		cw.section = section
+		cw.goSection(section)
 	}
+}
+
+// navItemSVG is navItem for a brand mark drawn from an SVG, tinted to match.
+func (cw *ChatWindow) navItemSVG(c *mgo.Context, label string, svg *mgo.SVG, section navSection) {
+	if svg == nil {
+		cw.navItem(c, label, "layout-grid", section)
+		return
+	}
+	k := mcore.Tokens(c)
+	b := mgo.ButtonBase(c).Size(navItemSize, navItemSize).Shrink(0).Radius(mtheme.ControlRadius).Label(label).Tooltip(label)
+	fg := k.TextMuted
+	if cw.section == section {
+		b.Background(k.Selection)
+		fg = k.Text
+	} else if b.Hovered() {
+		b.Background(k.SurfaceHover)
+		fg = k.Text
+	}
+	b.Children(func() { mgo.Icon(c, svg).Size(20, 20).TextColor(fg) })
+	if b.Clicked() {
+		cw.goSection(section)
+	}
+}
+
+// goSection switches the navigation section, restoring the user's normal
+// conversation when leaving the Apps section.
+func (cw *ChatWindow) goSection(section navSection) {
+	if cw.section == sectionApps && section != sectionApps {
+		cw.appActive = ""
+		if cw.preAppConvID != "" {
+			cw.selectConversation(cw.preAppConvID)
+			cw.preAppConvID = ""
+		}
+	}
+	cw.section = section
 }
 
 // sectionView renders the page for the current section.
 func (cw *ChatWindow) sectionView(c *mgo.Context) {
 	switch cw.section {
+	case sectionApps:
+		if cw.appActive == "" {
+			cw.appsPage(c)
+		} else {
+			cw.appWorkspace(c)
+		}
 	case sectionAgent:
 		cw.agentsPage(c)
 	case sectionSkill:

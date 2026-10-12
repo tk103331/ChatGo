@@ -417,27 +417,29 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 	})
 	changed := false
 	moverlay.Popover(c, b, open, moverlay.PopoverOptions{Title: "Skills", Width: 320}, func() {
-		agentSearch(c, &cw.skillMenuQuery, "搜索 Skill").Height(mcore.Density(c).ControlHeight() - 6)
-		q := strings.ToLower(strings.TrimSpace(cw.skillMenuQuery))
-		for _, id := range ids {
-			s := cw.skillByID(id)
-			if s == nil {
-				continue
-			}
-			if q != "" && !strings.Contains(strings.ToLower(s.Name+" "+s.Description), q) {
-				continue
-			}
-			v := cw.skillRuntime(id)
-			mgo.Column(c).Gap(0).Children(func() {
-				if minput.Switch(c, &v, s.Name, minput.SwitchOptions{}).Changed() {
-					cw.skillOn[id] = v
-					changed = true
+		mgo.Column(c).Gap(mcore.Density(c).Unit() * 2).Children(func() {
+			agentSearch(c, &cw.skillMenuQuery, "搜索 Skill").Height(mcore.Density(c).ControlHeight() - 6)
+			q := strings.ToLower(strings.TrimSpace(cw.skillMenuQuery))
+			for _, id := range ids {
+				s := cw.skillByID(id)
+				if s == nil {
+					continue
 				}
-				if s.Description != "" {
-					mgo.Text(c, s.Description).FontSize(small).TextColor(k.TextMuted).MaxLines(1).Ellipsis("…")
+				if q != "" && !strings.Contains(strings.ToLower(s.Name+" "+s.Description), q) {
+					continue
 				}
-			})
-		}
+				v := cw.skillRuntime(id)
+				mgo.Column(c).Gap(0).Children(func() {
+					if minput.Switch(c, &v, s.Name, minput.SwitchOptions{}).Changed() {
+						cw.skillOn[id] = v
+						changed = true
+					}
+					if s.Description != "" {
+						mgo.Text(c, s.Description).FontSize(small).TextColor(k.TextMuted).MaxLines(1).Ellipsis("…")
+					}
+				})
+			}
+		})
 	})
 	if changed {
 		if cw.currentAgent == "" {

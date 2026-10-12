@@ -120,8 +120,10 @@ func (cw *ChatWindow) messages() []models.Message {
 
 // composer builds the message input with its model, mode and tool controls.
 func (cw *ChatWindow) composer(c *mgo.Context) {
-	in := mchat.PromptComposer(c, &cw.draft, mchat.PromptComposerOptions{
+	in := composer(c, &cw.draft, composerOptions{
 		Placeholder: "输入消息，Enter 发送，Shift+Enter 换行",
+		MinHeight:   88,
+		MaxHeight:   220,
 		Tools: func() {
 			if cw.isACP() {
 				cw.acpBadge(c)
@@ -131,6 +133,7 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 			cw.agentSelector(c)
 			cw.modelSelector(c)
 			cw.toolMenu(c)
+			cw.mcpMenu(c)
 			cw.skillMenu(c)
 		},
 		Actions: func() {
@@ -262,13 +265,39 @@ func capsOf(p config.Provider) []string {
 	return []string{p.Type}
 }
 
-// toolMenu toggles builtin tools and MCP servers, grouped in a popover.
+// toolMenu toggles the builtin tools in a popover.
 func (cw *ChatWindow) toolMenu(c *mgo.Context) {
-	metas := cw.toolMetas()
-	if len(metas) == 0 {
-		if minput.Button(c, "配置工具", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("sliders-horizontal")}).Clicked() {
-			cw.section = sectionSettings
-			cw.settings.tab = 1
+	cw.toolPopover(c, "tools", "工具", "sliders-horizontal", "内置工具", "builtin:")
+}
+
+// mcpMenu toggles the MCP servers in a popover, separate from builtin tools.
+func (cw *ChatWindow) mcpMenu(c *mgo.Context) {
+	cw.toolPopover(c, "mcp", "MCP", "layout-grid", "MCP 服务器", "mcp:")
+}
+
+// toolPopover builds a button and popover listing the tools whose IDs begin
+// with prefix, keeping the builtin and MCP controls independent.
+func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title, prefix string) {
+	var list []toolMeta
+	for _, mt := range cw.toolMetas() {
+		if strings.HasPrefix(mt.ID, prefix) {
+			list = append(list, mt)
+		}
+	}
+	if len(list) == 0 {
+		btnIcon := icons.Must(icon)
+		if prefix == "mcp:" {
+			if svg := mcpLogo(); svg != nil {
+				btnIcon = svg
+			}
+		}
+		if minput.Button(c, "配置"+buttonLabel, minput.ButtonOptions{Variant: minput.Ghost, Icon: btnIcon}).Clicked() {
+			if prefix == "mcp:" {
+				cw.section = sectionMCP
+			} else {
+				cw.section = sectionSettings
+				cw.settings.tab = 1
+			}
 		}
 		return
 	}
@@ -276,45 +305,44 @@ func (cw *ChatWindow) toolMenu(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	on := 0
-	for _, mt := range metas {
+	for _, mt := range list {
 		if cw.toolEnabled(mt.ID) {
 			on++
 		}
 	}
-	label := "工具"
+	label := buttonLabel
 	if on > 0 {
-		label = "工具 (" + strconv.Itoa(on) + ")"
+		label = buttonLabel + " (" + strconv.Itoa(on) + ")"
 	}
 	b := mgo.ButtonBase(c).MinHeight(mtheme.MinHitSize).Padding(0, u*2).Gap(u).
 		Radius(mtheme.ControlRadius).Label(label).TextColor(k.TextMuted).Role(mgo.RolePopUpButton)
-	open := mgo.Local(b, "tools", func() bool { return false })
+	open := mgo.Local(b, key, func() bool { return false })
 	if b.Clicked() {
 		*open = !*open
 	}
 	b.Children(func() {
-		mgo.Icon(c, icons.Must("sliders-horizontal")).Size(16, 16)
+		if prefix == "mcp:" {
+			if svg := mcpLogo(); svg != nil {
+				mgo.Icon(c, svg).Size(16, 16).TextColor(k.TextMuted)
+			} else {
+				mgo.Icon(c, icons.Must(icon)).Size(16, 16)
+			}
+		} else {
+			mgo.Icon(c, icons.Must(icon)).Size(16, 16)
+		}
 		if on > 0 {
 			mgo.Text(c, strconv.Itoa(on)).FontWeight(600).TextColor(k.AccentText).SingleLine()
 		}
 	})
-	var builtins, mcp []toolMeta
-	for _, mt := range metas {
-		if strings.HasPrefix(mt.ID, "mcp:") {
-			mcp = append(mcp, mt)
-		} else {
-			builtins = append(builtins, mt)
-		}
+	query := &cw.toolQuery
+	if prefix == "mcp:" {
+		query = &cw.mcpQuery
 	}
 	changed := false
-	moverlay.Popover(c, b, open, moverlay.PopoverOptions{Title: "工具", Width: 340}, func() {
-		agentSearch(c, &cw.toolQuery, "搜索工具").Height(mcore.Density(c).ControlHeight() - 6)
-		section := func(title string, list []toolMeta) {
-			list = filterMetas(list, cw.toolQuery)
-			if len(list) == 0 {
-				return
-			}
-			mgo.Text(c, title).FontWeight(600).FontSize(small).TextColor(k.TextMuted)
-			for _, mt := range list {
+	moverlay.Popover(c, b, open, moverlay.PopoverOptions{Title: title, Width: 340}, func() {
+		mgo.Column(c).Gap(u * 2).Children(func() {
+			agentSearch(c, query, "搜索"+buttonLabel).Height(mcore.Density(c).ControlHeight() - 6)
+			for _, mt := range filterMetas(list, *query) {
 				mt := mt
 				v := cw.toolEnabled(mt.ID)
 				mgo.Column(c).Gap(0).Children(func() {
@@ -327,9 +355,7 @@ func (cw *ChatWindow) toolMenu(c *mgo.Context) {
 					}
 				})
 			}
-		}
-		section("内置工具", builtins)
-		section("MCP", mcp)
+		})
 	})
 	if changed {
 		if cw.currentAgent == "" {
