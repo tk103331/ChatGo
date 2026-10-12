@@ -21,6 +21,7 @@ type Config struct {
 	ThemeMode         string          `yaml:"theme_mode,omitempty"`
 	Density           string          `yaml:"density,omitempty"`
 	Locale            string          `yaml:"locale,omitempty"`
+	QuickChatShortcut string          `yaml:"quick_chat_shortcut,omitempty"`
 	Agents            []AgentDef      `yaml:"agents,omitempty"`
 	ACPAgents         []ACPConnection `yaml:"acp_agents,omitempty"`
 	Workspaces        []string        `yaml:"workspaces,omitempty"`

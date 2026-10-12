@@ -39,8 +39,9 @@ func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
 			{Title: "多会话", Description: "会话自动保存，支持搜索、重命名与导出", Icon: icons.Must("message-square"), Examples: []string{"写一个 Go 的快速排序"}},
 		},
 		Prompts: func() {
-			in := mchat.PromptComposer(c, &cw.draft, mchat.PromptComposerOptions{
+			in := composer(c, &cw.draft, composerOptions{
 				Placeholder: "输入消息，Enter 开始对话",
+				MinHeight:   72,
 				MaxHeight:   160,
 				Tools:       func() { cw.homeSelectors(c) },
 				Actions: func() {
