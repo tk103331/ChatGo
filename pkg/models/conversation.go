@@ -1,6 +1,8 @@
 package models
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -61,6 +63,15 @@ func NewConversationManager() (*ConversationManager, error) {
 	}
 
 	return &ConversationManager{dataDir: chatgoDir}, nil
+}
+
+// NewConversationManagerAt creates a conversation manager rooted at dir, for
+// callers that supply their own storage location (tests, alternate profiles).
+func NewConversationManagerAt(dir string) (*ConversationManager, error) {
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, err
+	}
+	return &ConversationManager{dataDir: dir}, nil
 }
 
 // ListConversations returns all conversations
@@ -144,5 +155,9 @@ func (cm *ConversationManager) CreateConversation(title, provider, model string)
 }
 
 func generateID() string {
-	return time.Now().Format("20060102150405")
+	var b [4]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return time.Now().Format("20060102150405.000000000")
+	}
+	return time.Now().Format("20060102150405") + "-" + hex.EncodeToString(b[:])
 }
