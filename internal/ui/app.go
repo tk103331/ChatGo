@@ -110,10 +110,12 @@ type ChatWindow struct {
 	convList mgo.ListState
 	msgList  mchat.MessageListState
 
-	draft     string
-	provider  string
-	model     string
-	agentMode bool
+	draft        string
+	mentionRoot  string
+	mentionFiles []mchat.ContextItem
+	provider     string
+	model        string
+	agentMode    bool
 
 	searchQuery string
 	editingIdx  int
@@ -192,6 +194,8 @@ type ChatWindow struct {
 	acpConvObj    map[string]*models.Conversation
 	acpStarting   map[string]bool
 	channelSess   map[acp.SessionId]bool
+	channelReply  map[acp.SessionId]*strings.Builder
+	toolStart     map[string]time.Time
 
 	permissionReq  *acp.RequestPermissionRequest
 	permissionCh   chan acp.RequestPermissionResponse
@@ -247,6 +251,8 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		acpConvObj:     map[string]*models.Conversation{},
 		acpStarting:    map[string]bool{},
 		channelSess:    map[acp.SessionId]bool{},
+		channelReply:   map[acp.SessionId]*strings.Builder{},
+		toolStart:      map[string]time.Time{},
 		rightPanel:     false,
 		wsCollapsed:    map[string]bool{},
 		themeMode:      parseThemeMode(cfg.ThemeMode),
@@ -1196,6 +1202,9 @@ func applyToolCall(m *models.Message, info llm.ToolCallInfo) {
 			if info.Result != "" {
 				m.ToolCalls[i].Result = info.Result
 			}
+			if info.Duration > 0 {
+				m.ToolCalls[i].DurationMs = info.Duration.Milliseconds()
+			}
 			return
 		}
 	}
@@ -1205,6 +1214,9 @@ func applyToolCall(m *models.Message, info llm.ToolCallInfo) {
 	}
 	if info.Result != "" {
 		tc.Result = info.Result
+	}
+	if info.Duration > 0 {
+		tc.DurationMs = info.Duration.Milliseconds()
 	}
 	m.ToolCalls = append(m.ToolCalls, tc)
 }

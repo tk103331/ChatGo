@@ -91,9 +91,6 @@ func (cw *ChatWindow) messageArea(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	row := func(i int) { cw.messageRow(c, i, msgs[i]) }
-	if cw.isACP() {
-		row = func(i int) { cw.messageRowACP(c, i, msgs[i]) }
-	}
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(k.Background).Children(func() {
 		res := mchat.MessageList(c, &cw.msgList, len(msgs), mchat.MessageListOptions{
 			ID:    func(i int) string { return msgs[i].ID },
@@ -122,11 +119,9 @@ func (cw *ChatWindow) messages() []models.Message {
 func (cw *ChatWindow) composer(c *mgo.Context) {
 	in := composer(c, &cw.draft, composerOptions{
 		Placeholder: "输入消息，Enter 发送，Shift+Enter 换行",
-		MinHeight:   88,
 		MaxHeight:   220,
 		Tools: func() {
 			if cw.isACP() {
-				cw.acpBadge(c)
 				cw.acpControls(c)
 				return
 			}
@@ -149,6 +144,7 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 			}
 		},
 	})
+	cw.chatMenus(c, in)
 	if in.Submitted() {
 		cw.sendDraft()
 	}
@@ -215,7 +211,9 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 				opts = append(opts, minput.SelectOption[string]{Value: string(m.Id), Label: m.Name})
 			}
 			sel := string(rt.modeID)
-			if minput.Select(c, &sel, opts, minput.SelectOptions{Label: "模式"}).Changed() {
+			r := minput.Select(c, &sel, opts, minput.SelectOptions{})
+			r.Element.Width(110)
+			if r.Changed() {
 				cw.acpSetMode(rt, acp.SessionModeId(sel))
 			}
 		}
@@ -224,7 +222,9 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 			case opt.Select != nil:
 				s := opt.Select
 				sel := string(s.CurrentValue)
-				if minput.Select(c, &sel, acpSelectOptions(s.Options), minput.SelectOptions{Label: s.Name}).Changed() {
+				r := minput.Select(c, &sel, acpSelectOptions(s.Options), minput.SelectOptions{})
+				r.Element.Width(140)
+				if r.Changed() {
 					s.CurrentValue = acp.SessionConfigValueId(sel)
 					cw.acpSetConfigValue(rt, s.Id, acp.SessionConfigValueId(sel))
 				}
@@ -237,24 +237,6 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 				}
 			}
 		}
-	})
-}
-
-// acpBadge names the ACP connection driving the current conversation.
-func (cw *ChatWindow) acpBadge(c *mgo.Context) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	name := ""
-	if cw.cur != nil {
-		name = strings.TrimPrefix(cw.cur.Agent, "acp:")
-	}
-	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-		if logo := acpLogo(name); logo != nil {
-			mgo.Image(c, logo).Size(16, 16)
-		} else {
-			mgo.Icon(c, icons.Must("terminal")).Size(14, 14).TextColor(k.AccentText)
-		}
-		mgo.Text(c, "ACP · "+name).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.AccentText).SingleLine()
 	})
 }
 

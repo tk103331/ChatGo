@@ -221,12 +221,9 @@ func (cw *ChatWindow) runChannelACPAgent(conv *models.Conversation, connName, wo
 			conv.Workspace = workspace
 		}
 		conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "user", Content: text, Timestamp: time.Now()})
-		ready := make(chan struct{})
-		cw.postMain(func() {
-			cw.acpConvObj[conv.ID] = conv
-			close(ready)
-		})
-		<-ready
+		cw.acpMu.Lock()
+		cw.acpConvObj[conv.ID] = conv
+		cw.acpMu.Unlock()
 		rt, err := cw.acpEnsureSession(conv, conn)
 		if err != nil {
 			done("⚠️ " + err.Error())
@@ -234,20 +231,24 @@ func (cw *ChatWindow) runChannelACPAgent(conv *models.Conversation, connName, wo
 		}
 		cw.acpMu.Lock()
 		cw.channelSess[rt.sessionID] = true
+		cw.channelReply[rt.sessionID] = &strings.Builder{}
 		cw.acpMu.Unlock()
 		_, perr := rt.conn.Prompt(context.Background(), acp.PromptRequest{
 			SessionId: rt.sessionID,
 			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 		})
-		replyCh := make(chan string, 1)
+		cw.acpMu.Lock()
+		var reply string
+		if b := cw.channelReply[rt.sessionID]; b != nil {
+			reply = strings.TrimSpace(b.String())
+		}
+		delete(cw.channelReply, rt.sessionID)
+		cw.acpMu.Unlock()
 		cw.postMain(func() {
-			reply := channelACPLastReply(conv)
 			_ = cw.convManager.SaveConversation(conv)
 			cw.reloadConvs()
 			cw.invalidate()
-			replyCh <- reply
 		})
-		reply := <-replyCh
 		if perr != nil && reply == "" {
 			reply = "⚠️ " + perr.Error()
 		}
@@ -499,13 +500,6 @@ func onMain[T any](cw *ChatWindow, fn func() T) T {
 	ch := make(chan T, 1)
 	w.Update(func() { ch <- fn() })
 	return <-ch
-}
-
-func channelACPLastReply(conv *models.Conversation) string {
-	if n := len(conv.Messages); n > 0 && conv.Messages[n-1].Role == "assistant" {
-		return strings.TrimSpace(conv.Messages[n-1].Content)
-	}
-	return ""
 }
 
 func (cw *ChatWindow) startFeishuRegister() {

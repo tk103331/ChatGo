@@ -41,7 +41,6 @@ func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
 		Prompts: func() {
 			in := composer(c, &cw.draft, composerOptions{
 				Placeholder: "输入消息，Enter 开始对话",
-				MinHeight:   72,
 				MaxHeight:   160,
 				Tools:       func() { cw.homeSelectors(c) },
 				Actions: func() {

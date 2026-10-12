@@ -11,12 +11,14 @@ import (
 
 // ToolCall represents a tool invocation
 type ToolCall struct {
-	ID        string                 `json:"id"`                 // Unique identifier for this tool call
-	Name      string                 `json:"name"`               // Tool name
-	Arguments string                 `json:"arguments"`          // Tool arguments as JSON string
-	Result    string                 `json:"result"`             // Tool execution result
-	Error     string                 `json:"error,omitempty"`    // Error message if tool call failed
-	Metadata  map[string]interface{} `json:"metadata,omitempty"` // Additional metadata
+	ID         string                 `json:"id"`               // Unique identifier for this tool call
+	Name       string                 `json:"name"`             // Tool name
+	Arguments  string                 `json:"arguments"`        // Tool arguments as JSON string
+	Result     string                 `json:"result"`           // Tool execution result
+	Error      string                 `json:"error,omitempty"`  // Error message if tool call failed
+	Status     string                 `json:"status,omitempty"` // Runner status: in_progress, completed, failed
+	DurationMs int64                  `json:"duration_ms,omitempty"`
+	Metadata   map[string]interface{} `json:"metadata,omitempty"` // Additional metadata
 }
 
 // Message represents a single message in a conversation

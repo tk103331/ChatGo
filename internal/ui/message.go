@@ -10,9 +10,7 @@ import (
 
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/agent"
 
@@ -27,10 +25,6 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 	}
 	streaming := cw.streaming && cw.cur != nil && i == len(cw.cur.Messages)-1 && msg.Role == "assistant"
 	role := roleOf(msg)
-	status := mchat.MessageNoStatus
-	if streaming {
-		status = mchat.MessageStreaming
-	}
 	opts := mchat.MessageBubbleOptions{}
 	if role == mchat.MessageAssistant {
 		opts.Avatar = cw.agentAvatar(c)
@@ -38,11 +32,11 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 	mchat.MessageBubble(c, role, opts, func() {
 		model := ""
 		if msg.Role == "assistant" && cw.cur != nil {
-			model = cw.cur.Model
+			model = cw.headerModel()
 		}
-		mchat.MessageHeader(c, mchat.MessageHeaderOptions{Model: model, Time: msg.Timestamp, Status: status})
+		mchat.MessageHeader(c, mchat.MessageHeaderOptions{Model: model, Time: msg.Timestamp})
 		if len(msg.ToolCalls) > 0 {
-			cw.toolCalls(c, msg)
+			cw.toolCallGroup(c, msg)
 		}
 		switch {
 		case strings.TrimSpace(msg.Content) != "":
@@ -80,65 +74,17 @@ func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, 
 	})
 }
 
-// messageRowACP renders an ACP conversation turn with agent cards.
-func (cw *ChatWindow) messageRowACP(c *mgo.Context, i int, msg models.Message) {
-	u := mcore.Density(c).Unit()
-	streaming := cw.streaming && cw.cur != nil && i == len(cw.cur.Messages)-1 && msg.Role == "assistant"
-	switch msg.Role {
-	case "user":
-		mchat.MessageBubble(c, mchat.MessageUser, mchat.MessageBubbleOptions{}, func() {
-			r := mchat.MarkdownView(c, msg.Content)
-			if url, ok := r.Link(); ok {
-				c.OpenURL(url)
-			}
-			cw.messageActions(c, i, msg, false)
-		})
-	case "system":
-		mchat.MessageBubble(c, mchat.MessageSystem, mchat.MessageBubbleOptions{}, func() {
-			mchat.MarkdownView(c, msg.Content)
-		})
-	default:
-		card := agent.AgentCard(c)
-		card.FillWidth()
-		card.Children(func() {
-			mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-				state, label := agent.AgentDone, "回答完成"
-				if streaming {
-					state, label = agent.AgentRunning, "运行中"
-				}
-				agent.AgentStatus(c, state, agent.AgentStatusOptions{Label: label})
-				if cw.cur != nil {
-					agent.AgentCaption(c, strings.TrimPrefix(cw.cur.Agent, "acp:"))
-				}
-			})
-			for _, tc := range msg.ToolCalls {
-				if tc.Name == "" {
-					continue
-				}
-				state := agent.AgentDone
-				switch {
-				case tc.Error != "":
-					state = agent.AgentFailed
-				case tc.Result == "":
-					state = agent.AgentRunning
-				}
-				agent.ToolCallCard(c, agent.ToolCall{
-					ID: tc.ID, Name: tc.Name, Args: tc.Arguments,
-					Result: tc.Result, Error: tc.Error, State: state,
-				}, agent.ToolCallCardOptions{})
-			}
-			switch {
-			case strings.TrimSpace(msg.Content) != "":
-				r := mchat.MarkdownView(c, msg.Content)
-				if url, ok := r.Link(); ok {
-					c.OpenURL(url)
-				}
-			case streaming:
-				mchat.TypingIndicator(c, "Agent")
-			}
-			cw.messageActions(c, i, msg, streaming)
-		})
+func (cw *ChatWindow) headerModel() string {
+	if cw.cur == nil {
+		return ""
 	}
+	if cw.cur.Model != "" {
+		return cw.cur.Model
+	}
+	if name, ok := strings.CutPrefix(cw.cur.Agent, "acp:"); ok {
+		return name
+	}
+	return ""
 }
 
 func roleOf(msg models.Message) mchat.MessageRole {
@@ -152,52 +98,40 @@ func roleOf(msg models.Message) mchat.MessageRole {
 	}
 }
 
-// toolCalls folds a message's tool calls under a collapsible header.
-func (cw *ChatWindow) toolCalls(c *mgo.Context, msg models.Message) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	title := fmt.Sprintf("工具调用 (%d)", len(msg.ToolCalls))
-	open := mgo.Local(c.Root(), "toolopen:"+msg.ID, func() bool { return false })
-	data.Collapsible(c, open, data.CollapsibleOptions{Title: title, Trigger: func() {
-		mgo.Row(c).Gap(u).AlignItems(mgo.Center).TextColor(k.TextMuted).Children(func() {
-			mgo.Icon(c, icons.Must("terminal")).Size(14, 14)
-			mgo.Text(c, title).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).SingleLine()
-		})
-	}}, func() {
-		for _, tc := range msg.ToolCalls {
-			toolCallView(c, tc)
-		}
-	})
+func (cw *ChatWindow) toolCallGroup(c *mgo.Context, msg models.Message) {
+	calls := toolCallsForGroup(msg)
+	if len(calls) == 0 {
+		return
+	}
+	open := mgo.Local(c.Root(), "toolgroup:"+msg.ID, func() bool { return false })
+	agent.ToolCallGroup(c, open, calls, agent.ToolCallGroupOptions{})
 }
 
-// toolCallView shows a tool call's name, arguments and result.
-func toolCallView(c *mgo.Context, tc models.ToolCall) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	small := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Column(c).Gap(u).Padding(u, u*2).Radius(mtheme.CardRadius).
-		Border(mtheme.BorderWidth, k.Border).FillWidth().Children(func() {
-		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, tc.Name).FontWeight(600).SingleLine()
-			switch {
-			case tc.Error != "":
-				mgo.Text(c, "失败").FontSize(small).TextColor(k.Danger)
-			case tc.Result != "":
-				mgo.Text(c, "完成").FontSize(small).TextColor(k.Success)
-			default:
-				mcore.Spinner(c, mcore.SpinnerOptions{Size: 12, Label: "执行中"})
-			}
+func toolCallsForGroup(msg models.Message) []agent.ToolCall {
+	used := make(map[string]bool, len(msg.ToolCalls))
+	out := make([]agent.ToolCall, 0, len(msg.ToolCalls))
+	for i, tc := range msg.ToolCalls {
+		if tc.Name == "" {
+			continue
+		}
+		id := tc.ID
+		if id == "" || used[id] {
+			id = fmt.Sprintf("%s-%d", msg.ID, i)
+		}
+		used[id] = true
+		state := agent.AgentRunning
+		switch {
+		case tc.Error != "" || tc.Status == "failed":
+			state = agent.AgentFailed
+		case tc.Status == "completed" || tc.Status == "" && tc.Result != "":
+			state = agent.AgentDone
+		}
+		out = append(out, agent.ToolCall{
+			ID: id, Name: tc.Name, Args: tc.Arguments, Result: tc.Result, Error: tc.Error,
+			State: state, Duration: time.Duration(tc.DurationMs) * time.Millisecond,
 		})
-		if tc.Arguments != "" {
-			mgo.Text(c, tc.Arguments).FontSize(small).TextColor(k.TextMuted)
-		}
-		if tc.Result != "" {
-			mgo.Text(c, truncate(tc.Result, 800)).FontSize(small).TextColor(k.TextMuted)
-		}
-		if tc.Error != "" {
-			mgo.Text(c, tc.Error).FontSize(small).TextColor(k.Danger)
-		}
-	})
+	}
+	return out
 }
 
 func truncate(s string, n int) string {

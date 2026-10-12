@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -169,10 +170,13 @@ type acpClient struct{ cw *ChatWindow }
 var _ acp.Client = acpClient{}
 
 type acpUpdate struct {
-	kind string
-	id   string
-	name string
-	text string
+	kind   string
+	id     string
+	name   string
+	text   string
+	args   string
+	result string
+	status string
 }
 
 func parseACPUpdate(u acp.SessionUpdate) (acpUpdate, bool) {
@@ -186,18 +190,64 @@ func parseACPUpdate(u acp.SessionUpdate) (acpUpdate, bool) {
 			return acpUpdate{kind: "text", text: t.Text}, true
 		}
 	case u.ToolCall != nil:
-		return acpUpdate{kind: "tool", id: string(u.ToolCall.ToolCallId), name: u.ToolCall.Title, text: string(u.ToolCall.Status)}, true
+		return acpUpdate{
+			kind:   "tool",
+			id:     string(u.ToolCall.ToolCallId),
+			name:   u.ToolCall.Title,
+			args:   acpArgsJSON(u.ToolCall.RawInput),
+			result: acpContentText(u.ToolCall.Content),
+			status: string(u.ToolCall.Status),
+		}, true
 	case u.ToolCallUpdate != nil:
-		title, status := "", ""
+		title := ""
 		if u.ToolCallUpdate.Title != nil {
 			title = *u.ToolCallUpdate.Title
 		}
+		status := ""
 		if u.ToolCallUpdate.Status != nil {
 			status = string(*u.ToolCallUpdate.Status)
 		}
-		return acpUpdate{kind: "tool", id: string(u.ToolCallUpdate.ToolCallId), name: title, text: status}, true
+		return acpUpdate{
+			kind:   "tool",
+			id:     string(u.ToolCallUpdate.ToolCallId),
+			name:   title,
+			args:   acpArgsJSON(u.ToolCallUpdate.RawInput),
+			result: acpContentText(u.ToolCallUpdate.Content),
+			status: status,
+		}, true
 	}
 	return acpUpdate{}, false
+}
+
+func acpArgsJSON(v any) string {
+	if v == nil {
+		return ""
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	s := string(b)
+	if s == "null" || s == "{}" || s == `""` {
+		return ""
+	}
+	return s
+}
+
+func acpContentText(items []acp.ToolCallContent) string {
+	var b strings.Builder
+	for _, it := range items {
+		if it.Content != nil {
+			if t := it.Content.Content.Text; t != nil && t.Text != "" {
+				b.WriteString(t.Text)
+				b.WriteByte('\n')
+			}
+		}
+		if it.Diff != nil {
+			fmt.Fprintf(&b, "diff: %s\n", it.Diff.Path)
+		}
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func (a acpClient) SessionUpdate(ctx context.Context, n acp.SessionNotification) error {
@@ -211,9 +261,26 @@ func (a acpClient) SessionUpdate(ctx context.Context, n acp.SessionNotification)
 		a.cw.postMain(func() { a.cw.acpSetConfigState(sess, opts) })
 		return nil
 	}
+	if ac := n.Update.AvailableCommandsUpdate; ac != nil {
+		cmds := ac.AvailableCommands
+		a.cw.acpMu.Lock()
+		if rt := a.cw.acpConvs[a.cw.acpConvBySess[sess]]; rt != nil {
+			rt.commands = cmds
+		}
+		a.cw.acpMu.Unlock()
+		a.cw.postMain(func() { a.cw.invalidate() })
+		return nil
+	}
 	upd, ok := parseACPUpdate(n.Update)
 	if !ok {
 		return nil
+	}
+	if upd.kind == "text" {
+		a.cw.acpMu.Lock()
+		if b := a.cw.channelReply[sess]; b != nil {
+			b.WriteString(upd.text)
+		}
+		a.cw.acpMu.Unlock()
 	}
 	a.cw.postMain(func() {
 		a.cw.acpMu.Lock()
@@ -226,8 +293,32 @@ func (a acpClient) SessionUpdate(ctx context.Context, n acp.SessionNotification)
 	return nil
 }
 
+func (cw *ChatWindow) acpToolDuration(tc *models.ToolCall, id, status string) {
+	if id == "" {
+		return
+	}
+	switch status {
+	case string(acp.ToolCallStatusPending), string(acp.ToolCallStatusInProgress):
+		cw.acpMu.Lock()
+		if _, ok := cw.toolStart[id]; !ok {
+			cw.toolStart[id] = time.Now()
+		}
+		cw.acpMu.Unlock()
+	case string(acp.ToolCallStatusCompleted), string(acp.ToolCallStatusFailed):
+		cw.acpMu.Lock()
+		start, ok := cw.toolStart[id]
+		delete(cw.toolStart, id)
+		cw.acpMu.Unlock()
+		if ok {
+			tc.DurationMs = time.Since(start).Milliseconds()
+		}
+	}
+}
+
 func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
+	cw.acpMu.Lock()
 	conv := cw.acpConvObj[convID]
+	cw.acpMu.Unlock()
 	if conv == nil {
 		return
 	}
@@ -243,9 +334,23 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 		if upd.id != "" {
 			for i := range last.ToolCalls {
 				if last.ToolCalls[i].ID == upd.id {
-					if upd.text != "" {
-						last.ToolCalls[i].Result = upd.text
+					tc := &last.ToolCalls[i]
+					if upd.name != "" {
+						tc.Name = upd.name
 					}
+					if upd.args != "" {
+						tc.Arguments = upd.args
+					}
+					if upd.result != "" {
+						tc.Result = upd.result
+					}
+					if upd.status != "" {
+						tc.Status = upd.status
+					}
+					if upd.status == string(acp.ToolCallStatusFailed) {
+						tc.Error = "failed"
+					}
+					cw.acpToolDuration(tc, upd.id, upd.status)
 					cw.invalidate()
 					return
 				}
@@ -254,7 +359,13 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 		if upd.name == "" {
 			return
 		}
-		last.ToolCalls = append(last.ToolCalls, models.ToolCall{ID: upd.id, Name: upd.name, Result: upd.text})
+		tc := models.ToolCall{ID: upd.id, Name: upd.name, Arguments: upd.args, Result: upd.result, Status: upd.status}
+		if upd.status == string(acp.ToolCallStatusFailed) {
+			tc.Error = "failed"
+		}
+		last.ToolCalls = append(last.ToolCalls, tc)
+		idx := len(last.ToolCalls) - 1
+		cw.acpToolDuration(&last.ToolCalls[idx], upd.id, upd.status)
 	}
 	cw.invalidate()
 }
@@ -393,6 +504,7 @@ type acpConv struct {
 	modes     []acp.SessionMode
 	modeID    acp.SessionModeId
 	configs   []acp.SessionConfigOption
+	commands  []acp.AvailableCommand
 }
 
 // acpPersist stores a mode/config choice on the conversation so it survives a restart.
