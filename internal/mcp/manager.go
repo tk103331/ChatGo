@@ -13,12 +13,12 @@ import (
 
 // MCPServerStatus represents the initialization status of an MCP server
 type MCPServerStatus struct {
-	Name     string
-	Type     config.MCPServerType
-	Status   string // "initialized", "error", "disconnected"
-	Error    error
-	Tools    []MCPTool
-	Client   *client.Client
+	Name   string
+	Type   config.MCPServerType
+	Status string // "initialized", "error", "disconnected"
+	Error  error
+	Tools  []MCPTool
+	Client *client.Client
 }
 
 // MCPTool represents a tool from an MCP server
@@ -161,6 +161,8 @@ func (m *Manager) InitializeServer(cfg config.MCPServer) (*MCPServerStatus, erro
 	fmt.Printf("[MCP] Initializing MCP protocol handshake...\n")
 	// Initialize the connection (outside of lock - this is a slow operation)
 	initReq := mcp.InitializeRequest{}
+	initReq.Params.ProtocolVersion = mcp.LATEST_LEGACY_PROTOCOL_VERSION
+	initReq.Params.ClientInfo = mcp.Implementation{Name: "ChatGo", Version: "1.0.0"}
 	_, err = mcpClient.Initialize(ctx, initReq)
 	if err != nil {
 		fmt.Printf("[MCP] Failed to initialize MCP connection: %v\n", err)
