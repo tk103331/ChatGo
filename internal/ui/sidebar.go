@@ -159,7 +159,7 @@ func (cw *ChatWindow) conversationList(c *mgo.Context) {
 			return
 		}
 		cw.convRow(c, r.index)
-	}).Grow(1).MinHeight(0)
+	}).Grow(1).MinHeight(0).Padding(0, 10, 0, 0)
 }
 
 func (cw *ChatWindow) groupedConvRows() []convRow {
