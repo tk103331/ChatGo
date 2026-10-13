@@ -42,6 +42,7 @@ type channelForm struct {
 	workspace string
 	appID     string
 	appSecret string
+	baseURL   string
 	enabled   bool
 	scanning  bool
 	qr        *mgo.Bitmap
@@ -1002,6 +1003,7 @@ func (cw *ChatWindow) channelTab(c *mgo.Context) {
 	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
 		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
 			cw.feishuStatusLine(c)
+			cw.wechatStatusLine(c)
 			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearChannelForm()
 			}
@@ -1078,19 +1080,41 @@ func (cw *ChatWindow) channelFormView(c *mgo.Context) {
 		}
 		mgo.Text(c, title).Font(mtheme.SerifFont).FontWeight(600)
 		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "渠道名称"})
-		minput.Select(c, &f.typ, []minput.SelectOption[string]{{Value: "feishu", Label: "飞书"}}, minput.SelectOptions{Label: "类型"})
-		minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "AppID", Placeholder: "飞书应用 App ID"})
-		minput.PasswordInput(c, &f.appSecret, minput.PasswordInputOptions{Label: "AppSecret", Placeholder: "飞书应用 App Secret"})
-		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "扫码创建应用", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
-				cw.startFeishuRegister()
+		minput.Select(c, &f.typ, []minput.SelectOption[string]{
+			{Value: "feishu", Label: "飞书"},
+			{Value: "wechat", Label: "微信 ClawBot"},
+		}, minput.SelectOptions{Label: "类型"})
+		if f.typ == "wechat" {
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				if minput.Button(c, "扫码登录微信", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
+					cw.startWechatLogin()
+				}
+				if f.scanning {
+					mgo.Text(c, "等待微信扫码…").TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+				}
+			})
+			if f.appID != "" {
+				minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "Bot ID", Placeholder: "iLink Bot ID（扫码后自动填入）"})
 			}
-			if f.scanning {
-				mgo.Text(c, "等待飞书扫码授权…").TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+			if f.appSecret != "" {
+				minput.PasswordInput(c, &f.appSecret, minput.PasswordInputOptions{Label: "Bot Token", Placeholder: "iLink Bot Token（扫码后自动填入）"})
 			}
-		})
-		mgo.Text(c, "提示：请在飞书开发者后台 → 事件与回调 → 订阅方式，选择「使用长连接接收事件/回调」，并添加事件 im.message.receive_v1（保存时需本地长连接在线）。").
-			TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+			mgo.Text(c, "提示：点击「扫码登录微信」，用微信扫码授权后凭证自动填入。参考 weclaw 项目，通过 iLink API 直连微信 ClawBot。").
+				TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		} else {
+			minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "AppID", Placeholder: "飞书应用 App ID"})
+			minput.PasswordInput(c, &f.appSecret, minput.PasswordInputOptions{Label: "AppSecret", Placeholder: "飞书应用 App Secret"})
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				if minput.Button(c, "扫码创建应用", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
+					cw.startFeishuRegister()
+				}
+				if f.scanning {
+					mgo.Text(c, "等待飞书扫码授权…").TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+				}
+			})
+			mgo.Text(c, "提示：请在飞书开发者后台 → 事件与回调 → 订阅方式，选择「使用长连接接收事件/回调」，并添加事件 im.message.receive_v1（保存时需本地长连接在线）。").
+				TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		}
 		if f.qr != nil {
 			mgo.Image(c, f.qr).Size(220, 220)
 		}
@@ -1138,7 +1162,7 @@ func (cw *ChatWindow) loadChannelForm(i int) {
 	ch := cw.cfg.Channels[i]
 	cw.settings.channel = channelForm{
 		editing: i, name: ch.Name, typ: ch.Type, agent: ch.Agent, workspace: ch.Workspace,
-		appID: ch.AppID, appSecret: ch.AppSecret, enabled: ch.Enabled,
+		appID: ch.AppID, appSecret: ch.AppSecret, baseURL: ch.BaseURL, enabled: ch.Enabled,
 	}
 }
 
@@ -1152,7 +1176,7 @@ func (cw *ChatWindow) saveChannel() {
 	if typ == "" {
 		typ = "feishu"
 	}
-	ch := config.Channel{Type: typ, Name: f.name, Agent: f.agent, Workspace: strings.TrimSpace(f.workspace), AppID: f.appID, AppSecret: f.appSecret, Enabled: f.enabled}
+	ch := config.Channel{Type: typ, Name: f.name, Agent: f.agent, Workspace: strings.TrimSpace(f.workspace), AppID: f.appID, AppSecret: f.appSecret, BaseURL: strings.TrimSpace(f.baseURL), Enabled: f.enabled}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Channels) {
 		old := cw.cfg.Channels[f.editing]
 		ch.ID = old.ID
@@ -1167,7 +1191,7 @@ func (cw *ChatWindow) saveChannel() {
 	}
 	_ = config.SaveConfig(cw.cfg)
 	cw.toast("已保存渠道 "+ch.Name, mcore.SeveritySuccess)
-	cw.restartFeishu()
+	cw.restartChannels()
 }
 
 func (cw *ChatWindow) applyChannel() {
@@ -1177,7 +1201,7 @@ func (cw *ChatWindow) applyChannel() {
 	}
 	cw.cfg.Channels[f.editing].Enabled = f.enabled
 	_ = config.SaveConfig(cw.cfg)
-	cw.restartFeishu()
+	cw.restartChannels()
 }
 
 func (cw *ChatWindow) deleteChannel() {
@@ -1191,13 +1215,15 @@ func (cw *ChatWindow) deleteChannel() {
 		cw.cfg.Channels = append(cw.cfg.Channels[:idx], cw.cfg.Channels[idx+1:]...)
 		_ = config.SaveConfig(cw.cfg)
 		cw.clearChannelForm()
-		cw.restartFeishu()
+		cw.restartChannels()
 	})
 }
 
-func (cw *ChatWindow) restartFeishu() {
+func (cw *ChatWindow) restartChannels() {
 	cw.stopFeishuChannel()
+	cw.stopWechatChannel()
 	cw.startFeishuChannel()
+	cw.startWechatChannel()
 }
 
 // mcpStatus maps a server's state to an indicator status and a note.

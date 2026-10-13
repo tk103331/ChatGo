@@ -37,12 +37,13 @@ type Config struct {
 // Channel is an IM channel configuration that can trigger Agent execution.
 type Channel struct {
 	ID         string   `yaml:"id"`
-	Type       string   `yaml:"type"` // "feishu"
+	Type       string   `yaml:"type"` // "feishu" or "wechat"
 	Name       string   `yaml:"name"`
 	Enabled    bool     `yaml:"enabled"`
 	Agent      string   `yaml:"agent,omitempty"` // "agent:Name" / "acp:Name" / "" = built-in Chat
-	AppID      string   `yaml:"app_id,omitempty"`
-	AppSecret  string   `yaml:"app_secret,omitempty"`
+	AppID      string   `yaml:"app_id,omitempty"`      // feishu: App ID; wechat: iLink Bot ID
+	AppSecret  string   `yaml:"app_secret,omitempty"`  // feishu: App Secret; wechat: iLink Bot Token
+	BaseURL    string   `yaml:"base_url,omitempty"`    // wechat: iLink base URL (default https://ilinkai.weixin.qq.com)
 	Workspace  string   `yaml:"workspace,omitempty"`
 	ConvID     string   `yaml:"conversation_id,omitempty"`
 	ConvIDs    []string `yaml:"conversation_ids,omitempty"`
