@@ -42,6 +42,7 @@ type channelForm struct {
 	workspace string
 	appID     string
 	appSecret string
+	baseURL   string
 	enabled   bool
 	scanning  bool
 	qr        *mgo.Bitmap
@@ -973,33 +974,6 @@ func feishuStatusView(state feishuConnState, note string) (mfeedback.Status, str
 	}
 }
 
-func (cw *ChatWindow) wechatStatusLine(c *mgo.Context) {
-	state, note := cw.wechatStatus()
-	st, label := wechatStatusView(state, note)
-	u := mcore.Density(c).Unit()
-	k := mcore.Tokens(c)
-	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-		mgo.Text(c, "微信 ClawBot").Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
-		mfeedback.StatusIndicator(c, st, mfeedback.StatusIndicatorOptions{})
-		mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
-	})
-}
-
-func wechatStatusView(state feishuConnState, note string) (mfeedback.Status, string) {
-	switch state {
-	case feishuConnected:
-		return mfeedback.StatusSuccess, "已连接 · " + note
-	case feishuConnecting:
-		return mfeedback.StatusBusy, "正在连接…"
-	case feishuReconnecting:
-		return mfeedback.StatusBusy, "重连中…"
-	case feishuError:
-		return mfeedback.StatusError, "连接失败：" + note
-	default:
-		return mfeedback.StatusOffline, "未连接"
-	}
-}
-
 func (cw *ChatWindow) channelRow(c *mgo.Context, i int) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -1034,17 +1008,21 @@ func (cw *ChatWindow) channelFormView(c *mgo.Context) {
 			{Value: "wechat", Label: "微信 ClawBot"},
 		}, minput.SelectOptions{Label: "类型"})
 		if f.typ == "wechat" {
-			minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "OpenClaw 地址", Placeholder: "http://localhost:3000"})
-			minput.PasswordInput(c, &f.appSecret, minput.PasswordInputOptions{Label: "令牌", Placeholder: "OpenClaw 鉴权令牌（可选）"})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				if minput.Button(c, "扫码绑定微信", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
-					cw.startWechatBind()
+				if minput.Button(c, "扫码登录微信", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
+					cw.startWechatLogin()
 				}
 				if f.scanning {
-					mgo.Text(c, "等待微信扫码授权…").TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+					mgo.Text(c, "等待微信扫码…").TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 				}
 			})
-			mgo.Text(c, "提示：需先安装本地 OpenClaw 实例并执行 npx -y @tencent-weixin/openclaw-weixin-cli@latest install 安装微信通道插件。").
+			if f.appID != "" {
+				minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "Bot ID", Placeholder: "iLink Bot ID（扫码后自动填入）"})
+			}
+			if f.appSecret != "" {
+				minput.PasswordInput(c, &f.appSecret, minput.PasswordInputOptions{Label: "Bot Token", Placeholder: "iLink Bot Token（扫码后自动填入）"})
+			}
+			mgo.Text(c, "提示：点击「扫码登录微信」，用微信扫码授权后凭证自动填入。参考 weclaw 项目，通过 iLink API 直连微信 ClawBot。").
 				TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		} else {
 			minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "AppID", Placeholder: "飞书应用 App ID"})
@@ -1107,7 +1085,7 @@ func (cw *ChatWindow) loadChannelForm(i int) {
 	ch := cw.cfg.Channels[i]
 	cw.settings.channel = channelForm{
 		editing: i, name: ch.Name, typ: ch.Type, agent: ch.Agent, workspace: ch.Workspace,
-		appID: ch.AppID, appSecret: ch.AppSecret, enabled: ch.Enabled,
+		appID: ch.AppID, appSecret: ch.AppSecret, baseURL: ch.BaseURL, enabled: ch.Enabled,
 	}
 }
 
@@ -1121,7 +1099,7 @@ func (cw *ChatWindow) saveChannel() {
 	if typ == "" {
 		typ = "feishu"
 	}
-	ch := config.Channel{Type: typ, Name: f.name, Agent: f.agent, Workspace: strings.TrimSpace(f.workspace), AppID: f.appID, AppSecret: f.appSecret, Enabled: f.enabled}
+	ch := config.Channel{Type: typ, Name: f.name, Agent: f.agent, Workspace: strings.TrimSpace(f.workspace), AppID: f.appID, AppSecret: f.appSecret, BaseURL: strings.TrimSpace(f.baseURL), Enabled: f.enabled}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Channels) {
 		old := cw.cfg.Channels[f.editing]
 		ch.ID = old.ID

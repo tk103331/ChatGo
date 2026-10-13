@@ -41,8 +41,9 @@ type Channel struct {
 	Name       string   `yaml:"name"`
 	Enabled    bool     `yaml:"enabled"`
 	Agent      string   `yaml:"agent,omitempty"` // "agent:Name" / "acp:Name" / "" = built-in Chat
-	AppID      string   `yaml:"app_id,omitempty"`      // feishu: App ID; wechat: OpenClaw server URL
-	AppSecret  string   `yaml:"app_secret,omitempty"`  // feishu: App Secret; wechat: OpenClaw auth token
+	AppID      string   `yaml:"app_id,omitempty"`      // feishu: App ID; wechat: iLink Bot ID
+	AppSecret  string   `yaml:"app_secret,omitempty"`  // feishu: App Secret; wechat: iLink Bot Token
+	BaseURL    string   `yaml:"base_url,omitempty"`    // wechat: iLink base URL (default https://ilinkai.weixin.qq.com)
 	Workspace  string   `yaml:"workspace,omitempty"`
 	ConvID     string   `yaml:"conversation_id,omitempty"`
 	ConvIDs    []string `yaml:"conversation_ids,omitempty"`
