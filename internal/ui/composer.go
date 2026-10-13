@@ -17,7 +17,8 @@ type composerOptions struct {
 	// Tools builds the controls on the left of the in-box footer.
 	Tools func()
 	// Actions builds the controls on the right of the in-box footer.
-	Actions func()
+	Actions  func()
+	Disabled bool
 }
 
 // composer edits a message with its model and send controls inside the box.
@@ -31,36 +32,32 @@ func composer(c *mgo.Context, value *string, opts composerOptions) minput.InputR
 	if maxH == 0 {
 		maxH = 200
 	}
-	var r minput.InputResult
-	r.Element = mgo.Column(c).Gap(u * 2).MinWidth(0)
-	r.Element.Children(func() {
-		frame := mgo.Column(c).Radius(mtheme.ControlRadius).Gap(u*2).
-			Padding(u*2, u*3).Cursor(mgo.CursorText)
-		frame.Children(func() {
-			r = mchat.PromptComposer(c, value, mchat.PromptComposerOptions{
-				Placeholder: opts.Placeholder,
-				MaxHeight:   maxH,
-				Tools:       opts.Tools,
-				Actions:     opts.Actions,
-			})
-		})
-		if frame.Clicked() {
-			r.Input.Focus()
+	r := mchat.PromptComposer(c, value, mchat.PromptComposerOptions{
+		Placeholder: opts.Placeholder,
+		MaxHeight:   maxH,
+		Tools:       opts.Tools,
+		Actions:     opts.Actions,
+		Disabled:    opts.Disabled,
+		Box:         true,
+	})
+	frame := r.Element
+	frame.Radius(mtheme.ControlRadius).Padding(u*2, u*3).Cursor(mgo.CursorText)
+	if frame.Clicked() {
+		r.Input.Focus()
+	}
+	k := mcore.Tokens(c)
+	bg, border := k.Surface, k.ControlBorder
+	switch {
+	case frame.Hovered():
+		border = k.ControlBorder.Mix(k.Text, 0.35)
+	case r.Input.Focused():
+		border = k.Focus
+	}
+	frame.Background(bg).Border(mtheme.BorderWidth, border).Transition(mcore.ColorFade)
+	frame.DrawOver(func(p *mgo.Painter, rect mgo.Rect) {
+		if r.Input.FocusVisible() {
+			p.FocusRing(rect, [4]float32{mtheme.ControlRadius, mtheme.ControlRadius, mtheme.ControlRadius, mtheme.ControlRadius})
 		}
-		k := mcore.Tokens(c)
-		bg, border := k.Surface, k.ControlBorder
-		switch {
-		case frame.Hovered():
-			border = k.ControlBorder.Mix(k.Text, 0.35)
-		case r.Input.Focused():
-			border = k.Focus
-		}
-		frame.Background(bg).Border(mtheme.BorderWidth, border).Transition(mcore.ColorFade)
-		frame.DrawOver(func(p *mgo.Painter, rect mgo.Rect) {
-			if r.Input.FocusVisible() {
-				p.FocusRing(rect, [4]float32{mtheme.ControlRadius, mtheme.ControlRadius, mtheme.ControlRadius, mtheme.ControlRadius})
-			}
-		})
 	})
 	return r
 }

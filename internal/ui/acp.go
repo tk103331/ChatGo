@@ -541,6 +541,12 @@ func (cw *ChatWindow) acpRuntimeFor(convID string) *acpConv {
 	return cw.acpConvs[convID]
 }
 
+func (cw *ChatWindow) acpInitializing(convID string) bool {
+	cw.acpMu.Lock()
+	defer cw.acpMu.Unlock()
+	return cw.acpStarting[convID] && cw.acpConvs[convID] == nil
+}
+
 func (cw *ChatWindow) acpSetMode(rt *acpConv, id acp.SessionModeId) {
 	rt.modeID = id
 	cw.acpPersist(rt, "mode", string(id))
@@ -669,6 +675,7 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 	}
 	cw.acpStarting[conv.ID] = true
 	cw.acpMu.Unlock()
+	cw.invalidate()
 	defer func() {
 		cw.acpMu.Lock()
 		delete(cw.acpStarting, conv.ID)

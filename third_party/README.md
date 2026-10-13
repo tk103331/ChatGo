@@ -25,6 +25,10 @@ replace git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI => ./third_party/MujicaUI
 `internal/highlight.go` 中：循环开头用 `utf8.DecodeRuneInString` 取首个 rune 并记录其字节数，
 所有分支改用该 rune 判定、按字节数推进，并保证每个分支至少前进 `size` 字节（`n <= 0` 时兜底为 `size`）。
 
+`chat/prompt_composer.go` 中新增 `PromptComposerOptions.Box`：置 true 时去掉字段自身的
+边框与背景（`area.Element.BorderWidth(0,0,0,0).Background(k.Surface)`），
+好让调用方把输入框与其工具栏包进**同一个框**（ChatGo 的输入框用此选项，避免"框内套框"）。
+
 ### 重建副本
 
 ```sh
@@ -33,7 +37,7 @@ MOD=$(go env GOMODCACHE)/git.zacharyzhang.com/\!zachary\!zhang-\!n\!y/\!mujica\!
 mkdir -p third_party/MujicaUI
 cp -R "$MOD"/. third_party/MujicaUI/
 chmod -R u+w third_party/MujicaUI
-# 然后按上文重新应用 highlight.go 补丁
+# 然后按上文重新应用 highlight.go 与 prompt_composer.go 补丁
 ```
 
 完成后 `go build ./...` 即可。若上游修复了该 bug，删除 `replace`、副本，并把 import 改回直属依赖即可。

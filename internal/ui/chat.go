@@ -117,9 +117,11 @@ func (cw *ChatWindow) messages() []models.Message {
 
 // composer builds the message input with its model, mode and tool controls.
 func (cw *ChatWindow) composer(c *mgo.Context) {
+	initializing := cw.isACP() && cw.cur != nil && cw.acpInitializing(cw.cur.ID)
 	in := composer(c, &cw.draft, composerOptions{
 		Placeholder: "输入消息，Enter 发送，Shift+Enter 换行",
 		MaxHeight:   220,
+		Disabled:    initializing,
 		Tools: func() {
 			if cw.isACP() {
 				cw.acpControls(c)
@@ -132,9 +134,16 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 			cw.skillMenu(c)
 		},
 		Actions: func() {
+			if initializing {
+				mgo.Row(c).Gap(mcore.Density(c).Unit()).AlignItems(mgo.Center).Children(func() {
+					mcore.Spinner(c, mcore.SpinnerOptions{Size: 12})
+					mgo.Text(c, "正在初始化 ACP 进程…").
+						FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
+				})
+			}
 			r := mchat.SendButton(c, mchat.SendButtonOptions{
 				Streaming: cw.streaming,
-				Disabled:  strings.TrimSpace(cw.draft) == "",
+				Disabled:  initializing || strings.TrimSpace(cw.draft) == "",
 			})
 			if r.Sent() {
 				cw.sendDraft()
@@ -144,8 +153,10 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 			}
 		},
 	})
-	cw.chatMenus(c, in)
-	if in.Submitted() {
+	if !initializing {
+		cw.chatMenus(c, in)
+	}
+	if in.Submitted() && !initializing {
 		cw.sendDraft()
 	}
 	if cw.status != "" {

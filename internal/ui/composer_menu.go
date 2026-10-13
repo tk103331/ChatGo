@@ -16,17 +16,20 @@ import (
 func (cw *ChatWindow) chatMenus(c *mgo.Context, in minput.InputResult) {
 	if cw.isACP() {
 		if _, ok := mchat.SlashCommandMenu(c, in, &cw.draft, cw.acpCommands()).Chosen(); ok {
+			in.Input.Focus()
 			cw.invalidate()
 		}
 	} else {
 		cmds, tokens := cw.slashSkills()
 		if cmd, ok := mchat.SlashCommandMenu(c, in, &cw.draft, cmds).Chosen(); ok {
 			cw.selectSkill(tokens[cmd.Name])
+			in.Input.Focus()
 			return
 		}
 	}
 	if it, ok := mchat.ContextMentionMenu(c, in, &cw.draft, cw.contextItems(), mchat.ContextMentionOptions{}).Chosen(); ok {
 		cw.insertContextMention(it)
+		in.Input.Focus()
 	}
 }
 
