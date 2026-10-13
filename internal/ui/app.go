@@ -221,6 +221,12 @@ type ChatWindow struct {
 	channelState   feishuConnState
 	channelNote    string
 
+	wechatMu      sync.Mutex
+	wechatRunning bool
+	wechatCancel  context.CancelFunc
+	wechatState   feishuConnState
+	wechatNote    string
+
 	idMu  sync.Mutex
 	idSeq uint64
 }
@@ -287,6 +293,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	go cw.startMCP()
 	go cw.autoTaskLoop()
 	go cw.startFeishuChannel()
+	go cw.startWechatChannel()
 	return cw, nil
 }
 
