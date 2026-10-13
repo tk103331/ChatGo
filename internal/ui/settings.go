@@ -112,6 +112,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
 			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
+			{Label: "系统", Panel: func() { cw.systemTab(c) }},
 			{Label: "渠道", Panel: func() { cw.channelTab(c) }},
 		}, mnavigation.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)
@@ -898,6 +899,34 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 			cw.saveAppearance()
 		}
 	})
+}
+
+func (cw *ChatWindow) systemTab(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
+		mgo.Text(c, "系统").Font(mtheme.SerifFont).FontWeight(600)
+		if minput.Switch(c, &cw.cfg.ShowTrayIcon, "显示托盘图标", minput.SwitchOptions{}).Changed() {
+			cw.saveSystemSettings()
+		}
+		mgo.Text(c, "在系统托盘 / 菜单栏显示 ChatGo 图标。点击图标打开程序，右键菜单可快速新建会话并进入最近会话。").
+			FontSize(small).TextColor(k.TextMuted)
+		if minput.Switch(c, &cw.cfg.RunInBackground, "后台运行（关闭窗口时最小化到托盘）", minput.SwitchOptions{}).Changed() {
+			cw.saveSystemSettings()
+		}
+		mgo.Text(c, "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行，并隐藏任务栏 / Dock 图标（自动启用托盘图标）。").
+			FontSize(small).TextColor(k.TextMuted)
+	})
+}
+
+func (cw *ChatWindow) saveSystemSettings() {
+	if cw.cfg.RunInBackground {
+		cw.cfg.ShowTrayIcon = true
+	}
+	_ = config.SaveConfig(cw.cfg)
+	cw.syncTray()
+	cw.toast("系统设置已保存", mcore.SeveritySuccess)
 }
 
 func (cw *ChatWindow) channelTab(c *mgo.Context) {

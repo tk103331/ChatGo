@@ -1,0 +1,164 @@
+package ui
+
+import (
+	_ "embed"
+	"strings"
+
+	"chatgo/pkg/models"
+
+	"github.com/egoist/mygo"
+)
+
+//go:embed assets/tray.png
+var trayIconPNG []byte
+
+const trayRecentMax = 5
+
+func (cw *ChatWindow) shouldShowTray() bool {
+	return cw.cfg.ShowTrayIcon || cw.cfg.RunInBackground
+}
+
+func (cw *ChatWindow) syncTray() {
+	if cw.shouldShowTray() {
+		if cw.tray == nil {
+			tray, err := mygo.NewTray(mygo.TrayOptions{
+				Icon:           trayIconPNG,
+				IconIsTemplate: false,
+				ToolTip:        "ChatGo",
+			})
+			if err != nil {
+				cw.status = "托盘图标创建失败: " + err.Error()
+			} else {
+				cw.tray = tray
+				tray.OnClick(func() { cw.showMainWindow() })
+				cw.trayMenuKeyCached = ""
+				cw.updateTrayMenu()
+			}
+		}
+	} else if cw.tray != nil {
+		cw.tray.Destroy()
+		cw.tray = nil
+		cw.trayMenuKeyCached = ""
+	}
+	cw.syncTaskbarHidden()
+}
+
+func (cw *ChatWindow) syncTaskbarHidden() {
+	hidden := cw.cfg.RunInBackground
+	cw.winMu.Lock()
+	w := cw.window
+	cw.winMu.Unlock()
+	if w != nil {
+		w.SetSkipTaskbar(hidden)
+	}
+	if hidden {
+		mygo.App.Dock.Hide()
+	} else {
+		mygo.App.Dock.Show()
+	}
+}
+
+func (cw *ChatWindow) showMainWindow() {
+	cw.winMu.Lock()
+	w := cw.window
+	cw.winMu.Unlock()
+	if w == nil || w.IsDestroyed() {
+		return
+	}
+	if w.IsMinimized() {
+		w.Restore()
+	}
+	if !w.IsVisible() {
+		w.Show()
+	}
+	w.Focus()
+}
+
+func (cw *ChatWindow) updateTrayMenu() {
+	if cw.tray == nil {
+		return
+	}
+	key := cw.trayMenuKey()
+	if key == cw.trayMenuKeyCached {
+		return
+	}
+	cw.trayMenuKeyCached = key
+	cw.tray.SetMenu(cw.buildTrayMenu())
+}
+
+func (cw *ChatWindow) trayMenuKey() string {
+	var b strings.Builder
+	for _, conv := range cw.recentConvs(trayRecentMax) {
+		b.WriteString(conv.ID)
+		b.WriteByte('|')
+		b.WriteString(conv.Title)
+		b.WriteByte('|')
+		b.WriteString(conv.Workspace)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+func (cw *ChatWindow) buildTrayMenu() *mygo.Menu {
+	items := []*mygo.MenuItem{
+		{Label: "打开 ChatGo", Click: func(*mygo.MenuItem, *mygo.Window) { cw.showMainWindow() }},
+		{Label: "新建会话", Click: func(*mygo.MenuItem, *mygo.Window) { cw.trayNewConversation() }},
+		mygo.Separator(),
+	}
+	if recent := cw.recentConvs(trayRecentMax); len(recent) > 0 {
+		sub := make([]*mygo.MenuItem, 0, len(recent))
+		for _, conv := range recent {
+			conv := conv
+			sub = append(sub, &mygo.MenuItem{Label: trayConvLabel(conv), Click: func(*mygo.MenuItem, *mygo.Window) {
+				cw.trayOpenConversation(conv.ID)
+			}})
+		}
+		items = append(items, &mygo.MenuItem{Label: "最近会话", Submenu: sub})
+	}
+	items = append(items, mygo.Separator(), &mygo.MenuItem{Label: "退出 ChatGo", Role: mygo.RoleQuit})
+	return mygo.NewMenu(items)
+}
+
+func trayConvLabel(conv models.Conversation) string {
+	label := convTitleLabel(conv.Title)
+	if ws := conv.Workspace; ws != "" {
+		label += " · " + workspaceTitle(ws)
+	}
+	r := []rune(label)
+	if len(r) > 40 {
+		return string(r[:40]) + "…"
+	}
+	return label
+}
+
+func (cw *ChatWindow) recentConvs(n int) []models.Conversation {
+	if n <= 0 {
+		return nil
+	}
+	out := make([]models.Conversation, 0, min(n, len(cw.convs)))
+	for _, conv := range cw.convs {
+		out = append(out, conv)
+		if len(out) >= n {
+			break
+		}
+	}
+	return out
+}
+
+func (cw *ChatWindow) trayNewConversation() {
+	cw.postMain(func() {
+		cw.quickMode = false
+		cw.section = sectionChat
+		cw.newConversation()
+		cw.showMainWindow()
+	})
+}
+
+func (cw *ChatWindow) trayOpenConversation(id string) {
+	cw.postMain(func() {
+		cw.selectConversation(id)
+		cw.quickMode = false
+		cw.section = sectionChat
+		cw.showMainWindow()
+	})
+}

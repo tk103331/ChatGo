@@ -22,6 +22,8 @@ type Config struct {
 	Density           string          `yaml:"density,omitempty"`
 	Locale            string          `yaml:"locale,omitempty"`
 	QuickChatShortcut string          `yaml:"quick_chat_shortcut,omitempty"`
+	ShowTrayIcon      bool            `yaml:"show_tray_icon"`
+	RunInBackground   bool            `yaml:"run_in_background"`
 	Agents            []AgentDef      `yaml:"agents,omitempty"`
 	ACPAgents         []ACPConnection `yaml:"acp_agents,omitempty"`
 	Workspaces        []string        `yaml:"workspaces,omitempty"`

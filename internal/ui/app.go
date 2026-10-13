@@ -211,6 +211,10 @@ type ChatWindow struct {
 
 	quickShortcut string
 
+	tray              *mygo.Tray
+	trayMenuKeyCached string
+	quitting          bool
+
 	channelMu      sync.Mutex
 	channelRunning bool
 	channelCancel  context.CancelFunc
@@ -303,6 +307,20 @@ func (cw *ChatWindow) Show() {
 	_ = w.SetIcon(logoPNG)
 	_ = mygo.App.Dock.SetIcon(logoPNG)
 	cw.applyQuickShortcut()
+	cw.syncTray()
+	w.OnClose(func(e *mygo.CloseEvent) {
+		if !cw.cfg.RunInBackground {
+			return
+		}
+		if cw.quitting {
+			cw.quitting = false
+			return
+		}
+		e.PreventDefault()
+		w.Hide()
+	})
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) { cw.quitting = true })
+	mygo.App.OnWillQuit(func(e *mygo.QuitEvent) { cw.quitting = false })
 }
 
 // applyQuickShortcut registers the configured accelerator, replacing any
@@ -591,6 +609,7 @@ func (cw *ChatWindow) reloadConvs() {
 	}
 	cw.convs = normal
 	cw.taskConvs = tasks
+	cw.updateTrayMenu()
 }
 
 func convLast(conv models.Conversation) time.Time {
