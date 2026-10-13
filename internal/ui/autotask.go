@@ -40,23 +40,29 @@ func (cw *ChatWindow) autoTasksPage(c *mgo.Context) {
 		cw.autoTaskEditor(c)
 		return
 	}
+	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, "自动任务").Font(mtheme.SerifFont).
-				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
+			mgo.Column(c).Grow(1).Gap(u / 2).Children(func() {
+				mgo.Text(c, "自动任务").Font(mtheme.SerifFont).
+					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
+				mgo.Text(c, "按计划自动运行 Agent，支持每天 / 每周 / 每月").TextColor(k.TextMuted).FontSize(caption)
+			})
 			if minput.Button(c, "新建任务", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearAutoForm()
 				cw.autoTaskEditorOpen = true
 			}
 		})
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			mgo.Column(c).Gap(u * 2).Children(func() {
+			mgo.Column(c).Gap(u * 2).MaxWidth(900).Children(func() {
 				if len(cw.cfg.AutoTasks) == 0 {
-					mgo.Text(c, "还没有自动任务。").TextColor(mcore.Tokens(c).TextMuted)
-				}
-				for i := range cw.cfg.AutoTasks {
-					cw.autoTaskCard(c, i)
+					cw.autoTaskEmptyState(c)
+				} else {
+					for i := range cw.cfg.AutoTasks {
+						cw.autoTaskCard(c, i)
+					}
 				}
 				cw.autoTaskConvs(c)
 			})
@@ -64,28 +70,96 @@ func (cw *ChatWindow) autoTasksPage(c *mgo.Context) {
 	})
 }
 
-// autoTaskCard shows one task with its controls.
+// autoTaskEmptyState shows a centered placeholder when no tasks exist.
+func (cw *ChatWindow) autoTaskEmptyState(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u * 2).
+		Padding(u * 8, 0).Children(func() {
+		mgo.Icon(c, icons.Must("clock")).Size(48, 48).TextColor(k.TextMuted)
+		mgo.Text(c, "还没有自动任务").Font(mtheme.SerifFont).
+			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
+		mgo.Text(c, "创建任务后，Agent 会按计划自动执行").TextColor(k.TextMuted).
+			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		if minput.Button(c, "新建任务", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
+			cw.clearAutoForm()
+			cw.autoTaskEditorOpen = true
+		}
+	})
+}
+
+// autoTaskCard shows one task with status, schedule, and controls.
 func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	t := cw.cfg.AutoTasks[i]
+	running := cw.autoRunning[t.ID]
+
+	var dotIcon string
+	var dotCol mgo.Color
+	switch {
+	case running:
+		dotIcon, dotCol = "loader-circle", k.Accent
+	case strings.HasPrefix(t.LastNote, "失败"):
+		dotIcon, dotCol = "circle-x", k.Danger
+	case strings.HasPrefix(t.LastNote, "成功"):
+		dotIcon, dotCol = "circle-check", k.Success
+	case t.Enabled:
+		dotIcon, dotCol = "circle", k.Success
+	default:
+		dotIcon, dotCol = "circle", k.TextMuted
+	}
+
 	mgo.Column(c).Gap(u).Padding(u*3).FillWidth().Background(k.Surface).
 		Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).Children(func() {
+
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			mgo.Text(c, t.Name).FontWeight(600).Grow(1).SingleLine()
+			mgo.Icon(c, icons.Must(dotIcon)).Size(16, 16).TextColor(dotCol).Shrink(0)
+			mgo.Text(c, t.Name).FontWeight(600).Grow(1).SingleLine().MinWidth(0).Ellipsis("…")
 			enabled := t.Enabled
-			if minput.Switch(c, &enabled, "启用", minput.SwitchOptions{}).Changed() {
+			if minput.Switch(c, &enabled, "", minput.SwitchOptions{}).Changed() {
 				cw.cfg.AutoTasks[i].Enabled = enabled
 				_ = config.SaveConfig(cw.cfg)
 			}
 		})
-		mgo.Text(c, scheduleText(t.Schedule)+" · "+agentLabel(t.Agent)+" · "+reuseLabel(t.Reuse)).
-			FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
-		if t.LastNote != "" {
-			mgo.Text(c, "上次: "+t.LastNote).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+
+		mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+			mgo.Row(c).Gap(u / 2).AlignItems(mgo.Center).Shrink(0).Children(func() {
+				mgo.Icon(c, icons.Must("clock")).Size(14, 14).TextColor(k.TextMuted)
+				mgo.Text(c, scheduleText(t.Schedule)).FontSize(caption).TextColor(k.TextMuted)
+			})
+			mgo.Row(c).Gap(u / 2).AlignItems(mgo.Center).Shrink(0).Children(func() {
+				mgo.Icon(c, icons.Must("bot")).Size(14, 14).TextColor(k.TextMuted)
+				mgo.Text(c, agentLabel(t.Agent)).FontSize(caption).TextColor(k.TextMuted)
+			})
+			mgo.Text(c, reuseLabel(t.Reuse)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+		})
+
+		if running {
+			mgo.Row(c).Gap(u / 2).AlignItems(mgo.Center).Children(func() {
+				mgo.Text(c, "运行中…").FontSize(caption).TextColor(k.Accent)
+			})
+		} else if !t.LastRun.IsZero() {
+			mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+				if t.LastNote != "" {
+					mgo.Text(c, t.LastNote).FontSize(caption).TextColor(dotCol).Shrink(0)
+				}
+				mgo.Text(c, "上次: "+t.LastRun.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+				nr := nextRun(t.Schedule, t.LastRun)
+				if !nr.IsZero() {
+					mgo.Text(c, "下次: "+nr.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+				}
+			})
+		} else {
+			nr := nextRun(t.Schedule, time.Now())
+			if !nr.IsZero() {
+				mgo.Text(c, "下次: "+nr.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted)
+			}
 		}
+
 		mgo.Row(c).Gap(u).Children(func() {
-			if minput.Button(c, "运行", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if minput.Button(c, "运行", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("play")}).Clicked() {
 				cw.startAutoTask(i)
 			}
 			if minput.Button(c, "编辑", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
@@ -103,6 +177,7 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 func (cw *ChatWindow) autoTaskConvs(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	var convs []models.Conversation
 	for _, conv := range cw.taskConvs {
 		convs = append(convs, conv)
@@ -110,14 +185,19 @@ func (cw *ChatWindow) autoTaskConvs(c *mgo.Context) {
 	if len(convs) == 0 {
 		return
 	}
-	mgo.Text(c, "任务会话").FontWeight(600).Padding(0, 0, u, 0)
+	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Padding(0, 0, u, 0).Children(func() {
+		mgo.Icon(c, icons.Must("message-square")).Size(18, 18).TextColor(k.TextMuted)
+		mgo.Text(c, "任务会话").FontWeight(600)
+	})
 	for _, conv := range convs {
 		conv := conv
 		b := mgo.ButtonBase(c).FillWidth().Justify(mgo.Start).Gap(u).MinHeight(mcore.Density(c).ControlHeight()).
-			Padding(u, u*2).Radius(mtheme.ControlRadius).Label(conv.Title)
+			Padding(u, u*2).Radius(mtheme.ControlRadius)
 		b.Children(func() {
+			mgo.Icon(c, icons.Must("message-square")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
 			mgo.Text(c, conv.Title).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
-			mgo.Text(c, taskNameOf(cw, conv.TaskID)).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted).Shrink(0)
+			mgo.Text(c, taskNameOf(cw, conv.TaskID)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			mgo.Icon(c, icons.Must("chevron-right")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
 		})
 		if b.Clicked() {
 			cw.openConversation(conv.ID)

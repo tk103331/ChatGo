@@ -251,3 +251,25 @@ func TestPreviewClose(t *testing.T) {
 		t.Fatalf("expected 1 tab, got %d", len(cw.previewTabs))
 	}
 }
+
+func TestAutoTaskPageRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionAuto
+	img := mgo.Render(cw.view, 1000, 700, 1)
+	if img == nil || img.Bounds().Dx() != 1000 {
+		t.Fatalf("auto task empty render failed: %v", img)
+	}
+}
+
+func TestAutoTaskWithTasksRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionAuto
+	cw.cfg.AutoTasks = []config.AutoTask{
+		{Name: "每日报告", Agent: "", Prompt: "生成报告", Schedule: config.Schedule{Kind: "daily", Hour: 9, Minute: 0}, Enabled: true, LastRun: time.Now().Add(-time.Hour), LastNote: "成功"},
+		{Name: "周报", Agent: "agent:helper", Prompt: "周报", Schedule: config.Schedule{Kind: "weekly", Hour: 18, Minute: 0, Weekday: 5}, Enabled: false},
+	}
+	img := mgo.Render(cw.view, 1000, 700, 1)
+	if img == nil || img.Bounds().Dx() != 1000 {
+		t.Fatalf("auto task with tasks render failed: %v", img)
+	}
+}
