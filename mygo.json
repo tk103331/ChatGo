@@ -1,0 +1,8 @@
+{
+  "name": "ChatGo",
+  "identifier": "com.tk103331.chatgo",
+  "version": "0.1.0",
+  "copyright": "MIT",
+  "icon": "internal/ui/assets/logo.png",
+  "out": "dist"
+}
