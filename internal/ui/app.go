@@ -155,11 +155,15 @@ type ChatWindow struct {
 	avatarMu  sync.Mutex
 	avatarPNG map[string]*mgo.Bitmap
 
-	acpList mgo.ListState
-	acpForm acpForm
+	acpList          mgo.ListState
+	acpForm          acpForm
+	acpCatalogOpen   bool
+	acpCatalogQuery  string
 
 	mcpTabSel         int
 	mcpEditorOpen     bool
+	mcpMyQuery        string
+	mcpMyList         mgo.ListState
 	mcpMarket         []mcpMarketServer
 	mcpMarketList     mgo.ListState
 	mcpMarketLoading  bool

@@ -204,9 +204,9 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 					})
 				})
 				on = countSelected(f.builtinTools, tools)
-				cw.agentGroup(c, &cw.agentSecTools, fmt.Sprintf("内置工具  %d/%d", on, len(tools)), func() {
+				cw.agentGroup(c, &cw.agentSecTools, fmt.Sprintf("工具  %d/%d", on, len(tools)), func() {
 					agentAction(c, on, len(tools), func(all bool) { f.builtinTools = toggleAll(tools, all) })
-					agentSearch(c, &f.toolQuery, "搜索内置工具")
+					agentSearch(c, &f.toolQuery, "搜索工具")
 					mgo.Grid(c).Columns(2).Gap(u).Children(func() {
 						for _, t := range filterStrings(tools, f.toolQuery) {
 							t := t

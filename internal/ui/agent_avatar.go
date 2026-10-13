@@ -16,8 +16,9 @@ func (cw *ChatWindow) agentAvatar(c *mgo.Context) func() {
 	}
 	switch {
 	case strings.HasPrefix(cw.cur.Agent, "acp:"):
-		if logo := acpLogo(strings.TrimPrefix(cw.cur.Agent, "acp:")); logo != nil {
-			return func() { mgo.Image(c, logo).Size(28, 28) }
+		name := strings.TrimPrefix(cw.cur.Agent, "acp:")
+		if acpLogoSVG(name) != nil || acpLogo(name) != nil {
+			return func() { acpIcon(c, name, 28, 28) }
 		}
 	case strings.HasPrefix(cw.cur.Agent, "agent:"):
 		name := strings.TrimPrefix(cw.cur.Agent, "agent:")

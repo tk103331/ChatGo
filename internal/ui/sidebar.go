@@ -327,9 +327,7 @@ func iconLeading(c *mgo.Context, name string) func() {
 
 func logoLeading(c *mgo.Context, name string) func() {
 	return func() {
-		if logo := acpLogo(name); logo != nil {
-			mgo.Image(c, logo).Size(16, 16)
-		}
+		acpIcon(c, name, 16, 16)
 	}
 }
 
@@ -338,8 +336,9 @@ func (cw *ChatWindow) convLeading(c *mgo.Context, conv models.Conversation) {
 	u := mcore.Density(c).Unit()
 	switch {
 	case strings.HasPrefix(conv.Agent, "acp:"):
-		if logo := acpLogo(strings.TrimPrefix(conv.Agent, "acp:")); logo != nil {
-			mgo.Image(c, logo).Size(16, 16).Margin(0, 0, 0, u)
+		name := strings.TrimPrefix(conv.Agent, "acp:")
+		if acpLogoSVG(name) != nil || acpLogo(name) != nil {
+			mgo.Row(c).Margin(0, 0, 0, u).Children(func() { acpIcon(c, name, 16, 16) })
 		}
 	case strings.HasPrefix(conv.Agent, "agent:"):
 		name := strings.TrimPrefix(conv.Agent, "agent:")

@@ -260,7 +260,7 @@ func capsOf(p config.Provider) []string {
 
 // toolMenu toggles the builtin tools in a popover.
 func (cw *ChatWindow) toolMenu(c *mgo.Context) {
-	cw.toolPopover(c, "tools", "工具", "sliders-horizontal", "内置工具", "builtin:")
+	cw.toolPopover(c, "tools", "工具", "sliders-horizontal", "工具", "builtin:")
 }
 
 // mcpMenu toggles the MCP servers in a popover, separate from builtin tools.

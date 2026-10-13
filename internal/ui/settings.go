@@ -108,7 +108,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 		}
 		res := mnavigation.Tabs(c, &cw.settings.tab, []mnavigation.Tab{
 			{Label: "模型", Panel: func() { cw.providersTab(c) }},
-			{Label: "内置工具", Panel: func() { cw.builtinTab(c) }},
+			{Label: "工具", Panel: func() { cw.builtinTab(c) }},
 			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
 			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
@@ -191,6 +191,11 @@ func (cw *ChatWindow) providerFormView(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	changed := false
 	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
+		title := "新建模型"
+		if f.editing >= 0 {
+			title = "编辑模型"
+		}
+		mgo.Text(c, title).Font(mtheme.SerifFont).FontWeight(600)
 		mgo.Scroll(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 			mgo.Column(c).Gap(u * 2).Children(func() {
 				if r := minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Provider 名称", ReadOnly: f.preset}); r.Changed() {
@@ -345,23 +350,77 @@ func (cw *ChatWindow) deleteProvider() {
 func (cw *ChatWindow) mcpTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	mgo.Column(c).Grow(1).MinWidth(0).MinHeight(0).Gap(u * 3).Children(func() {
-		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, fmt.Sprintf("已配置 %d 个服务", len(cw.cfg.MCPServers))).
-				TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Grow(1)
+	mgo.Column(c).Grow(1).MinWidth(0).MinHeight(0).Gap(u * 2).Children(func() {
+		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u * 2).Children(func() {
+			in := minput.SearchInput(c, &cw.mcpMyQuery, minput.SearchInputOptions{Placeholder: "搜索服务", Label: "搜索服务"})
+			in.Element.Grow(1)
 			if minput.Button(c, "新增服务", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearMCPForm()
 				cw.mcpEditorOpen = true
 			}
 		})
+		if len(cw.cfg.MCPServers) == 0 {
+			cw.mcpEmptyState(c)
+			return
+		}
+		items := cw.filteredMCPServers()
+		if len(items) == 0 {
+			mgo.Text(c, "没有匹配的服务").TextColor(k.TextMuted)
+			return
+		}
+		mgo.Text(c, fmt.Sprintf("共 %d 个服务", len(items))).TextColor(k.TextMuted).
+			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			mgo.Grid(c).Columns(3).Gap(u * 3).Children(func() {
-				for i := range cw.cfg.MCPServers {
+				for _, i := range items {
 					cw.mcpServerCard(c, i)
 				}
 			})
 		})
 	})
+}
+
+// mcpEmptyState shows a centered call-to-action when no servers are configured.
+func (cw *ChatWindow) mcpEmptyState(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u * 2).Children(func() {
+		mgo.Icon(c, icons.Must("layout-grid")).Size(48, 48).TextColor(k.TextMuted)
+		mgo.Text(c, "还没有配置 MCP 服务").Font(mtheme.SerifFont).
+			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
+		mgo.Text(c, "从市场安装，或手动添加一个服务器").TextColor(k.TextMuted).
+			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		mgo.Row(c).Gap(u * 2).Children(func() {
+			if minput.Button(c, "浏览市场", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+				cw.mcpTabSel = 1
+			}
+			if minput.Button(c, "手动添加", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+				cw.clearMCPForm()
+				cw.mcpEditorOpen = true
+			}
+		})
+	})
+}
+
+// filteredMCPServers returns indices of configured servers matching the search query.
+func (cw *ChatWindow) filteredMCPServers() []int {
+	q := strings.ToLower(strings.TrimSpace(cw.mcpMyQuery))
+	if q == "" {
+		out := make([]int, len(cw.cfg.MCPServers))
+		for i := range cw.cfg.MCPServers {
+			out[i] = i
+		}
+		return out
+	}
+	var out []int
+	for i, s := range cw.cfg.MCPServers {
+		if strings.Contains(strings.ToLower(s.Name), q) ||
+			strings.Contains(strings.ToLower(s.Command), q) ||
+			strings.Contains(strings.ToLower(s.URL), q) {
+			out = append(out, i)
+		}
+	}
+	return out
 }
 
 func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
@@ -382,12 +441,20 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 				}
 				mgo.Text(c, s.Name).Font(mtheme.SerifFont).
 					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
-				status, _ := mcpStatus(cw, s.Name)
+				status, note := mcpStatus(cw, s.Name)
 				mfeedback.StatusIndicator(c, status, mfeedback.StatusIndicatorOptions{})
+				if note != "" && note != "未初始化" {
+					mgo.Text(c, note).FontSize(caption).TextColor(k.TextMuted).SingleLine().Ellipsis("…")
+				}
 			})
 			mgo.Row(c).Gap(u).Wrap().Children(func() {
 				agentTag(c, mcpTypeLabel(typ))
-				agentTag(c, map[bool]string{true: "已启用", false: "已禁用"}[s.Enabled])
+				if s.Enabled {
+					agentTag(c, "已启用")
+				} else {
+					mgo.Text(c, "已禁用").FontSize(caption).TextColor(k.TextMuted).
+						Padding(0, u*1.5).Radius(mtheme.ControlRadius).Border(mtheme.BorderWidth, k.Border).SingleLine()
+				}
 			})
 			if s.Command != "" {
 				mgo.Text(c, s.Command+" "+strings.Join(s.Args, " ")).TextColor(k.TextMuted).
@@ -774,11 +841,11 @@ func (cw *ChatWindow) builtinFormView(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
 		if f.editing < 0 || f.editing >= len(cw.cfg.BuiltinTools) {
-			mgo.Text(c, "从左侧选择一个内置工具进行配置").TextColor(k.TextMuted)
+			mgo.Text(c, "从左侧选择一个工具进行配置").TextColor(k.TextMuted)
 			return
 		}
 		tool := cw.cfg.BuiltinTools[f.editing]
-		mgo.Text(c, tool.Type).FontWeight(600)
+		mgo.Text(c, tool.Name).Font(mtheme.SerifFont).FontWeight(600)
 		mgo.Text(c, config.GetBuiltinToolDescription(tool.Type)).TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
@@ -828,7 +895,7 @@ func (cw *ChatWindow) saveBuiltin() {
 	cw.cfg.BuiltinTools[f.editing] = t
 	_ = config.SaveConfig(cw.cfg)
 	cw.status = ""
-	cw.toast("已保存内置工具配置", mcore.SeveritySuccess)
+	cw.toast("已保存工具配置", mcore.SeveritySuccess)
 	cw.clientDirty.Store(true)
 }
 
@@ -931,11 +998,16 @@ func (cw *ChatWindow) saveSystemSettings() {
 
 func (cw *ChatWindow) channelTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
 	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
 		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
 			cw.feishuStatusLine(c)
 			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearChannelForm()
+			}
+			if len(cw.cfg.Channels) == 0 {
+				mgo.Text(c, "暂无渠道，点击新增创建").TextColor(k.TextMuted).
+					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			}
 			mgo.List(c, &cw.settings.channelList, len(cw.cfg.Channels), func(i int) {
 				cw.channelRow(c, i)
@@ -1000,6 +1072,11 @@ func (cw *ChatWindow) channelFormView(c *mgo.Context) {
 	f := &cw.settings.channel
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
+		title := "新建渠道"
+		if f.editing >= 0 {
+			title = "编辑渠道"
+		}
+		mgo.Text(c, title).Font(mtheme.SerifFont).FontWeight(600)
 		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "渠道名称"})
 		minput.Select(c, &f.typ, []minput.SelectOption[string]{{Value: "feishu", Label: "飞书"}}, minput.SelectOptions{Label: "类型"})
 		minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "AppID", Placeholder: "飞书应用 App ID"})
@@ -1160,8 +1237,21 @@ func (cw *ChatWindow) askDeleteConversation(id, title string) {
 // acpTab configures the ACP connections used by ACP agents.
 func (cw *ChatWindow) acpTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
 	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-		mgo.Column(c).Width(300).Shrink(0).Children(func() {
+		mgo.Column(c).Width(300).Shrink(0).Gap(u).Children(func() {
+			mgo.Row(c).Gap(u).FillWidth().Children(func() {
+				if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
+					cw.clearACPForm()
+				}
+				if minput.Button(c, "从目录添加", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
+					cw.acpCatalogOpen = true
+				}
+			})
+			if len(cw.cfg.ACPAgents) == 0 {
+				mgo.Text(c, "暂无连接，从目录添加或手动新增").TextColor(k.TextMuted).
+					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+			}
 			mgo.List(c, &cw.acpList, len(cw.cfg.ACPAgents), func(i int) {
 				cw.acpRow(c, i)
 			}).Fill()
@@ -1170,6 +1260,7 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 			cw.acpFormView(c)
 		})
 	})
+	cw.acpCatalogDialog(c)
 }
 
 func (cw *ChatWindow) fail(msg string) {

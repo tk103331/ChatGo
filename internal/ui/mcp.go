@@ -11,6 +11,7 @@ import (
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/devtools"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
@@ -183,6 +184,13 @@ func (cw *ChatWindow) mcpMarketTab(c *mgo.Context) {
 			return
 		}
 		items := cw.filteredMarket()
+		if len(items) == 0 {
+			mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u).Children(func() {
+				mgo.Icon(c, icons.Must("search")).Size(32, 32).TextColor(k.TextMuted)
+				mgo.Text(c, "没有匹配的 MCP 服务器").TextColor(k.TextMuted)
+			})
+			return
+		}
 		mgo.Text(c, "共 "+strconv.Itoa(len(items))+" 个").TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		mgo.List(c, &cw.mcpMarketList, len(items), func(i int) {
 			cw.mcpMarketRow(c, items[i])

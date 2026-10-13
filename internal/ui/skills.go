@@ -54,6 +54,13 @@ func skillDirs() []string {
 	return dirs
 }
 
+func skillSourceLabel(source string) string {
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(source, home) {
+		return "~" + source[len(home):]
+	}
+	return source
+}
+
 // loadSkills scans the skill directories, deduplicating by name.
 func (cw *ChatWindow) loadSkills() {
 	seenPath := map[string]bool{}
@@ -125,14 +132,39 @@ func (cw *ChatWindow) skillsPage(c *mgo.Context) {
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
 			mgo.Text(c, "共 "+strconv.Itoa(len(cw.skills))+" 个").TextColor(k.TextMuted).
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-			if minput.Button(c, "重新扫描", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if minput.Button(c, "重新扫描", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("refresh-cw")}).Clicked() {
 				cw.loadSkills()
 			}
 		})
+		if len(cw.skills) == 0 {
+			cw.skillsEmptyState(c)
+			return
+		}
 		mgo.Row(c).Grow(1).MinWidth(0).MinHeight(0).Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
 			cw.skillsList(c)
 			cw.skillViewer(c)
 		})
+	})
+}
+
+func (cw *ChatWindow) skillsEmptyState(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u * 2).Children(func() {
+		mgo.Icon(c, icons.Must("brain")).Size(48, 48).TextColor(k.TextMuted)
+		mgo.Text(c, "未发现 Skill").Font(mtheme.SerifFont).
+			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
+		mgo.Text(c, "将 SKILL.md 放入以下任意目录后重新扫描").TextColor(k.TextMuted).
+			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		mgo.Column(c).Gap(u).AlignItems(mgo.Start).Children(func() {
+			for _, dir := range skillDirs() {
+				mgo.Text(c, dir).Font(mtheme.MonoFont).
+					FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+			}
+		})
+		if minput.Button(c, "重新扫描", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			cw.loadSkills()
+		}
 	})
 }
 
@@ -143,21 +175,33 @@ func (cw *ChatWindow) skillsList(c *mgo.Context) {
 		in := minput.TextInput(c, &cw.skillsQuery, minput.TextInputOptions{Label: "搜索", Placeholder: "搜索 Skill"})
 		in.Element.FillWidth()
 		items := cw.filteredSkills()
+		if len(items) == 0 {
+			mgo.Text(c, "没有匹配的 Skill").TextColor(k.TextMuted)
+			return
+		}
 		mgo.List(c, &cw.skillsListState, len(items), func(i int) {
 			s := items[i]
 			selected := cw.skillsSel == s.ID
+			enabled := cw.skillEnabled(s.ID)
 			b := mgo.ButtonBase(c).Key(s.ID).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
 				Padding(u, u*2).Radius(mtheme.ControlRadius)
 			if selected {
 				b.Background(k.Selection)
 			}
 			b.Children(func() {
-				mgo.Column(c).Gap(u / 2).MinWidth(0).Children(func() {
-					mgo.Text(c, s.Name).FontWeight(600).SingleLine()
-					if s.Description != "" {
-						mgo.Text(c, s.Description).TextColor(k.TextMuted).
-							FontSize(mcore.FontSize(c, mtheme.CaptionSize)).MaxLines(1)
+				mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+					dotColor := k.TextMuted
+					if enabled {
+						dotColor = k.Success
 					}
+					mgo.Icon(c, icons.Must("circle")).Size(6, 6).TextColor(dotColor).Shrink(0)
+					mgo.Column(c).Gap(u / 2).MinWidth(0).Grow(1).Children(func() {
+						mgo.Text(c, s.Name).FontWeight(600).SingleLine()
+						if s.Description != "" {
+							mgo.Text(c, s.Description).TextColor(k.TextMuted).
+								FontSize(mcore.FontSize(c, mtheme.CaptionSize)).MaxLines(1)
+						}
+					})
 				})
 			})
 			if b.Clicked() {
@@ -207,8 +251,11 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 		if s.Description != "" {
 			mgo.Text(c, s.Description).TextColor(k.TextMuted)
 		}
-		mgo.Text(c, s.Path).Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).
-			SingleLine().Ellipsis("…")
+		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
+			agentTag(c, skillSourceLabel(s.Source))
+			mgo.Text(c, s.Path).Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).
+				SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+		})
 		dir := filepath.Dir(s.Path)
 		if cw.skillFilesFor != s.ID {
 			cw.skillFiles = listSkillFiles(dir)

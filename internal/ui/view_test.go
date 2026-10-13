@@ -122,6 +122,17 @@ func TestACPPageRenders(t *testing.T) {
 	}
 }
 
+func TestACPCatalogDialogRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionSettings
+	cw.settings.tab = 2
+	cw.acpCatalogOpen = true
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("acp catalog render failed: %v", img)
+	}
+}
+
 func TestACPChatRenders(t *testing.T) {
 	cw := testWindow()
 	cw.mode = modeChat
@@ -182,6 +193,31 @@ func TestMCPPageRenders(t *testing.T) {
 	img2 := mgo.Render(cw.view, 1280, 820, 1)
 	if img2 == nil || img2.Bounds().Dx() != 1280 {
 		t.Fatalf("mcp servers render failed: %v", img2)
+	}
+}
+
+func TestMCPEmptyStateRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionMCP
+	cw.mcpTabSel = 0
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("mcp empty state render failed: %v", img)
+	}
+}
+
+func TestMCPMarketEmptyResultRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionMCP
+	cw.mcpTabSel = 1
+	cw.mcpMarketLoaded = true
+	cw.mcpMarket = []mcpMarketServer{
+		{ID: "github", Name: "GitHub", Description: "GitHub MCP"},
+	}
+	cw.mcpMarketQuery = "zzz-no-match"
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("mcp market empty result render failed: %v", img)
 	}
 }
 

@@ -67,6 +67,113 @@ type acpForm struct {
 	disabled bool
 }
 
+type acpCatalogEntry struct {
+	Name        string
+	Command     string
+	Args        []string
+	Description string
+	Homepage    string
+}
+
+func acpCatalog() []acpCatalogEntry {
+	return []acpCatalogEntry{
+		{Name: "Claude Code", Command: "npx", Args: []string{"-y", "@zed-industries/claude-code-acp"}, Description: "Anthropic Claude Code", Homepage: "https://claude.com"},
+		{Name: "Claude Agent SDK", Command: "npx", Args: []string{"-y", "@zed-industries/claude-agent-acp"}, Description: "Claude Agent SDK via Zed 适配器", Homepage: "https://github.com/zed-industries/claude-agent-acp"},
+		{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}, Description: "OpenCode AI 编程助手", Homepage: "https://github.com/sst/opencode"},
+		{Name: "Codex CLI", Command: "npx", Args: []string{"-y", "@agentclientprotocol/codex-acp"}, Description: "OpenAI Codex CLI", Homepage: "https://github.com/openai/codex"},
+		{Name: "Cursor", Command: "agent", Args: []string{"acp"}, Description: "Cursor CLI Agent", Homepage: "https://cursor.com"},
+		{Name: "Gemini CLI", Command: "gemini", Description: "Google Gemini CLI", Homepage: "https://github.com/google-gemini/gemini-cli"},
+		{Name: "Kiro CLI", Command: "kiro-cli", Args: []string{"acp"}, Description: "AWS Kiro CLI", Homepage: "https://kiro.dev"},
+		{Name: "GitHub Copilot", Command: "copilot", Description: "GitHub Copilot CLI", Homepage: "https://github.com/features/copilot"},
+		{Name: "Goose", Command: "goose", Description: "Block Goose AI Agent", Homepage: "https://block.github.io/goose/"},
+		{Name: "Qwen Code", Command: "qwen", Description: "阿里通义灵码 Qwen Code", Homepage: "https://github.com/QwenLM/qwen-code"},
+		{Name: "Kimi CLI", Command: "kimi", Description: "月之暗面 Kimi CLI", Homepage: "https://github.com/MoonshotAI/kimi-cli"},
+		{Name: "Cline", Command: "npx", Args: []string{"-y", "@cline/cline-acp-adapter"}, Description: "Cline AI 助手", Homepage: "https://cline.bot"},
+		{Name: "Docker cagent", Command: "cagent", Description: "Docker cagent", Homepage: "https://github.com/docker/cagent"},
+		{Name: "Factory Droid", Command: "droid", Description: "Factory Droid", Homepage: "https://factory.ai"},
+		{Name: "Augment Code", Command: "augment", Args: []string{"acp"}, Description: "Augment Code CLI", Homepage: "https://docs.augmentcode.com/cli/acp"},
+		{Name: "OpenHands", Command: "openhands", Args: []string{"acp"}, Description: "OpenHands AI Agent", Homepage: "https://docs.openhands.dev"},
+		{Name: "Qoder CLI", Command: "qoder", Args: []string{"acp"}, Description: "Qoder CLI", Homepage: "https://docs.qoder.com/cli/acp"},
+	}
+}
+
+func (cw *ChatWindow) hasACPConn(name string) bool {
+	for _, a := range cw.cfg.ACPAgents {
+		if strings.EqualFold(a.Name, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func (cw *ChatWindow) addACPFromCatalog(e acpCatalogEntry) {
+	if cw.hasACPConn(e.Name) {
+		cw.toast("已存在同名连接", mcore.SeverityInfo)
+		return
+	}
+	cw.cfg.ACPAgents = append(cw.cfg.ACPAgents, config.ACPConnection{
+		Name: e.Name, Command: e.Command, Args: e.Args, Disabled: true,
+	})
+	_ = config.SaveConfig(cw.cfg)
+	cw.acpCatalogOpen = false
+	cw.toast("已添加 "+e.Name+"，请先安装对应 CLI 再启用", mcore.SeveritySuccess)
+}
+
+func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {
+	if !cw.acpCatalogOpen {
+		return
+	}
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	moverlay.Dialog(c, &cw.acpCatalogOpen, moverlay.DialogOptions{
+		Title: "从目录添加 Agent",
+		Width: 560,
+	}, func() {
+		mgo.Column(c).Gap(u * 2).Children(func() {
+			in := minput.SearchInput(c, &cw.acpCatalogQuery, minput.SearchInputOptions{Placeholder: "搜索 Agent", Label: "搜索"})
+			in.Element.FillWidth()
+			q := strings.ToLower(strings.TrimSpace(cw.acpCatalogQuery))
+			var items []acpCatalogEntry
+			for _, e := range acpCatalog() {
+				if q != "" && !strings.Contains(strings.ToLower(e.Name), q) && !strings.Contains(strings.ToLower(e.Description), q) {
+					continue
+				}
+				items = append(items, e)
+			}
+			if len(items) == 0 {
+				mgo.Text(c, "没有匹配的 Agent").TextColor(k.TextMuted)
+				return
+			}
+			mgo.Scroll(c).MaxHeight(400).Children(func() {
+				mgo.Column(c).Gap(u).Children(func() {
+					for _, e := range items {
+						e := e
+						mgo.Row(c).Key(e.Name).FillWidth().Gap(u * 2).AlignItems(mgo.Center).
+							Padding(u, u*2).Radius(mtheme.CardRadius).Border(mtheme.BorderWidth, k.Border).
+							Children(func() {
+								acpIcon(c, e.Name, 24, 24)
+								mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
+									mgo.Text(c, e.Name).FontWeight(600).SingleLine()
+									mgo.Text(c, e.Command+" "+strings.Join(e.Args, " ")).
+										Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).SingleLine().Ellipsis("…")
+									if e.Description != "" {
+										mgo.Text(c, e.Description).FontSize(caption).TextColor(k.TextMuted).MaxLines(1)
+									}
+								})
+								if cw.hasACPConn(e.Name) {
+									mgo.Text(c, "已添加").FontSize(caption).TextColor(k.Success).Shrink(0)
+								} else if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+									cw.addACPFromCatalog(e)
+								}
+							})
+					}
+				})
+			})
+		})
+	})
+}
+
 func (cw *ChatWindow) acpRow(c *mgo.Context, i int) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -77,9 +184,7 @@ func (cw *ChatWindow) acpRow(c *mgo.Context, i int) {
 		b.Background(k.Selection)
 	}
 	b.Children(func() {
-		if logo := acpLogo(a.Name); logo != nil {
-			mgo.Image(c, logo).Size(18, 18)
-		}
+		acpIcon(c, a.Name, 18, 18)
 		mgo.Text(c, a.Name).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
 		status, col := "启用", k.Success
 		if a.Disabled {
@@ -96,7 +201,10 @@ func (cw *ChatWindow) acpFormView(c *mgo.Context) {
 	f := &cw.acpForm
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Gap(u).Children(func() {
-		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称", ReadOnly: true})
+		if f.editing < 0 {
+			mgo.Text(c, "新建连接").Font(mtheme.SerifFont).FontWeight(600)
+		}
+		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称", ReadOnly: f.editing >= 0})
 		minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 claude-code-acp 或 gemini"})
 		minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
 		minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
