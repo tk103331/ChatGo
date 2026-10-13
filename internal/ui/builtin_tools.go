@@ -266,7 +266,7 @@ func runCommand(ctx context.Context, command string, allowed []string, dir strin
 	if i := strings.IndexAny(first, " \t"); i >= 0 {
 		first = first[:i]
 	}
-	if len(allowed) > 0 && !containsStr(allowed, filepath.Base(first)) {
+	if len(allowed) > 0 && !containsStr(allowed, "*") && !containsStr(allowed, filepath.Base(first)) {
 		return "", fmt.Errorf("命令 %q 不在允许列表（%s）", first, strings.Join(allowed, ", "))
 	}
 	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
