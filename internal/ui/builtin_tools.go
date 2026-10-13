@@ -43,6 +43,12 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 			"offset":  {Type: schema.Integer, Desc: "读取起始行，从 0 开始，可选"},
 			"limit":   {Type: schema.Integer, Desc: "读取行数，可选，默认 200"},
 		}
+	case "jssandbox":
+		return map[string]*schema.ParameterInfo{
+			"code":     {Type: schema.String, Desc: "JavaScript/TypeScript 代码，需 export 一个 run(input) 函数", Required: true},
+			"input":    {Type: schema.String, Desc: "传入 run 函数的 JSON 输入，可选"},
+			"function": {Type: schema.String, Desc: "要调用的导出函数名，默认 run"},
+		}
 	}
 	return map[string]*schema.ParameterInfo{}
 }
@@ -155,6 +161,22 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) 
 				return strings.Join(names, "\n"), nil
 			}
 			return "", fmt.Errorf("未知 action %q（应为 read/write/list）", action)
+		}
+	case "jssandbox":
+		scfg := parseJsSandboxConfig(tool.Config)
+		return func(ctx context.Context, args string) (string, error) {
+			var in struct {
+				Code     string `json:"code"`
+				Input    string `json:"input"`
+				Function string `json:"function"`
+			}
+			if err := json.Unmarshal([]byte(args), &in); err != nil {
+				return "", fmt.Errorf("参数解析失败: %w", err)
+			}
+			if strings.TrimSpace(in.Code) == "" {
+				return "", fmt.Errorf("缺少必填参数 code")
+			}
+			return runJsSandbox(ctx, in.Code, in.Input, in.Function, scfg)
 		}
 	}
 	return func(context.Context, string) (string, error) {

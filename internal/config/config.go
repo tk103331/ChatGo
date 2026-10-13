@@ -180,6 +180,7 @@ func GetAvailableBuiltinTools() []string {
 		"commandline",
 		"filesystem",
 		"sequentialthinking",
+		"jssandbox",
 	}
 }
 
@@ -195,6 +196,7 @@ func GetBuiltinToolDescription(toolType string) string {
 		"commandline":        "Command Line - Execute shell commands (use with caution)",
 		"filesystem":         "Filesystem - Read, write or list files under the working directory",
 		"sequentialthinking": "Sequential Thinking - Chain of thought reasoning tool",
+		"jssandbox":           "JS Sandbox - Run JavaScript/TypeScript code in a secure sandbox (powered by moejs)",
 	}
 	if desc, ok := descriptions[toolType]; ok {
 		return desc
@@ -221,6 +223,8 @@ func GetBuiltinToolConfigFields(toolType string) []string {
 		return []string{"allowed_commands"}
 	case "sequentialthinking":
 		return []string{"max_iterations"}
+	case "jssandbox":
+		return []string{"memory_limit_mb", "timeout_seconds", "typescript"}
 	default:
 		return []string{}
 	}
@@ -245,6 +249,8 @@ func GetRequiredConfigFields(toolType string) []string {
 		return []string{"allowed_commands"} // security requirement
 	case "sequentialthinking":
 		return []string{} // max_iterations has default
+	case "jssandbox":
+		return []string{} // all fields have defaults
 	default:
 		return []string{}
 	}
