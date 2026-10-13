@@ -15,6 +15,7 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 	mgo "github.com/egoist/mygo/ui"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/larksuite/oapi-sdk-go/v3/channel"
 	"github.com/larksuite/oapi-sdk-go/v3/channel/types"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
@@ -79,6 +80,8 @@ func (cw *ChatWindow) startFeishuChannel() {
 		if text == "" {
 			return nil
 		}
+		cw.notifyChannelMessage(channelID, text)
+		feishuReaction(client, msg.MessageID, "Typing")
 		cw.runChannelAgent(channelID, text, func(reply string) {
 			_, _ = ch.Send(context.Background(), &types.SendInput{
 				ChatID:         msg.ChatID,
@@ -202,6 +205,7 @@ func (cw *ChatWindow) runChannelLLMAgent(conv *models.Conversation, agent, works
 			_ = cw.convManager.SaveConversation(conv)
 			cw.reloadConvs()
 			cw.invalidate()
+			cw.notifySessionComplete(conv, reply)
 		})
 		done(reply)
 	}()
@@ -248,6 +252,7 @@ func (cw *ChatWindow) runChannelACPAgent(conv *models.Conversation, connName, wo
 			_ = cw.convManager.SaveConversation(conv)
 			cw.reloadConvs()
 			cw.invalidate()
+			cw.notifySessionComplete(conv, reply)
 		})
 		if perr != nil && reply == "" {
 			reply = "⚠️ " + perr.Error()
@@ -266,6 +271,40 @@ func (cw *ChatWindow) channelByID(id string) *config.Channel {
 		}
 	}
 	return nil
+}
+
+// notifyChannelMessage notifies the user when a channel receives a message.
+func (cw *ChatWindow) notifyChannelMessage(channelID, text string) {
+	onMain(cw, func() struct{} {
+		ch := cw.channelByID(channelID)
+		name := "渠道"
+		agent := chatAgentName
+		if ch != nil {
+			if n := strings.TrimSpace(ch.Name); n != "" {
+				name = n
+			}
+			agent = agentLabel(ch.Agent)
+		}
+		cw.notifyUser(agent+" · "+name, notifyPreview(text))
+		return struct{}{}
+	})
+}
+
+// feishuReaction adds an emoji reaction to a Feishu message as an
+// acknowledgement that it was received.
+func feishuReaction(client *lark.Client, messageID, emoji string) {
+	go func() {
+		req := larkim.NewCreateMessageReactionReqBuilder().
+			MessageId(messageID).
+			Body(larkim.NewCreateMessageReactionReqBodyBuilder().
+				ReactionType(larkim.NewEmojiBuilder().EmojiType(emoji).Build()).
+				Build()).
+			Build()
+		_, err := client.Im.V1.MessageReaction.Create(context.Background(), req)
+		if err != nil {
+			return
+		}
+	}()
 }
 
 func (cw *ChatWindow) channelConvTitle(ch config.Channel, n int) string {

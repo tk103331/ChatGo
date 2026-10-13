@@ -420,6 +420,7 @@ func (cw *ChatWindow) startAutoTask(i int) {
 			_ = config.SaveConfig(cw.cfg)
 			cw.reloadConvs()
 			cw.invalidate()
+			cw.notifySessionComplete(conv, reply)
 		})
 	}()
 }

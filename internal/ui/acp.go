@@ -659,6 +659,7 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 			conv.UpdatedAt = time.Now()
 			_ = cw.convManager.SaveConversation(conv)
 			cw.reloadConvs()
+			cw.notifySessionComplete(conv, conv.Messages[idx].Content)
 		})
 	}()
 }
