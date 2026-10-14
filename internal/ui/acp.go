@@ -200,26 +200,33 @@ func (cw *ChatWindow) acpRow(c *mgo.Context, i int) {
 func (cw *ChatWindow) acpFormView(c *mgo.Context) {
 	f := &cw.acpForm
 	u := mcore.Density(c).Unit()
-	mgo.Column(c).Gap(u).Children(func() {
-		if f.editing < 0 {
-			mgo.Text(c, "新建连接").Font(mtheme.SerifFont).FontWeight(600)
+	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
+		title := "新建连接"
+		if f.editing >= 0 {
+			title = "编辑连接"
 		}
-		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称", ReadOnly: f.editing >= 0})
-		minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 claude-code-acp 或 gemini"})
-		minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
-		minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
-		minput.TextInput(c, &f.cwd, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前目录"})
-		enabled := !f.disabled
-		if minput.Switch(c, &enabled, "启用", minput.SwitchOptions{}).Changed() {
-			f.disabled = !enabled
-			cw.saveACP()
-		}
-		mgo.Row(c).Gap(u).Wrap().Children(func() {
+		mgo.Text(c, title).Font(mtheme.SerifFont).FontWeight(600)
+		mgo.Scroll(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			mgo.Column(c).Gap(u * 2).Children(func() {
+				minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称", ReadOnly: f.editing >= 0})
+				minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 claude-code-acp 或 gemini"})
+				minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
+				minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
+				minput.TextInput(c, &f.cwd, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前目录"})
+			})
+		})
+		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
 				cw.saveACP()
 			}
 			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
 				cw.deleteACP()
+			}
+			mgo.Box(c).Grow(1)
+			enabled := !f.disabled
+			if minput.Switch(c, &enabled, "启用", minput.SwitchOptions{}).Changed() {
+				f.disabled = !enabled
+				cw.saveACP()
 			}
 		})
 	})

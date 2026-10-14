@@ -9,6 +9,8 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+rm -rf dist/.staging-*
+
 # The mygo CLI is not declared as a tool dependency, so build it from the module.
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT

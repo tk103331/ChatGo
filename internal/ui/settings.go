@@ -145,10 +145,15 @@ func (cw *ChatWindow) askConfirm(title, desc string, action func()) {
 // providersTab lists providers and edits the selected one.
 func (cw *ChatWindow) providersTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
 	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
 		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
 			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearProviderForm()
+			}
+			if len(cw.cfg.Providers) == 0 {
+				mgo.Text(c, "暂无模型，点击新增创建").TextColor(k.TextMuted).
+					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			}
 			mgo.List(c, &cw.settings.provList, len(cw.cfg.Providers), func(i int) {
 				cw.providerRow(c, i)
@@ -803,7 +808,7 @@ func joinKV(m map[string]string) string {
 func (cw *ChatWindow) builtinTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-		mgo.Column(c).Width(280).Shrink(0).Children(func() {
+		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
 			mgo.List(c, &cw.settings.builtinList, len(cw.cfg.BuiltinTools), func(i int) {
 				cw.builtinRow(c, i)
 			}).Fill()
@@ -847,26 +852,33 @@ func (cw *ChatWindow) builtinFormView(c *mgo.Context) {
 		}
 		tool := cw.cfg.BuiltinTools[f.editing]
 		mgo.Text(c, tool.Name).Font(mtheme.SerifFont).FontWeight(600)
-		mgo.Text(c, config.GetBuiltinToolDescription(tool.Type)).TextColor(k.TextMuted).
-			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
-			cw.saveBuiltin()
-		}
-		required := config.GetRequiredConfigFields(tool.Type)
-		for _, field := range config.GetBuiltinToolConfigFields(tool.Type) {
-			label := field
-			for _, r := range required {
-				if r == field {
-					label = field + " *"
+		mgo.Scroll(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			mgo.Column(c).Gap(u * 2).Children(func() {
+				mgo.Text(c, config.GetBuiltinToolDescription(tool.Type)).TextColor(k.TextMuted).
+					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+				required := config.GetRequiredConfigFields(tool.Type)
+				for _, field := range config.GetBuiltinToolConfigFields(tool.Type) {
+					label := field
+					for _, r := range required {
+						if r == field {
+							label = field + " *"
+						}
+					}
+					v := f.config[field]
+					minput.TextInput(c, &v, minput.TextInputOptions{Label: label, Placeholder: field})
+					f.config[field] = v
 				}
+			})
+		})
+		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+				cw.saveBuiltin()
 			}
-			v := f.config[field]
-			minput.TextInput(c, &v, minput.TextInputOptions{Label: label, Placeholder: field})
-			f.config[field] = v
-		}
-		if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
-			cw.saveBuiltin()
-		}
+			mgo.Box(c).Grow(1)
+			if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
+				cw.saveBuiltin()
+			}
+		})
 	})
 }
 
@@ -1265,7 +1277,7 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
 	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-		mgo.Column(c).Width(300).Shrink(0).Gap(u).Children(func() {
+		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
 			mgo.Row(c).Gap(u).FillWidth().Children(func() {
 				if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
 					cw.clearACPForm()
