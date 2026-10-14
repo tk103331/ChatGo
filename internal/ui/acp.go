@@ -313,7 +313,7 @@ func parseACPUpdate(u acp.SessionUpdate) (acpUpdate, bool) {
 		}
 	case u.AgentThoughtChunk != nil:
 		if t := u.AgentThoughtChunk.Content.Text; t != nil && t.Text != "" {
-			return acpUpdate{kind: "text", text: t.Text}, true
+			return acpUpdate{kind: "reasoning", text: t.Text}, true
 		}
 	case u.ToolCall != nil:
 		return acpUpdate{
@@ -456,6 +456,10 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 	switch upd.kind {
 	case "text":
 		last.Content += upd.text
+		appendSegmentText(last, "text", upd.text)
+	case "reasoning":
+		last.Reasoning += upd.text
+		appendSegmentText(last, "reasoning", upd.text)
 	case "tool":
 		if upd.id != "" {
 			for i := range last.ToolCalls {
@@ -477,6 +481,7 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 						tc.Error = "failed"
 					}
 					cw.acpToolDuration(tc, upd.id, upd.status)
+					cw.acpSyncToolSegment(last, tc)
 					cw.invalidate()
 					return
 				}
@@ -492,8 +497,28 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 		last.ToolCalls = append(last.ToolCalls, tc)
 		idx := len(last.ToolCalls) - 1
 		cw.acpToolDuration(&last.ToolCalls[idx], upd.id, upd.status)
+		cw.acpSyncToolSegment(last, &last.ToolCalls[idx])
 	}
 	cw.invalidate()
+}
+
+// acpSyncToolSegment keeps the ordered segment view in step with a tool call so
+// an ACP reply renders interleaved (thinking, tool, text, ...) like the ReAct
+// path instead of one collapsed group of every call.
+func (cw *ChatWindow) acpSyncToolSegment(m *models.Message, tc *models.ToolCall) {
+	if tc.ID == "" {
+		return
+	}
+	for i := range m.Segments {
+		s := &m.Segments[i]
+		if s.Kind == "tool" && s.ToolCall != nil && s.ToolCall.ID == tc.ID {
+			cp := *tc
+			s.ToolCall = &cp
+			return
+		}
+	}
+	cp := *tc
+	m.Segments = append(m.Segments, models.Segment{Kind: "tool", ToolCall: &cp})
 }
 
 func (a acpClient) RequestPermission(ctx context.Context, p acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error) {
