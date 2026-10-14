@@ -48,12 +48,32 @@ type ToolCallInfo struct {
 // ToolCallCallback is called when a tool is invoked
 type ToolCallCallback func(info ToolCallInfo)
 
+// chunkForwarder lets the stream tool-call checker push model chunks to the UI
+// as it reads, so a reply keeps streaming even though the checker consumes the
+// whole stream to decide whether the model is calling tools.
+type chunkForwarder struct {
+	onChunk     func(string)
+	onReasoning func(string)
+}
+
+type chunkForwarderKey struct{}
+
+func withChunkForwarder(ctx context.Context, f *chunkForwarder) context.Context {
+	return context.WithValue(ctx, chunkForwarderKey{}, f)
+}
+
+func chunkForwarderFrom(ctx context.Context) *chunkForwarder {
+	f, _ := ctx.Value(chunkForwarderKey{}).(*chunkForwarder)
+	return f
+}
+
 // streamToolCallChecker reports whether a streamed model message contains tool
-// calls, reading the whole stream instead of only the first chunk. Models that
-// emit text before tool calls (Claude, some OpenAI-compatible endpoints) need
-// this, or the agent ends before running its tools.
-func streamToolCallChecker(_ context.Context, sr *schema.StreamReader[*schema.Message]) (bool, error) {
+// calls. It reads the whole stream because models that narrate before calling a
+// tool (reasoning, then text, then tool calls) only reveal the call later; the
+// chunks it reads are forwarded to the UI so the answer still streams.
+func streamToolCallChecker(ctx context.Context, sr *schema.StreamReader[*schema.Message]) (bool, error) {
 	defer sr.Close()
+	fwd := chunkForwarderFrom(ctx)
 	for {
 		msg, err := sr.Recv()
 		if err == io.EOF {
@@ -61,6 +81,17 @@ func streamToolCallChecker(_ context.Context, sr *schema.StreamReader[*schema.Me
 		}
 		if err != nil {
 			return false, err
+		}
+		if msg == nil {
+			continue
+		}
+		if fwd != nil {
+			if fwd.onReasoning != nil && msg.ReasoningContent != "" {
+				fwd.onReasoning(msg.ReasoningContent)
+			}
+			if fwd.onChunk != nil && msg.Content != "" {
+				fwd.onChunk(msg.Content)
+			}
 		}
 		if len(msg.ToolCalls) > 0 {
 			return true, nil
@@ -113,9 +144,10 @@ func (t *observedTool) InvokableRun(ctx context.Context, args string, opts ...to
 	if cb != nil {
 		cb(ToolCallInfo{ID: id, Name: name, Arguments: args})
 	}
+	start := time.Now()
 	out, err := inv.InvokableRun(ctx, args, opts...)
 	if cb != nil {
-		cb(ToolCallInfo{ID: id, Name: name, Arguments: args, Result: out, Error: err})
+		cb(ToolCallInfo{ID: id, Name: name, Arguments: args, Result: out, Error: err, Duration: time.Since(start)})
 	}
 	if err != nil {
 		// Hand the failure to the model as the tool result instead of failing
@@ -271,6 +303,11 @@ func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk 
 // chatWithStream sends a streaming chat completion request via React Agent
 func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Message, onChunk func(string), onToolCall ToolCallCallback, onReasoning []func(string)) (*ChatResponse, error) {
 	ctx = WithToolObserver(ctx, onToolCall)
+	var onReasoningFn func(string)
+	if len(onReasoning) > 0 {
+		onReasoningFn = onReasoning[0]
+	}
+	ctx = withChunkForwarder(ctx, &chunkForwarder{onChunk: onChunk, onReasoning: onReasoningFn})
 	// Create stream reader
 	streamReader, err := c.agent.Stream(ctx, messages)
 	if err != nil {
@@ -282,7 +319,8 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 	var fullContent strings.Builder
 	var fullReasoning strings.Builder
 
-	// Read from stream
+	// The checker forwarded each step's chunks to the UI; here we only collect
+	// the final answer, so nothing is shown twice.
 	for {
 		chunk, err := streamReader.Recv()
 		if err != nil {
@@ -299,17 +337,9 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 
 		if chunk.Content != "" {
 			fullContent.WriteString(chunk.Content)
-			if onChunk != nil {
-				onChunk(chunk.Content)
-			}
 		}
 		if chunk.ReasoningContent != "" {
 			fullReasoning.WriteString(chunk.ReasoningContent)
-			for _, cb := range onReasoning {
-				if cb != nil {
-					cb(chunk.ReasoningContent)
-				}
-			}
 		}
 	}
 

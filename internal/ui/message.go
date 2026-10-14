@@ -27,7 +27,7 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 	}
 	streaming := cw.streaming && cw.cur != nil && i == len(cw.cur.Messages)-1 && msg.Role == "assistant"
 	role := roleOf(msg)
-	opts := mchat.MessageBubbleOptions{}
+	opts := mchat.MessageBubbleOptions{MaxWidth: 900}
 	if role == mchat.MessageAssistant {
 		opts.Avatar = cw.agentAvatar(c)
 	}
@@ -37,12 +37,12 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 			model = cw.headerModel()
 		}
 		mchat.MessageHeader(c, mchat.MessageHeaderOptions{Model: model, Time: msg.Timestamp})
-		if len(msg.ToolCalls) > 0 {
-			cw.toolCallGroup(c, msg)
-		}
 		if msg.Role == "assistant" && strings.TrimSpace(msg.Reasoning) != "" {
 			open := mgo.Local(c.Root(), "reason:"+msg.ID, func() bool { return false })
 			cw.reasoningBlock(c, open, msg.Reasoning)
+		}
+		if len(msg.ToolCalls) > 0 {
+			cw.toolCallGroup(c, msg)
 		}
 		switch {
 		case strings.TrimSpace(msg.Content) != "":
@@ -59,13 +59,9 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 
 // reasoningBlock shows the model's thinking process as a collapsed block.
 func (cw *ChatWindow) reasoningBlock(c *mgo.Context, open *bool, reasoning string) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	mgo.Column(c).FillWidth().Gap(u / 2).Padding(u, u*2).Radius(mtheme.ControlRadius).
-		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Children(func() {
-		mdata.Collapsible(c, open, mdata.CollapsibleOptions{Title: "思考过程"}, func() {
-			mgo.Text(c, reasoning).TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		})
+	mdata.Collapsible(c, open, mdata.CollapsibleOptions{Title: "思考过程"}, func() {
+		mgo.Text(c, reasoning).TextColor(mcore.Tokens(c).TextMuted).
+			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 	})
 }
 
@@ -96,13 +92,10 @@ func (cw *ChatWindow) headerModel() string {
 	if cw.cur == nil {
 		return ""
 	}
-	if cw.cur.Model != "" {
-		return cw.cur.Model
+	if strings.HasPrefix(cw.cur.Agent, "acp:") {
+		return ""
 	}
-	if name, ok := strings.CutPrefix(cw.cur.Agent, "acp:"); ok {
-		return name
-	}
-	return ""
+	return cw.cur.Model
 }
 
 func roleOf(msg models.Message) mchat.MessageRole {
