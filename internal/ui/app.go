@@ -134,9 +134,10 @@ type ChatWindow struct {
 	toastText     string
 	toastSeverity mcore.Severity
 
-	themeMode mcore.Mode
-	density   mtheme.Density
-	locale    mcore.Locale
+	themeMode  mcore.Mode
+	colorTheme colorTheme
+	density    mtheme.Density
+	locale     mcore.Locale
 
 	settings settingsState
 	confirm  confirmState
@@ -273,6 +274,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		rightPanel:     false,
 		wsCollapsed:    map[string]bool{},
 		themeMode:      parseThemeMode(cfg.ThemeMode),
+		colorTheme:     colorThemeByName(cfg.ColorTheme),
 		density:        mtheme.Compact,
 		locale:         parseLocale(cfg.Locale),
 		editingIdx:     -1,
@@ -372,7 +374,8 @@ func (cw *ChatWindow) saveQuickShortcut() {
 
 // view builds the whole interface for the frame.
 func (cw *ChatWindow) view(c *mgo.Context) {
-	mcore.Use(c, mcore.Settings{Mode: cw.themeMode, Density: cw.density, Locale: cw.locale})
+	light, dark := cw.colorTheme.tokens()
+	mcore.Use(c, mcore.Settings{Mode: cw.themeMode, Density: cw.density, Locale: cw.locale, Light: light, Dark: dark})
 	if cw.clientDirty.Swap(false) {
 		cw.setupProvider(cw.provider)
 	}

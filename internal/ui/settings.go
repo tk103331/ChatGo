@@ -974,7 +974,7 @@ func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
 	})
 }
 
-// appearanceTab changes the theme mode and language.
+// appearanceTab changes the theme mode and color theme.
 func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -990,22 +990,56 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 			cw.themeMode = mcore.Mode(mode)
 			cw.saveAppearance()
 		}
-		mgo.Text(c, "语言").FontSize(small).TextColor(k.TextMuted)
-		loc := 0
-		if cw.locale == mcore.EnUS {
-			loc = 1
-		}
-		mnavigation.SegmentedControl(c, &loc, []mnavigation.Segment{
-			{Label: "中文"}, {Label: "English"},
-		}, mnavigation.SegmentedControlOptions{Label: "语言", Equal: true})
-		want := mcore.ZhCN
-		if loc == 1 {
-			want = mcore.EnUS
-		}
-		if want != cw.locale {
-			cw.locale = want
-			cw.saveAppearance()
-		}
+		mgo.Text(c, "颜色主题").FontSize(small).TextColor(k.TextMuted)
+		mgo.Row(c).Gap(u * 2).Wrap().Children(func() {
+			for i := range colorThemes {
+				cw.colorThemeSwatch(c, colorThemes[i])
+			}
+		})
+		mgo.Text(c, "每种颜色主题都提供浅色与深色两套配色，随「主题模式」自动切换。").
+			FontSize(small).TextColor(k.TextMuted)
+	})
+}
+
+// colorThemeSwatch renders one palette as a selectable card showing its light
+// and dark accent over their backgrounds.
+func (cw *ChatWindow) colorThemeSwatch(c *mgo.Context, t colorTheme) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	selected := cw.colorTheme.Name == t.Name
+	b := mgo.ButtonBase(c).Width(160).Padding(u*2).Gap(u).Radius(mtheme.CardRadius).
+		AlignItems(mgo.Center).Background(k.Surface).Border(mtheme.BorderWidth, k.Border)
+	if selected {
+		b.BorderColor(k.Accent)
+	}
+	if b.Hovered() && !selected {
+		b.Background(k.SurfaceHover)
+	}
+	b.Children(func() {
+		mgo.Column(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			mgo.Row(c).Gap(u).Shrink(0).Children(func() {
+				lb, la := t.sampleLight()
+				db, da := t.sampleDark()
+				colorThemeBlock(c, lb, la)
+				colorThemeBlock(c, db, da)
+			})
+			mgo.Text(c, t.Label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+				TextColor(k.Text).SingleLine()
+		})
+	})
+	if b.Clicked() {
+		cw.colorTheme = t
+		cw.saveAppearance()
+	}
+}
+
+// colorThemeBlock draws one appearance sample: an accent bar over a background.
+func colorThemeBlock(c *mgo.Context, bg, accent mgo.Color) {
+	mgo.Box(c).Width(46).Height(34).Radius(mtheme.ControlRadius).Background(bg).
+		Border(mtheme.BorderWidth, accent).Children(func() {
+		mgo.Row(c).Fill().AlignItems(mgo.Center).Justify(mgo.Center).Children(func() {
+			mgo.Box(c).Width(24).Height(9).Radius(mtheme.ControlRadius).Background(accent)
+		})
 	})
 }
 
@@ -1069,7 +1103,7 @@ func (cw *ChatWindow) channelCard(c *mgo.Context, i int) {
 	card.Children(func() {
 		mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			icon := "message-square"
+				icon := "message-square"
 				mgo.Icon(c, icons.Must(icon)).Size(18, 18).TextColor(k.Text).Shrink(0)
 				mgo.Text(c, ch.Name).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
 				if ch.Type == "feishu" {
