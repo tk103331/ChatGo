@@ -1012,34 +1012,71 @@ func (cw *ChatWindow) saveSystemSettings() {
 func (cw *ChatWindow) channelTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
-	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
-			cw.feishuStatusLine(c)
-			cw.wechatStatusLine(c)
-			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
-				cw.clearChannelForm()
+	mgo.Scroll(c).Fill().Children(func() {
+		mgo.Column(c).FillWidth().Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
+			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+				mgo.Text(c, "渠道").Font(mtheme.SerifFont).FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
+			})
+			mgo.Text(c, "配置 IM 渠道后，可通过即时消息触发 Agent 对话。点击卡片展开配置。").
+				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+			for i := range cw.cfg.Channels {
+				cw.channelCard(c, i)
 			}
-			if len(cw.cfg.Channels) == 0 {
-				mgo.Text(c, "暂无渠道，点击新增创建").TextColor(k.TextMuted).
-					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-			}
-			mgo.List(c, &cw.settings.channelList, len(cw.cfg.Channels), func(i int) {
-				cw.channelRow(c, i)
-			}).Fill()
 		})
-		cw.channelFormView(c)
 	})
 }
 
-func (cw *ChatWindow) feishuStatusLine(c *mgo.Context) {
-	state, note := cw.feishuStatus()
-	st, label := feishuStatusView(state, note)
+func (cw *ChatWindow) channelCard(c *mgo.Context, i int) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
-	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-		mgo.Text(c, "飞书连接").Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
-		mfeedback.StatusIndicator(c, st, mfeedback.StatusIndicatorOptions{})
-		mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+	ch := cw.cfg.Channels[i]
+	expanded := cw.settings.channel.editing == i
+
+	card := mgo.Column(c).FillWidth().Gap(u * 2).Padding(u * 2).Radius(mtheme.ControlRadius)
+	if expanded {
+		card.Background(k.Selection)
+	} else {
+		card.Background(k.Surface)
+	}
+	card.Children(func() {
+		mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			icon := "message-square"
+				mgo.Icon(c, icons.Must(icon)).Size(18, 18).TextColor(k.Text).Shrink(0)
+				mgo.Text(c, ch.Name).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+				if ch.Type == "feishu" {
+					state, note := cw.feishuStatus()
+					st, label := feishuStatusView(state, note)
+					mfeedback.StatusIndicator(c, st, mfeedback.StatusIndicatorOptions{})
+					mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+				} else if ch.Type == "wechat" {
+					state, note := cw.wechatStatus()
+					st, label := wechatStatusView(state, note)
+					mfeedback.StatusIndicator(c, st, mfeedback.StatusIndicatorOptions{})
+					mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+				}
+			})
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				en := ch.Enabled
+				if minput.Switch(c, &en, "", minput.SwitchOptions{}).Changed() {
+					cw.cfg.Channels[i].Enabled = en
+					cw.settings.channel.enabled = en
+					_ = config.SaveConfig(cw.cfg)
+					cw.restartChannels()
+				}
+				if mcore.IconAction(c, icons.Must("chevron-down"), "展开").Clicked() {
+					if expanded {
+						cw.clearChannelForm()
+					} else {
+						cw.loadChannelForm(i)
+					}
+				}
+			})
+		})
+		if expanded {
+			mgo.Box(c).FillWidth().Height(1).Background(k.Border)
+			cw.channelFormFields(c)
+		}
 	})
 }
 
@@ -1058,44 +1095,11 @@ func feishuStatusView(state feishuConnState, note string) (mfeedback.Status, str
 	}
 }
 
-func (cw *ChatWindow) channelRow(c *mgo.Context, i int) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	ch := cw.cfg.Channels[i]
-	b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
-		Padding(u, u*2).Radius(mtheme.ControlRadius)
-	if cw.settings.channel.editing == i {
-		b.Background(k.Selection)
-	}
-	b.Children(func() {
-		mgo.Row(c).FillWidth().Justify(mgo.Start).Gap(u).AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, fmt.Sprintf("%s (%s)", ch.Name, ch.Type)).SingleLine().MinWidth(0).Grow(1).Ellipsis("…")
-			status, col := "禁用", k.TextMuted
-			if ch.Enabled {
-				status, col = "启用", k.Success
-			}
-			mgo.Text(c, status).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(col).Shrink(0)
-		})
-	})
-	if b.Clicked() {
-		cw.loadChannelForm(i)
-	}
-}
-
-func (cw *ChatWindow) channelFormView(c *mgo.Context) {
+func (cw *ChatWindow) channelFormFields(c *mgo.Context) {
 	f := &cw.settings.channel
 	u := mcore.Density(c).Unit()
-	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
-		title := "新建渠道"
-		if f.editing >= 0 {
-			title = "编辑渠道"
-		}
-		mgo.Text(c, title).Font(mtheme.SerifFont).FontWeight(600)
-		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "渠道名称"})
-		minput.Select(c, &f.typ, []minput.SelectOption[string]{
-			{Value: "feishu", Label: "飞书"},
-			{Value: "wechat", Label: "微信 ClawBot"},
-		}, minput.SelectOptions{Label: "类型"})
+	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
+		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "渠道名称", ReadOnly: true})
 		if f.typ == "wechat" {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				if minput.Button(c, "扫码登录微信", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
@@ -1111,7 +1115,7 @@ func (cw *ChatWindow) channelFormView(c *mgo.Context) {
 			if f.appSecret != "" {
 				minput.PasswordInput(c, &f.appSecret, minput.PasswordInputOptions{Label: "Bot Token", Placeholder: "iLink Bot Token（扫码后自动填入）"})
 			}
-			mgo.Text(c, "提示：点击「扫码登录微信」，用微信扫码授权后凭证自动填入。参考 weclaw 项目，通过 iLink API 直连微信 ClawBot。").
+			mgo.Text(c, "提示：点击「扫码登录微信」，用微信扫码授权后凭证自动填入。").
 				TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		} else {
 			minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "AppID", Placeholder: "飞书应用 App ID"})
@@ -1124,7 +1128,7 @@ func (cw *ChatWindow) channelFormView(c *mgo.Context) {
 					mgo.Text(c, "等待飞书扫码授权…").TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 				}
 			})
-			mgo.Text(c, "提示：请在飞书开发者后台 → 事件与回调 → 订阅方式，选择「使用长连接接收事件/回调」，并添加事件 im.message.receive_v1（保存时需本地长连接在线）。").
+			mgo.Text(c, "提示：请在飞书开发者后台 → 事件与回调 → 订阅方式，选择「使用长连接接收事件/回调」，并添加事件 im.message.receive_v1。").
 				TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		}
 		if f.qr != nil {
@@ -1154,13 +1158,6 @@ func (cw *ChatWindow) channelFormView(c *mgo.Context) {
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
 				cw.saveChannel()
-			}
-			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
-				cw.deleteChannel()
-			}
-			mgo.Box(c).Grow(1)
-			if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
-				cw.applyChannel()
 			}
 		})
 	})
