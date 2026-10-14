@@ -1166,13 +1166,25 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 		err  error
 	)
 	onChunk := func(chunk string) {
-		cw.postMain(func() { conv.Messages[idx].Content += chunk })
+		cw.postMain(func() {
+			m := &conv.Messages[idx]
+			m.Content += chunk
+			appendSegmentText(m, "text", chunk)
+		})
 	}
 	onReasoning := func(chunk string) {
-		cw.postMain(func() { conv.Messages[idx].Reasoning += chunk })
+		cw.postMain(func() {
+			m := &conv.Messages[idx]
+			m.Reasoning += chunk
+			appendSegmentText(m, "reasoning", chunk)
+		})
 	}
 	onTool := func(info llm.ToolCallInfo) {
-		cw.postMain(func() { applyToolCall(&conv.Messages[idx], info) })
+		cw.postMain(func() {
+			m := &conv.Messages[idx]
+			applyToolCall(m, info)
+			appendSegmentTool(m, info)
+		})
 	}
 	switch {
 	case cw.reactClient != nil:
@@ -1295,6 +1307,50 @@ func (cw *ChatWindow) stopStreaming() {
 		cw.streamCancel()
 		cw.streamCancel = nil
 	}
+}
+
+// appendSegmentText appends streamed text to the last matching segment, or
+// starts a new one so blocks stay in the order the model produced them.
+func appendSegmentText(m *models.Message, kind, text string) {
+	if n := len(m.Segments); n > 0 && m.Segments[n-1].Kind == kind {
+		m.Segments[n-1].Text += text
+		return
+	}
+	m.Segments = append(m.Segments, models.Segment{Kind: kind, Text: text})
+}
+
+// appendSegmentTool records a tool call as its own segment, updating the
+// existing one on the completion callback.
+func appendSegmentTool(m *models.Message, info llm.ToolCallInfo) {
+	for i := range m.Segments {
+		s := &m.Segments[i]
+		if s.Kind == "tool" && s.ToolCall != nil && s.ToolCall.ID == info.ID {
+			if info.Arguments != "" {
+				s.ToolCall.Arguments = info.Arguments
+			}
+			if info.Error != nil {
+				s.ToolCall.Error = info.Error.Error()
+			}
+			if info.Result != "" {
+				s.ToolCall.Result = info.Result
+			}
+			if info.Duration > 0 {
+				s.ToolCall.DurationMs = info.Duration.Milliseconds()
+			}
+			return
+		}
+	}
+	tc := models.ToolCall{ID: info.ID, Name: info.Name, Arguments: info.Arguments}
+	if info.Error != nil {
+		tc.Error = info.Error.Error()
+	}
+	if info.Result != "" {
+		tc.Result = info.Result
+	}
+	if info.Duration > 0 {
+		tc.DurationMs = info.Duration.Milliseconds()
+	}
+	m.Segments = append(m.Segments, models.Segment{Kind: "tool", ToolCall: &tc})
 }
 
 // applyToolCall records a tool call start or result on an assistant message.

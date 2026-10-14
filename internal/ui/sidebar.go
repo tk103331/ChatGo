@@ -236,7 +236,7 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 					continue
 				}
 				name := a.Name
-				menuItem(c, logoLeading(c, name), "ACP · "+name, func() { pick("acp:" + name) })
+				menuItem(c, logoLeading(c, name), name, func() { pick("acp:" + name) })
 			}
 		})
 		if containsStr(cw.cfg.Workspaces, ws) {
@@ -306,17 +306,22 @@ func (cw *ChatWindow) exportConversation(c *mgo.Context, id string) {
 
 // menuItem is one row of a new-conversation menu, with an optional leading mark.
 func menuItem(c *mgo.Context, leading func(), label string, action func()) {
+	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+	b := mgo.ButtonBase(c).FillWidth().Justify(mgo.Start).Gap(u).AlignItems(mgo.Center).
+		MinHeight(mcore.Density(c).ControlHeight()).Padding(0, u*2).Radius(mtheme.ControlRadius)
+	if b.Hovered() {
+		b.Background(k.SurfaceHover)
+	}
+	b.Children(func() {
 		if leading != nil {
 			leading()
 		}
-		b := minput.Button(c, label, minput.ButtonOptions{Variant: minput.Ghost})
-		b.FillWidth()
-		if b.Clicked() {
-			action()
-		}
+		mgo.Text(c, label).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
 	})
+	if b.Clicked() {
+		action()
+	}
 }
 
 func iconLeading(c *mgo.Context, name string) func() {

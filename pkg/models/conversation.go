@@ -21,12 +21,22 @@ type ToolCall struct {
 	Metadata   map[string]interface{} `json:"metadata,omitempty"` // Additional metadata
 }
 
+// Segment is one ordered piece of an assistant turn: a thinking block, a text
+// block or a tool call. Rendering them in order keeps a multi-step ReAct run as
+// thinking, tool, text, thinking, tool, ... instead of merging every block.
+type Segment struct {
+	Kind     string    `json:"kind"` // "reasoning", "text" or "tool"
+	Text     string    `json:"text,omitempty"`
+	ToolCall *ToolCall `json:"tool_call,omitempty"`
+}
+
 // Message represents a single message in a conversation
 type Message struct {
 	ID        string     `json:"id"`
 	Role      string     `json:"role"` // user, assistant, system
 	Content   string     `json:"content"`
 	Reasoning string     `json:"reasoning,omitempty"` // Model thinking process, rendered separately
+	Segments  []Segment  `json:"segments,omitempty"`  // Ordered blocks for multi-step replies
 	Timestamp time.Time  `json:"timestamp"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // Tool calls made by this message
 }

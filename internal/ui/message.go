@@ -37,24 +37,86 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 			model = cw.headerModel()
 		}
 		mchat.MessageHeader(c, mchat.MessageHeaderOptions{Model: model, Time: msg.Timestamp})
-		if msg.Role == "assistant" && strings.TrimSpace(msg.Reasoning) != "" {
-			open := mgo.Local(c.Root(), "reason:"+msg.ID, func() bool { return false })
-			cw.reasoningBlock(c, open, msg.Reasoning)
-		}
-		if len(msg.ToolCalls) > 0 {
-			cw.toolCallGroup(c, msg)
-		}
-		switch {
-		case strings.TrimSpace(msg.Content) != "":
-			r := mchat.MarkdownView(c, msg.Content)
-			if url, ok := r.Link(); ok {
-				c.OpenURL(url)
-			}
-		case streaming:
-			mchat.TypingIndicator(c, "Assistant")
+		if len(msg.Segments) > 0 {
+			cw.messageSegments(c, msg, streaming)
+		} else {
+			cw.messageLegacy(c, msg, streaming)
 		}
 		cw.messageActions(c, i, msg, streaming)
 	})
+}
+
+// messageSegments renders an assistant reply's ordered blocks: a thinking
+// block, text, or a run of tool calls, each in the order the model produced
+// them, so a multi-step ReAct turn stays thinking, tool, text, thinking, tool.
+func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, streaming bool) {
+	toolIdx := 0
+	for i := 0; i < len(msg.Segments); {
+		seg := msg.Segments[i]
+		switch seg.Kind {
+		case "reasoning":
+			open := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:%d", msg.ID, i), func() bool { return false })
+			cw.reasoningBlock(c, open, seg.Text)
+			i++
+		case "tool":
+			var calls []models.ToolCall
+			for i < len(msg.Segments) && msg.Segments[i].Kind == "tool" {
+				if tc := msg.Segments[i].ToolCall; tc != nil {
+					calls = append(calls, *tc)
+				}
+				i++
+			}
+			cw.toolCallsGroup(c, msg, calls, toolIdx)
+			toolIdx++
+		case "text":
+			if strings.TrimSpace(seg.Text) != "" {
+				r := mchat.MarkdownView(c, seg.Text)
+				if url, ok := r.Link(); ok {
+					c.OpenURL(url)
+				}
+			}
+			i++
+		default:
+			i++
+		}
+	}
+	if cw.emptySegments(msg) && streaming {
+		mchat.TypingIndicator(c, "Assistant")
+	}
+}
+
+// messageLegacy renders a message that predates segments.
+func (cw *ChatWindow) messageLegacy(c *mgo.Context, msg models.Message, streaming bool) {
+	if msg.Role == "assistant" && strings.TrimSpace(msg.Reasoning) != "" {
+		open := mgo.Local(c.Root(), "reason:"+msg.ID, func() bool { return false })
+		cw.reasoningBlock(c, open, msg.Reasoning)
+	}
+	if len(msg.ToolCalls) > 0 {
+		cw.toolCallsGroup(c, msg, msg.ToolCalls, 0)
+	}
+	switch {
+	case strings.TrimSpace(msg.Content) != "":
+		r := mchat.MarkdownView(c, msg.Content)
+		if url, ok := r.Link(); ok {
+			c.OpenURL(url)
+		}
+	case streaming:
+		mchat.TypingIndicator(c, "Assistant")
+	}
+}
+
+// emptySegments reports whether a message has no visible text, thinking or tool
+// content yet.
+func (cw *ChatWindow) emptySegments(msg models.Message) bool {
+	for _, s := range msg.Segments {
+		if s.Kind == "tool" && s.ToolCall != nil {
+			return false
+		}
+		if strings.TrimSpace(s.Text) != "" {
+			return false
+		}
+	}
+	return true
 }
 
 // reasoningBlock shows the model's thinking process as a collapsed block.
@@ -109,25 +171,25 @@ func roleOf(msg models.Message) mchat.MessageRole {
 	}
 }
 
-func (cw *ChatWindow) toolCallGroup(c *mgo.Context, msg models.Message) {
-	calls := toolCallsForGroup(msg)
-	if len(calls) == 0 {
+func (cw *ChatWindow) toolCallsGroup(c *mgo.Context, msg models.Message, calls []models.ToolCall, groupIdx int) {
+	items := toolCallsForGroup(msg, calls, groupIdx)
+	if len(items) == 0 {
 		return
 	}
-	open := mgo.Local(c.Root(), "toolgroup:"+msg.ID, func() bool { return false })
-	agent.ToolCallGroup(c, open, calls, agent.ToolCallGroupOptions{})
+	open := mgo.Local(c.Root(), fmt.Sprintf("toolgroup:%s:%d", msg.ID, groupIdx), func() bool { return false })
+	agent.ToolCallGroup(c, open, items, agent.ToolCallGroupOptions{})
 }
 
-func toolCallsForGroup(msg models.Message) []agent.ToolCall {
-	used := make(map[string]bool, len(msg.ToolCalls))
-	out := make([]agent.ToolCall, 0, len(msg.ToolCalls))
-	for i, tc := range msg.ToolCalls {
+func toolCallsForGroup(msg models.Message, calls []models.ToolCall, groupIdx int) []agent.ToolCall {
+	used := make(map[string]bool, len(calls))
+	out := make([]agent.ToolCall, 0, len(calls))
+	for i, tc := range calls {
 		if tc.Name == "" {
 			continue
 		}
 		id := tc.ID
 		if id == "" || used[id] {
-			id = fmt.Sprintf("%s-%d", msg.ID, i)
+			id = fmt.Sprintf("%s-%d-%d", msg.ID, groupIdx, i)
 		}
 		used[id] = true
 		state := agent.AgentRunning
