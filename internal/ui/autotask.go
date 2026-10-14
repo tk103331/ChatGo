@@ -16,6 +16,7 @@ import (
 	mdatetime "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/datetime"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
@@ -64,10 +65,10 @@ func (cw *ChatWindow) autoTasksPage(c *mgo.Context) {
 						cw.autoTaskCard(c, i)
 					}
 				}
-				cw.autoTaskConvs(c)
 			})
 		})
 	})
+	cw.autoTaskConvsDialog(c)
 }
 
 // autoTaskEmptyState shows a centered placeholder when no tasks exist.
@@ -162,6 +163,9 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 			if minput.Button(c, "运行", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("play")}).Clicked() {
 				cw.startAutoTask(i)
 			}
+			if minput.Button(c, "会话", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("message-square")}).Clicked() {
+				cw.openAutoTaskConvs(t.ID)
+			}
 			if minput.Button(c, "编辑", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
 				cw.loadAutoForm(i)
 				cw.autoTaskEditorOpen = true
@@ -173,36 +177,61 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 	})
 }
 
-// autoTaskConvs lists the conversations produced by tasks.
-func (cw *ChatWindow) autoTaskConvs(c *mgo.Context) {
+// openAutoTaskConvs snapshots the task's conversations for the dialog.
+func (cw *ChatWindow) openAutoTaskConvs(taskID string) {
+	var convs []models.Conversation
+	for _, conv := range cw.taskConvs {
+		if conv.TaskID == taskID {
+			convs = append(convs, conv)
+		}
+	}
+	cw.autoConvs = convs
+	cw.autoConvsTaskID = taskID
+	cw.autoConvsOpen = true
+}
+
+// autoTaskConvsDialog lists the conversations a task produced.
+func (cw *ChatWindow) autoTaskConvsDialog(c *mgo.Context) {
+	if !cw.autoConvsOpen {
+		return
+	}
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	var convs []models.Conversation
-	for _, conv := range cw.taskConvs {
-		convs = append(convs, conv)
+	title := "任务会话"
+	if name := taskNameOf(cw, cw.autoConvsTaskID); name != "" {
+		title = name + " · 会话"
 	}
-	if len(convs) == 0 {
-		return
-	}
-	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Padding(0, 0, u, 0).Children(func() {
-		mgo.Icon(c, icons.Must("message-square")).Size(18, 18).TextColor(k.TextMuted)
-		mgo.Text(c, "任务会话").FontWeight(600)
-	})
-	for _, conv := range convs {
-		conv := conv
-		b := mgo.ButtonBase(c).FillWidth().Justify(mgo.Start).Gap(u).MinHeight(mcore.Density(c).ControlHeight()).
-			Padding(u, u*2).Radius(mtheme.ControlRadius)
-		b.Children(func() {
-			mgo.Icon(c, icons.Must("message-square")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
-			mgo.Text(c, conv.Title).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
-			mgo.Text(c, taskNameOf(cw, conv.TaskID)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-			mgo.Icon(c, icons.Must("chevron-right")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
+	moverlay.Dialog(c, &cw.autoConvsOpen, moverlay.DialogOptions{
+		Title: title,
+		Width: 520,
+	}, func() {
+		mgo.Column(c).Gap(u * 2).Children(func() {
+			if len(cw.autoConvs) == 0 {
+				mgo.Text(c, "该任务还没有会话").TextColor(k.TextMuted)
+				return
+			}
+			mgo.Scroll(c).MaxHeight(400).Children(func() {
+				mgo.Column(c).Gap(u).Children(func() {
+					for _, conv := range cw.autoConvs {
+						conv := conv
+						b := mgo.ButtonBase(c).FillWidth().Justify(mgo.Start).Gap(u).MinHeight(mcore.Density(c).ControlHeight()).
+							Padding(u, u*2).Radius(mtheme.ControlRadius)
+						b.Children(func() {
+							mgo.Icon(c, icons.Must("message-square")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
+							mgo.Text(c, conv.Title).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
+							mgo.Text(c, convLast(conv).Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+							mgo.Icon(c, icons.Must("chevron-right")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
+						})
+						if b.Clicked() {
+							cw.autoConvsOpen = false
+							cw.openConversation(conv.ID)
+						}
+					}
+				})
+			})
 		})
-		if b.Clicked() {
-			cw.openConversation(conv.ID)
-		}
-	}
+	})
 }
 
 // autoTaskEditor is the create/edit page for one task.
@@ -471,18 +500,21 @@ func (cw *ChatWindow) startAutoTask(i int) {
 	cw.autoRunning[t.ID] = true
 	go func() {
 		reply := ""
+		reasoning := ""
 		var runErr error
 		ctx := context.Background()
 		if react != nil {
 			resp, err := react.Chat(ctx, msgs, nil, nil)
 			if resp != nil {
 				reply = resp.Content
+				reasoning = resp.Reasoning
 			}
 			runErr = err
 		} else {
 			resp, err := client.Chat(ctx, msgs, nil)
 			if resp != nil {
 				reply = resp.Content
+				reasoning = resp.Reasoning
 			}
 			runErr = err
 		}
@@ -493,7 +525,7 @@ func (cw *ChatWindow) startAutoTask(i int) {
 			} else {
 				cw.cfg.AutoTasks[i].LastNote = "成功"
 			}
-			conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Content: reply, Timestamp: time.Now()})
+			conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Content: reply, Reasoning: reasoning, Timestamp: time.Now()})
 			_ = cw.convManager.SaveConversation(conv)
 			cw.cfg.AutoTasks[i].LastRun = time.Now()
 			cw.autoRunning[t.ID] = false

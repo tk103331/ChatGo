@@ -23,6 +23,7 @@ import (
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 )
 
 // acpHandshakeTimeout bounds Initialize and NewSession so a stuck CLI cannot
@@ -174,59 +175,69 @@ func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {
 	})
 }
 
-func (cw *ChatWindow) acpRow(c *mgo.Context, i int) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	a := cw.cfg.ACPAgents[i]
-	b := mgo.ButtonBase(c).Row().FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
-		Padding(u, u*2).Gap(u).AlignItems(mgo.Center).Radius(mtheme.ControlRadius)
-	if cw.acpForm.editing == i {
-		b.Background(k.Selection)
-	}
-	b.Children(func() {
-		acpIcon(c, a.Name, 18, 18)
-		mgo.Text(c, a.Name).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
-		status, col := "启用", k.Success
-		if a.Disabled {
-			status, col = "禁用", k.TextMuted
-		}
-		mgo.Text(c, status).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(col).Shrink(0)
+func (cw *ChatWindow) addNewACP() {
+	cw.cfg.ACPAgents = append(cw.cfg.ACPAgents, config.ACPConnection{
+		Name: "New Connection", Disabled: true,
 	})
-	if b.Clicked() {
-		cw.loadACPForm(i)
-	}
+	_ = config.SaveConfig(cw.cfg)
+	cw.loadACPForm(len(cw.cfg.ACPAgents) - 1)
 }
 
-func (cw *ChatWindow) acpFormView(c *mgo.Context) {
-	f := &cw.acpForm
+func (cw *ChatWindow) acpCard(c *mgo.Context, i int) {
 	u := mcore.Density(c).Unit()
-	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
-		title := "新建连接"
-		if f.editing >= 0 {
-			title = "编辑连接"
-		}
-		mgo.Text(c, title).Font(mtheme.SerifFont).FontWeight(600)
-		mgo.Scroll(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
-			mgo.Column(c).Gap(u * 2).Children(func() {
-				minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称", ReadOnly: f.editing >= 0})
-				minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 claude-code-acp 或 gemini"})
-				minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
-				minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
-				minput.TextInput(c, &f.cwd, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前目录"})
+	k := mcore.Tokens(c)
+	a := cw.cfg.ACPAgents[i]
+	expanded := cw.acpForm.editing == i
+	card := mgo.Column(c).Key(fmt.Sprintf("acp:%d", i)).FillWidth().Gap(u * 2).Padding(u * 2).Radius(mtheme.ControlRadius)
+	if expanded {
+		card.Background(k.Selection)
+	} else {
+		card.Background(k.Surface)
+	}
+	card.Children(func() {
+		mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				acpIcon(c, a.Name, 18, 18)
+				mgo.Text(c, a.Name).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+			})
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				en := !a.Disabled
+				if minput.Switch(c, &en, "", minput.SwitchOptions{}).Changed() {
+					cw.cfg.ACPAgents[i].Disabled = !en
+					cw.acpForm.disabled = !en
+					_ = config.SaveConfig(cw.cfg)
+				}
+				if mcore.IconAction(c, icons.Must("chevron-down"), "展开").Clicked() {
+					if expanded {
+						cw.clearACPForm()
+					} else {
+						cw.loadACPForm(i)
+					}
+				}
 			})
 		})
+		if expanded {
+			mgo.Box(c).FillWidth().Height(1).Background(k.Border)
+			cw.acpFormFields(c)
+		}
+	})
+}
+
+func (cw *ChatWindow) acpFormFields(c *mgo.Context) {
+	f := &cw.acpForm
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
+		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称"})
+		minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 claude-code-acp 或 gemini"})
+		minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
+		minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
+		minput.TextInput(c, &f.cwd, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前目录"})
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
 				cw.saveACP()
 			}
-			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
+			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger}).Clicked() {
 				cw.deleteACP()
-			}
-			mgo.Box(c).Grow(1)
-			enabled := !f.disabled
-			if minput.Switch(c, &enabled, "启用", minput.SwitchOptions{}).Changed() {
-				f.disabled = !enabled
-				cw.saveACP()
 			}
 		})
 	})

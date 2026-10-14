@@ -242,7 +242,7 @@ func createReactClientWithTools(ctx context.Context, toolableModel model.ToolCal
 }
 
 // Chat sends a chat completion request with streaming support using React Agent
-func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk func(string), onToolCall ToolCallCallback) (*ChatResponse, error) {
+func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk func(string), onToolCall ToolCallCallback, onReasoning ...func(string)) (*ChatResponse, error) {
 	// Apply timeout if configured
 	if c.config != nil && c.config.Timeout > 0 {
 		var cancel context.CancelFunc
@@ -261,7 +261,7 @@ func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk 
 
 	// If streaming callback is provided, use Stream
 	if onChunk != nil || onToolCall != nil {
-		return c.chatWithStream(ctx, einoMessages, onChunk, onToolCall)
+		return c.chatWithStream(ctx, einoMessages, onChunk, onToolCall, onReasoning)
 	}
 
 	// Otherwise use Generate
@@ -269,7 +269,7 @@ func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk 
 }
 
 // chatWithStream sends a streaming chat completion request via React Agent
-func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Message, onChunk func(string), onToolCall ToolCallCallback) (*ChatResponse, error) {
+func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Message, onChunk func(string), onToolCall ToolCallCallback, onReasoning []func(string)) (*ChatResponse, error) {
 	ctx = WithToolObserver(ctx, onToolCall)
 	// Create stream reader
 	streamReader, err := c.agent.Stream(ctx, messages)
@@ -280,6 +280,7 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 	defer streamReader.Close()
 
 	var fullContent strings.Builder
+	var fullReasoning strings.Builder
 
 	// Read from stream
 	for {
@@ -302,11 +303,20 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 				onChunk(chunk.Content)
 			}
 		}
+		if chunk.ReasoningContent != "" {
+			fullReasoning.WriteString(chunk.ReasoningContent)
+			for _, cb := range onReasoning {
+				if cb != nil {
+					cb(chunk.ReasoningContent)
+				}
+			}
+		}
 	}
 
 	return &ChatResponse{
-		Content: fullContent.String(),
-		Done:    true,
+		Content:   fullContent.String(),
+		Reasoning: fullReasoning.String(),
+		Done:      true,
 	}, nil
 }
 
@@ -319,13 +329,16 @@ func (c *ReactClient) chatWithoutStream(ctx context.Context, messages []*schema.
 	}
 
 	content := ""
+	reasoning := ""
 	if response != nil {
 		content = response.Content
+		reasoning = response.ReasoningContent
 	}
 
 	return &ChatResponse{
-		Content: content,
-		Done:    true,
+		Content:   content,
+		Reasoning: reasoning,
+		Done:      true,
 	}, nil
 }
 

@@ -151,6 +151,9 @@ type ChatWindow struct {
 	autoTaskEditorOpen bool
 	autoForm           autoForm
 	autoRunning        map[string]bool
+	autoConvsOpen      bool
+	autoConvsTaskID    string
+	autoConvs          []models.Conversation
 
 	avatarMu  sync.Mutex
 	avatarPNG map[string]*mgo.Bitmap
@@ -506,11 +509,13 @@ func (cw *ChatWindow) notifySessionComplete(conv *models.Conversation, reply str
 // notifyUser shows the notice in-app as a toast when the window is focused,
 // otherwise as a system desktop notification.
 func (cw *ChatWindow) notifyUser(title, body string) {
+	cw.feishuLogf("notifyUser: title=%q body=%q focused=%v", title, body, cw.window != nil && cw.window.IsFocused())
 	if cw.window != nil && cw.window.IsFocused() {
 		cw.toast(title+"："+body, mcore.SeverityInfo)
 		return
 	}
 	if !mygo.NotificationsSupported() {
+		cw.feishuLogf("notifyUser: 系统通知不支持（未打包或权限未授权）")
 		return
 	}
 	_ = mygo.NewNotification(mygo.NotificationOptions{
@@ -1163,14 +1168,17 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 	onChunk := func(chunk string) {
 		cw.postMain(func() { conv.Messages[idx].Content += chunk })
 	}
+	onReasoning := func(chunk string) {
+		cw.postMain(func() { conv.Messages[idx].Reasoning += chunk })
+	}
 	onTool := func(info llm.ToolCallInfo) {
 		cw.postMain(func() { applyToolCall(&conv.Messages[idx], info) })
 	}
 	switch {
 	case cw.reactClient != nil:
-		resp, err = cw.reactClient.Chat(ctx, msgs, onChunk, onTool)
+		resp, err = cw.reactClient.Chat(ctx, msgs, onChunk, onTool, onReasoning)
 	case cw.llmClient != nil:
-		resp, err = cw.llmClient.Chat(ctx, msgs, onChunk)
+		resp, err = cw.llmClient.Chat(ctx, msgs, onChunk, onReasoning)
 	default:
 		err = fmt.Errorf("尚未配置模型")
 	}
@@ -1180,6 +1188,9 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 			conv.Messages[idx].Content = "⚠️ " + err.Error()
 		case resp != nil && conv.Messages[idx].Content == "":
 			conv.Messages[idx].Content = resp.Content
+		}
+		if resp != nil && conv.Messages[idx].Reasoning == "" {
+			conv.Messages[idx].Reasoning = resp.Reasoning
 		}
 		cw.streaming = false
 		cw.streamCancel = nil

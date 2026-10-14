@@ -137,12 +137,13 @@ type ChatMessage struct {
 
 // ChatResponse represents the response from a chat completion
 type ChatResponse struct {
-	Content string
-	Done    bool
+	Content   string
+	Reasoning string // Model thinking process, if any
+	Done      bool
 }
 
 // Chat sends a chat completion request with streaming support
-func (c *Client) Chat(ctx context.Context, messages []ChatMessage, onChunk func(string)) (*ChatResponse, error) {
+func (c *Client) Chat(ctx context.Context, messages []ChatMessage, onChunk func(string), onReasoning ...func(string)) (*ChatResponse, error) {
 	// Convert messages to eino format
 	einoMessages := make([]*schema.Message, len(messages))
 	for i, msg := range messages {
@@ -154,7 +155,7 @@ func (c *Client) Chat(ctx context.Context, messages []ChatMessage, onChunk func(
 
 	// If streaming callback is provided, use Stream
 	if onChunk != nil {
-		return c.chatWithStream(ctx, einoMessages, onChunk)
+		return c.chatWithStream(ctx, einoMessages, onChunk, onReasoning)
 	}
 
 	// Otherwise use Generate
@@ -162,7 +163,7 @@ func (c *Client) Chat(ctx context.Context, messages []ChatMessage, onChunk func(
 }
 
 // chatWithStream sends a streaming chat completion request
-func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message, onChunk func(string)) (*ChatResponse, error) {
+func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message, onChunk func(string), onReasoning []func(string)) (*ChatResponse, error) {
 	// Create stream reader
 	streamReader, err := c.model.Stream(ctx, messages)
 	if err != nil {
@@ -172,6 +173,7 @@ func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message,
 	defer streamReader.Close()
 
 	var fullContent strings.Builder
+	var fullReasoning strings.Builder
 
 	// Read from stream
 	for {
@@ -183,15 +185,27 @@ func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message,
 			return nil, fmt.Errorf("failed to receive from stream: %w", err)
 		}
 
-		if chunk != nil && chunk.Content != "" {
+		if chunk == nil {
+			continue
+		}
+		if chunk.Content != "" {
 			fullContent.WriteString(chunk.Content)
 			onChunk(chunk.Content)
+		}
+		if chunk.ReasoningContent != "" {
+			fullReasoning.WriteString(chunk.ReasoningContent)
+			for _, cb := range onReasoning {
+				if cb != nil {
+					cb(chunk.ReasoningContent)
+				}
+			}
 		}
 	}
 
 	return &ChatResponse{
-		Content: fullContent.String(),
-		Done:    true,
+		Content:   fullContent.String(),
+		Reasoning: fullReasoning.String(),
+		Done:      true,
 	}, nil
 }
 
@@ -204,13 +218,16 @@ func (c *Client) chatWithoutStream(ctx context.Context, messages []*schema.Messa
 	}
 
 	content := ""
+	reasoning := ""
 	if response != nil {
 		content = response.Content
+		reasoning = response.ReasoningContent
 	}
 
 	return &ChatResponse{
-		Content: content,
-		Done:    true,
+		Content:   content,
+		Reasoning: reasoning,
+		Done:      true,
 	}, nil
 }
 

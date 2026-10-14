@@ -185,6 +185,26 @@ func GetAvailableBuiltinTools() []string {
 	}
 }
 
+// GetBuiltinToolDisplayName returns a human-readable display name for the tool type.
+func GetBuiltinToolDisplayName(toolType string) string {
+	names := map[string]string{
+		"bingsearch":         "Bing 搜索",
+		"googlesearch":       "Google 搜索",
+		"wikipedia":          "Wikipedia",
+		"duckduckgosearch":   "DuckDuckGo 搜索",
+		"httprequest":        "HTTP 请求",
+		"browseruse":         "浏览器自动化",
+		"commandline":        "命令行",
+		"filesystem":         "文件系统",
+		"sequentialthinking": "链式思考",
+		"jssandbox":           "JS 沙箱",
+	}
+	if name, ok := names[toolType]; ok {
+		return name
+	}
+	return toolType
+}
+
 // GetBuiltinToolDescription returns a description for the given tool type
 func GetBuiltinToolDescription(toolType string) string {
 	descriptions := map[string]string{

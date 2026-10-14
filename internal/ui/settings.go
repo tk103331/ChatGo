@@ -142,120 +142,136 @@ func (cw *ChatWindow) askConfirm(title, desc string, action func()) {
 	cw.confirm = confirmState{open: true, active: true, title: title, desc: desc, action: action}
 }
 
-// providersTab lists providers and edits the selected one.
 func (cw *ChatWindow) providersTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
-	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
-			if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
-				cw.clearProviderForm()
-			}
+	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
+			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+				mgo.Text(c, "模型").Font(mtheme.SerifFont).
+					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
+				if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
+					cw.addNewProvider()
+				}
+			})
 			if len(cw.cfg.Providers) == 0 {
 				mgo.Text(c, "暂无模型，点击新增创建").TextColor(k.TextMuted).
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			}
-			mgo.List(c, &cw.settings.provList, len(cw.cfg.Providers), func(i int) {
-				cw.providerRow(c, i)
-			}).Fill()
+			for i := range cw.cfg.Providers {
+				cw.providerCard(c, i)
+			}
 		})
-		cw.providerFormView(c)
 	})
 }
 
-func (cw *ChatWindow) providerRow(c *mgo.Context, i int) {
-	k := mcore.Tokens(c)
+func (cw *ChatWindow) addNewProvider() {
+	cw.cfg.Providers = append(cw.cfg.Providers, config.Provider{
+		Name: "New Provider", Type: "openai", Enabled: false,
+	})
+	_ = config.SaveConfig(cw.cfg)
+	cw.loadProviderForm(len(cw.cfg.Providers) - 1)
+}
+
+func (cw *ChatWindow) providerCard(c *mgo.Context, i int) {
 	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
 	p := cw.cfg.Providers[i]
-	b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
-		Padding(u, u*2).Radius(mtheme.ControlRadius)
-	if cw.settings.prov.editing == i {
-		b.Background(k.Selection)
+	expanded := cw.settings.prov.editing == i
+	card := mgo.Column(c).Key(fmt.Sprintf("prov:%d", i)).FillWidth().Gap(u * 2).Padding(u * 2).Radius(mtheme.ControlRadius)
+	if expanded {
+		card.Background(k.Selection)
+	} else {
+		card.Background(k.Surface)
 	}
-	b.Children(func() {
-		mgo.Row(c).FillWidth().Justify(mgo.Start).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if svg := providerLogo(p.Type); svg != nil {
-				mgo.Icon(c, svg).Size(16, 16).TextColor(k.Text).Shrink(0)
-			} else {
-				mgo.Icon(c, icons.Must("sliders-horizontal")).Size(16, 16).TextColor(k.TextMuted).Shrink(0)
-			}
-			mgo.Text(c, fmt.Sprintf("%s (%s)", p.Name, p.Type)).SingleLine().MinWidth(0).Grow(1).Ellipsis("…")
-			status, col := "禁用", k.TextMuted
-			if p.Enabled {
-				status, col = "启用", k.Success
-			}
-			mgo.Text(c, status).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(col).Shrink(0)
+	card.Children(func() {
+		mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				if svg := providerLogo(p.Type); svg != nil {
+					mgo.Icon(c, svg).Size(18, 18).TextColor(k.Text).Shrink(0)
+				} else {
+					mgo.Icon(c, icons.Must("sliders-horizontal")).Size(18, 18).TextColor(k.TextMuted).Shrink(0)
+				}
+				mgo.Text(c, p.Name).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+				mgo.Text(c, p.Type).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+			})
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				en := p.Enabled
+				if minput.Switch(c, &en, "", minput.SwitchOptions{}).Changed() {
+					cw.cfg.Providers[i].Enabled = en
+					cw.settings.prov.enabled = en
+					_ = config.SaveConfig(cw.cfg)
+					if cw.provider == p.Name {
+						cw.clientDirty.Store(true)
+					}
+				}
+				if mcore.IconAction(c, icons.Must("chevron-down"), "展开").Clicked() {
+					if expanded {
+						cw.clearProviderForm()
+					} else {
+						cw.loadProviderForm(i)
+					}
+				}
+			})
 		})
+		if expanded {
+			mgo.Box(c).FillWidth().Height(1).Background(k.Border)
+			cw.providerFormFields(c)
+		}
 	})
-	if b.Clicked() {
-		cw.loadProviderForm(i)
-	}
 }
 
-func (cw *ChatWindow) providerFormView(c *mgo.Context) {
+func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 	f := &cw.settings.prov
 	u := mcore.Density(c).Unit()
 	changed := false
-	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
-		title := "新建模型"
-		if f.editing >= 0 {
-			title = "编辑模型"
+	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
+		if r := minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Provider 名称", ReadOnly: f.preset}); r.Changed() {
+			changed = true
 		}
-		mgo.Text(c, title).Font(mtheme.SerifFont).FontWeight(600)
-		mgo.Scroll(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
-			mgo.Column(c).Gap(u * 2).Children(func() {
-				if r := minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Provider 名称", ReadOnly: f.preset}); r.Changed() {
+		opts := make([]minput.SelectOption[string], 0, len(providerTypes))
+		for _, t := range providerTypes {
+			opts = append(opts, minput.SelectOption[string]{Value: t, Label: t})
+		}
+		if r := minput.Select(c, &f.typ, opts, minput.SelectOptions{Placeholder: "类型", Label: "类型", Disabled: f.preset}); r.Changed() {
+			changed = true
+		}
+		if r := minput.PasswordInput(c, &f.apiKey, minput.PasswordInputOptions{Label: "API Key", Placeholder: "API Key"}); r.Changed() {
+			changed = true
+		}
+		if r := minput.TextInput(c, &f.baseURL, minput.TextInputOptions{Label: "Base URL", Placeholder: "Base URL"}); r.Changed() {
+			changed = true
+		}
+		mgo.Text(c, "模型").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
+		for _, m := range f.models {
+			m := m
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				mgo.Text(c, m).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				if mcore.IconAction(c, icons.Must("x"), "移除模型").Clicked() {
+					f.models = removeStr(f.models, m)
 					changed = true
 				}
-				opts := make([]minput.SelectOption[string], 0, len(providerTypes))
-				for _, t := range providerTypes {
-					opts = append(opts, minput.SelectOption[string]{Value: t, Label: t})
-				}
-				if r := minput.Select(c, &f.typ, opts, minput.SelectOptions{Placeholder: "类型", Label: "类型", Disabled: f.preset}); r.Changed() {
-					changed = true
-				}
-				if r := minput.PasswordInput(c, &f.apiKey, minput.PasswordInputOptions{Label: "API Key", Placeholder: "API Key"}); r.Changed() {
-					changed = true
-				}
-				if r := minput.TextInput(c, &f.baseURL, minput.TextInputOptions{Label: "Base URL", Placeholder: "Base URL"}); r.Changed() {
-					changed = true
-				}
-				mgo.Text(c, "模型").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
-				for _, m := range f.models {
-					m := m
-					mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-						mgo.Text(c, m).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-						if mcore.IconAction(c, icons.Must("x"), "移除模型").Clicked() {
-							f.models = removeStr(f.models, m)
-							changed = true
-						}
-					})
-				}
-				mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-					in := minput.TextInput(c, &f.newModel, minput.TextInputOptions{Placeholder: "添加模型名"})
-					in.Element.Grow(1)
-					if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-						if name := strings.TrimSpace(f.newModel); name != "" {
-							if !containsStr(f.models, name) {
-								f.models = append(f.models, name)
-							}
-							f.newModel = ""
-							changed = true
-						}
-					}
-				})
 			})
+		}
+		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
+			in := minput.TextInput(c, &f.newModel, minput.TextInputOptions{Placeholder: "添加模型名"})
+			in.Element.Grow(1)
+			if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				if name := strings.TrimSpace(f.newModel); name != "" {
+					if !containsStr(f.models, name) {
+						f.models = append(f.models, name)
+					}
+					f.newModel = ""
+					changed = true
+				}
+			}
 		})
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
 				cw.saveProvider()
 			}
-			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
+			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger}).Clicked() {
 				cw.deleteProvider()
-			}
-			mgo.Box(c).Grow(1)
-			if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
-				changed = true
 			}
 		})
 	})
@@ -807,78 +823,90 @@ func joinKV(m map[string]string) string {
 // builtinTab lists the built-in tools and edits the selected one.
 func (cw *ChatWindow) builtinTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
-	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
-			mgo.List(c, &cw.settings.builtinList, len(cw.cfg.BuiltinTools), func(i int) {
-				cw.builtinRow(c, i)
-			}).Fill()
-		})
-		cw.builtinFormView(c)
-	})
-}
-
-func (cw *ChatWindow) builtinRow(c *mgo.Context, i int) {
 	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	t := cw.cfg.BuiltinTools[i]
-	b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
-		Padding(u, u*2).Radius(mtheme.ControlRadius)
-	if cw.settings.builtin.editing == i {
-		b.Background(k.Selection)
-	}
-	b.Children(func() {
-		mgo.Row(c).FillWidth().Justify(mgo.Start).Gap(u).AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, fmt.Sprintf("%s (%s)", t.Name, t.Type)).SingleLine().MinWidth(0).Grow(1).Ellipsis("…")
-			status, col := "禁用", k.TextMuted
-			if t.Enabled {
-				status, col = "启用", k.Success
-			}
-			mgo.Text(c, status).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(col).Shrink(0)
-		})
-	})
-	if b.Clicked() {
-		cw.loadBuiltinForm(i)
-	}
-}
-
-func (cw *ChatWindow) builtinFormView(c *mgo.Context) {
-	f := &cw.settings.builtin
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
-		if f.editing < 0 || f.editing >= len(cw.cfg.BuiltinTools) {
-			mgo.Text(c, "从左侧选择一个工具进行配置").TextColor(k.TextMuted)
-			return
-		}
-		tool := cw.cfg.BuiltinTools[f.editing]
-		mgo.Text(c, tool.Name).Font(mtheme.SerifFont).FontWeight(600)
-		mgo.Scroll(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
-			mgo.Column(c).Gap(u * 2).Children(func() {
-				mgo.Text(c, config.GetBuiltinToolDescription(tool.Type)).TextColor(k.TextMuted).
+	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
+			mgo.Text(c, "工具").Font(mtheme.SerifFont).
+				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
+			if len(cw.cfg.BuiltinTools) == 0 {
+				mgo.Text(c, "暂无工具").TextColor(k.TextMuted).
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-				required := config.GetRequiredConfigFields(tool.Type)
-				for _, field := range config.GetBuiltinToolConfigFields(tool.Type) {
-					label := field
-					for _, r := range required {
-						if r == field {
-							label = field + " *"
-						}
+			}
+			for i := range cw.cfg.BuiltinTools {
+				cw.builtinCard(c, i)
+			}
+		})
+	})
+}
+
+func (cw *ChatWindow) builtinCard(c *mgo.Context, i int) {
+	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
+	t := cw.cfg.BuiltinTools[i]
+	expanded := cw.settings.builtin.editing == i
+	card := mgo.Column(c).Key(fmt.Sprintf("builtin:%d", i)).FillWidth().Gap(u * 2).Padding(u * 2).Radius(mtheme.ControlRadius)
+	if expanded {
+		card.Background(k.Selection)
+	} else {
+		card.Background(k.Surface)
+	}
+	card.Children(func() {
+		mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				mgo.Icon(c, icons.Must("settings")).Size(18, 18).TextColor(k.Text).Shrink(0)
+				mgo.Text(c, config.GetBuiltinToolDisplayName(t.Type)).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+				mgo.Text(c, t.Type).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+			})
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				en := t.Enabled
+				if minput.Switch(c, &en, "", minput.SwitchOptions{}).Changed() {
+					cw.cfg.BuiltinTools[i].Enabled = en
+					cw.settings.builtin.enabled = en
+					_ = config.SaveConfig(cw.cfg)
+					cw.clientDirty.Store(true)
+				}
+				if mcore.IconAction(c, icons.Must("chevron-down"), "展开").Clicked() {
+					if expanded {
+						cw.settings.builtin = builtinForm{editing: -1}
+					} else {
+						cw.loadBuiltinForm(i)
 					}
-					v := f.config[field]
-					minput.TextInput(c, &v, minput.TextInputOptions{Label: label, Placeholder: field})
-					f.config[field] = v
 				}
 			})
 		})
-		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
-				cw.saveBuiltin()
+		if expanded {
+			mgo.Box(c).FillWidth().Height(1).Background(k.Border)
+			cw.builtinFormFields(c)
+		}
+	})
+}
+
+func (cw *ChatWindow) builtinFormFields(c *mgo.Context) {
+	f := &cw.settings.builtin
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	if f.editing < 0 || f.editing >= len(cw.cfg.BuiltinTools) {
+		return
+	}
+	tool := cw.cfg.BuiltinTools[f.editing]
+	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
+		mgo.Text(c, config.GetBuiltinToolDescription(tool.Type)).TextColor(k.TextMuted).
+			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		required := config.GetRequiredConfigFields(tool.Type)
+		for _, field := range config.GetBuiltinToolConfigFields(tool.Type) {
+			label := field
+			for _, r := range required {
+				if r == field {
+					label = field + " *"
+				}
 			}
-			mgo.Box(c).Grow(1)
-			if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
-				cw.saveBuiltin()
-			}
-		})
+			v := f.config[field]
+			minput.TextInput(c, &v, minput.TextInputOptions{Label: label, Placeholder: field})
+			f.config[field] = v
+		}
+		if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			cw.saveBuiltin()
+		}
 	})
 }
 
@@ -1012,8 +1040,8 @@ func (cw *ChatWindow) saveSystemSettings() {
 func (cw *ChatWindow) channelTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
-	mgo.Scroll(c).Fill().Children(func() {
-		mgo.Column(c).FillWidth().Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
+	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
 			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
 				mgo.Text(c, "渠道").Font(mtheme.SerifFont).FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 			})
@@ -1273,26 +1301,27 @@ func (cw *ChatWindow) askDeleteConversation(id, title string) {
 func (cw *ChatWindow) acpTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
-	mgo.Row(c).Fill().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-		mgo.Column(c).Width(280).Shrink(0).Gap(u).Children(func() {
-			mgo.Row(c).Gap(u).FillWidth().Children(func() {
-				if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
-					cw.clearACPForm()
-				}
-				if minput.Button(c, "从目录添加", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
-					cw.acpCatalogOpen = true
-				}
+	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
+			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+				mgo.Text(c, "ACP").Font(mtheme.SerifFont).
+					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
+				mgo.Row(c).Gap(u).Children(func() {
+					if minput.Button(c, "从目录添加", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
+						cw.acpCatalogOpen = true
+					}
+					if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
+						cw.addNewACP()
+					}
+				})
 			})
 			if len(cw.cfg.ACPAgents) == 0 {
 				mgo.Text(c, "暂无连接，从目录添加或手动新增").TextColor(k.TextMuted).
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			}
-			mgo.List(c, &cw.acpList, len(cw.cfg.ACPAgents), func(i int) {
-				cw.acpRow(c, i)
-			}).Fill()
-		})
-		mgo.Scroll(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
-			cw.acpFormView(c)
+			for i := range cw.cfg.ACPAgents {
+				cw.acpCard(c, i)
+			}
 		})
 	})
 	cw.acpCatalogDialog(c)

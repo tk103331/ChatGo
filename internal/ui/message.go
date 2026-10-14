@@ -10,7 +10,9 @@ import (
 
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mdata "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/agent"
 
@@ -38,6 +40,10 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 		if len(msg.ToolCalls) > 0 {
 			cw.toolCallGroup(c, msg)
 		}
+		if msg.Role == "assistant" && strings.TrimSpace(msg.Reasoning) != "" {
+			open := mgo.Local(c.Root(), "reason:"+msg.ID, func() bool { return false })
+			cw.reasoningBlock(c, open, msg.Reasoning)
+		}
 		switch {
 		case strings.TrimSpace(msg.Content) != "":
 			r := mchat.MarkdownView(c, msg.Content)
@@ -48,6 +54,18 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 			mchat.TypingIndicator(c, "Assistant")
 		}
 		cw.messageActions(c, i, msg, streaming)
+	})
+}
+
+// reasoningBlock shows the model's thinking process as a collapsed block.
+func (cw *ChatWindow) reasoningBlock(c *mgo.Context, open *bool, reasoning string) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).FillWidth().Gap(u / 2).Padding(u, u*2).Radius(mtheme.ControlRadius).
+		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Children(func() {
+		mdata.Collapsible(c, open, mdata.CollapsibleOptions{Title: "思考过程"}, func() {
+			mgo.Text(c, reasoning).TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		})
 	})
 }
 

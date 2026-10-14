@@ -3,6 +3,8 @@ package ui
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -73,11 +75,14 @@ func (cw *ChatWindow) startFeishuChannel() {
 	ch := channel.NewChannel(client, wsClient)
 
 	ch.OnMessage(func(_ context.Context, msg *types.NormalizedMessage) error {
+		cw.feishuLogf("收到消息: chatType=%q mentioned=%v text=%q chatID=%q", msg.ChatType, msg.MentionedBot, msg.Content, msg.ChatID)
 		if !msg.MentionedBot && msg.ChatType != "p2p" {
+			cw.feishuLogf("消息被过滤（非私聊且未@机器人）")
 			return nil
 		}
 		text := strings.TrimSpace(msg.Content)
 		if text == "" {
+			cw.feishuLogf("消息内容为空，跳过")
 			return nil
 		}
 		cw.notifyChannelMessage(channelID, text)
@@ -617,4 +622,18 @@ func feishuQRBitmap(url string) *mgo.Bitmap {
 		return nil
 	}
 	return bmp
+}
+
+// feishuLogf appends a diagnostic line to ~/.chatgo/feishu.log.
+func (cw *ChatWindow) feishuLogf(format string, args ...any) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(home, ".chatgo", "feishu.log"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(format, args...))
 }
