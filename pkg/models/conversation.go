@@ -39,6 +39,10 @@ type Message struct {
 	Segments  []Segment  `json:"segments,omitempty"`  // Ordered blocks for multi-step replies
 	Timestamp time.Time  `json:"timestamp"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // Tool calls made by this message
+
+	PromptTokens     int `json:"prompt_tokens,omitempty"`
+	CompletionTokens int `json:"completion_tokens,omitempty"`
+	TotalTokens      int `json:"total_tokens,omitempty"`
 }
 
 // Conversation represents a chat conversation

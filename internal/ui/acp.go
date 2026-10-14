@@ -20,10 +20,10 @@ import (
 	"chatgo/pkg/models"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 )
 
 // acpHandshakeTimeout bounds Initialize and NewSession so a stuck CLI cannot
@@ -150,7 +150,7 @@ func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {
 				mgo.Column(c).Gap(u).Children(func() {
 					for _, e := range items {
 						e := e
-						mgo.Row(c).Key(e.Name).FillWidth().Gap(u * 2).AlignItems(mgo.Center).
+						mgo.Row(c).Key(e.Name).FillWidth().Gap(u*2).AlignItems(mgo.Center).
 							Padding(u, u*2).Radius(mtheme.CardRadius).Border(mtheme.BorderWidth, k.Border).
 							Children(func() {
 								acpIcon(c, e.Name, 24, 24)
@@ -754,6 +754,17 @@ func (cw *ChatWindow) findACPConn(name string) (config.ACPConnection, bool) {
 	return config.ACPConnection{}, false
 }
 
+// acpApplyUsage records a turn's token usage when the adapter reports it; the
+// ACP usage fields are unstable and most adapters leave them empty.
+func (cw *ChatWindow) acpApplyUsage(msg *models.Message, resp acp.PromptResponse) {
+	if resp.Usage == nil {
+		return
+	}
+	msg.PromptTokens = resp.Usage.InputTokens
+	msg.CompletionTokens = resp.Usage.OutputTokens
+	msg.TotalTokens = resp.Usage.TotalTokens
+}
+
 // acpChatStart runs one turn of a conversation through its ACP coding CLI.
 func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, idx int, text string) {
 	conn, ok := cw.findACPConn(connName)
@@ -773,7 +784,7 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 			})
 			return
 		}
-		_, perr := rt.conn.Prompt(context.Background(), acp.PromptRequest{
+		resp, perr := rt.conn.Prompt(context.Background(), acp.PromptRequest{
 			SessionId: rt.sessionID,
 			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 		})
@@ -781,6 +792,7 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 			if perr != nil && conv.Messages[idx].Content == "" {
 				conv.Messages[idx].Content = "⚠️ " + perr.Error()
 			}
+			cw.acpApplyUsage(&conv.Messages[idx], resp)
 			cw.streaming = false
 			conv.UpdatedAt = time.Now()
 			_ = cw.convManager.SaveConversation(conv)

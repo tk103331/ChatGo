@@ -147,7 +147,17 @@ func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, 
 		if mcore.IconAction(c, icons.Must("refresh-cw"), "重新生成").Tooltip("重新生成").Clicked() {
 			cw.regenerate(i)
 		}
+		if msg.TotalTokens > 0 {
+			mgo.Spacer(c)
+			mgo.Text(c, tokenLabel(msg)).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+				TextColor(mcore.Tokens(c).TextMuted).SingleLine()
+		}
 	})
+}
+
+// tokenLabel formats a message's token usage as "↑prompt ↓completion = total".
+func tokenLabel(msg models.Message) string {
+	return fmt.Sprintf("↑%d ↓%d = %d tokens", msg.PromptTokens, msg.CompletionTokens, msg.TotalTokens)
 }
 
 func (cw *ChatWindow) headerModel() string {

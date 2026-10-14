@@ -318,6 +318,7 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 
 	var fullContent strings.Builder
 	var fullReasoning strings.Builder
+	var usage *schema.TokenUsage
 
 	// The checker forwarded each step's chunks to the UI; here we only collect
 	// the final answer, so nothing is shown twice.
@@ -335,6 +336,9 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 			continue
 		}
 
+		if chunk.ResponseMeta != nil && chunk.ResponseMeta.Usage != nil {
+			usage = chunk.ResponseMeta.Usage
+		}
 		if chunk.Content != "" {
 			fullContent.WriteString(chunk.Content)
 		}
@@ -343,11 +347,7 @@ func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Mes
 		}
 	}
 
-	return &ChatResponse{
-		Content:   fullContent.String(),
-		Reasoning: fullReasoning.String(),
-		Done:      true,
-	}, nil
+	return newChatResponse(fullContent.String(), fullReasoning.String(), usage), nil
 }
 
 // chatWithoutStream sends a non-streaming chat completion request via React Agent
@@ -360,16 +360,16 @@ func (c *ReactClient) chatWithoutStream(ctx context.Context, messages []*schema.
 
 	content := ""
 	reasoning := ""
+	var usage *schema.TokenUsage
 	if response != nil {
 		content = response.Content
 		reasoning = response.ReasoningContent
+		if response.ResponseMeta != nil {
+			usage = response.ResponseMeta.Usage
+		}
 	}
 
-	return &ChatResponse{
-		Content:   content,
-		Reasoning: reasoning,
-		Done:      true,
-	}, nil
+	return newChatResponse(content, reasoning, usage), nil
 }
 
 // UpdateTools updates the tools available to the agent at runtime

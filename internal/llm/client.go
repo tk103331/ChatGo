@@ -140,6 +140,10 @@ type ChatResponse struct {
 	Content   string
 	Reasoning string // Model thinking process, if any
 	Done      bool
+
+	PromptTokens     int
+	CompletionTokens int
+	TotalTokens      int
 }
 
 // Chat sends a chat completion request with streaming support
@@ -174,6 +178,7 @@ func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message,
 
 	var fullContent strings.Builder
 	var fullReasoning strings.Builder
+	var usage *schema.TokenUsage
 
 	// Read from stream
 	for {
@@ -187,6 +192,9 @@ func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message,
 
 		if chunk == nil {
 			continue
+		}
+		if chunk.ResponseMeta != nil && chunk.ResponseMeta.Usage != nil {
+			usage = chunk.ResponseMeta.Usage
 		}
 		if chunk.Content != "" {
 			fullContent.WriteString(chunk.Content)
@@ -202,11 +210,7 @@ func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message,
 		}
 	}
 
-	return &ChatResponse{
-		Content:   fullContent.String(),
-		Reasoning: fullReasoning.String(),
-		Done:      true,
-	}, nil
+	return newChatResponse(fullContent.String(), fullReasoning.String(), usage), nil
 }
 
 // chatWithoutStream sends a non-streaming chat completion request
@@ -219,16 +223,31 @@ func (c *Client) chatWithoutStream(ctx context.Context, messages []*schema.Messa
 
 	content := ""
 	reasoning := ""
+	var usage *schema.TokenUsage
 	if response != nil {
 		content = response.Content
 		reasoning = response.ReasoningContent
+		if response.ResponseMeta != nil {
+			usage = response.ResponseMeta.Usage
+		}
 	}
 
-	return &ChatResponse{
+	return newChatResponse(content, reasoning, usage), nil
+}
+
+// newChatResponse builds a ChatResponse, copying token usage when present.
+func newChatResponse(content, reasoning string, usage *schema.TokenUsage) *ChatResponse {
+	resp := &ChatResponse{
 		Content:   content,
 		Reasoning: reasoning,
 		Done:      true,
-	}, nil
+	}
+	if usage != nil {
+		resp.PromptTokens = usage.PromptTokens
+		resp.CompletionTokens = usage.CompletionTokens
+		resp.TotalTokens = usage.TotalTokens
+	}
+	return resp
 }
 
 // ChatNonBlocking sends a chat completion request without streaming

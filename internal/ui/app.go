@@ -159,10 +159,10 @@ type ChatWindow struct {
 	avatarMu  sync.Mutex
 	avatarPNG map[string]*mgo.Bitmap
 
-	acpList          mgo.ListState
-	acpForm          acpForm
-	acpCatalogOpen   bool
-	acpCatalogQuery  string
+	acpList         mgo.ListState
+	acpForm         acpForm
+	acpCatalogOpen  bool
+	acpCatalogQuery string
 
 	mcpTabSel         int
 	mcpEditorOpen     bool
@@ -1206,6 +1206,11 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 		}
 		if resp != nil && conv.Messages[idx].Reasoning == "" {
 			conv.Messages[idx].Reasoning = resp.Reasoning
+		}
+		if resp != nil && resp.TotalTokens > 0 {
+			conv.Messages[idx].PromptTokens = resp.PromptTokens
+			conv.Messages[idx].CompletionTokens = resp.CompletionTokens
+			conv.Messages[idx].TotalTokens = resp.TotalTokens
 		}
 		cw.streaming = false
 		cw.streamCancel = nil
