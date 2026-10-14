@@ -188,7 +188,7 @@ func (cw *ChatWindow) startWechatLogin() {
 		}
 
 		cw.postMain(func() {
-			if bmp := feishuQRBitmap(qrResp.QRCode); bmp != nil {
+			if bmp := feishuQRBitmap(qrResp.QRCodeImgContent); bmp != nil {
 				f.qr = bmp
 			}
 			f.qrTip = "请用微信扫码登录（10 分钟内有效）"

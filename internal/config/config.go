@@ -340,6 +340,7 @@ func LoadConfig() (*Config, error) {
 			},
 			BuiltinTools:      builtinTools,
 			ACPAgents:         defaultACPAgents(),
+			Channels:          defaultChannels(),
 			CurrentProvider:   "",
 			UseReactAgent:     false,
 			ReactAgentMaxStep: 40,
@@ -383,6 +384,7 @@ func loadFile(path string) (*Config, error) {
 	}
 	config.ACPAgents = ensureDefaultACPAgents(config.ACPAgents)
 	config.Providers = ensureProviderPresets(config.Providers)
+	config.Channels = ensureDefaultChannels(config.Channels)
 
 	for i := range config.Providers {
 		p := &config.Providers[i]
@@ -439,6 +441,30 @@ func ensureDefaultACPAgents(existing []ACPConnection) []ACPConnection {
 	out := append([]ACPConnection(nil), existing...)
 	for _, d := range defaultACPAgents() {
 		if !have[d.Name] {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// defaultChannels returns the shipped channel presets: feishu and wechat,
+// both disabled until the user configures credentials.
+func defaultChannels() []Channel {
+	return []Channel{
+		{ID: "feishu-default", Type: "feishu", Name: "飞书", Enabled: false},
+		{ID: "wechat-default", Type: "wechat", Name: "微信 ClawBot", Enabled: false},
+	}
+}
+
+// ensureDefaultChannels adds the shipped channel presets that are missing.
+func ensureDefaultChannels(existing []Channel) []Channel {
+	have := make(map[string]bool, len(existing))
+	for _, ch := range existing {
+		have[ch.Type] = true
+	}
+	out := append([]Channel(nil), existing...)
+	for _, d := range defaultChannels() {
+		if !have[d.Type] {
 			out = append(out, d)
 		}
 	}
