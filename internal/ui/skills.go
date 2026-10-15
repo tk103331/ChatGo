@@ -437,6 +437,11 @@ func (cw *ChatWindow) skillPrompt() string {
 func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 	ids := cw.visibleSkillIDs()
 	if len(ids) == 0 || cw.cur == nil {
+		if cw.cur != nil {
+			if minput.Button(c, "配置 Skill", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+				cw.goConfigure(sectionSkill)
+			}
+		}
 		return
 	}
 	k := mcore.Tokens(c)

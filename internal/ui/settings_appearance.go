@@ -129,10 +129,10 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 		}
 		mgo.Text(c, "在系统托盘 / 菜单栏显示 ChatGo 图标。点击图标打开程序，右键菜单可快速新建会话并进入最近会话。").
 			FontSize(small).TextColor(k.TextMuted)
-		if minput.Switch(c, &cw.cfg.RunInBackground, "后台运行（关闭窗口时最小化到托盘）", minput.SwitchOptions{}).Changed() {
+		if minput.Switch(c, &cw.cfg.RunInBackground, "允许后台运行（关闭窗口时最小化到托盘）", minput.SwitchOptions{}).Changed() {
 			cw.saveSystemSettings()
 		}
-		mgo.Text(c, "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行，并隐藏任务栏 / Dock 图标（自动启用托盘图标）。").
+		mgo.Text(c, "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行（自动启用托盘图标）。").
 			FontSize(small).TextColor(k.TextMuted)
 	})
 }

@@ -181,8 +181,8 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	}
 	if len(models) == 0 {
 		if minput.Button(c, "配置模型", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
-			cw.section = sectionSettings
 			cw.settings.tab = 0
+			cw.goConfigure(sectionSettings)
 		}
 		return
 	}
@@ -293,10 +293,10 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 		}
 		if minput.Button(c, "配置"+buttonLabel, minput.ButtonOptions{Variant: minput.Ghost, Icon: btnIcon}).Clicked() {
 			if prefix == "mcp:" {
-				cw.section = sectionMCP
+				cw.goConfigure(sectionMCP)
 			} else {
-				cw.section = sectionSettings
 				cw.settings.tab = 1
+				cw.goConfigure(sectionSettings)
 			}
 		}
 		return

@@ -97,6 +97,15 @@ func (cw *ChatWindow) goSection(section navSection) {
 	cw.section = section
 }
 
+// goConfigure leaves the quick interface and opens a navigation section.
+func (cw *ChatWindow) goConfigure(section navSection) {
+	if cw.quickMode {
+		cw.toggleQuickMode()
+	}
+	cw.section = section
+	cw.invalidate()
+}
+
 // sectionView renders the page for the current section.
 func (cw *ChatWindow) sectionView(c *mgo.Context) {
 	switch cw.section {

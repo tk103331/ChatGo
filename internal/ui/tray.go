@@ -37,22 +37,17 @@ func (cw *ChatWindow) syncTray() {
 		cw.tray = nil
 		cw.trayMenuKeyCached = ""
 	}
-	cw.syncTaskbarHidden()
+	cw.syncTaskbar()
 }
 
-func (cw *ChatWindow) syncTaskbarHidden() {
-	hidden := cw.cfg.RunInBackground
+func (cw *ChatWindow) syncTaskbar() {
 	cw.winMu.Lock()
 	w := cw.window
 	cw.winMu.Unlock()
 	if w != nil {
-		w.SetSkipTaskbar(hidden)
+		w.SetSkipTaskbar(false)
 	}
-	if hidden {
-		mygo.App.Dock.Hide()
-	} else {
-		mygo.App.Dock.Show()
-	}
+	mygo.App.Dock.Show()
 }
 
 func (cw *ChatWindow) showMainWindow() {
