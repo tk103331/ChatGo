@@ -37,13 +37,13 @@ func (cw *ChatWindow) acpCommands() []mchat.SlashCommand {
 	if cw.cur == nil {
 		return nil
 	}
-	cw.acpMu.Lock()
-	rt := cw.acpConvs[cw.cur.ID]
+	cw.acp.mu.Lock()
+	rt := cw.acp.convs[cw.cur.ID]
 	var cmds []acp.AvailableCommand
 	if rt != nil {
 		cmds = rt.commands
 	}
-	cw.acpMu.Unlock()
+	cw.acp.mu.Unlock()
 	out := make([]mchat.SlashCommand, 0, len(cmds))
 	for _, c := range cmds {
 		if c.Name == "" || strings.ContainsAny(c.Name, " \t\n") {
@@ -80,13 +80,13 @@ func (cw *ChatWindow) slashSkills() ([]mchat.SlashCommand, map[string]string) {
 }
 
 func (cw *ChatWindow) slashSkillIDs() []string {
-	if !cw.skillsLoaded {
+	if !cw.skills.loaded {
 		cw.loadSkills()
 	}
 	a, ok := cw.currentAgentDef()
 	if !ok {
-		out := make([]string, 0, len(cw.skills))
-		for _, s := range cw.skills {
+		out := make([]string, 0, len(cw.skills.list))
+		for _, s := range cw.skills.list {
 			out = append(out, s.ID)
 		}
 		return out

@@ -72,10 +72,10 @@ func (cw *ChatWindow) mcpPage(c *mgo.Context) {
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Text(c, "MCP").Font(mtheme.SerifFont).
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
-		mnavigation.SegmentedControl(c, &cw.mcpTabSel, []mnavigation.Segment{
+		mnavigation.SegmentedControl(c, &cw.mcp.tabSel, []mnavigation.Segment{
 			{Label: "我的服务"}, {Label: "市场"},
 		}, mnavigation.SegmentedControlOptions{Label: "MCP", Equal: true})
-		if cw.mcpTabSel == 1 {
+		if cw.mcp.tabSel == 1 {
 			cw.mcpMarketTab(c)
 			return
 		}
@@ -88,10 +88,10 @@ func (cw *ChatWindow) mcpPage(c *mgo.Context) {
 
 // mcpDetailDialog shows one marketplace server's full metadata.
 func (cw *ChatWindow) mcpDetailDialog(c *mgo.Context) {
-	if !cw.mcpDetailOpen {
+	if !cw.mcp.detailOpen {
 		return
 	}
-	d := cw.mcpDetail
+	d := cw.mcp.detail
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
@@ -100,7 +100,7 @@ func (cw *ChatWindow) mcpDetailDialog(c *mgo.Context) {
 			mgo.Text(c, label+val).FontSize(caption).TextColor(k.TextMuted)
 		}
 	}
-	moverlay.Dialog(c, &cw.mcpDetailOpen, moverlay.DialogOptions{
+	moverlay.Dialog(c, &cw.mcp.detailOpen, moverlay.DialogOptions{
 		Title: d.Name,
 		Width: 640,
 		Actions: func() {
@@ -159,28 +159,28 @@ func (cw *ChatWindow) mcpDetailDialog(c *mgo.Context) {
 func (cw *ChatWindow) mcpMarketTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	if !cw.mcpMarketLoaded && !cw.mcpMarketLoading {
+	if !cw.mcp.marketLoaded && !cw.mcp.marketLoading {
 		cw.loadMCPMarket()
 	}
 	mgo.Column(c).Grow(1).MinWidth(0).MinHeight(0).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-			in := minput.TextInput(c, &cw.mcpMarketQuery, minput.TextInputOptions{Label: "搜索", Placeholder: "搜索 MCP 服务器"})
+			in := minput.TextInput(c, &cw.mcp.marketQuery, minput.TextInputOptions{Label: "搜索", Placeholder: "搜索 MCP 服务器"})
 			in.Element.Grow(1)
 			opts := []minput.SelectOption[string]{{Value: "", Label: "全部分类"}}
 			for _, cat := range cw.mcpCategories() {
 				opts = append(opts, minput.SelectOption[string]{Value: cat, Label: cat})
 			}
-			minput.Select(c, &cw.mcpMarketCategory, opts, minput.SelectOptions{Label: "分类"})
+			minput.Select(c, &cw.mcp.marketCategory, opts, minput.SelectOptions{Label: "分类"})
 		})
 		switch {
-		case cw.mcpMarketLoading:
+		case cw.mcp.marketLoading:
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				mcore.Spinner(c, mcore.SpinnerOptions{Size: 16, Label: "加载中"})
 				mgo.Text(c, "正在加载市场数据…").TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			})
 			return
-		case cw.mcpMarketErr != "":
-			mgo.Text(c, "加载失败："+cw.mcpMarketErr).TextColor(k.Danger).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		case cw.mcp.marketErr != "":
+			mgo.Text(c, "加载失败："+cw.mcp.marketErr).TextColor(k.Danger).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			return
 		}
 		items := cw.filteredMarket()
@@ -192,7 +192,7 @@ func (cw *ChatWindow) mcpMarketTab(c *mgo.Context) {
 			return
 		}
 		mgo.Text(c, "共 "+strconv.Itoa(len(items))+" 个").TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		mgo.List(c, &cw.mcpMarketList, len(items), func(i int) {
+		mgo.List(c, &cw.mcp.marketList, len(items), func(i int) {
 			cw.mcpMarketRow(c, items[i])
 		}).Grow(1).MinHeight(0)
 	})
@@ -221,8 +221,8 @@ func (cw *ChatWindow) mcpMarketRow(c *mgo.Context, s mcpMarketServer) {
 			}
 		})
 		if minput.Button(c, "详情", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
-			cw.mcpDetail = s
-			cw.mcpDetailOpen = true
+			cw.mcp.detail = s
+			cw.mcp.detailOpen = true
 		}
 		if cw.hasMCPServer(s.Name) {
 			mgo.Text(c, "已添加").TextColor(k.Success).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Shrink(0)
@@ -237,7 +237,7 @@ func (cw *ChatWindow) mcpMarketRow(c *mgo.Context, s mcpMarketServer) {
 func (cw *ChatWindow) mcpCategories() []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, s := range cw.mcpMarket {
+	for _, s := range cw.mcp.market {
 		for _, cat := range s.Categories {
 			if cat != "" && !seen[cat] {
 				seen[cat] = true
@@ -250,13 +250,13 @@ func (cw *ChatWindow) mcpCategories() []string {
 }
 
 func (cw *ChatWindow) filteredMarket() []mcpMarketServer {
-	q := strings.ToLower(strings.TrimSpace(cw.mcpMarketQuery))
-	cat := cw.mcpMarketCategory
+	q := strings.ToLower(strings.TrimSpace(cw.mcp.marketQuery))
+	cat := cw.mcp.marketCategory
 	if q == "" && cat == "" {
-		return cw.mcpMarket
+		return cw.mcp.market
 	}
 	var out []mcpMarketServer
-	for _, s := range cw.mcpMarket {
+	for _, s := range cw.mcp.market {
 		if cat != "" && !containsStr(s.Categories, cat) {
 			continue
 		}
@@ -295,8 +295,8 @@ func (cw *ChatWindow) editMarketServer(s mcpMarketServer) {
 		f.args = strings.Join(s.Args, "\n")
 		f.env = marketKVRows(s.Env, s.Arguments)
 	}
-	cw.mcpDetailOpen = false
-	cw.mcpEditorOpen = true
+	cw.mcp.detailOpen = false
+	cw.mcp.editorOpen = true
 }
 
 // marketKVRows merges install values with the arguments' examples, keyed and sorted.
@@ -364,12 +364,12 @@ func marketHint(s mcpMarketServer) string {
 
 // loadMCPMarket parses the embedded marketplace data in the background.
 func (cw *ChatWindow) loadMCPMarket() {
-	cw.mcpMarketLoading = true
-	cw.mcpMarketErr = ""
+	cw.mcp.marketLoading = true
+	cw.mcp.marketErr = ""
 	go func() {
 		var raw map[string]mcpMarketRaw
 		if err := json.Unmarshal(mcpMarketData, &raw); err != nil {
-			cw.postMain(func() { cw.mcpMarketLoading = false; cw.mcpMarketErr = err.Error() })
+			cw.postMain(func() { cw.mcp.marketLoading = false; cw.mcp.marketErr = err.Error() })
 			return
 		}
 		list := make([]mcpMarketServer, 0, len(raw))
@@ -405,9 +405,9 @@ func (cw *ChatWindow) loadMCPMarket() {
 			return strings.ToLower(list[i].Name) < strings.ToLower(list[j].Name)
 		})
 		cw.postMain(func() {
-			cw.mcpMarket = list
-			cw.mcpMarketLoaded = true
-			cw.mcpMarketLoading = false
+			cw.mcp.market = list
+			cw.mcp.marketLoaded = true
+			cw.mcp.marketLoading = false
 		})
 	}()
 }

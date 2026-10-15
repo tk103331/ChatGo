@@ -1,16 +1,13 @@
 package ui
 
 import (
-	_ "embed"
 	"strings"
 
+	"chatgo/internal/ui/assets"
 	"chatgo/pkg/models"
 
 	"github.com/egoist/mygo"
 )
-
-//go:embed assets/tray.png
-var trayIconPNG []byte
 
 const trayRecentMax = 5
 
@@ -22,7 +19,7 @@ func (cw *ChatWindow) syncTray() {
 	if cw.shouldShowTray() {
 		if cw.tray == nil {
 			tray, err := mygo.NewTray(mygo.TrayOptions{
-				Icon:           trayIconPNG,
+				Icon:           assets.TrayPNG(),
 				IconIsTemplate: false,
 				ToolTip:        "ChatGo",
 			})

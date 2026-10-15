@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"chatgo/internal/config"
+	"chatgo/internal/ui/assets"
 	"chatgo/pkg/models"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -280,7 +281,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 	if len(list) == 0 {
 		btnIcon := icons.Must(icon)
 		if prefix == "mcp:" {
-			if svg := mcpLogo(); svg != nil {
+			if svg := assets.MCPLogo(); svg != nil {
 				btnIcon = svg
 			}
 		}
@@ -315,7 +316,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 	}
 	b.Children(func() {
 		if prefix == "mcp:" {
-			if svg := mcpLogo(); svg != nil {
+			if svg := assets.MCPLogo(); svg != nil {
 				mgo.Icon(c, svg).Size(16, 16).TextColor(k.TextMuted)
 			} else {
 				mgo.Icon(c, icons.Must(icon)).Size(16, 16)

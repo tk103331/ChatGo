@@ -85,11 +85,11 @@ func (cw *ChatWindow) visibleMCPServerNames() []string {
 
 // availableSkillIDs lists the skills enabled globally on the Skill page.
 func (cw *ChatWindow) availableSkillIDs() []string {
-	if !cw.skillsLoaded {
+	if !cw.skills.loaded {
 		cw.loadSkills()
 	}
 	var out []string
-	for _, s := range cw.skills {
+	for _, s := range cw.skills.list {
 		if cw.skillEnabled(s.ID) {
 			out = append(out, s.ID)
 		}

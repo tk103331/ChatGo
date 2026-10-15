@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"chatgo/internal/config"
+	"chatgo/internal/jssandbox"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -163,7 +164,7 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) 
 			return "", fmt.Errorf("未知 action %q（应为 read/write/list）", action)
 		}
 	case "jssandbox":
-		scfg := parseJsSandboxConfig(tool.Config)
+		scfg := jssandbox.ParseConfig(tool.Config)
 		return func(ctx context.Context, args string) (string, error) {
 			var in struct {
 				Code     string `json:"code"`
@@ -176,7 +177,7 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) 
 			if strings.TrimSpace(in.Code) == "" {
 				return "", fmt.Errorf("缺少必填参数 code")
 			}
-			return runJsSandbox(ctx, in.Code, in.Input, in.Function, scfg)
+			return jssandbox.Run(ctx, in.Code, in.Input, in.Function, scfg)
 		}
 	}
 	return func(context.Context, string) (string, error) {

@@ -55,12 +55,34 @@ func (cw *ChatWindow) agentsPage(c *mgo.Context) {
 			}
 		})
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			if len(cw.cfg.Agents) == 0 {
+				cw.agentEmptyState(c)
+				return
+			}
 			mgo.Grid(c).Columns(3).Gap(u * 3).Children(func() {
 				for i := range cw.cfg.Agents {
 					cw.agentCard(c, i)
 				}
 			})
 		})
+	})
+}
+
+// agentEmptyState shows a centered placeholder when no agents exist.
+func (cw *ChatWindow) agentEmptyState(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u*2).
+		Padding(u*8, 0).Children(func() {
+		mgo.Icon(c, icons.Must("bot")).Size(48, 48).TextColor(k.TextMuted)
+		mgo.Text(c, "还没有 Agent").Font(mtheme.SerifFont).
+			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
+		mgo.Text(c, "创建自定义 Agent，配置模型、工具和技能").TextColor(k.TextMuted).
+			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		if minput.Button(c, "新建 Agent", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
+			cw.clearAgentForm()
+			cw.agentEditorOpen = true
+		}
 	})
 }
 
@@ -345,11 +367,11 @@ func (cw *ChatWindow) mcpServerNames() []string {
 
 // skillNames lists the loaded skill names.
 func (cw *ChatWindow) skillNames() []string {
-	if !cw.skillsLoaded {
+	if !cw.skills.loaded {
 		cw.loadSkills()
 	}
-	out := make([]string, 0, len(cw.skills))
-	for _, s := range cw.skills {
+	out := make([]string, 0, len(cw.skills.list))
+	for _, s := range cw.skills.list {
 		out = append(out, s.Name)
 	}
 	return out
@@ -376,10 +398,10 @@ func (cw *ChatWindow) clearAgentForm() {
 	for _, s := range cw.cfg.MCPServers {
 		cw.agentForm.mcpServers = append(cw.agentForm.mcpServers, s.Name)
 	}
-	if !cw.skillsLoaded {
+	if !cw.skills.loaded {
 		cw.loadSkills()
 	}
-	for _, sk := range cw.skills {
+	for _, sk := range cw.skills.list {
 		cw.agentForm.skills = append(cw.agentForm.skills, sk.Name)
 	}
 }

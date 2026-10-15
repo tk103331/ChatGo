@@ -75,8 +75,8 @@ func (cw *ChatWindow) autoTasksPage(c *mgo.Context) {
 func (cw *ChatWindow) autoTaskEmptyState(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u * 2).
-		Padding(u * 8, 0).Children(func() {
+	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u*2).
+		Padding(u*8, 0).Children(func() {
 		mgo.Icon(c, icons.Must("clock")).Size(48, 48).TextColor(k.TextMuted)
 		mgo.Text(c, "还没有自动任务").Font(mtheme.SerifFont).
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)

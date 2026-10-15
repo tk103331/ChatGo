@@ -17,11 +17,11 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 	mgo "github.com/egoist/mygo/ui"
 	lark "github.com/larksuite/oapi-sdk-go/v3"
-	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	"github.com/larksuite/oapi-sdk-go/v3/channel"
 	"github.com/larksuite/oapi-sdk-go/v3/channel/types"
 	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	"github.com/larksuite/oapi-sdk-go/v3/scene/registration"
+	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
 	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 	qrcode "github.com/skip2/go-qrcode"
 )
@@ -230,29 +230,29 @@ func (cw *ChatWindow) runChannelACPAgent(conv *models.Conversation, connName, wo
 			conv.Workspace = workspace
 		}
 		conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "user", Content: text, Timestamp: time.Now()})
-		cw.acpMu.Lock()
-		cw.acpConvObj[conv.ID] = conv
-		cw.acpMu.Unlock()
+		cw.acp.mu.Lock()
+		cw.acp.convObj[conv.ID] = conv
+		cw.acp.mu.Unlock()
 		rt, err := cw.acpEnsureSession(conv, conn)
 		if err != nil {
 			done("⚠️ " + err.Error())
 			return
 		}
-		cw.acpMu.Lock()
-		cw.channelSess[rt.sessionID] = true
-		cw.channelReply[rt.sessionID] = &strings.Builder{}
-		cw.acpMu.Unlock()
+		cw.acp.mu.Lock()
+		cw.acp.channelSess[rt.sessionID] = true
+		cw.acp.channelReply[rt.sessionID] = &strings.Builder{}
+		cw.acp.mu.Unlock()
 		_, perr := rt.conn.Prompt(context.Background(), acp.PromptRequest{
 			SessionId: rt.sessionID,
 			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 		})
-		cw.acpMu.Lock()
+		cw.acp.mu.Lock()
 		var reply string
-		if b := cw.channelReply[rt.sessionID]; b != nil {
+		if b := cw.acp.channelReply[rt.sessionID]; b != nil {
 			reply = strings.TrimSpace(b.String())
 		}
-		delete(cw.channelReply, rt.sessionID)
-		cw.acpMu.Unlock()
+		delete(cw.acp.channelReply, rt.sessionID)
+		cw.acp.mu.Unlock()
 		cw.postMain(func() {
 			_ = cw.convManager.SaveConversation(conv)
 			cw.reloadConvs()

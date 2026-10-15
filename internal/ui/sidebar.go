@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/assets"
 	"chatgo/pkg/models"
 
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
@@ -342,7 +343,7 @@ func (cw *ChatWindow) convLeading(c *mgo.Context, conv models.Conversation) {
 	switch {
 	case strings.HasPrefix(conv.Agent, "acp:"):
 		name := strings.TrimPrefix(conv.Agent, "acp:")
-		if acpLogoSVG(name) != nil || acpLogo(name) != nil {
+		if assets.ACPLogoSVG(name) != nil || assets.ACPLogo(name) != nil {
 			mgo.Row(c).Margin(0, 0, 0, u).Children(func() { acpIcon(c, name, 16, 16) })
 		}
 	case strings.HasPrefix(conv.Agent, "agent:"):

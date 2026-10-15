@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"chatgo/internal/ui/assets"
+
 	mgo "github.com/egoist/mygo/ui"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
@@ -33,7 +35,7 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 		cw.navItem(c, "自动任务", "clock", sectionAuto)
 		cw.navItem(c, "Agent", "bot", sectionAgent)
 		cw.navItem(c, "Skill", "brain", sectionSkill)
-		cw.navItemSVG(c, "MCP", mcpLogo(), sectionMCP)
+		cw.navItemSVG(c, "MCP", assets.MCPLogo(), sectionMCP)
 		mgo.Spacer(c)
 		label := "外观：" + themeModeLabel(cw.themeMode)
 		if mcore.IconAction(c, icons.Must(themeModeIcon(cw.themeMode)), label).Tooltip(label).Clicked() {

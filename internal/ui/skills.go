@@ -90,8 +90,8 @@ func (cw *ChatWindow) loadSkills() {
 	sort.Slice(out, func(i, j int) bool {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
-	cw.skills = out
-	cw.skillsLoaded = true
+	cw.skills.list = out
+	cw.skills.loaded = true
 	if len(cw.cfg.SkillsEnabled) == 0 && len(out) > 0 {
 		for _, s := range out {
 			cw.cfg.SkillsEnabled = append(cw.cfg.SkillsEnabled, s.ID)
@@ -121,7 +121,7 @@ func parseSkill(path, source string, data []byte) skill {
 }
 
 func (cw *ChatWindow) skillsPage(c *mgo.Context) {
-	if !cw.skillsLoaded {
+	if !cw.skills.loaded {
 		cw.loadSkills()
 	}
 	k := mcore.Tokens(c)
@@ -130,13 +130,13 @@ func (cw *ChatWindow) skillsPage(c *mgo.Context) {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
 			mgo.Text(c, "Skill").Font(mtheme.SerifFont).
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
-			mgo.Text(c, "共 "+strconv.Itoa(len(cw.skills))+" 个").TextColor(k.TextMuted).
+			mgo.Text(c, "共 "+strconv.Itoa(len(cw.skills.list))+" 个").TextColor(k.TextMuted).
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			if minput.Button(c, "重新扫描", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("refresh-cw")}).Clicked() {
 				cw.loadSkills()
 			}
 		})
-		if len(cw.skills) == 0 {
+		if len(cw.skills.list) == 0 {
 			cw.skillsEmptyState(c)
 			return
 		}
@@ -172,16 +172,16 @@ func (cw *ChatWindow) skillsList(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Width(340).Shrink(0).Gap(u * 2).Children(func() {
-		in := minput.TextInput(c, &cw.skillsQuery, minput.TextInputOptions{Label: "搜索", Placeholder: "搜索 Skill"})
+		in := minput.TextInput(c, &cw.skills.query, minput.TextInputOptions{Label: "搜索", Placeholder: "搜索 Skill"})
 		in.Element.FillWidth()
 		items := cw.filteredSkills()
 		if len(items) == 0 {
 			mgo.Text(c, "没有匹配的 Skill").TextColor(k.TextMuted)
 			return
 		}
-		mgo.List(c, &cw.skillsListState, len(items), func(i int) {
+		mgo.List(c, &cw.skills.listState, len(items), func(i int) {
 			s := items[i]
-			selected := cw.skillsSel == s.ID
+			selected := cw.skills.sel == s.ID
 			enabled := cw.skillEnabled(s.ID)
 			b := mgo.ButtonBase(c).Key(s.ID).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
 				Padding(u, u*2).Radius(mtheme.ControlRadius)
@@ -205,19 +205,19 @@ func (cw *ChatWindow) skillsList(c *mgo.Context) {
 				})
 			})
 			if b.Clicked() {
-				cw.skillsSel = s.ID
+				cw.skills.sel = s.ID
 			}
 		}).Grow(1).MinHeight(0)
 	})
 }
 
 func (cw *ChatWindow) filteredSkills() []skill {
-	q := strings.ToLower(strings.TrimSpace(cw.skillsQuery))
+	q := strings.ToLower(strings.TrimSpace(cw.skills.query))
 	if q == "" {
-		return cw.skills
+		return cw.skills.list
 	}
 	var out []skill
-	for _, s := range cw.skills {
+	for _, s := range cw.skills.list {
 		if strings.Contains(strings.ToLower(s.Name), q) || strings.Contains(strings.ToLower(s.Description), q) {
 			out = append(out, s)
 		}
@@ -231,9 +231,9 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
 		var s *skill
-		for i := range cw.skills {
-			if cw.skills[i].ID == cw.skillsSel {
-				s = &cw.skills[i]
+		for i := range cw.skills.list {
+			if cw.skills.list[i].ID == cw.skills.sel {
+				s = &cw.skills.list[i]
 			}
 		}
 		if s == nil {
@@ -257,34 +257,34 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 				SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 		})
 		dir := filepath.Dir(s.Path)
-		if cw.skillFilesFor != s.ID {
-			cw.skillFiles = listSkillFiles(dir)
-			cw.skillFilesFor = s.ID
-			cw.skillFileSel = "SKILL.md"
-			cw.skillFileBodyOf = ""
+		if cw.skills.filesFor != s.ID {
+			cw.skills.files = listSkillFiles(dir)
+			cw.skills.filesFor = s.ID
+			cw.skills.fileSel = "SKILL.md"
+			cw.skills.fileBodyOf = ""
 		}
-		if cw.skillFileSel == "" {
-			cw.skillFileSel = "SKILL.md"
+		if cw.skills.fileSel == "" {
+			cw.skills.fileSel = "SKILL.md"
 		}
-		if len(cw.skillFiles) > 0 {
+		if len(cw.skills.files) > 0 {
 			mgo.Scroll(c).MaxHeight(180).Children(func() {
 				cw.skillFileTree(c, dir)
 			})
 		}
-		if cw.skillFileBodyOf != cw.skillFileSel {
-			data, err := os.ReadFile(filepath.Join(dir, cw.skillFileSel))
+		if cw.skills.fileBodyOf != cw.skills.fileSel {
+			data, err := os.ReadFile(filepath.Join(dir, cw.skills.fileSel))
 			if err != nil {
-				cw.skillFileBody = "读取失败：" + err.Error()
+				cw.skills.fileBody = "读取失败：" + err.Error()
 			} else {
-				cw.skillFileBody = string(data)
+				cw.skills.fileBody = string(data)
 			}
-			cw.skillFileBodyOf = cw.skillFileSel
+			cw.skills.fileBodyOf = cw.skills.fileSel
 		}
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			if strings.HasSuffix(strings.ToLower(cw.skillFileSel), ".md") {
-				mchat.MarkdownView(c, cw.skillFileBody)
+			if strings.HasSuffix(strings.ToLower(cw.skills.fileSel), ".md") {
+				mchat.MarkdownView(c, cw.skills.fileBody)
 			} else {
-				mgo.Text(c, cw.skillFileBody).Font(mtheme.MonoFont).FontSize(caption)
+				mgo.Text(c, cw.skills.fileBody).Font(mtheme.MonoFont).FontSize(caption)
 			}
 		})
 	})
@@ -292,10 +292,10 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 
 func (cw *ChatWindow) skillFileTree(c *mgo.Context, dir string) {
 	select_ := func(f string) {
-		cw.skillFileSel = f
-		cw.skillFileBodyOf = ""
+		cw.skills.fileSel = f
+		cw.skills.fileBodyOf = ""
 	}
-	skillTreeInto(c, dir, "", cw.skillFiles, cw.skillFileSel, select_)
+	skillTreeInto(c, dir, "", cw.skills.files, cw.skills.fileSel, select_)
 }
 
 // skillTreeInto renders files of a directory as a tree of folders and files.
@@ -380,14 +380,14 @@ func listSkillFiles(dir string) []string {
 }
 
 func (cw *ChatWindow) skillIDsByName(names []string) []string {
-	if !cw.skillsLoaded {
+	if !cw.skills.loaded {
 		cw.loadSkills()
 	}
 	var out []string
 	for _, n := range names {
-		for i := range cw.skills {
-			if cw.skills[i].Name == n {
-				out = append(out, cw.skills[i].ID)
+		for i := range cw.skills.list {
+			if cw.skills.list[i].Name == n {
+				out = append(out, cw.skills.list[i].ID)
 			}
 		}
 	}
@@ -422,9 +422,9 @@ func (cw *ChatWindow) skillPrompt() string {
 		if !cw.skillRuntime(id) {
 			continue
 		}
-		for i := range cw.skills {
-			if cw.skills[i].ID == id && cw.skills[i].Body != "" {
-				parts = append(parts, "## Skill: "+cw.skills[i].Name+"\n\n"+cw.skills[i].Body)
+		for i := range cw.skills.list {
+			if cw.skills.list[i].ID == id && cw.skills.list[i].Body != "" {
+				parts = append(parts, "## Skill: "+cw.skills.list[i].Name+"\n\n"+cw.skills.list[i].Body)
 			}
 		}
 	}
@@ -465,8 +465,8 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 	changed := false
 	moverlay.Popover(c, b, open, moverlay.PopoverOptions{Title: "Skills", Width: 320}, func() {
 		mgo.Column(c).Gap(mcore.Density(c).Unit() * 2).Children(func() {
-			agentSearch(c, &cw.skillMenuQuery, "搜索 Skill").Height(mcore.Density(c).ControlHeight() - 6)
-			q := strings.ToLower(strings.TrimSpace(cw.skillMenuQuery))
+			agentSearch(c, &cw.skills.menuQuery, "搜索 Skill").Height(mcore.Density(c).ControlHeight() - 6)
+			q := strings.ToLower(strings.TrimSpace(cw.skills.menuQuery))
 			for _, id := range ids {
 				s := cw.skillByID(id)
 				if s == nil {
@@ -499,13 +499,30 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 
 // skillByID returns the loaded skill with the given ID.
 func (cw *ChatWindow) skillByID(id string) *skill {
-	if !cw.skillsLoaded {
+	if !cw.skills.loaded {
 		cw.loadSkills()
 	}
-	for i := range cw.skills {
-		if cw.skills[i].ID == id {
-			return &cw.skills[i]
+	for i := range cw.skills.list {
+		if cw.skills.list[i].ID == id {
+			return &cw.skills.list[i]
 		}
 	}
 	return nil
 }
+
+type skillsState struct {
+	list      []skill
+	loaded    bool
+	sel       string
+	query     string
+	listState mgo.ListState
+
+	files      []string
+	filesFor   string
+	fileSel    string
+	fileBody   string
+	fileBodyOf string
+	menuQuery  string
+}
+
+func newSkillsState() skillsState { return skillsState{} }
