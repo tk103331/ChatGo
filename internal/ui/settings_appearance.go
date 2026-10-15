@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	mgo "github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/plugins/updater"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
@@ -134,6 +135,14 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 		}
 		mgo.Text(c, "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行（自动启用托盘图标）。").
 			FontSize(small).TextColor(k.TextMuted)
+		mgo.Text(c, "更新").Font(mtheme.SerifFont).FontWeight(600)
+		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if minput.Button(c, "检查更新", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				updater.CheckForUpdates()
+			}
+			mgo.Text(c, "通过 MyGo Updater 从官方发布自动更新，仅在打包安装后的应用中可用。").
+				FontSize(small).TextColor(k.TextMuted)
+		})
 	})
 }
 

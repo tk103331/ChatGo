@@ -37,6 +37,10 @@ Thumbs.db
 dist/
 build/
 
+# Update signing key (never commit; upload to CI secrets instead)
+mygo-update.key
+mygo-update.pub
+
 # oh-my-opencode state
 .omo/
 

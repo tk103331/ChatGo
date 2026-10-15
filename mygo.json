@@ -4,5 +4,11 @@
   "version": "0.1.0",
   "copyright": "MIT",
   "icon": "internal/ui/assets/logo.png",
-  "out": "dist"
+  "out": "dist",
+  "updates": {
+    "publicKey": "Zo9nuapWYiOfkpFM3MBXEh55gtXn66ctB2IMXbj7Co8=",
+    "github": "tk103331/ChatGo",
+    "tagPrefix": "v",
+    "deltas": 3
+  }
 }
