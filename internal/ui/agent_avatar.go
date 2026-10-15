@@ -3,6 +3,8 @@ package ui
 import (
 	"strings"
 
+	"chatgo/internal/ui/assets"
+
 	mgo "github.com/egoist/mygo/ui"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
@@ -17,7 +19,7 @@ func (cw *ChatWindow) agentAvatar(c *mgo.Context) func() {
 	switch {
 	case strings.HasPrefix(cw.cur.Agent, "acp:"):
 		name := strings.TrimPrefix(cw.cur.Agent, "acp:")
-		if acpLogoSVG(name) != nil || acpLogo(name) != nil {
+		if assets.ACPLogoSVG(name) != nil || assets.ACPLogo(name) != nil {
 			return func() { acpIcon(c, name, 28, 28) }
 		}
 	case strings.HasPrefix(cw.cur.Agent, "agent:"):

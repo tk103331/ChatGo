@@ -1,4 +1,4 @@
-package ui
+package assets
 
 import (
 	"embed"
@@ -7,11 +7,9 @@ import (
 	"sync"
 
 	mgo "github.com/egoist/mygo/ui"
-
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 )
 
-//go:embed assets/agent_*.svg
+//go:embed agent_*.svg
 var agentIconFS embed.FS
 
 var (
@@ -19,13 +17,13 @@ var (
 	agentIcons    map[string]*mgo.SVG
 )
 
-// acpLogoSVG returns the brand SVG for a known ACP agent by name, or nil.
-func acpLogoSVG(name string) *mgo.SVG {
+// ACPLogoSVG returns the brand SVG for a known ACP agent by name, or nil.
+func ACPLogoSVG(name string) *mgo.SVG {
 	agentIconOnce.Do(func() {
 		agentIcons = map[string]*mgo.SVG{}
-		entries, _ := fs.Glob(agentIconFS, "assets/agent_*.svg")
+		entries, _ := fs.Glob(agentIconFS, "agent_*.svg")
 		for _, e := range entries {
-			key := strings.TrimSuffix(strings.TrimPrefix(e, "assets/agent_"), ".svg")
+			key := strings.TrimSuffix(strings.TrimPrefix(e, "agent_"), ".svg")
 			data, err := agentIconFS.ReadFile(e)
 			if err != nil {
 				continue
@@ -35,36 +33,18 @@ func acpLogoSVG(name string) *mgo.SVG {
 			}
 		}
 	})
-	return agentIcons[acpIconKey(name)]
+	return agentIcons[ACPIconKey(name)]
 }
 
-// acpTiledIcons are icons designed as app tiles with their own background and
+// ACPTiledIcons are icons designed as app tiles with their own background and
 // colors; they render with mgo.Image to keep the official look. All other
 // icons are single-color silhouettes drawn in the theme text color.
-var acpTiledIcons = map[string]bool{
+var ACPTiledIcons = map[string]bool{
 	"kiro": true, "factory": true, "openhands": true, "qoder": true,
 }
 
-// acpIcon renders the agent's brand icon (SVG first, then PNG bitmap) at the
-// given size. Returns true if an icon was drawn.
-func acpIcon(c *mgo.Context, name string, w, h float32) bool {
-	if svg := acpLogoSVG(name); svg != nil {
-		if acpTiledIcons[acpIconKey(name)] {
-			mgo.Image(c, svg).Size(w, h).Shrink(0)
-		} else {
-			mgo.Icon(c, svg).Size(w, h).Shrink(0).TextColor(mcore.Tokens(c).Text)
-		}
-		return true
-	}
-	if bmp := acpLogo(name); bmp != nil {
-		mgo.Image(c, bmp).Size(w, h).Shrink(0)
-		return true
-	}
-	return false
-}
-
-// acpIconKey maps an agent name to its icon file key.
-func acpIconKey(name string) string {
+// ACPIconKey maps an agent name to its icon file key.
+func ACPIconKey(name string) string {
 	low := strings.ToLower(name)
 	switch {
 	case strings.Contains(low, "claude"):
@@ -101,4 +81,32 @@ func acpIconKey(name string) string {
 		return "qoder"
 	}
 	return ""
+}
+
+//go:embed claude.png
+var claudeLogoPNG []byte
+
+//go:embed opencode.png
+var opencodeLogoPNG []byte
+
+var (
+	logoOnce   sync.Once
+	logoClaude *mgo.Bitmap
+	logoOpen   *mgo.Bitmap
+)
+
+// ACPLogo returns the official bitmap logo of a known ACP agent by name.
+func ACPLogo(name string) *mgo.Bitmap {
+	logoOnce.Do(func() {
+		logoClaude, _ = mgo.DecodeBitmap(claudeLogoPNG)
+		logoOpen, _ = mgo.DecodeBitmap(opencodeLogoPNG)
+	})
+	low := strings.ToLower(name)
+	switch {
+	case strings.Contains(low, "claude"):
+		return logoClaude
+	case strings.Contains(low, "opencode"):
+		return logoOpen
+	}
+	return nil
 }

@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"chatgo/internal/ui/assets"
+
 	mgo "github.com/egoist/mygo/ui"
 
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
@@ -18,7 +20,7 @@ func (cw *ChatWindow) homeView(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	var view mchat.CapabilityCardsView
 	mgo.Column(c).Fill().Justify(mgo.Center).AlignItems(mgo.Center).Gap(mcore.Density(c).Unit() * 3).Children(func() {
-		mgo.Image(c, brandBitmap()).Size(72, 72)
+		mgo.Image(c, assets.BrandBitmap()).Size(72, 72)
 		view = cw.welcome(c)
 	})
 	if view.Example != "" {

@@ -1,4 +1,4 @@
-package ui
+package assets
 
 import (
 	"embed"
@@ -9,7 +9,7 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 )
 
-//go:embed assets/provider_*.svg
+//go:embed provider_*.svg
 var providerFS embed.FS
 
 var (
@@ -17,13 +17,13 @@ var (
 	providerLogos    map[string]*mgo.SVG
 )
 
-// providerLogo returns the brand mark for a provider type, or nil.
-func providerLogo(typ string) *mgo.SVG {
+// ProviderLogo returns the brand mark for a provider type, or nil.
+func ProviderLogo(typ string) *mgo.SVG {
 	providerLogoOnce.Do(func() {
 		providerLogos = map[string]*mgo.SVG{}
-		entries, _ := fs.Glob(providerFS, "assets/provider_*.svg")
+		entries, _ := fs.Glob(providerFS, "provider_*.svg")
 		for _, e := range entries {
-			name := strings.TrimSuffix(strings.TrimPrefix(e, "assets/provider_"), ".svg")
+			name := strings.TrimSuffix(strings.TrimPrefix(e, "provider_"), ".svg")
 			data, err := providerFS.ReadFile(e)
 			if err != nil {
 				continue
