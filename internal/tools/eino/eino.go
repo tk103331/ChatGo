@@ -1,4 +1,5 @@
-package ui
+// Package eino builds Eino-ext tools for ChatGo's builtin tool types.
+package eino
 
 import (
 	"context"
@@ -17,9 +18,9 @@ import (
 	"github.com/cloudwego/eino-ext/components/tool/wikipedia"
 )
 
-// einoBuiltinTool builds an Eino-ext tool for a builtin type, or returns
+// BuiltinTool builds an Eino-ext tool for a builtin type, or returns
 // (nil, false) when the type is served by ChatGo's own implementation.
-func einoBuiltinTool(toolType string, cfg map[string]string) (tool.BaseTool, bool, error) {
+func BuiltinTool(toolType string, cfg map[string]string) (tool.BaseTool, bool, error) {
 	ctx := context.Background()
 	switch toolType {
 	case "wikipedia":
@@ -48,7 +49,7 @@ func einoBuiltinTool(toolType string, cfg map[string]string) (tool.BaseTool, boo
 		return t, true, err
 	case "browseruse":
 		t, err := browseruse.NewBrowserUseTool(ctx, &browseruse.Config{
-			Headless:      boolConfig(cfg["headless"], true),
+			Headless:      BoolConfig(cfg["headless"], true),
 			DDGSearchTool: newDDGSearch(ctx),
 		})
 		if err != nil {
@@ -72,8 +73,8 @@ func newDDGSearch(ctx context.Context) ddgv2.Search {
 	return s
 }
 
-// boolConfig parses a truthy config value, falling back to def.
-func boolConfig(v string, def bool) bool {
+// BoolConfig parses a truthy config value, falling back to def.
+func BoolConfig(v string, def bool) bool {
 	v = strings.TrimSpace(v)
 	if v == "" {
 		return def
@@ -85,8 +86,8 @@ func boolConfig(v string, def bool) bool {
 	return b
 }
 
-// einoToolBuiltinTypes lists the builtin types Eino-ext serves.
-var einoToolBuiltinTypes = map[string]bool{
+// builtinTypes lists the builtin types Eino-ext serves.
+var builtinTypes = map[string]bool{
 	"wikipedia":          true,
 	"duckduckgosearch":   true,
 	"bingsearch":         true,
@@ -95,5 +96,5 @@ var einoToolBuiltinTypes = map[string]bool{
 	"sequentialthinking": true,
 }
 
-// isEinoBuiltinTool reports whether ChatGo delegates a builtin type to Eino.
-func isEinoBuiltinTool(toolType string) bool { return einoToolBuiltinTypes[toolType] }
+// IsBuiltinTool reports whether ChatGo delegates a builtin type to Eino.
+func IsBuiltinTool(toolType string) bool { return builtinTypes[toolType] }
