@@ -27,7 +27,7 @@ func (cw *ChatWindow) syncTray() {
 				cw.status = "托盘图标创建失败: " + err.Error()
 			} else {
 				cw.tray = tray
-				tray.OnClick(func() { cw.showMainWindow() })
+				tray.OnClick(func() { cw.openNormal() })
 				cw.trayMenuKeyCached = ""
 				cw.updateTrayMenu()
 			}
@@ -139,7 +139,9 @@ func (cw *ChatWindow) recentConvs(n int) []models.Conversation {
 
 func (cw *ChatWindow) trayNewConversation() {
 	cw.postMain(func() {
-		cw.quickMode = false
+		if cw.quickMode {
+			cw.toggleQuickMode()
+		}
 		cw.section = sectionChat
 		cw.newConversation()
 		cw.showMainWindow()
@@ -149,7 +151,9 @@ func (cw *ChatWindow) trayNewConversation() {
 func (cw *ChatWindow) trayOpenConversation(id string) {
 	cw.postMain(func() {
 		cw.selectConversation(id)
-		cw.quickMode = false
+		if cw.quickMode {
+			cw.toggleQuickMode()
+		}
 		cw.section = sectionChat
 		cw.showMainWindow()
 	})

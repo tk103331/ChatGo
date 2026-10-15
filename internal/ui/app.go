@@ -316,6 +316,11 @@ func (cw *ChatWindow) Show() {
 	})
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) { cw.quitting = true })
 	mygo.App.OnWillQuit(func(e *mygo.QuitEvent) { cw.quitting = false })
+	mygo.App.OnActivate(func(hasVisibleWindows bool) {
+		if !hasVisibleWindows {
+			cw.openNormal()
+		}
+	})
 }
 
 // applyQuickShortcut registers the configured accelerator, replacing any
@@ -326,14 +331,8 @@ func (cw *ChatWindow) applyQuickShortcut() {
 	if acc == cw.quickShortcut {
 		return
 	}
-	cw.winMu.Lock()
-	w := cw.window
-	cw.winMu.Unlock()
 	if err := mygo.GlobalShortcut.Register(acc, func() {
-		cw.toggleQuickMode()
-		if w != nil {
-			w.Focus()
-		}
+		cw.openQuick()
 	}); err != nil {
 		cw.status = "快捷对话快捷键注册失败: " + err.Error()
 		return
@@ -428,6 +427,22 @@ func (cw *ChatWindow) toggleQuickMode() {
 		cw.restoreFromQuick()
 	}
 	cw.invalidate()
+}
+
+// openQuick shows the window in the focused quick interface.
+func (cw *ChatWindow) openQuick() {
+	if !cw.quickMode {
+		cw.toggleQuickMode()
+	}
+	cw.showMainWindow()
+}
+
+// openNormal shows the window in the full interface.
+func (cw *ChatWindow) openNormal() {
+	if cw.quickMode {
+		cw.toggleQuickMode()
+	}
+	cw.showMainWindow()
 }
 
 // quickMinWidth is the least width the focused interface allows.
