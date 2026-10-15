@@ -1,0 +1,9 @@
+*.got.png
+.DS_Store
+/gallery
+/.claude/
+PRD.md
+docs/prd/
+TASKS.md
+docs/acceptance.md
+/site/dist/

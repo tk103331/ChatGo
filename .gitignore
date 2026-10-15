@@ -44,5 +44,3 @@ mygo-update.pub
 # oh-my-opencode state
 .omo/
 
-# Local MujicaUI copy patched for the highlight livelock fix (see third_party/README.md)
-third_party/MujicaUI/
