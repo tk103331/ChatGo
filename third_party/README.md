@@ -29,6 +29,10 @@ replace git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI => ./third_party/MujicaUI
 边框与背景（`area.Element.BorderWidth(0,0,0,0).Background(k.Surface)`），
 好让调用方把输入框与其工具栏包进**同一个框**（ChatGo 的输入框用此选项，避免"框内套框"）。
 
+`navigation/tabs.go` 中：水平模式下 panel 也 `Grow(1).MinHeight(0)`。上游只在 `Vertical` 时
+给 panel `Grow(1)`，水平模式下 panel 高度由内容决定，而 ChatGo 的设置页 panel 内是
+`Scroll.Grow(1).MinHeight(0)`，父级无 Grow 时高度坍缩为 0，导致整个 tab 内容区空白。
+
 ### 重建副本
 
 ```sh
@@ -37,7 +41,7 @@ MOD=$(go env GOMODCACHE)/git.zacharyzhang.com/\!zachary\!zhang-\!n\!y/\!mujica\!
 mkdir -p third_party/MujicaUI
 cp -R "$MOD"/. third_party/MujicaUI/
 chmod -R u+w third_party/MujicaUI
-# 然后按上文重新应用 highlight.go 与 prompt_composer.go 补丁
+# 然后按上文重新应用 highlight.go、prompt_composer.go 与 tabs.go 补丁
 ```
 
 完成后 `go build ./...` 即可。若上游修复了该 bug，删除 `replace`、副本，并把 import 改回直属依赖即可。

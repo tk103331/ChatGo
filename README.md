@@ -160,8 +160,12 @@ ChatGo/
 │   ├── config/              # Configuration (providers, agents, tools, presets)
 │   ├── llm/                 # LLM client and React Agent
 │   ├── mcp/                 # MCP server support
+│   ├── jssandbox/           # Isolated JS/TS sandbox runtime
 │   └── ui/                  # MyGo + MujicaUI interface
-│       ├── app.go           # State, view entry, streaming and clients
+│       ├── app.go           # State, view entry, window and title bar
+│       ├── provider_client.go # Provider/model clients, tools and MCP boot
+│       ├── conversation.go  # Conversations, streaming, titles, segments
+│       ├── notify.go        # Toast and session notifications
 │       ├── welcome.go       # Home page
 │       ├── chat.go          # Chat composer and toolbar
 │       ├── chatpanel.go     # File tree, preview tabs and Git panel
@@ -170,13 +174,15 @@ ChatGo/
 │       ├── agents.go        # Agent management and editor
 │       ├── skills.go        # Skill scanning and selection
 │       ├── mcp.go           # MCP page and marketplace
-│       ├── acp.go           # ACP connections and sessions
+│       ├── acp.go           # ACP connections and catalog
+│       ├── acp_client.go    # ACP client callbacks and session updates
+│       ├── acp_session.go   # ACP session lifecycle and runtime
 │       ├── terminal.go      # Multi-tab terminal panel
-│       ├── settings.go      # Settings tabs
+│       ├── settings*.go     # Settings tabs (providers, mcp, tools, appearance, channels)
 │       ├── selection.go     # Availability whitelists
 │       ├── models.go        # Model references
-│       ├── provider_icons.go# Provider logos
-│       └── theme.go         # Theme tokens
+│       ├── theme.go         # Theme tokens and color themes
+│       └── assets/          # Embedded brand marks, provider and agent icons
 ├── pkg/
 │   └── models/              # Data models
 └── README.md

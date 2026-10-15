@@ -160,8 +160,12 @@ ChatGo/
 │   ├── config/              # 配置（Provider/Agent/工具/预置示例）
 │   ├── llm/                 # LLM 客户端与 React Agent
 │   ├── mcp/                 # MCP 服务器支持
+│   ├── jssandbox/           # 隔离的 JS/TS 沙箱运行时
 │   └── ui/                  # MyGo + MujicaUI 界面
-│       ├── app.go           # 状态、视图入口、流式与客户端
+│       ├── app.go           # 状态、视图入口、窗口与标题栏
+│       ├── provider_client.go # Provider/模型客户端、工具与 MCP 启动
+│       ├── conversation.go  # 会话、流式、标题与分段
+│       ├── notify.go        # Toast 与会话通知
 │       ├── welcome.go       # 首页
 │       ├── chat.go          # 聊天输入与工具栏
 │       ├── chatpanel.go     # 文件树、预览 Tab 与 Git 面板
@@ -170,13 +174,15 @@ ChatGo/
 │       ├── agents.go        # Agent 管理与编辑
 │       ├── skills.go        # Skill 扫描与选择
 │       ├── mcp.go           # MCP 页面与市场
-│       ├── acp.go           # ACP 连接与会话
+│       ├── acp.go           # ACP 连接与目录
+│       ├── acp_client.go    # ACP 客户端回调与会话更新
+│       ├── acp_session.go   # ACP 会话生命周期与运行时
 │       ├── terminal.go      # 多 Tab 终端面板
-│       ├── settings.go      # 设置标签页
+│       ├── settings*.go     # 设置标签页（模型/MCP/工具/外观/渠道）
 │       ├── selection.go     # 可用性白名单
 │       ├── models.go        # 模型引用
-│       ├── provider_icons.go# Provider logo
-│       └── theme.go         # 主题令牌
+│       ├── theme.go         # 主题令牌与配色主题
+│       └── assets/          # 内嵌品牌图标、Provider 与 Agent 图标
 ├── pkg/
 │   └── models/              # 数据模型
 └── README.md
