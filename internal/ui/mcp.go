@@ -202,24 +202,35 @@ func (cw *ChatWindow) mcpMarketRow(c *mgo.Context, s mcpMarketServer) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	mgo.Row(c).Key(s.ID).FillWidth().Padding(u, u*2).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-		mgo.Column(c).Grow(1).MinWidth(0).Gap(u).Children(func() {
-			mgo.Text(c, s.Name).FontWeight(600).SingleLine()
-			if s.Description != "" {
-				mgo.Text(c, s.Description).TextColor(k.TextMuted).
-					FontSize(mcore.FontSize(c, mtheme.CaptionSize)).MaxLines(2)
-			}
-			tags := append(append([]string{}, s.Categories...), s.Tags...)
-			if len(tags) > 0 {
-				mgo.Row(c).Gap(u).Wrap().Children(func() {
-					for i, tag := range tags {
-						if i >= 8 {
-							break
+		main := mgo.ButtonBase(c).Grow(1).MinWidth(0).MinHeight(mcore.Density(c).ControlHeight()).
+			Padding(0, u).Radius(mtheme.ControlRadius).Label(s.Name)
+		if main.Hovered() {
+			main.Background(k.SurfaceHover)
+		}
+		main.Children(func() {
+			mgo.Column(c).Grow(1).MinWidth(0).Gap(u).Children(func() {
+				mgo.Text(c, s.Name).FontWeight(600).SingleLine()
+				if s.Description != "" {
+					mgo.Text(c, s.Description).TextColor(k.TextMuted).
+						FontSize(mcore.FontSize(c, mtheme.CaptionSize)).MaxLines(2)
+				}
+				tags := append(append([]string{}, s.Categories...), s.Tags...)
+				if len(tags) > 0 {
+					mgo.Row(c).Gap(u).Wrap().Children(func() {
+						for i, tag := range tags {
+							if i >= 8 {
+								break
+							}
+							agentTag(c, tag)
 						}
-						agentTag(c, tag)
-					}
-				})
-			}
+					})
+				}
+			})
 		})
+		if main.Clicked() {
+			cw.mcp.detail = s
+			cw.mcp.detailOpen = true
+		}
 		if minput.Button(c, "详情", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
 			cw.mcp.detail = s
 			cw.mcp.detailOpen = true

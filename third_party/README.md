@@ -33,6 +33,10 @@ replace git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI => ./third_party/MujicaUI
 给 panel `Grow(1)`，水平模式下 panel 高度由内容决定，而 ChatGo 的设置页 panel 内是
 `Scroll.Grow(1).MinHeight(0)`，父级无 Grow 时高度坍缩为 0，导致整个 tab 内容区空白。
 
+`code/terminal_tabs.go` 中新增 `TerminalTabsOptions.Actions`：置非 nil 时在标签条末尾
+（`TabsBase.List` 之后）渲染额外控件，好让 ChatGo 把"新建终端/关闭终端"按钮放进标签条内，
+而不是单独占一列被推到面板边缘。
+
 ### 重建副本
 
 ```sh
@@ -41,7 +45,7 @@ MOD=$(go env GOMODCACHE)/git.zacharyzhang.com/\!zachary\!zhang-\!n\!y/\!mujica\!
 mkdir -p third_party/MujicaUI
 cp -R "$MOD"/. third_party/MujicaUI/
 chmod -R u+w third_party/MujicaUI
-# 然后按上文重新应用 highlight.go、prompt_composer.go 与 tabs.go 补丁
+# 然后按上文重新应用 highlight.go、prompt_composer.go、tabs.go 与 terminal_tabs.go 补丁
 ```
 
 完成后 `go build ./...` 即可。若上游修复了该 bug，删除 `replace`、副本，并把 import 改回直属依赖即可。

@@ -26,8 +26,10 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
+	mcode "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
+	mgit "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/git"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
@@ -77,12 +79,15 @@ type ChatWindow struct {
 	leftHidden bool
 	leftW      float32
 
-	termOpen    bool
-	terms       []*termTab
-	termActive  int
+	termOpen     bool
+	terms        []*termTab
+	termTabs     []mcode.TerminalTab
+	termActiveID string
+	termSeq      int
 	termH       float32
 	treeW       float32
 	previewW    float32
+	mainW       float32
 	chatW       float32
 	lastWinW    float32
 	lastRightW  float32
@@ -91,12 +96,19 @@ type ChatWindow struct {
 	previewTabs []previewTab
 	previewSel  int
 
-	gitRepo    bool
-	gitBranch  string
-	gitChanges []string
-	gitLog     []string
-	gitLoaded  bool
-	gitFor     string
+	gitRepo        bool
+	gitBranch      string
+	gitBranches    []mgit.Branch
+	gitChanges     []mgit.ChangedFile
+	gitCommits     []mgit.Commit
+	gitChangesList mgit.ChangesListState
+	gitGraph       mgit.CommitGraphState
+	gitCommit      mgit.CommitMessage
+	gitCommitBusy  bool
+	gitSplitH      float32
+	gitStat        [2]int
+	gitLoaded      bool
+	gitFor         string
 
 	currentAgent string
 	systemPrompt string
@@ -143,6 +155,7 @@ type ChatWindow struct {
 
 	settings settingsState
 	confirm  confirmState
+	input    inputState
 
 	agentForm       agentForm
 	agentEditorOpen bool
@@ -362,6 +375,7 @@ func (cw *ChatWindow) view(c *mgo.Context) {
 		})
 	}
 	cw.confirmDialog(c)
+	cw.inputDialog(c)
 	cw.acpPermissionDialog(c)
 	cw.flushToast(c)
 	mfeedback.Toaster(c)

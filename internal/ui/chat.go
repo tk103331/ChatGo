@@ -41,13 +41,14 @@ func (cw *ChatWindow) chatView(c *mgo.Context) {
 	if cw.leftHidden {
 		left = 0
 	}
-	if winW != cw.lastWinW || tree != cw.lastRightW || hasPreview != cw.lastPreview || cw.chatW == 0 {
+	if winW != cw.lastWinW || tree != cw.lastRightW || hasPreview != cw.lastPreview || cw.mainW == 0 {
 		cw.lastWinW, cw.lastRightW, cw.lastPreview = winW, tree, hasPreview
 		flex := winW - 60 - left - tree - 4
+		cw.mainW = max(240, flex)
 		if hasPreview {
-			cw.chatW = max(240, flex*0.6)
+			cw.chatW = max(240, cw.mainW*0.6)
 		} else {
-			cw.chatW = max(240, flex)
+			cw.chatW = cw.mainW
 		}
 	}
 	if cw.leftHidden {
@@ -72,18 +73,23 @@ func (cw *ChatWindow) chatContent(c *mgo.Context, hasPreview bool) {
 
 // chatMainArea lays out the message area, preview column and file panel.
 func (cw *ChatWindow) chatMainArea(c *mgo.Context, hasPreview bool) {
-	mgo.Row(c).Fill().AlignItems(mgo.Stretch).Children(func() {
-		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
-			if hasPreview {
-				mgo.Split(c, &cw.chatW, func() { cw.messageArea(c) }, func() { cw.previewPanel(c) }).Fill()
-				return
-			}
-			cw.messageArea(c)
-		})
-		if cw.rightPanel {
-			cw.sourcePanel(c)
+	if cw.rightPanel {
+		if cw.mainW == 0 {
+			cw.mainW = cw.chatW
 		}
-	})
+		mgo.Split(c, &cw.mainW, func() { cw.chatArea(c, hasPreview) }, func() { cw.sourcePanel(c) }).Fill()
+		return
+	}
+	cw.chatArea(c, hasPreview)
+}
+
+// chatArea is the message list and the optional preview column.
+func (cw *ChatWindow) chatArea(c *mgo.Context, hasPreview bool) {
+	if hasPreview {
+		mgo.Split(c, &cw.chatW, func() { cw.messageArea(c) }, func() { cw.previewPanel(c) }).Fill()
+		return
+	}
+	cw.messageArea(c)
 }
 
 // messageArea is the message list and the composer, without the sidebar.

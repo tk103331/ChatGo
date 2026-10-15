@@ -57,14 +57,16 @@ func (cw *ChatWindow) autoTasksPage(c *mgo.Context) {
 			}
 		})
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			mgo.Column(c).Gap(u * 2).MaxWidth(900).Children(func() {
-				if len(cw.cfg.AutoTasks) == 0 {
-					cw.autoTaskEmptyState(c)
-				} else {
+			if len(cw.cfg.AutoTasks) == 0 {
+				cw.autoTaskEmptyState(c)
+				return
+			}
+			mgo.Column(c).FillWidth().Grow(1).AlignItems(mgo.Center).Children(func() {
+				mgo.Column(c).FillWidth().MaxWidth(900).Gap(u * 2).Children(func() {
 					for i := range cw.cfg.AutoTasks {
 						cw.autoTaskCard(c, i)
 					}
-				}
+				})
 			})
 		})
 	})
@@ -256,24 +258,26 @@ func (cw *ChatWindow) autoTaskEditor(c *mgo.Context) {
 			}
 		})
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			mgo.Column(c).MaxWidth(760).Gap(u * 2).Children(func() {
-				minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "任务名称"})
-				agentOpts := []minput.SelectOption[string]{{Value: "", Label: chatAgentName}}
-				for _, a := range cw.cfg.Agents {
-					agentOpts = append(agentOpts, minput.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
-				}
-				minput.Select(c, &f.agent, agentOpts, minput.SelectOptions{Label: "Agent"})
-				minput.TextArea(c, &f.prompt, minput.TextAreaOptions{Label: "提示词", Placeholder: "每次运行发送给 Agent 的内容", MinHeight: 120})
-				mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-					in := minput.TextInput(c, &f.workspace, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})
-					in.Element.Grow(1)
-					if minput.Button(c, "选择", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-						cw.pickDirectory("选择工作目录", func(path string) { f.workspace = path })
+			mgo.Column(c).FillWidth().AlignItems(mgo.Center).Children(func() {
+				mgo.Column(c).FillWidth().MaxWidth(760).Gap(u * 2).Children(func() {
+					minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "任务名称"})
+					agentOpts := []minput.SelectOption[string]{{Value: "", Label: chatAgentName}}
+					for _, a := range cw.cfg.Agents {
+						agentOpts = append(agentOpts, minput.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
 					}
+					minput.Select(c, &f.agent, agentOpts, minput.SelectOptions{Label: "Agent"})
+					minput.TextArea(c, &f.prompt, minput.TextAreaOptions{Label: "提示词", Placeholder: "每次运行发送给 Agent 的内容", MinHeight: 120})
+					mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
+						in := minput.TextInput(c, &f.workspace, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})
+						in.Element.Grow(1)
+						if minput.Button(c, "选择", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+							cw.pickDirectory("选择工作目录", func(path string) { f.workspace = path })
+						}
+					})
+					cw.autoScheduleForm(c, f)
+					minput.Switch(c, &f.reuse, "复用会话（否则每次新建）", minput.SwitchOptions{})
+					minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
 				})
-				cw.autoScheduleForm(c, f)
-				minput.Switch(c, &f.reuse, "复用会话（否则每次新建）", minput.SwitchOptions{})
-				minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
 			})
 		})
 	})

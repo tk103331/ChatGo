@@ -187,6 +187,8 @@ func (cw *ChatWindow) skillsList(c *mgo.Context) {
 				Padding(u, u*2).Radius(mtheme.ControlRadius)
 			if selected {
 				b.Background(k.Selection)
+			} else if b.Hovered() {
+				b.Background(k.SurfaceHover)
 			}
 			b.Children(func() {
 				mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
