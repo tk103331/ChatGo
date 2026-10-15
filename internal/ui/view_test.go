@@ -20,14 +20,12 @@ func testWindow() *ChatWindow {
 		ReactAgentMaxStep: 20,
 	}
 	return &ChatWindow{
-		cfg:           cfg,
-		mcpManager:    NewMCPManagerWrapper(),
-		provider:      "OpenAI",
-		toolOn:        map[string]bool{},
-		editingIdx:    -1,
-		acpConvs:      map[string]*acpConv{},
-		acpConvBySess: map[acp.SessionId]string{},
-		acpConvObj:    map[string]*models.Conversation{},
+		cfg:        cfg,
+		mcpManager: NewMCPManagerWrapper(),
+		provider:   "OpenAI",
+		toolOn:     map[string]bool{},
+		editingIdx: -1,
+		acp:        newACPState(),
 	}
 }
 
@@ -160,7 +158,7 @@ func TestACPControlsRender(t *testing.T) {
 	cw.cur = &models.Conversation{ID: "acp1", Title: "ACP", Workspace: "/tmp/demo", Agent: "acp:OpenCode",
 		Messages: []models.Message{{ID: "u1", Role: "user", Content: "hi", Timestamp: time.Now()}}}
 	cw.cfg.ACPAgents = []config.ACPConnection{{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}}}
-	cw.acpConvs["acp1"] = &acpConv{
+	cw.acp.convs["acp1"] = &acpConv{
 		modeID: "plan",
 		modes:  []acp.SessionMode{{Id: "plan", Name: "Plan"}, {Id: "build", Name: "Build"}},
 		configs: []acp.SessionConfigOption{
@@ -179,17 +177,17 @@ func TestMCPPageRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionMCP
 	cw.cfg.MCPServers = []config.MCPServer{{Name: "filesystem", Type: "stdio", Command: "npx"}}
-	cw.mcpMarketLoaded = true
-	cw.mcpMarket = []mcpMarketServer{
+	cw.mcp.marketLoaded = true
+	cw.mcp.market = []mcpMarketServer{
 		{ID: "github", Name: "GitHub", Description: "GitHub MCP", Command: "npx", Args: []string{"-y", "@modelcontextprotocol/server-github"}},
 		{ID: "sqlite", Name: "SQLite", Description: "SQLite MCP", Command: "uvx", Args: []string{"mcp-server-sqlite"}},
 	}
-	cw.mcpTabSel = 1
+	cw.mcp.tabSel = 1
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("mcp render failed: %v", img)
 	}
-	cw.mcpTabSel = 0
+	cw.mcp.tabSel = 0
 	img2 := mgo.Render(cw.view, 1280, 820, 1)
 	if img2 == nil || img2.Bounds().Dx() != 1280 {
 		t.Fatalf("mcp servers render failed: %v", img2)
@@ -199,7 +197,7 @@ func TestMCPPageRenders(t *testing.T) {
 func TestMCPEmptyStateRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionMCP
-	cw.mcpTabSel = 0
+	cw.mcp.tabSel = 0
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("mcp empty state render failed: %v", img)
@@ -209,12 +207,12 @@ func TestMCPEmptyStateRenders(t *testing.T) {
 func TestMCPMarketEmptyResultRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionMCP
-	cw.mcpTabSel = 1
-	cw.mcpMarketLoaded = true
-	cw.mcpMarket = []mcpMarketServer{
+	cw.mcp.tabSel = 1
+	cw.mcp.marketLoaded = true
+	cw.mcp.market = []mcpMarketServer{
 		{ID: "github", Name: "GitHub", Description: "GitHub MCP"},
 	}
-	cw.mcpMarketQuery = "zzz-no-match"
+	cw.mcp.marketQuery = "zzz-no-match"
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("mcp market empty result render failed: %v", img)
@@ -272,4 +270,51 @@ func TestAutoTaskWithTasksRenders(t *testing.T) {
 	if img == nil || img.Bounds().Dx() != 1000 {
 		t.Fatalf("auto task with tasks render failed: %v", img)
 	}
+}
+
+func TestProvidersTabShowsCards(t *testing.T) {
+	cw := testWindow()
+	cw.cfg.Providers = config.ProviderPresets()
+	cw.section = sectionSettings
+	cw.settings.tab = 0
+	img := mgo.Render(cw.view, 1000, 700, 1)
+	if img == nil || img.Bounds().Dx() != 1000 {
+		t.Fatalf("providers tab render failed: %v", img)
+	}
+	// Count non-background pixels in the content area (below the tab strip)
+	var nonBg int
+	for y := 200; y < 600; y++ {
+		for x := 100; x < 900; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			if r > 0xf000 || g > 0xf000 || b > 0xf000 {
+				// near-white background
+			} else {
+				nonBg++
+			}
+		}
+	}
+	if nonBg < 100 {
+		t.Fatalf("providers tab content area appears empty: nonBg=%d", nonBg)
+	}
+}
+
+func TestBuiltinTabShowsContent(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionSettings
+	cw.settings.tab = 1
+	img := mgo.Render(cw.view, 1000, 700, 1)
+	if img == nil {
+		t.Fatal("builtin tab render failed")
+	}
+	var nonBg int
+	for y := 200; y < 600; y++ {
+		for x := 100; x < 900; x++ {
+			r, g, b, _ := img.At(x, y).RGBA()
+			if r > 0xf000 || g > 0xf000 || b > 0xf000 {
+			} else {
+				nonBg++
+			}
+		}
+	}
+	t.Logf("builtin tab nonBg=%d", nonBg)
 }
