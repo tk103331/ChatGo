@@ -7,6 +7,7 @@ import (
 	"chatgo/pkg/models"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/plugins/updater"
 )
 
 const trayRecentMax = 5
@@ -107,6 +108,9 @@ func (cw *ChatWindow) buildTrayMenu() *mygo.Menu {
 		}
 		items = append(items, &mygo.MenuItem{Label: "最近会话", Submenu: sub})
 	}
+	items = append(items, &mygo.MenuItem{Label: "检查更新…", Click: func(*mygo.MenuItem, *mygo.Window) {
+		updater.CheckForUpdates()
+	}})
 	items = append(items, mygo.Separator(), &mygo.MenuItem{Label: "退出 ChatGo", Role: mygo.RoleQuit})
 	return mygo.NewMenu(items)
 }

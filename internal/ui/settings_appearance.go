@@ -2,11 +2,13 @@ package ui
 
 import (
 	"chatgo/internal/config"
+	"chatgo/internal/ui/assets"
 	"chatgo/internal/ui/theme"
 	"strings"
 
-	mgo "github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
+	mgo "github.com/egoist/mygo/ui"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
@@ -143,7 +145,24 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 			mgo.Text(c, "通过 MyGo Updater 从官方发布自动更新，仅在打包安装后的应用中可用。").
 				FontSize(small).TextColor(k.TextMuted)
 		})
+		mgo.Text(c, "关于").Font(mtheme.SerifFont).FontWeight(600)
+		mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+			mgo.Image(c, assets.BrandBitmap()).Size(48, 48)
+			mgo.Column(c).Gap(u / 2).Children(func() {
+				mgo.Text(c, "ChatGo").FontWeight(600)
+				mgo.Text(c, "版本 "+cw.appVersion()).FontSize(small).TextColor(k.TextMuted)
+				mgo.Text(c, "MyGo 原生 UI · MIT 许可").FontSize(small).TextColor(k.TextMuted)
+			})
+		})
 	})
+}
+
+// appVersion returns the packaged version, or a dev marker when unbundled.
+func (cw *ChatWindow) appVersion() string {
+	if v := mygo.App.Version(); v != "" {
+		return v
+	}
+	return "(开发版)"
 }
 
 func (cw *ChatWindow) saveSystemSettings() {
