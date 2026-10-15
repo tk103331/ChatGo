@@ -1,4 +1,6 @@
-package ui
+// Package jssandbox runs untrusted JavaScript (or TypeScript) in an isolated
+// moejs runtime with memory and time limits, returning the result as JSON.
+package jssandbox
 
 import (
 	"context"
@@ -12,38 +14,38 @@ import (
 	"github.com/Calcium-Ion/moejs"
 )
 
-// jsSandboxConfig holds the parsed settings for a JS sandbox tool instance.
-type jsSandboxConfig struct {
-	memoryLimitMB int
-	timeout       time.Duration
-	typescript    bool
+// Config holds the parsed settings for a JS sandbox tool instance.
+type Config struct {
+	MemoryLimitMB int
+	Timeout       time.Duration
+	TypeScript    bool
 }
 
-// parseJsSandboxConfig reads the tool's config map with sensible defaults.
-func parseJsSandboxConfig(cfg map[string]string) jsSandboxConfig {
-	c := jsSandboxConfig{
-		memoryLimitMB: 64,
-		timeout:       5 * time.Second,
-		typescript:    false,
+// ParseConfig reads the tool's config map with sensible defaults.
+func ParseConfig(cfg map[string]string) Config {
+	c := Config{
+		MemoryLimitMB: 64,
+		Timeout:       5 * time.Second,
+		TypeScript:    false,
 	}
 	if v := cfg["memory_limit_mb"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
-			c.memoryLimitMB = n
+			c.MemoryLimitMB = n
 		}
 	}
 	if v := cfg["timeout_seconds"]; v != "" {
 		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
-			c.timeout = time.Duration(n) * time.Second
+			c.Timeout = time.Duration(n) * time.Second
 		}
 	}
 	if v := cfg["typescript"]; v != "" {
-		c.typescript = strings.EqualFold(strings.TrimSpace(v), "true")
+		c.TypeScript = strings.EqualFold(strings.TrimSpace(v), "true")
 	}
 	return c
 }
 
-// jsSandboxResult is the JSON shape returned to the LLM.
-type jsSandboxResult struct {
+// result is the JSON shape returned to the LLM.
+type sandboxResult struct {
 	OK         bool            `json:"ok"`
 	Result     json.RawMessage `json:"result,omitempty"`
 	Error      string          `json:"error,omitempty"`
@@ -52,12 +54,11 @@ type jsSandboxResult struct {
 	DurationUs int64           `json:"duration_us,omitempty"`
 }
 
-// runJsSandbox compiles and runs JavaScript (or TypeScript) code in an
-// isolated moejs runtime with memory and time limits, then returns the
-// result as JSON. The code must export a function named fnName (default
-// "run"); it receives input (parsed JSON) as its argument and its return
-// value is serialised back.
-func runJsSandbox(ctx context.Context, code, input, fnName string, cfg jsSandboxConfig) (string, error) {
+// Run compiles and runs code in an isolated moejs runtime with memory and time
+// limits, then returns the result as JSON. The code must export a function
+// named fnName (default "run"); it receives input (parsed JSON) as its argument
+// and its return value is serialised back.
+func Run(ctx context.Context, code, input, fnName string, cfg Config) (string, error) {
 	if fnName == "" {
 		fnName = "run"
 	}
@@ -66,22 +67,22 @@ func runJsSandbox(ctx context.Context, code, input, fnName string, cfg jsSandbox
 
 	var mod *moejs.Module
 	var err error
-	if cfg.typescript {
+	if cfg.TypeScript {
 		mod, err = moejs.CompileTS("sandbox.ts", code)
 	} else {
 		mod, err = moejs.Compile("sandbox.js", code)
 	}
 	if err != nil {
-		return jsResultJSON(false, "", err.Error(), "", "", start), nil
+		return resultJSON(false, "", err.Error(), "", "", start), nil
 	}
 
 	hook, err := mod.Hook(fnName)
 	if err != nil {
-		return jsResultJSON(false, "", fmt.Sprintf("export %q not found: %s", fnName, err), "", "", start), nil
+		return resultJSON(false, "", fmt.Sprintf("export %q not found: %s", fnName, err), "", "", start), nil
 	}
 
 	opts := moejs.Options{
-		MemoryLimit: int64(cfg.memoryLimitMB) * 1024 * 1024,
+		MemoryLimit: int64(cfg.MemoryLimitMB) * 1024 * 1024,
 	}
 	rt := moejs.NewRuntime(opts)
 
@@ -92,14 +93,14 @@ func runJsSandbox(ctx context.Context, code, input, fnName string, cfg jsSandbox
 		"warn":  moejs.NativeFunc(makeConsoleLog(&consoleBuf, "warn")),
 		"error": moejs.NativeFunc(makeConsoleLog(&consoleBuf, "error")),
 	}); err != nil {
-		return jsResultJSON(false, "", err.Error(), "", "", start), nil
+		return resultJSON(false, "", err.Error(), "", "", start), nil
 	}
 
 	if err := rt.Load(mod); err != nil {
-		return jsResultJSON(false, "", err.Error(), "", "", start), nil
+		return resultJSON(false, "", err.Error(), "", "", start), nil
 	}
 
-	runCtx, cancel := context.WithTimeout(ctx, cfg.timeout)
+	runCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
 
 	interrupted := make(chan struct{})
@@ -120,7 +121,7 @@ func runJsSandbox(ctx context.Context, code, input, fnName string, cfg jsSandbox
 		arg, err = rt.ParseJSONString("null")
 	}
 	if err != nil {
-		return jsResultJSON(false, "", err.Error(), "", consoleBuf.String(), start), nil
+		return resultJSON(false, "", err.Error(), "", consoleBuf.String(), start), nil
 	}
 
 	res, err := rt.Call(hook, arg)
@@ -129,24 +130,24 @@ func runJsSandbox(ctx context.Context, code, input, fnName string, cfg jsSandbox
 		var ie *moejs.InterruptedError
 		switch {
 		case errors.As(err, &exc):
-			return jsResultJSON(false, "", exc.Message(), exc.Name(), consoleBuf.String(), start), nil
+			return resultJSON(false, "", exc.Message(), exc.Name(), consoleBuf.String(), start), nil
 		case errors.As(err, &ie):
 			cause := "timeout"
 			if c := context.Cause(runCtx); c != nil {
 				cause = c.Error()
 			}
-			return jsResultJSON(false, "", cause, "", consoleBuf.String(), start), nil
+			return resultJSON(false, "", cause, "", consoleBuf.String(), start), nil
 		default:
-			return jsResultJSON(false, "", err.Error(), "", consoleBuf.String(), start), nil
+			return resultJSON(false, "", err.Error(), "", consoleBuf.String(), start), nil
 		}
 	}
 
 	var raw json.RawMessage
 	if err := rt.Unmarshal(res, &raw); err != nil {
-		return jsResultJSON(false, "", err.Error(), "", consoleBuf.String(), start), nil
+		return resultJSON(false, "", err.Error(), "", consoleBuf.String(), start), nil
 	}
 
-	return jsResultJSON(true, string(raw), "", "", consoleBuf.String(), start), nil
+	return resultJSON(true, string(raw), "", "", consoleBuf.String(), start), nil
 }
 
 // makeConsoleLog returns a host function that appends to the buffer.
@@ -166,9 +167,9 @@ func makeConsoleLog(buf *strings.Builder, level string) func(*moejs.Realm, moejs
 	}
 }
 
-// jsResultJSON builds the JSON result string using encoding/json for safety.
-func jsResultJSON(ok bool, result, errMsg, name, console string, start time.Time) string {
-	o := jsSandboxResult{
+// resultJSON builds the JSON result string using encoding/json for safety.
+func resultJSON(ok bool, result, errMsg, name, console string, start time.Time) string {
+	o := sandboxResult{
 		OK:         ok,
 		Error:      errMsg,
 		Name:       name,
