@@ -44,23 +44,26 @@ type acpCatalogEntry struct {
 
 func acpCatalog() []acpCatalogEntry {
 	return []acpCatalogEntry{
-		{Name: "Claude Code", Command: "npx", Args: []string{"-y", "@zed-industries/claude-code-acp"}, Description: "Anthropic Claude Code", Homepage: "https://claude.com"},
-		{Name: "Claude Agent SDK", Command: "npx", Args: []string{"-y", "@zed-industries/claude-agent-acp"}, Description: "Claude Agent SDK via Zed 适配器", Homepage: "https://github.com/zed-industries/claude-agent-acp"},
+		{Name: "ClaudeCode", Command: "npx", Args: []string{"-y", "@zed-industries/claude-code-acp"}, Description: "Anthropic Claude Code", Homepage: "https://claude.com"},
+		{Name: "ClaudeAgentSDK", Command: "npx", Args: []string{"-y", "@zed-industries/claude-agent-acp"}, Description: "Claude Agent SDK via Zed 适配器", Homepage: "https://github.com/zed-industries/claude-agent-acp"},
 		{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}, Description: "OpenCode AI 编程助手", Homepage: "https://github.com/sst/opencode"},
-		{Name: "Codex CLI", Command: "npx", Args: []string{"-y", "@agentclientprotocol/codex-acp"}, Description: "OpenAI Codex CLI", Homepage: "https://github.com/openai/codex"},
+		{Name: "CodexCLI", Command: "npx", Args: []string{"-y", "@agentclientprotocol/codex-acp"}, Description: "OpenAI Codex CLI", Homepage: "https://github.com/openai/codex"},
 		{Name: "Cursor", Command: "agent", Args: []string{"acp"}, Description: "Cursor CLI Agent", Homepage: "https://cursor.com"},
-		{Name: "Gemini CLI", Command: "gemini", Description: "Google Gemini CLI", Homepage: "https://github.com/google-gemini/gemini-cli"},
-		{Name: "Kiro CLI", Command: "kiro-cli", Args: []string{"acp"}, Description: "AWS Kiro CLI", Homepage: "https://kiro.dev"},
-		{Name: "GitHub Copilot", Command: "copilot", Description: "GitHub Copilot CLI", Homepage: "https://github.com/features/copilot"},
+		{Name: "GeminiCLI", Command: "gemini", Description: "Google Gemini CLI", Homepage: "https://github.com/google-gemini/gemini-cli"},
+		{Name: "KiroCLI", Command: "kiro-cli", Args: []string{"acp"}, Description: "AWS Kiro CLI", Homepage: "https://kiro.dev"},
+		{Name: "GitHubCopilot", Command: "copilot", Description: "GitHub Copilot CLI", Homepage: "https://github.com/features/copilot"},
 		{Name: "Goose", Command: "goose", Description: "Block Goose AI Agent", Homepage: "https://block.github.io/goose/"},
-		{Name: "Qwen Code", Command: "qwen", Description: "阿里通义灵码 Qwen Code", Homepage: "https://github.com/QwenLM/qwen-code"},
-		{Name: "Kimi CLI", Command: "kimi", Description: "月之暗面 Kimi CLI", Homepage: "https://github.com/MoonshotAI/kimi-cli"},
+		{Name: "QwenCode", Command: "qwen", Description: "阿里通义灵码 Qwen Code", Homepage: "https://github.com/QwenLM/qwen-code"},
+		{Name: "KimiCLI", Command: "kimi", Description: "月之暗面 Kimi CLI", Homepage: "https://github.com/MoonshotAI/kimi-cli"},
 		{Name: "Cline", Command: "npx", Args: []string{"-y", "@cline/cline-acp-adapter"}, Description: "Cline AI 助手", Homepage: "https://cline.bot"},
-		{Name: "Docker cagent", Command: "cagent", Description: "Docker cagent", Homepage: "https://github.com/docker/cagent"},
-		{Name: "Factory Droid", Command: "droid", Description: "Factory Droid", Homepage: "https://factory.ai"},
-		{Name: "Augment Code", Command: "augment", Args: []string{"acp"}, Description: "Augment Code CLI", Homepage: "https://docs.augmentcode.com/cli/acp"},
+		{Name: "Dockercagent", Command: "cagent", Description: "Docker cagent", Homepage: "https://github.com/docker/cagent"},
+		{Name: "FactoryDroid", Command: "droid", Description: "Factory Droid", Homepage: "https://factory.ai"},
+		{Name: "AugmentCode", Command: "augment", Args: []string{"acp"}, Description: "Augment Code CLI", Homepage: "https://docs.augmentcode.com/cli/acp"},
 		{Name: "OpenHands", Command: "openhands", Args: []string{"acp"}, Description: "OpenHands AI Agent", Homepage: "https://docs.openhands.dev"},
-		{Name: "Qoder CLI", Command: "qoder", Args: []string{"acp"}, Description: "Qoder CLI", Homepage: "https://docs.qoder.com/cli/acp"},
+		{Name: "QoderCLI", Command: "qoder", Args: []string{"acp"}, Description: "Qoder CLI", Homepage: "https://docs.qoder.com/cli/acp"},
+		{Name: "PiAgent", Command: "npx", Args: []string{"-y", "pi-acp"}, Description: "Pi coding agent ACP 适配器", Homepage: "https://github.com/victor-software-house/pi-acp"},
+		{Name: "DeepSeekHarness", Command: "npx", Args: []string{"-y", "deepseek-acp"}, Description: "DeepSeek Harness ACP 适配器", Homepage: "https://github.com/xintaofei/deepseek-acp"},
+		{Name: "OhMyPi", Command: "omp", Args: []string{"acp"}, Description: "Oh My Pi coding agent", Homepage: "https://omp.sh"},
 	}
 }
 

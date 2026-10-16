@@ -40,7 +40,7 @@ func ACPLogoSVG(name string) *mgo.SVG {
 // colors; they render with mgo.Image to keep the official look. All other
 // icons are single-color silhouettes drawn in the theme text color.
 var ACPTiledIcons = map[string]bool{
-	"kiro": true, "factory": true, "openhands": true, "qoder": true,
+	"kiro": true, "factory": true, "openhands": true, "qoder": true, "pi": true, "omp": true,
 }
 
 // ACPIconKey maps an agent name to its icon file key.
@@ -79,6 +79,12 @@ func ACPIconKey(name string) string {
 		return "augment"
 	case strings.Contains(low, "qoder"):
 		return "qoder"
+	case strings.Contains(low, "deepseek"):
+		return "deepseek"
+	case strings.Contains(low, "piagent") || strings.Contains(low, "pi-acp"):
+		return "pi"
+	case strings.Contains(low, "ohmypi") || strings.Contains(low, "oh-my-pi") || low == "omp":
+		return "omp"
 	}
 	return ""
 }
