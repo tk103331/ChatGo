@@ -31,7 +31,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { name: macOS, os: macos-latest, platform: "darwin/arm64" }
+          - { name: macOS arm64, os: macos-latest, platform: "darwin/arm64" }
+          - { name: macOS amd64, os: macos-latest, platform: "darwin/amd64", args: "-skip-dmg" }
           - { name: Windows, os: ubuntu-latest, platform: "windows/amd64" }
           - { name: Linux, os: ubuntu-latest, platform: "linux/amd64,linux/arm64" }
     steps:
@@ -48,7 +49,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
-        run: '"$RUNNER_TEMP/mygo" build -platform "${{ matrix.platform }}" -upload'
+        run: '"$RUNNER_TEMP/mygo" build -platform "${{ matrix.platform }}" ${{ matrix.args }} -upload'
 
   publish:
     needs: build
