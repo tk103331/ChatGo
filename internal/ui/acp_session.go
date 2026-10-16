@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	acp "github.com/coder/acp-go-sdk"
@@ -268,7 +267,7 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 	}
 	cmd.Env = env
 	// Own process group so the whole tree (npx → node) dies together.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.SysProcAttr = acpSysProcAttr()
 	// stderr is drained into a bounded buffer: inheriting it can block or
 	// write to an invalid descriptor in a GUI launch.
 	var errBuf acpTailBuffer
@@ -333,7 +332,7 @@ func (cw *ChatWindow) acpKillProcess(rt *acpConv) {
 	}
 	pid := rt.cmd.Process.Pid
 	// Negative pid targets the group made in acpEnsureSession.
-	_ = syscall.Kill(-pid, syscall.SIGKILL)
+	acpKillProcessGroup(pid)
 	_ = rt.cmd.Process.Kill()
 }
 
