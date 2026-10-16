@@ -27,9 +27,9 @@ type agentForm struct {
 	description  string
 	systemPrompt string
 	workspace    string
+	icon         string
 	avatarSeed   string
 	models       []string
-	newModel     string
 	builtinTools []string
 	toolQuery    string
 	mcpServers   []string
@@ -94,7 +94,7 @@ func (cw *ChatWindow) agentCard(c *mgo.Context, i int) {
 		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
 		Children(func() {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				cw.drawAgentAvatar(c, agentSeed(a), 20)
+				cw.agentMark(c, a, 20)
 				mgo.Text(c, a.Name).Font(mtheme.SerifFont).
 					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
 			})
@@ -141,9 +141,13 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	models := cw.modelOptions(f.models)
-	tools := config.GetAvailableBuiltinTools()
-	servers := cw.mcpServerNames()
-	names := cw.skillNames()
+	tools := cw.enabledBuiltinTools()
+	servers := cw.enabledMCPServers()
+	skillsEnabled := cw.enabledSkillList()
+	names := make([]string, 0, len(skillsEnabled))
+	for _, s := range skillsEnabled {
+		names = append(names, s.Name)
+	}
 	title := "新建 Agent"
 	if f.editing >= 0 {
 		title = "编辑 Agent"
@@ -166,28 +170,36 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 		})
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			mgo.Column(c).Gap(u * 3).Children(func() {
-				mgo.Row(c).Gap(u * 2).AlignItems(mgo.Start).Children(func() {
+				mgo.Row(c).Gap(u * 3).AlignItems(mgo.Start).Children(func() {
+					mgo.Column(c).Shrink(0).Gap(u).AlignItems(mgo.Center).Children(func() {
+						cw.agentFormPreviewMark(c, f, 56)
+						mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+							if mcore.IconAction(c, icons.Must("image"), "选择图片").Tooltip("选择图片").Clicked() {
+								cw.pickIconFile(func(path string) {
+									f.icon = path
+									f.avatarSeed = ""
+								})
+							}
+							if mcore.IconAction(c, icons.Must("refresh-cw"), "生成图标").Tooltip("生成图标").Clicked() {
+								base := strings.TrimSpace(f.name)
+								if base == "" {
+									base = "Agent"
+								}
+								f.avatarSeed = fmt.Sprintf("%s#%d", base, time.Now().UnixNano())
+								f.icon = ""
+								cw.invalidate()
+							}
+							if f.icon != "" || f.avatarSeed != "" {
+								if mcore.IconAction(c, icons.Must("x"), "清除图标").Tooltip("清除图标").Clicked() {
+									f.icon = ""
+									f.avatarSeed = ""
+								}
+							}
+						})
+					})
 					mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
 						minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Agent 名称"})
 						minput.TextInput(c, &f.description, minput.TextInputOptions{Label: "描述", Placeholder: "一句话说明"})
-					})
-					mgo.Column(c).Shrink(0).Gap(u).AlignItems(mgo.Center).Children(func() {
-						seed := f.avatarSeed
-						if seed == "" {
-							seed = f.name
-							if seed == "" {
-								seed = "Agent"
-							}
-						}
-						cw.drawAgentAvatar(c, seed, 48)
-						if minput.Button(c, "生成头像", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-							base := f.name
-							if base == "" {
-								base = "Agent"
-							}
-							f.avatarSeed = fmt.Sprintf("%s#%d", base, time.Now().UnixNano())
-						}
-						mgo.Text(c, "点击生成头像").FontSize(small).TextColor(k.TextMuted)
 					})
 				})
 				minput.TextArea(c, &f.systemPrompt, minput.TextAreaOptions{
@@ -202,7 +214,8 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 				})
 				on := countSelected(f.models, models)
 				cw.agentGroup(c, &cw.agentSecModels, fmt.Sprintf("可用模型  %d/%d", on, len(models)), func() {
-					agentAction(c, on, len(models), func(all bool) { f.models = toggleAll(models, all) })
+					agentAction(c, on, len(models), func(all bool) { f.models = toggleAll(models, all) },
+						func() { cw.settings.tab = 0; cw.goConfigure(sectionSettings) })
 					mgo.Row(c).Gap(u).Wrap().Children(func() {
 						for _, ref := range models {
 							ref := ref
@@ -211,23 +224,11 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 							f.models = setTool(f.models, ref, on)
 						}
 					})
-					mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-						in := minput.TextInput(c, &f.newModel, minput.TextInputOptions{Placeholder: "手动添加模型名"})
-						in.Element.Grow(1)
-						if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-							if name := strings.TrimSpace(f.newModel); name != "" {
-								ref := modelRef("", name)
-								if !containsStr(f.models, ref) {
-									f.models = append(f.models, ref)
-								}
-								f.newModel = ""
-							}
-						}
-					})
 				})
 				on = countSelected(f.builtinTools, tools)
 				cw.agentGroup(c, &cw.agentSecTools, fmt.Sprintf("工具  %d/%d", on, len(tools)), func() {
-					agentAction(c, on, len(tools), func(all bool) { f.builtinTools = toggleAll(tools, all) })
+					agentAction(c, on, len(tools), func(all bool) { f.builtinTools = toggleAll(tools, all) },
+						func() { cw.settings.tab = 1; cw.goConfigure(sectionSettings) })
 					agentSearch(c, &f.toolQuery, "搜索工具")
 					mgo.Grid(c).Columns(2).Gap(u).Children(func() {
 						for _, t := range filterStrings(tools, f.toolQuery) {
@@ -244,7 +245,8 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 				})
 				on = countSelected(f.mcpServers, servers)
 				cw.agentGroup(c, &cw.agentSecMCP, fmt.Sprintf("MCP 服务器  %d/%d", on, len(servers)), func() {
-					agentAction(c, on, len(servers), func(all bool) { f.mcpServers = toggleAll(servers, all) })
+					agentAction(c, on, len(servers), func(all bool) { f.mcpServers = toggleAll(servers, all) },
+						func() { cw.goConfigure(sectionMCP) })
 					if len(servers) == 0 {
 						mgo.Text(c, "尚未配置 MCP 服务器。").FontSize(small).TextColor(k.TextMuted)
 					}
@@ -259,16 +261,32 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 				})
 				on = countSelected(f.skills, names)
 				cw.agentGroup(c, &cw.agentSecSkills, fmt.Sprintf("Skills  %d/%d", on, len(names)), func() {
-					agentAction(c, on, len(names), func(all bool) { f.skills = toggleAll(names, all) })
+					agentAction(c, on, len(names), func(all bool) { f.skills = toggleAll(names, all) },
+						func() { cw.goConfigure(sectionSkill) })
 					if len(names) == 0 {
 						mgo.Text(c, "未发现 Skill。").FontSize(small).TextColor(k.TextMuted)
 					}
 					agentSearch(c, &f.skillQuery, "搜索 Skill")
-					mgo.Grid(c).Columns(2).Gap(u).Children(func() {
-						for _, n := range filterStrings(names, f.skillQuery) {
-							on := containsStr(f.skills, n)
-							minput.Checkbox(c, &on, n, minput.CheckboxOptions{})
-							f.skills = setTool(f.skills, n, on)
+					mgo.Column(c).Gap(u).Children(func() {
+						for _, s := range filterSkills(skillsEnabled, f.skillQuery) {
+							s := s
+							on := containsStr(f.skills, s.Name)
+							mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+								minput.Checkbox(c, &on, "", minput.CheckboxOptions{})
+								body := mgo.ButtonBase(c).Grow(1).MinWidth(0).Justify(mgo.Start).Children(func() {
+									mgo.Column(c).Grow(1).MinWidth(0).Children(func() {
+										mgo.Text(c, s.Name).SingleLine()
+										if s.Description != "" {
+											mgo.Text(c, s.Description).FontSize(small).TextColor(k.TextMuted).
+												SingleLine().Ellipsis("…")
+										}
+									})
+								})
+								if body.Clicked() {
+									on = !on
+								}
+							})
+							f.skills = setTool(f.skills, s.Name, on)
 						}
 					})
 				})
@@ -282,8 +300,9 @@ func (cw *ChatWindow) agentGroup(c *mgo.Context, open *bool, title string, body 
 	mdata.Collapsible(c, open, mdata.CollapsibleOptions{Title: title}, body)
 }
 
-// agentAction shows a group's count and a select-all/clear button.
-func agentAction(c *mgo.Context, on, total int, toggle func(all bool)) {
+// agentAction shows a group's count with a select-all/clear button and an
+// optional shortcut to the global configuration page.
+func agentAction(c *mgo.Context, on, total int, toggle func(all bool), configure func()) {
 	k := mcore.Tokens(c)
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
@@ -294,6 +313,11 @@ func agentAction(c *mgo.Context, on, total int, toggle func(all bool)) {
 		}
 		if minput.Button(c, label, minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
 			toggle(on != total)
+		}
+		if configure != nil {
+			if minput.Button(c, "去配置", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("sliders-horizontal")}).Clicked() {
+				configure()
+			}
 		}
 	})
 }
@@ -306,14 +330,53 @@ func agentSeed(a config.AgentDef) string {
 	return a.Name
 }
 
-// agentSeedByName resolves an agent's avatar seed by name.
-func (cw *ChatWindow) agentSeedByName(name string) string {
-	for _, a := range cw.cfg.Agents {
-		if a.Name == name {
-			return agentSeed(a)
+// agentMark draws an agent's mark: a configured icon file, else its generated
+// avatar.
+func (cw *ChatWindow) agentMark(c *mgo.Context, a config.AgentDef, size float32) {
+	if a.Icon != "" && drawIconImage(c, cw.loadIconImage(a.Icon), size) {
+		return
+	}
+	if bmp := cw.agentBitmap(agentSeed(a)); bmp != nil {
+		mgo.Image(c, bmp).Size(size, size).Shrink(0)
+	}
+}
+
+// agentMarkByName finds an agent by name and draws its mark.
+func (cw *ChatWindow) agentMarkByName(c *mgo.Context, name string, size float32) {
+	if a, ok := cw.agentByName(name); ok {
+		cw.agentMark(c, a, size)
+		return
+	}
+	if bmp := cw.agentBitmap(name); bmp != nil {
+		mgo.Image(c, bmp).Size(size, size).Shrink(0)
+	}
+}
+
+// agentFormPreviewMark draws the mark an agent form currently describes.
+func (cw *ChatWindow) agentFormPreviewMark(c *mgo.Context, f *agentForm, size float32) {
+	if f.icon != "" && drawIconImage(c, cw.loadIconImage(f.icon), size) {
+		return
+	}
+	seed := strings.TrimSpace(f.avatarSeed)
+	if seed == "" {
+		seed = strings.TrimSpace(f.name)
+		if seed == "" {
+			seed = "Agent"
 		}
 	}
-	return name
+	if bmp := cw.agentBitmap(seed); bmp != nil {
+		mgo.Image(c, bmp).Size(size, size).Shrink(0)
+	}
+}
+
+// agentByName finds an agent preset by its display name.
+func (cw *ChatWindow) agentByName(name string) (config.AgentDef, bool) {
+	for _, a := range cw.cfg.Agents {
+		if a.Name == name {
+			return a, true
+		}
+	}
+	return config.AgentDef{}, false
 }
 
 // countSelected counts how many of want are in have.
@@ -356,23 +419,58 @@ func toggleAll(want []string, all bool) []string {
 	return nil
 }
 
-// mcpServerNames lists the configured MCP server names.
-func (cw *ChatWindow) mcpServerNames() []string {
-	out := make([]string, 0, len(cw.cfg.MCPServers))
-	for _, s := range cw.cfg.MCPServers {
-		out = append(out, s.Name)
+// enabledBuiltinTools lists the globally enabled built-in tool types.
+func (cw *ChatWindow) enabledBuiltinTools() []string {
+	var out []string
+	for _, t := range cw.cfg.BuiltinTools {
+		if t.Enabled {
+			out = append(out, t.Type)
+		}
 	}
 	return out
 }
 
-// skillNames lists the loaded skill names.
-func (cw *ChatWindow) skillNames() []string {
+// enabledMCPServers lists the globally enabled MCP server names.
+func (cw *ChatWindow) enabledMCPServers() []string {
+	var out []string
+	for _, s := range cw.cfg.MCPServers {
+		if s.Enabled {
+			out = append(out, s.Name)
+		}
+	}
+	return out
+}
+
+// enabledSkillList lists the globally enabled skills.
+func (cw *ChatWindow) enabledSkillList() []skill {
+	var out []skill
+	for _, s := range cw.skillList() {
+		if cw.skillEnabled(s.ID) {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// skillList returns the loaded skills, scanning once when needed.
+func (cw *ChatWindow) skillList() []skill {
 	if !cw.skills.loaded {
 		cw.loadSkills()
 	}
-	out := make([]string, 0, len(cw.skills.list))
-	for _, s := range cw.skills.list {
-		out = append(out, s.Name)
+	return cw.skills.list
+}
+
+// filterSkills returns the skills whose name or description contains query.
+func filterSkills(list []skill, query string) []skill {
+	q := strings.ToLower(strings.TrimSpace(query))
+	if q == "" {
+		return list
+	}
+	var out []skill
+	for _, s := range list {
+		if strings.Contains(strings.ToLower(s.Name), q) || strings.Contains(strings.ToLower(s.Description), q) {
+			out = append(out, s)
+		}
 	}
 	return out
 }
@@ -381,7 +479,8 @@ func (cw *ChatWindow) loadAgentForm(i int) {
 	a := cw.cfg.Agents[i]
 	cw.agentForm = agentForm{
 		editing: i, name: a.Name, description: a.Description,
-		systemPrompt: a.SystemPrompt, workspace: a.Workspace, avatarSeed: agentSeed(a),
+		systemPrompt: a.SystemPrompt, workspace: a.Workspace,
+		icon: a.Icon, avatarSeed: a.AvatarSeed,
 		models:       append([]string(nil), a.Models...),
 		builtinTools: append([]string(nil), a.BuiltinTools...),
 		mcpServers:   append([]string(nil), a.MCPServers...),
@@ -392,16 +491,9 @@ func (cw *ChatWindow) loadAgentForm(i int) {
 func (cw *ChatWindow) clearAgentForm() {
 	cw.agentForm = agentForm{editing: -1}
 	cw.agentForm.models = cw.allModelRefs()
-	for _, t := range config.GetAvailableBuiltinTools() {
-		cw.agentForm.builtinTools = append(cw.agentForm.builtinTools, t)
-	}
-	for _, s := range cw.cfg.MCPServers {
-		cw.agentForm.mcpServers = append(cw.agentForm.mcpServers, s.Name)
-	}
-	if !cw.skills.loaded {
-		cw.loadSkills()
-	}
-	for _, sk := range cw.skills.list {
+	cw.agentForm.builtinTools = cw.enabledBuiltinTools()
+	cw.agentForm.mcpServers = cw.enabledMCPServers()
+	for _, sk := range cw.enabledSkillList() {
 		cw.agentForm.skills = append(cw.agentForm.skills, sk.Name)
 	}
 }
@@ -422,7 +514,7 @@ func (cw *ChatWindow) saveAgent() bool {
 	}
 	def := config.AgentDef{
 		Name: f.name, Description: f.description, SystemPrompt: f.systemPrompt,
-		Workspace: f.workspace, AvatarSeed: f.avatarSeed, Models: append([]string(nil), f.models...), Mode: mode,
+		Workspace: f.workspace, Icon: f.icon, AvatarSeed: f.avatarSeed, Models: append([]string(nil), f.models...), Mode: mode,
 		BuiltinTools: f.builtinTools, MCPServers: f.mcpServers, Skills: f.skills,
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Agents) {

@@ -2,6 +2,7 @@ package main
 
 import (
 	"chatgo/internal/config"
+	"chatgo/internal/shellenv"
 	"chatgo/internal/ui"
 	"fmt"
 	"log"
@@ -12,6 +13,7 @@ import (
 )
 
 func main() {
+	shellenv.AugmentPath()
 	mygo.Use(native.Plugin)
 
 	cfg, err := config.LoadConfig()

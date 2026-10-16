@@ -41,10 +41,10 @@ type Channel struct {
 	Type       string   `yaml:"type"` // "feishu" or "wechat"
 	Name       string   `yaml:"name"`
 	Enabled    bool     `yaml:"enabled"`
-	Agent      string   `yaml:"agent,omitempty"` // "agent:Name" / "acp:Name" / "" = built-in Chat
-	AppID      string   `yaml:"app_id,omitempty"`      // feishu: App ID; wechat: iLink Bot ID
-	AppSecret  string   `yaml:"app_secret,omitempty"`  // feishu: App Secret; wechat: iLink Bot Token
-	BaseURL    string   `yaml:"base_url,omitempty"`    // wechat: iLink base URL (default https://ilinkai.weixin.qq.com)
+	Agent      string   `yaml:"agent,omitempty"`      // "agent:Name" / "acp:Name" / "" = built-in Chat
+	AppID      string   `yaml:"app_id,omitempty"`     // feishu: App ID; wechat: iLink Bot ID
+	AppSecret  string   `yaml:"app_secret,omitempty"` // feishu: App Secret; wechat: iLink Bot Token
+	BaseURL    string   `yaml:"base_url,omitempty"`   // wechat: iLink base URL (default https://ilinkai.weixin.qq.com)
 	Workspace  string   `yaml:"workspace,omitempty"`
 	ConvID     string   `yaml:"conversation_id,omitempty"`
 	ConvIDs    []string `yaml:"conversation_ids,omitempty"`
@@ -108,12 +108,14 @@ type AgentDef struct {
 
 // ACPConnection is a local coding CLI spoken to over the Agent Client Protocol.
 type ACPConnection struct {
-	Name     string            `yaml:"name"`
-	Command  string            `yaml:"command"`
-	Args     []string          `yaml:"args,omitempty"`
-	Env      map[string]string `yaml:"env,omitempty"`
-	Cwd      string            `yaml:"cwd,omitempty"`
-	Disabled bool              `yaml:"disabled,omitempty"`
+	Name       string            `yaml:"name"`
+	Command    string            `yaml:"command"`
+	Args       []string          `yaml:"args,omitempty"`
+	Env        map[string]string `yaml:"env,omitempty"`
+	Cwd        string            `yaml:"cwd,omitempty"`
+	Icon       string            `yaml:"icon,omitempty"`
+	AvatarSeed string            `yaml:"avatar_seed,omitempty"`
+	Disabled   bool              `yaml:"disabled,omitempty"`
 }
 
 // Provider represents an LLM provider configuration
@@ -198,7 +200,7 @@ func GetBuiltinToolDisplayName(toolType string) string {
 		"commandline":        "命令行",
 		"filesystem":         "文件系统",
 		"sequentialthinking": "链式思考",
-		"jssandbox":           "JS 沙箱",
+		"jssandbox":          "JS 沙箱",
 	}
 	if name, ok := names[toolType]; ok {
 		return name
@@ -218,7 +220,7 @@ func GetBuiltinToolDescription(toolType string) string {
 		"commandline":        "Command Line - Execute shell commands (use with caution)",
 		"filesystem":         "Filesystem - Read, write or list files under the working directory",
 		"sequentialthinking": "Sequential Thinking - Chain of thought reasoning tool",
-		"jssandbox":           "JS Sandbox - Run JavaScript/TypeScript code in a secure sandbox (powered by moejs)",
+		"jssandbox":          "JS Sandbox - Run JavaScript/TypeScript code in a secure sandbox (powered by moejs)",
 	}
 	if desc, ok := descriptions[toolType]; ok {
 		return desc

@@ -84,14 +84,14 @@ type ChatWindow struct {
 	termTabs     []mcode.TerminalTab
 	termActiveID string
 	termSeq      int
-	termH       float32
-	treeW       float32
-	previewW    float32
-	mainW       float32
-	chatW       float32
-	lastWinW    float32
-	lastRightW  float32
-	lastPreview bool
+	termH        float32
+	treeW        float32
+	previewW     float32
+	mainW        float32
+	chatW        float32
+	lastWinW     float32
+	lastRightW   float32
+	lastPreview  bool
 
 	previewTabs []previewTab
 	previewSel  int
@@ -173,6 +173,9 @@ type ChatWindow struct {
 
 	avatarMu  sync.Mutex
 	avatarPNG map[string]*mgo.Bitmap
+
+	iconMu    sync.Mutex
+	iconCache map[string]iconImage
 
 	acpList         mgo.ListState
 	acpForm         acpForm
@@ -261,6 +264,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		agentSecMCP:    true,
 		agentSecSkills: true,
 		avatarPNG:      map[string]*mgo.Bitmap{},
+		iconCache:      map[string]iconImage{},
 		autoRunning:    map[string]bool{},
 	}
 	if wd, err := os.Getwd(); err == nil {

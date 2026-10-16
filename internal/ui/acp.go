@@ -3,12 +3,15 @@ package ui
 import (
 	_ "embed"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/config"
+	"chatgo/internal/shellenv"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
@@ -20,13 +23,15 @@ import (
 const acpHandshakeTimeout = 60 * time.Second
 
 type acpForm struct {
-	editing  int
-	name     string
-	command  string
-	args     string
-	env      string
-	cwd      string
-	disabled bool
+	editing    int
+	name       string
+	command    string
+	args       string
+	env        string
+	cwd        string
+	icon       string
+	avatarSeed string
+	disabled   bool
 }
 
 type acpCatalogEntry struct {
@@ -158,7 +163,7 @@ func (cw *ChatWindow) acpCard(c *mgo.Context, i int) {
 	card.Children(func() {
 		mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				acpIcon(c, a.Name, 18, 18)
+				cw.acpLeading(c, a.Name, 18)
 				mgo.Text(c, a.Name).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
@@ -189,7 +194,15 @@ func (cw *ChatWindow) acpFormFields(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
 		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称"})
-		minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 claude-code-acp 或 gemini"})
+		cw.acpFormIconRow(c)
+		cmd := minput.InputGroup(c, &f.command, minput.InputGroupOptions{
+			Label:       "命令",
+			Placeholder: "如 claude-code-acp 或 gemini",
+			Buttons:     []minput.InputGroupButton{{Label: "查找", Icon: icons.Must("search")}},
+		})
+		if cmd.Clicked == 0 {
+			cw.locateACPCommand()
+		}
 		minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
 		minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
 		minput.TextInput(c, &f.cwd, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前目录"})
@@ -204,11 +217,108 @@ func (cw *ChatWindow) acpFormFields(c *mgo.Context) {
 	})
 }
 
+// acpFormIconRow shows the connection icon preview with pick/generate actions.
+func (cw *ChatWindow) acpFormIconRow(c *mgo.Context) {
+	f := &cw.acpForm
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+		cw.acpFormPreviewIcon(c, f, 48)
+		mgo.Column(c).Grow(1).MinWidth(0).Gap(u).Children(func() {
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				if mcore.IconAction(c, icons.Must("image"), "选择图标").Tooltip("选择图标").Clicked() {
+					cw.pickIconFile(func(path string) {
+						f.icon = path
+						f.avatarSeed = ""
+					})
+				}
+				if mcore.IconAction(c, icons.Must("refresh-cw"), "生成图标").Tooltip("生成图标").Clicked() {
+					base := strings.TrimSpace(f.name)
+					if base == "" {
+						base = "ACP"
+					}
+					f.avatarSeed = fmt.Sprintf("%s#%d", base, time.Now().UnixNano())
+					f.icon = ""
+					cw.invalidate()
+				}
+				if f.icon != "" || f.avatarSeed != "" {
+					if mcore.IconAction(c, icons.Must("x"), "清除图标").Tooltip("清除图标").Clicked() {
+						f.icon = ""
+						f.avatarSeed = ""
+					}
+				}
+				if f.icon != "" {
+					mgo.Text(c, filepath.Base(f.icon)).FontSize(caption).TextColor(k.TextMuted).
+						SingleLine().Ellipsis("…").Tooltip(f.icon)
+				}
+			})
+		})
+	})
+}
+
+// acpFormPreviewIcon draws the icon a form currently describes, before saving.
+func (cw *ChatWindow) acpFormPreviewIcon(c *mgo.Context, f *acpForm, size float32) {
+	if f.icon != "" && drawIconImage(c, cw.loadIconImage(f.icon), size) {
+		return
+	}
+	if f.avatarSeed != "" {
+		if bmp := cw.agentBitmap(f.avatarSeed); bmp != nil {
+			mgo.Image(c, bmp).Size(size, size).Shrink(0)
+		}
+		return
+	}
+	if acpIcon(c, f.name, size, size) {
+		return
+	}
+	mgo.Icon(c, icons.Must(chatAgentIcon)).Size(size, size).Shrink(0).TextColor(mcore.Tokens(c).AccentText)
+}
+
+// pickIconFile opens a native image chooser and hands the path to cb.
+func (cw *ChatWindow) pickIconFile(cb func(string)) {
+	cw.winMu.Lock()
+	w := cw.window
+	cw.winMu.Unlock()
+	go func() {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent: w, Title: "选择图标",
+			Filters: []mygo.FileFilter{{Name: "图片", Extensions: []string{"png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"}}},
+		})
+		if err != nil || len(paths) == 0 {
+			return
+		}
+		cw.postMain(func() {
+			cb(paths[0])
+			cw.invalidate()
+		})
+	}()
+}
+
+// locateACPCommand rewrites the form command to the absolute path of the
+// executable found on PATH or in common install directories.
+func (cw *ChatWindow) locateACPCommand() {
+	f := &cw.acpForm
+	name := strings.TrimSpace(f.command)
+	if name == "" {
+		cw.toast("请先填写命令", mcore.SeverityInfo)
+		return
+	}
+	path, ok := shellenv.ResolveCommand(name)
+	if !ok {
+		cw.toast("未找到命令 "+name, mcore.SeverityError)
+		return
+	}
+	f.command = path
+	cw.invalidate()
+	cw.toast("已定位到 "+path, mcore.SeveritySuccess)
+}
+
 func (cw *ChatWindow) loadACPForm(i int) {
 	a := cw.cfg.ACPAgents[i]
 	cw.acpForm = acpForm{
 		editing: i, name: a.Name, command: a.Command,
-		args: strings.Join(a.Args, "\n"), env: joinKV(a.Env), cwd: a.Cwd, disabled: a.Disabled,
+		args: strings.Join(a.Args, "\n"), env: joinKV(a.Env), cwd: a.Cwd,
+		icon: a.Icon, avatarSeed: a.AvatarSeed, disabled: a.Disabled,
 	}
 }
 
@@ -224,7 +334,7 @@ func (cw *ChatWindow) saveACP() {
 	}
 	conn := config.ACPConnection{
 		Name: f.name, Command: f.command, Args: splitLines(f.args),
-		Env: parseKV(f.env), Cwd: f.cwd, Disabled: f.disabled,
+		Env: parseKV(f.env), Cwd: f.cwd, Icon: f.icon, AvatarSeed: f.avatarSeed, Disabled: f.disabled,
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.ACPAgents) {
 		cw.cfg.ACPAgents[f.editing] = conn

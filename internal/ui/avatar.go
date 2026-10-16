@@ -37,12 +37,7 @@ func (cw *ChatWindow) drawAgentAvatar(c *mgo.Context, name string, size float32)
 
 // agentLeading returns a leading-image builder for a menu row.
 func (cw *ChatWindow) agentLeading(c *mgo.Context, name string) func() {
-	bmp := cw.agentBitmap(name)
-	return func() {
-		if bmp != nil {
-			mgo.Image(c, bmp).Size(16, 16)
-		}
-	}
+	return func() { cw.agentMarkByName(c, name, 16) }
 }
 
 // makeIdenticon builds an offline identicon bitmap for a seed.

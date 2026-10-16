@@ -7,7 +7,6 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
-	"chatgo/internal/ui/assets"
 	"chatgo/pkg/models"
 
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
@@ -230,7 +229,7 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 			menuItem(c, iconLeading(c, chatAgentIcon), chatAgentName, func() { pick("") })
 			for _, a := range cw.cfg.Agents {
 				name := a.Name
-				menuItem(c, cw.agentLeading(c, agentSeed(a)), name, func() { pick("agent:" + name) })
+				menuItem(c, cw.agentLeading(c, name), name, func() { pick("agent:" + name) })
 			}
 			for _, a := range cw.cfg.ACPAgents {
 				if a.Disabled {
@@ -265,7 +264,7 @@ func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	selected := cw.cur != nil && cw.cur.ID == conv.ID
 	var v mchat.ConversationItemView
 	mgo.Row(c).FillWidth().Margin(0, 0, 0, mcore.Density(c).Unit()*3).AlignItems(mgo.Center).Children(func() {
-		cw.convLeading(c, conv)
+		cw.convLeading(c, conv, 16)
 		mgo.Box(c).Grow(1).MinWidth(0).Children(func() {
 			v = mchat.ConversationItem(c, &mc, mchat.ConversationItemOptions{Selected: selected})
 		})
@@ -337,21 +336,17 @@ func logoLeading(c *mgo.Context, name string) func() {
 	}
 }
 
-// convLeading shows the conversation agent's logo or generated avatar.
-func (cw *ChatWindow) convLeading(c *mgo.Context, conv models.Conversation) {
+// convLeading shows the conversation agent's logo or generated avatar at size.
+func (cw *ChatWindow) convLeading(c *mgo.Context, conv models.Conversation, size float32) {
 	u := mcore.Density(c).Unit()
 	switch {
 	case strings.HasPrefix(conv.Agent, "acp:"):
 		name := strings.TrimPrefix(conv.Agent, "acp:")
-		if assets.ACPLogoSVG(name) != nil || assets.ACPLogo(name) != nil {
-			mgo.Row(c).Margin(0, 0, 0, u).Children(func() { acpIcon(c, name, 16, 16) })
-		}
+		mgo.Row(c).Margin(0, 0, 0, u).Children(func() { cw.acpLeading(c, name, size) })
 	case strings.HasPrefix(conv.Agent, "agent:"):
 		name := strings.TrimPrefix(conv.Agent, "agent:")
-		if bmp := cw.agentBitmap(cw.agentSeedByName(name)); bmp != nil {
-			mgo.Image(c, bmp).Size(16, 16).Margin(0, 0, 0, u)
-		}
+		mgo.Row(c).Margin(0, 0, 0, u).Children(func() { cw.agentMarkByName(c, name, size) })
 	default:
-		mgo.Icon(c, icons.Must(chatAgentIcon)).Size(16, 16).TextColor(mcore.Tokens(c).AccentText).Margin(0, 0, 0, u)
+		mgo.Icon(c, icons.Must(chatAgentIcon)).Size(size, size).TextColor(mcore.Tokens(c).AccentText).Margin(0, 0, 0, u)
 	}
 }
