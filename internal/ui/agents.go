@@ -391,7 +391,7 @@ func countSelected(have, want []string) int {
 }
 
 // agentSearch renders a compact search field filtering a list.
-func agentSearch(c *mgo.Context, query *string, placeholder string) *mgo.Element {
+func agentSearch(c *mgo.Context, query *string, placeholder string) mgo.Element {
 	in := minput.SearchInput(c, query, minput.SearchInputOptions{Placeholder: placeholder, Label: placeholder})
 	return in.Element.FillWidth()
 }

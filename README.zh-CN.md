@@ -2,7 +2,7 @@
 
 **一个简单的 AI 聊天客户端，仅用于学习目的。**
 
-一个简单的跨平台 AI 聊天客户端，使用 Go、[MyGo](https://github.com/egoist/mygo) 与 [MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI) 构建，支持多模型、Agent、工具、MCP、ACP 以及内置终端。
+一个简单的跨平台 AI 聊天客户端，使用 Go、[MyGo](https://github.com/egoist/mygo) 与 [MujicaUI](https://git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI) 构建，支持多模型、Agent、工具、MCP、ACP 以及内置终端。
 
 ![ChatGo](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -47,10 +47,10 @@ go build -o chatgo .
 ./chatgo
 ```
 
-> **依赖提示**：MujicaUI 尚未发布到公共代理，首次拉取依赖请让 Go 直连 GitHub：
+> **依赖提示**：MujicaUI 尚未发布到公共代理，首次拉取依赖请让 Go 直连 git.zacharyzhang.com：
 > ```bash
 > go env -w GOPROXY=https://goproxy.cn,direct
-> go env -w GOPRIVATE=github.com/ZacharyZhang-NY/*
+> go env -w GOPRIVATE=git.zacharyzhang.com/*
 > ```
 > MyGo 为纯 Go 实现（无 cgo），可在任意平台交叉编译原生 UI。内置终端在运行时加载 Ghostty 的 `libghostty-vt`（首次下载到用户缓存，或用 `mygo build` 打包进应用）。
 
@@ -146,7 +146,7 @@ current_provider: "OpenAI"
 
 - **Go 1.27.1+** - 主要编程语言
 - **[MyGo](https://github.com/egoist/mygo)** - 原生 UI 框架（GPU 自绘，无 webview、无 cgo）
-- **[MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI)** - MyGo 桌面组件库
+- **[MujicaUI](https://git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI)** - MyGo 桌面组件库
 - **Ghostty VT** - 通过 MyGo 终端插件提供终端模拟
 - **Cloudwego Eino** - LLM 抽象层与 React Agent 框架
 - **JSON 文件** - 对话历史存储（`~/.chatgo/conversations`）
@@ -199,7 +199,7 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 ## 🙏 致谢
 
 - [MyGo](https://github.com/egoist/mygo) - 原生 UI 框架
-- [MujicaUI](https://github.com/ZacharyZhang-NY/MujicaUI) - MyGo 桌面组件库
+- [MujicaUI](https://git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI) - MyGo 桌面组件库
 - [Cloudwego Eino](https://github.com/cloudwego/eino) - 强大的 LLM 应用开发框架
 - [simple-icons](https://simpleicons.org) - Provider 品牌图标
 

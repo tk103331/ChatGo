@@ -56,6 +56,7 @@ func PromptComposer(c *ui.Context, value *string, opts PromptComposerOptions) in
 	}
 	var r input.InputResult
 	r.Element = ui.Column(c).Gap(u * 2).MinWidth(0).Disabled(opts.Disabled)
+	disabled := r.Element.IsDisabled()
 	hooks := ui.Local(r.Element, promptHooksKey{}, func() *promptHooks { return &promptHooks{} })
 	h := *hooks
 	h.list = h.list[:0]
@@ -65,7 +66,7 @@ func PromptComposer(c *ui.Context, value *string, opts PromptComposerOptions) in
 		}
 		ta := input.TextAreaOptions{Label: label, Placeholder: opts.Placeholder, MaxHeight: maxH, Borderless: opts.Box,
 			Keys: func(ev ui.InputEvent) bool {
-				if r.Element.IsDisabled() {
+				if disabled {
 					return true
 				}
 				if opts.Composing && ev.Kind == ui.InputKeyDown {
@@ -104,7 +105,7 @@ func PromptComposer(c *ui.Context, value *string, opts PromptComposerOptions) in
 
 // promptComposerHook registers a handler before editor input.
 func promptComposerHook(composer input.InputResult, f func(ui.InputEvent) bool) {
-	if composer.Element == nil {
+	if !composer.Element.Valid() {
 		panic("mujica: menus need a built PromptComposer")
 	}
 	h := *ui.Local(composer.Element, promptHooksKey{}, func() *promptHooks { return &promptHooks{} })

@@ -66,8 +66,8 @@ func (cw *ChatWindow) inputDialog(c *mgo.Context) {
 }
 
 // treeContextMenu adds the file tree's right-click actions for a file or directory.
-func (cw *ChatWindow) treeContextMenu(c *mgo.Context, target *mgo.Element, path string, isDir bool) {
-	if target == nil {
+func (cw *ChatWindow) treeContextMenu(c *mgo.Context, target mgo.Element, path string, isDir bool) {
+	if !target.Valid() {
 		return
 	}
 	moverlay.ContextMenu(c, target, moverlay.ContextMenuOptions{}, func(m *moverlay.PopupMenu) {
