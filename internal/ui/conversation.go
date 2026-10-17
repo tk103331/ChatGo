@@ -545,7 +545,16 @@ func applyToolCall(m *models.Message, info llm.ToolCallInfo) {
 func (cw *ChatWindow) chatMessages(conv *models.Conversation, upto int) []llm.ChatMessage {
 	out := buildMessages(conv, upto)
 	sys := cw.systemPrompt
-	if skills := cw.skillPrompt(); skills != "" {
+	skills := cw.skillPrompt()
+	if cw.currentApp != "" && strings.HasPrefix(cw.currentApp, "webapp:") {
+		if extra := cw.webAppSkillPrompt(strings.TrimPrefix(cw.currentApp, "webapp:")); extra != "" {
+			if skills != "" {
+				skills += "\n\n"
+			}
+			skills += extra
+		}
+	}
+	if skills != "" {
 		if sys != "" {
 			sys += "\n\n"
 		}

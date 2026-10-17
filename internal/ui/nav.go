@@ -33,6 +33,7 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 		BorderWidth(0, mtheme.BorderWidth, 0, 0).BorderColor(k.Border).
 		Padding(u).Gap(u).AlignItems(mgo.Center).Children(func() {
 		cw.navItem(c, "对话", "message-square", sectionChat)
+		cw.navItem(c, "Apps", "layout-grid", sectionApps)
 		cw.navItem(c, "自动任务", "clock", sectionAuto)
 		cw.navItem(c, "Agent", "bot", sectionAgent)
 		cw.navItem(c, "Skill", "brain", sectionSkill)

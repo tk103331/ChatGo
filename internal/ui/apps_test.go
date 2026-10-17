@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"strings"
 	"testing"
 
 	"chatgo/pkg/models"
@@ -10,18 +11,22 @@ import (
 
 func TestAppsRegistered(t *testing.T) {
 	got := apps()
-	if len(got) != 3 {
-		t.Fatalf("want 3 apps, got %d", len(got))
-	}
-	want := map[string]bool{"terminal": false, "markdown": false, "git": false}
+	want := map[string]bool{"terminal": false, "markdown": false, "code": false, "browser": false, "git": false}
 	for _, a := range got {
 		if a.ID == "" || a.Title == "" || a.Icon == "" {
 			t.Fatalf("app %+v missing fields", a)
+		}
+		if strings.HasPrefix(a.ID, "webapp:") {
+			want["webapp:draw"] = true
+			continue
 		}
 		if _, ok := want[a.ID]; !ok {
 			t.Fatalf("unexpected app id %q", a.ID)
 		}
 		want[a.ID] = true
+	}
+	if !want["webapp:draw"] {
+		t.Fatal("bundled web app not registered")
 	}
 	for id, seen := range want {
 		if !seen {

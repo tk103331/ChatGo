@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>画图</title>
+<style>
+  :root { --bg:#faf8f4; --ink:#2b2b2b; --line:#8b2b3b; --card:#fff; --muted:#7a7570; }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; }
+  body { background:var(--bg); color:var(--ink); font:14px/1.5 -apple-system, "PingFang SC", sans-serif; }
+  #canvas { position:absolute; inset:0; }
+  svg { width:100%; height:100%; display:block; }
+  .node rect { fill:var(--card); stroke:var(--line); stroke-width:1.5; }
+  .node text { fill:var(--ink); font-size:13px; dominant-baseline:middle; text-anchor:middle; }
+  .node { cursor:grab; }
+  .edge { stroke:var(--muted); stroke-width:1.5; fill:none; }
+  #bar { position:absolute; left:12px; top:12px; display:flex; gap:8px; align-items:center;
+         background:rgba(255,255,255,.9); border:1px solid #e2ddd5; border-radius:8px; padding:6px 10px; }
+  button { font:inherit; border:1px solid #d9d2c7; background:#fff; border-radius:6px; padding:4px 10px; cursor:pointer; }
+  button.primary { background:var(--line); border-color:var(--line); color:#fff; }
+  #hint { color:var(--muted); margin-left:4px; }
+</style>
+</head>
+<body>
+<div id="bar">
+  <button id="add" class="primary">新增节点</button>
+  <button id="link">连接选中</button>
+  <button id="clear">清空</button>
+  <span id="hint">拖动节点移动位置</span>
+</div>
+<div id="canvas"></div>
+<script>
+(function () {
+  var nodes = [];
+  var edges = [];
+  var seq = 0;
+  var selected = null;
+  var svgNS = "http://www.w3.org/2000/svg";
+  var svg, gEdges, gNodes;
+
+  function init() {
+    svg = document.createElementNS(svgNS, "svg");
+    gEdges = document.createElementNS(svgNS, "g");
+    gNodes = document.createElementNS(svgNS, "g");
+    svg.appendChild(gEdges);
+    svg.appendChild(gNodes);
+    document.getElementById("canvas").appendChild(svg);
+  }
+
+  function size() {
+    var r = svg.getBoundingClientRect();
+    return { w: r.width, h: r.height };
+  }
+
+  function anchor(n, other) {
+    var nx = n.x + n.w / 2, ny = n.y + n.h / 2;
+    var ox = other.x + other.w / 2, oy = other.y + other.h / 2;
+    if (Math.abs(ox - nx) > Math.abs(oy - ny)) {
+      return { x: ox > nx ? n.x + n.w : n.x, y: ny };
+    }
+    return { x: nx, y: oy > ny ? n.y + n.h : n.y };
+  }
+
+  function render() {
+    while (gEdges.firstChild) gEdges.removeChild(gEdges.firstChild);
+    while (gNodes.firstChild) gNodes.removeChild(gNodes.firstChild);
+    edges.forEach(function (e) {
+      var a = byId(e.from), b = byId(e.to);
+      if (!a || !b) return;
+      var p = anchor(a, b), q = anchor(b, a);
+      var line = document.createElementNS(svgNS, "line");
+      line.setAttribute("x1", p.x); line.setAttribute("y1", p.y);
+      line.setAttribute("x2", q.x); line.setAttribute("y2", q.y);
+      line.setAttribute("class", "edge");
+      gEdges.appendChild(line);
+    });
+    nodes.forEach(function (n) {
+      var g = document.createElementNS(svgNS, "g");
+      g.setAttribute("class", "node");
+      var rect = document.createElementNS(svgNS, "rect");
+      rect.setAttribute("x", n.x); rect.setAttribute("y", n.y);
+      rect.setAttribute("width", n.w); rect.setAttribute("height", n.h);
+      rect.setAttribute("rx", 8);
+      if (selected === n.id) rect.setAttribute("stroke-width", 3);
+      var t = document.createElementNS(svgNS, "text");
+      t.setAttribute("x", n.x + n.w / 2); t.setAttribute("y", n.y + n.h / 2);
+      t.textContent = n.label;
+      g.appendChild(rect); g.appendChild(t);
+      g.addEventListener("pointerdown", function (ev) { startDrag(ev, n); });
+      gNodes.appendChild(g);
+    });
+  }
+
+  function startDrag(ev, n) {
+    ev.stopPropagation();
+    selected = n.id;
+    var s = size();
+    var ox = ev.clientX, oy = ev.clientY, x0 = n.x, y0 = n.y;
+    function move(e) {
+      n.x = Math.max(0, Math.min(s.w - n.w, x0 + e.clientX - ox));
+      n.y = Math.max(0, Math.min(s.h - n.h, y0 + e.clientY - oy));
+      render();
+    }
+    function up() {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    render();
+  }
+
+  function byId(id) { for (var i = 0; i < nodes.length; i++) if (nodes[i].id === id) return nodes[i]; return null; }
+
+  function addNode(label, x, y) {
+    var s = size();
+    var n = {
+      id: "n" + (++seq), label: label || ("节点 " + seq),
+      x: typeof x === "number" ? x : Math.max(24, s.w / 2 - 70 + (seq % 5) * 12),
+      y: typeof y === "number" ? y : Math.max(24, s.h / 2 - 22 + (seq % 5) * 12),
+      w: 140, h: 44
+    };
+    nodes.push(n);
+    selected = n.id;
+    render();
+    return n;
+  }
+
+  init();
+  render();
+  window.addEventListener("resize", render);
+
+  document.getElementById("add").onclick = function () { addNode(); };
+  document.getElementById("clear").onclick = function () { nodes = []; edges = []; selected = null; render(); };
+  document.getElementById("link").onclick = function () {
+    if (nodes.length < 2) return;
+    var a = nodes[nodes.length - 2], b = nodes[nodes.length - 1];
+    edges.push({ from: a.id, to: b.id });
+    render();
+  };
+
+  window.chatgo.registerTools({
+    draw_list_nodes: function () {
+      return nodes.map(function (n) {
+        return { id: n.id, label: n.label, x: Math.round(n.x), y: Math.round(n.y) };
+      });
+    },
+    draw_add_node: function (args) {
+      var n = addNode(String(args.label || ""), args.x, args.y);
+      return { id: n.id, label: n.label, x: Math.round(n.x), y: Math.round(n.y) };
+    },
+    draw_connect: function (args) {
+      var a = byId(String(args.from)), b = byId(String(args.to));
+      if (!a || !b) throw new Error("节点不存在");
+      edges.push({ from: a.id, to: b.id });
+      render();
+      return { from: a.id, to: b.id };
+    },
+    draw_export: function () {
+      return { nodes: nodes, edges: edges };
+    }
+  });
+})();
+</script>
+</body>
+</html>

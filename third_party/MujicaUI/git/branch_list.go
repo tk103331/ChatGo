@@ -9,6 +9,7 @@ import (
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
@@ -36,6 +37,8 @@ type GitAction struct {
 type BranchListOptions struct {
 	// Actions show on every row; Action returns their IDs.
 	Actions []GitAction
+	// RowMenu adds a context menu to every row; item is the branch name.
+	RowMenu func(c *ui.Context, item string)
 	Status  data.DataStatus
 	Error   string
 }
@@ -50,7 +53,12 @@ func BranchList(c *ui.Context, s *data.ListState[string], branches []Branch, opt
 		Status: opts.Status, Error: opts.Error, Empty: core.Msg(c, "branch_list.empty"),
 	}, func(i int) {
 		b := branches[i]
-		branchListRow(c, b)
+		row := branchListRow(c, b)
+		if opts.RowMenu != nil {
+			overlay.ContextMenu(c, row, overlay.ContextMenuOptions{}, func(*overlay.PopupMenu) {
+				opts.RowMenu(c, b.Name)
+			})
+		}
 		gitRowActions(c, opts.Actions, b.Name, &r)
 	})
 	r.Element, r.changed, r.submitted = v.Element, v.Changed(), v.Submitted()
@@ -67,32 +75,36 @@ func branchKey(b Branch) string {
 	return b.Name
 }
 
-func branchListRow(c *ui.Context, b Branch) {
+func branchListRow(c *ui.Context, b Branch) ui.Element {
 	k := core.Tokens(c)
 	u := core.Density(c).Unit()
 	small := core.FontSize(c, theme.CaptionSize)
-	mark := ui.Box(c).Size(16, 16).Shrink(0).Center().Role(ui.RoleNone)
-	if b.Current {
-		mark.TextColor(k.AccentText).Children(func() { ui.Icon(c, icons.Must("check")).Size(14, 14) })
-	}
-	ui.Icon(c, icons.Must("git-branch")).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
-	name := ui.Text(c, b.Name).SingleLine().MinWidth(0).Shrink(1)
-	if b.Current {
-		name.FontWeight(600)
-		ui.Text(c, core.Msg(c, "branch_list.current")).FontSize(small).TextColor(k.AccentText).Shrink(0)
-	}
-	ui.Spacer(c)
-	if b.Upstream != "" {
-		ui.Row(c).Gap(u).AlignItems(ui.Center).Shrink(0).TextColor(k.TextMuted).Children(func() {
-			ui.Text(c, b.Upstream).FontSize(small).SingleLine().MaxWidth(160)
-			if b.Ahead > 0 {
-				ui.Text(c, fmt.Sprintf("↑%d", b.Ahead)).FontSize(small).FontFeatures("tnum").Label(fmt.Sprintf(core.Msg(c, "branch_list.ahead"), b.Ahead))
-			}
-			if b.Behind > 0 {
-				ui.Text(c, fmt.Sprintf("↓%d", b.Behind)).FontSize(small).FontFeatures("tnum").Label(fmt.Sprintf(core.Msg(c, "branch_list.behind"), b.Behind))
-			}
-		})
-	}
+	row := ui.Row(c).AlignItems(ui.Center).Gap(u*2).MinWidth(0)
+	row.Children(func() {
+		mark := ui.Box(c).Size(16, 16).Shrink(0).Center().Role(ui.RoleNone)
+		if b.Current {
+			mark.TextColor(k.AccentText).Children(func() { ui.Icon(c, icons.Must("check")).Size(14, 14) })
+		}
+		ui.Icon(c, icons.Must("git-branch")).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
+		name := ui.Text(c, b.Name).SingleLine().MinWidth(0).Shrink(1)
+		if b.Current {
+			name.FontWeight(600)
+			ui.Text(c, core.Msg(c, "branch_list.current")).FontSize(small).TextColor(k.AccentText).Shrink(0)
+		}
+		ui.Spacer(c)
+		if b.Upstream != "" {
+			ui.Row(c).Gap(u).AlignItems(ui.Center).Shrink(0).TextColor(k.TextMuted).Children(func() {
+				ui.Text(c, b.Upstream).FontSize(small).SingleLine().MaxWidth(160)
+				if b.Ahead > 0 {
+					ui.Text(c, fmt.Sprintf("↑%d", b.Ahead)).FontSize(small).FontFeatures("tnum").Label(fmt.Sprintf(core.Msg(c, "branch_list.ahead"), b.Ahead))
+				}
+				if b.Behind > 0 {
+					ui.Text(c, fmt.Sprintf("↓%d", b.Behind)).FontSize(small).FontFeatures("tnum").Label(fmt.Sprintf(core.Msg(c, "branch_list.behind"), b.Behind))
+				}
+			})
+		}
+	})
+	return row
 }
 
 // gitActionsCheck panics on incomplete or duplicate actions.

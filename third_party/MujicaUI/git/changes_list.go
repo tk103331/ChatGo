@@ -10,6 +10,7 @@ import (
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
@@ -25,6 +26,8 @@ type ChangedFile struct {
 type ChangesListState struct {
 	list   ui.ListState
 	cursor int
+	// menu builds a file row's context menu.
+	menu func(c *ui.Context, item string)
 	// rows maps rows to files; negatives are group headers.
 	rows    []int
 	staged  int
@@ -44,10 +47,13 @@ func (s *ChangesListState) Selected() int {
 // ChangesListOptions configure a ChangesList.
 type ChangesListOptions struct {
 	Disabled bool
+	// RowMenu adds a context menu to file rows; item is the file's path.
+	RowMenu func(c *ui.Context, item string)
 }
 
 // ChangesList groups staged and unstaged files; give it a height.
 func ChangesList(c *ui.Context, s *ChangesListState, files []ChangedFile, opts ChangesListOptions) GitListResult {
+	s.menu = opts.RowMenu
 	if !s.started {
 		s.started, s.cursor = true, -1
 	}
@@ -118,6 +124,12 @@ func changesListRow(c *ui.Context, s *ChangesListState, files []ChangedFile, i i
 		return
 	}
 	cf := files[f]
+	if s.menu != nil {
+		cf := files[f]
+		overlay.ContextMenu(c, row, overlay.ContextMenuOptions{}, func(*overlay.PopupMenu) {
+			s.menu(c, cf.Path)
+		})
+	}
 	if s.cursor == i {
 		row.Draw(func(p *ui.Painter, rc ui.Rect) {
 			p.Fill(ui.Rect{X: rc.X, Y: rc.Y + 4, W: 3, H: rc.H - 8}, k.AccentText, 1.5)

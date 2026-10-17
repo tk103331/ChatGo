@@ -1,0 +1,38 @@
+id: draw
+name: 画图
+description: WebApp 画布：拖动节点、连线，并把图形导出给 Agent 分析。
+icon: pencil
+entry: index.html
+tools:
+  - name: draw_list_nodes
+    description: 列出画布上所有节点及其坐标
+    params: []
+  - name: draw_add_node
+    description: 在画布上新增一个节点
+    params:
+      - name: label
+        description: 节点文字
+        required: true
+      - name: x
+        description: 横坐标，默认居中
+      - name: y
+        description: 纵坐标，默认居中
+  - name: draw_connect
+    description: 连接两个节点
+    params:
+      - name: from
+        description: 起点节点 id
+        required: true
+      - name: to
+        description: 终点节点 id
+        required: true
+  - name: draw_export
+    description: 导出画布为 JSON
+    params: []
+webmcp:
+  - name: canvas
+    url: /mcp
+    transport: streamable_http
+skills:
+  - name: diagramming
+    path: skills/diagramming

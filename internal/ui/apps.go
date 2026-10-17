@@ -32,6 +32,19 @@ type appDef struct {
 	NewTab   func(cw *ChatWindow) string
 	TabLabel func(cw *ChatWindow, tab string) string
 	Body     func(cw *ChatWindow, c *mgo.Context, tab string)
+
+	// Static hides the tab bar for apps that render their own navigation.
+	// ChatMinW is the narrowest the chat pane may be; zero uses the default.
+	// Dense work areas, such as a three-pane Git client, ask for less.
+	ChatMinW float32
+
+	// CloseTab releases an app-owned resource when a tab closes.
+	CloseTab func(cw *ChatWindow, tab string)
+
+	Static bool
+	// Workspace renders a self-managed work area; when set it replaces the
+	// tab bar and Body below.
+	Workspace func(cw *ChatWindow, c *mgo.Context)
 }
 
 // appTool is one operation an app offers the Agent.
@@ -50,11 +63,14 @@ type appParam struct {
 
 // apps returns the registered applications.
 func apps() []appDef {
-	return []appDef{
+	base := []appDef{
 		terminalApp(),
 		markdownApp(),
+		codeEditorApp(),
+		browserApp(),
 		gitApp(),
 	}
+	return append(base, webApps()...)
 }
 
 // appByID returns the app with the given id.
@@ -82,16 +98,15 @@ func (cw *ChatWindow) ensureAppState() {
 func (cw *ChatWindow) appsPage(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
+	list := apps()
+	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 2).AlignItems(mgo.Stretch).Children(func() {
 		mgo.Text(c, "Apps").Font(mtheme.SerifFont).
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
 		mgo.Text(c, "基于 Agent 的应用：左侧操作、右侧对话，操作能力向 Agent 开放").
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted).Shrink(0)
-		mgo.Grid(c).Columns(3).Gap(u * 3).Children(func() {
-			for _, a := range apps() {
-				cw.appCard(c, a)
-			}
-		})
+		mgo.GridView(c, &cw.appsGrid, len(list), 300, 132, func(i int) {
+			cw.appCard(c, list[i])
+		}).Grow(1).MinHeight(0)
 	})
 }
 
@@ -100,19 +115,30 @@ func (cw *ChatWindow) appCard(c *mgo.Context, a appDef) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	b := mgo.ButtonBase(c).Key("app:"+a.ID).FillWidth().Padding(u*3).Gap(u*2).
-		Radius(mtheme.CardRadius).AlignItems(mgo.Start).Background(k.Surface).
+	b := mgo.ButtonBase(c).Key("app:"+a.ID).Column().FillWidth().FillHeight().
+		Padding(u*3).Gap(u*2).Justify(mgo.Start).AlignItems(mgo.Stretch).
+		Radius(mtheme.CardRadius).Background(k.Surface).
 		Border(mtheme.BorderWidth, k.Border)
 	if b.Hovered() {
 		b.Background(k.SurfaceHover)
 	}
 	b.Children(func() {
-		mgo.Icon(c, icons.Must(a.Icon)).Size(24, 24).TextColor(k.AccentText)
-		mgo.Text(c, a.Title).Font(mtheme.SerifFont).
-			FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600)
+		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u * 2).Children(func() {
+			mgo.Icon(c, icons.Must(a.Icon)).Size(20, 20).TextColor(k.AccentText).Shrink(0)
+			mgo.Text(c, a.Title).Font(mtheme.SerifFont).
+				FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).
+				Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		})
 		if a.Desc != "" {
-			mgo.Text(c, a.Desc).FontSize(caption).TextColor(k.TextMuted).MaxLines(2)
+			mgo.Text(c, a.Desc).FontSize(caption).TextColor(k.TextMuted).
+				FillWidth().MaxLines(3)
 		}
+		mgo.Box(c).Grow(1)
+		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Shrink(0).Children(func() {
+			mgo.Text(c, fmt.Sprintf("%d 个工具", len(cw.appToolsFor(a.ID)))).
+				FontSize(caption).TextColor(k.TextMuted).Grow(1)
+			mgo.Icon(c, icons.Must("chevron-right")).Size(16, 16).TextColor(k.TextMuted)
+		})
 	})
 	if b.Clicked() {
 		cw.openApp(a.ID)
@@ -139,20 +165,49 @@ func (cw *ChatWindow) appWorkspace(c *mgo.Context) {
 		cw.appsPage(c)
 		return
 	}
-	if cw.appLeftW == 0 {
-		cw.appLeftW = 460
+	if cw.appLeftW == 0 || cw.appLeftFor != cw.appActive {
+		cw.appLeftFor = cw.appActive
+		cw.appLeftW = cw.appDefaultLeftW(c, a)
 	}
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Children(func() {
 		cw.appHeader(c, a)
-		mgo.Row(c).Grow(1).MinHeight(0).AlignItems(mgo.Stretch).Children(func() {
-			mgo.Box(c).Width(cw.appLeftW).Shrink(0).MinWidth(0).MinHeight(0).Children(func() {
-				cw.appLeft(c, a)
-			})
-			mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
-				cw.appChat(c)
-			})
-		})
+		mgo.Split(c, &cw.appLeftW, func() {
+			mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Children(func() { cw.appLeft(c, a) })
+		}, func() {
+			mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Children(func() { cw.appChat(c) })
+		}).Grow(1).MinHeight(0)
 	})
+}
+
+// appChatMinW is the narrowest the chat pane may be, so it stays usable
+// while the work area takes the rest of the width.
+const (
+	appChatMinW  float32 = 520
+	appWorkMinW  float32 = 520
+	appWorkRatio float32 = 0.72
+)
+
+// appDefaultLeftW gives the work area most of the width and leaves the chat
+// pane a comfortable column. It reads the live window size; before the first
+// real frame it falls back to the ratio applied to the context width.
+func (cw *ChatWindow) appDefaultLeftW(c *mgo.Context, a appDef) float32 {
+	winW, _ := c.Size()
+	if winW <= 0 {
+		return appWorkMinW
+	}
+	chatMin := appChatMinW
+	if a.ChatMinW > 0 {
+		chatMin = a.ChatMinW
+	}
+	room := winW - 60
+	left := room * appWorkRatio
+	if maxLeft := room - chatMin; left > maxLeft {
+		left = maxLeft
+	}
+	if left < appWorkMinW {
+		left = appWorkMinW
+	}
+	return left
 }
 
 // appHeader shows the app title and a way back to the card grid.
@@ -234,6 +289,9 @@ func (cw *ChatWindow) closeAppTab(id string, i int) {
 		return
 	}
 	closed := tabs[i]
+	if a, ok := appByID(id); ok && a.CloseTab != nil {
+		a.CloseTab(cw, closed)
+	}
 	cw.appTabs[id] = append(tabs[:i], tabs[i+1:]...)
 	if cw.appTab[id] == closed {
 		switch {
@@ -251,35 +309,44 @@ func (cw *ChatWindow) closeAppTab(id string, i int) {
 func (cw *ChatWindow) appLeft(c *mgo.Context, a appDef) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
+	if a.Workspace != nil {
+		mgo.Column(c).Fill().Background(k.Background).
+			BorderWidth(0, mtheme.BorderWidth, 0, 0).BorderColor(k.Border).Children(func() {
+			a.Workspace(cw, c)
+		})
+		return
+	}
 	tabs := cw.appTabList(a.ID)
 	active := cw.appTab[a.ID]
 	mgo.Column(c).Fill().Background(k.Background).
 		BorderWidth(0, mtheme.BorderWidth, 0, 0).BorderColor(k.Border).Children(func() {
-		mgo.Row(c).FillWidth().Shrink(0).Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
-			BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
-			closing := -1
-			for i, tab := range tabs {
-				i, tab := i, tab
-				variant := minput.Ghost
-				if tab == active {
-					variant = minput.Secondary
+		if !a.Static {
+			mgo.Row(c).FillWidth().Shrink(0).Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
+				BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
+				closing := -1
+				for i, tab := range tabs {
+					i, tab := i, tab
+					variant := minput.Ghost
+					if tab == active {
+						variant = minput.Secondary
+					}
+					label := cw.appTabLabel(a.ID, tab)
+					if minput.Button(c, label, minput.ButtonOptions{Variant: variant, Label: label}).Clicked() {
+						cw.appTab[a.ID] = tab
+					}
+					if mcore.IconAction(c, icons.Must("x"), "关闭标签").Clicked() {
+						closing = i
+					}
 				}
-				label := cw.appTabLabel(a.ID, tab)
-				if minput.Button(c, label, minput.ButtonOptions{Variant: variant, Label: label}).Clicked() {
-					cw.appTab[a.ID] = tab
+				mgo.Box(c).Grow(1)
+				if minput.Button(c, "新建", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("plus")}).Clicked() {
+					cw.addAppTab(a.ID)
 				}
-				if mcore.IconAction(c, icons.Must("x"), "关闭标签").Clicked() {
-					closing = i
+				if closing >= 0 {
+					cw.closeAppTab(a.ID, closing)
 				}
-			}
-			mgo.Box(c).Grow(1)
-			if minput.Button(c, "新建", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("plus")}).Clicked() {
-				cw.addAppTab(a.ID)
-			}
-			if closing >= 0 {
-				cw.closeAppTab(a.ID, closing)
-			}
-		})
+			})
+		}
 		if a.Body != nil {
 			mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 				a.Body(cw, c, cw.appTab[a.ID])

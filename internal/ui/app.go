@@ -15,10 +15,16 @@ import (
 	"sync/atomic"
 	"time"
 
+	"chatgo/internal/browserapp"
+	"chatgo/internal/codeeditorapp"
 	"chatgo/internal/config"
+	"chatgo/internal/gitapp"
 	"chatgo/internal/llm"
+	"chatgo/internal/markdownapp"
+	"chatgo/internal/terminalapp"
 	"chatgo/internal/ui/assets"
 	"chatgo/internal/ui/theme"
+	"chatgo/internal/webapp"
 	"chatgo/pkg/models"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -63,15 +69,22 @@ type ChatWindow struct {
 
 	appActive  string
 	appLeftW   float32
+	appLeftFor string
 	appsLoaded bool
 	appTabs    map[string][]string
 	appTab     map[string]string
 	appConv    map[string]string
+	appsGrid   mgo.GridState
 	currentApp string
 
-	appTermTabs  []*appTermTab
-	appFiles     map[string]*appFile
 	gitCommitMsg string
+	gitApp       *gitapp.Client
+	termApp      *terminalapp.Client
+	mdApp        *markdownapp.Client
+	codeApp      *codeeditorapp.Client
+	browserApp   *browserapp.Client
+	webApps      map[string]*webapp.Client
+	webAppList   []webapp.App
 	preAppConvID string
 
 	rightPanel bool
@@ -290,6 +303,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.reloadConvs()
 	cw.currentAgent = ""
 	cw.applyAgent("")
+	cw.loadWebApps()
 	go cw.startMCP()
 	go cw.autoTaskLoop()
 	go cw.startFeishuChannel()
@@ -586,6 +600,13 @@ const defaultSystemPrompt = "You are a helpful AI assistant with access to vario
 // buildEinoTools builds the Eino tools for the given builtin/MCP ids, running
 // file tools under root. The result is memoized per selection so switching
 // conversations does not re-list MCP tools on the UI thread.
+
+// nativeWindow returns the window the UI draws into, for embedded WebViews.
+func (cw *ChatWindow) nativeWindow() *mygo.Window {
+	cw.winMu.Lock()
+	defer cw.winMu.Unlock()
+	return cw.window
+}
 
 func (cw *ChatWindow) postMain(fn func()) {
 	cw.winMu.Lock()

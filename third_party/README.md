@@ -65,3 +65,9 @@ chmod -R u+w third_party/MujicaUI
 
 完成后 `go build ./...` 即可。若上游修复了上述问题，删除 `replace`、副本，
 并把 import 改回直属依赖即可。
+
+**`git/changes_list.go` + `git/branch_list.go` + `git/tag_list.go`** — 新增行级右键菜单。
+`ChangesListOptions.RowMenu` / `BranchListOptions.RowMenu` / `TagListOptions.RowMenu`
+接受 `func(c *ui.Context, item string)`，在行元素上挂 `overlay.ContextMenu`，
+点击右键时回调当前行条目（文件路径 / 分支名 / 标签名）。
+分支行与标签行改为在 `ui.Row` 中构建并返回该行元素，其余布局保持不变。

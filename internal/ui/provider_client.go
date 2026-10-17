@@ -307,7 +307,8 @@ func (cw *ChatWindow) startMCP() {
 
 func (cw *ChatWindow) initMCPServers() {
 	var wg sync.WaitGroup
-	for _, server := range cw.cfg.MCPServers {
+	servers := append(append([]config.MCPServer{}, cw.cfg.MCPServers...), cw.webAppMCPServers()...)
+	for _, server := range servers {
 		if !server.Enabled {
 			continue
 		}
