@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -57,6 +58,15 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 			"selector": {Type: schema.String, Desc: "CSS 选择器，定位网页元素（content/html/click/fill/submit 时使用，content/html 可选）"},
 			"value":    {Type: schema.String, Desc: "填写的值，action=fill 时必填"},
 			"code":     {Type: schema.String, Desc: "JavaScript 代码，action=eval 时必填"},
+		}
+	case "deepseeksearch":
+		return map[string]*schema.ParameterInfo{
+			"action":       {Type: schema.String, Desc: "操作：search（搜索网页）/ fetch（抓取网页为 Markdown）", Required: true},
+			"query":        {Type: schema.String, Desc: "搜索词，action=search 时必填，支持 site:/-site:/-/\"...\"/lang:/after:/before: 等搜索语法"},
+			"url":          {Type: schema.String, Desc: "要抓取的网页地址，action=fetch 时必填"},
+			"count":        {Type: schema.Integer, Desc: "返回条数，1～50，默认 10，action=search 时可选"},
+			"ori_question": {Type: schema.String, Desc: "触发搜索的用户原始问题，action=search 时可选"},
+			"need_content": {Type: schema.Boolean, Desc: "是否返回网页正文，默认 false，action=search 时可选"},
 		}
 	}
 	return map[string]*schema.ParameterInfo{}
@@ -202,6 +212,30 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) 
 			}
 			return cw.webviewTool(ctx, in.Action, in.URL, in.Selector, in.Value, in.Code, timeout)
 		}
+	case "deepseeksearch":
+		apiKey := strings.TrimSpace(tool.Config["api_key"])
+		baseURL := strings.TrimSpace(tool.Config["base_url"])
+		if baseURL == "" {
+			baseURL = "https://api.deepseek.com"
+		}
+		defCount := 10
+		if n, err := strconv.Atoi(strings.TrimSpace(tool.Config["count"])); err == nil && n > 0 {
+			defCount = n
+		}
+		return func(ctx context.Context, args string) (string, error) {
+			var in struct {
+				Action      string `json:"action"`
+				Query       string `json:"query"`
+				URL         string `json:"url"`
+				Count       int    `json:"count"`
+				OriQuestion string `json:"ori_question"`
+				NeedContent bool   `json:"need_content"`
+			}
+			if err := json.Unmarshal([]byte(args), &in); err != nil {
+				return "", fmt.Errorf("参数解析失败: %w", err)
+			}
+			return deepSeekTool(ctx, apiKey, baseURL, defCount, in.Action, in.Query, in.URL, in.Count, in.OriQuestion, in.NeedContent)
+		}
 	}
 	return func(context.Context, string) (string, error) {
 		return "工具 " + tool.Type + " 暂未实现", nil
@@ -300,6 +334,119 @@ func httpRequest(ctx context.Context, method, url, headers, body string, timeout
 	defer resp.Body.Close()
 	data, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	return fmt.Sprintf("HTTP %d\n\n%s", resp.StatusCode, strings.TrimSpace(string(data))), nil
+}
+
+// deepSeekSearchResult is one hit from the DeepSeek search API.
+type deepSeekSearchResult struct {
+	RerankScore float64 `json:"rerank_score"`
+	Title       string  `json:"title"`
+	URL         string  `json:"url"`
+	Snippet     string  `json:"snippet"`
+	Summary     string  `json:"summary"`
+	Content     string  `json:"content"`
+	SiteName    *string `json:"site_name"`
+	Date        *string `json:"date"`
+}
+
+// deepSeekFetchResponse is the payload the fetch API returns.
+type deepSeekFetchResponse struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+// deepSeekTool runs the DeepSeek search or fetch API.
+func deepSeekTool(ctx context.Context, apiKey, baseURL string, defCount int, action, query, url string, count int, oriQuestion string, needContent bool) (string, error) {
+	if apiKey == "" {
+		return "", fmt.Errorf("deepseeksearch 需要 api_key")
+	}
+	action = strings.ToLower(strings.TrimSpace(action))
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	var endpoint string
+	var payload []byte
+	var err error
+	switch action {
+	case "search", "":
+		if strings.TrimSpace(query) == "" {
+			return "", fmt.Errorf("action=search 需要参数 query")
+		}
+		if count <= 0 {
+			count = defCount
+		}
+		payload, err = json.Marshal(map[string]any{
+			"query":        query,
+			"count":        count,
+			"need_content": needContent,
+		})
+		if err != nil {
+			return "", err
+		}
+		endpoint = baseURL + "/v1/tools/search"
+	case "fetch":
+		if strings.TrimSpace(url) == "" {
+			return "", fmt.Errorf("action=fetch 需要参数 url")
+		}
+		payload, err = json.Marshal(map[string]any{"url": url})
+		if err != nil {
+			return "", err
+		}
+		endpoint = baseURL + "/v1/tools/fetch"
+	default:
+		return "", fmt.Errorf("未知 action %q（应为 search/fetch）", action)
+	}
+	req, err := http.NewRequestWithContext(cctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	data, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("deepseek API HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	if action == "fetch" {
+		var fr deepSeekFetchResponse
+		if err := json.Unmarshal(data, &fr); err != nil {
+			return "", fmt.Errorf("解析响应失败: %w", err)
+		}
+		return fr.Title + "\n\n" + fr.Content, nil
+	}
+	var sr struct {
+		Results []deepSeekSearchResult `json:"results"`
+	}
+	if err := json.Unmarshal(data, &sr); err != nil {
+		return "", fmt.Errorf("解析响应失败: %w", err)
+	}
+	if len(sr.Results) == 0 {
+		return "无搜索结果", nil
+	}
+	var sb strings.Builder
+	for i, r := range sr.Results {
+		fmt.Fprintf(&sb, "## %d. %s\n", i+1, r.Title)
+		fmt.Fprintf(&sb, "URL: %s\n", r.URL)
+		if r.SiteName != nil {
+			fmt.Fprintf(&sb, "来源: %s\n", *r.SiteName)
+		}
+		if r.Date != nil {
+			fmt.Fprintf(&sb, "日期: %s\n", *r.Date)
+		}
+		fmt.Fprintf(&sb, "相关性: %.1f/3\n", r.RerankScore)
+		if r.Summary != "" {
+			fmt.Fprintf(&sb, "摘要: %s\n", r.Summary)
+		} else if r.Snippet != "" {
+			fmt.Fprintf(&sb, "摘要: %s\n", r.Snippet)
+		}
+		if r.Content != "" {
+			fmt.Fprintf(&sb, "正文: %s\n", r.Content)
+		}
+		sb.WriteString("\n")
+	}
+	return strings.TrimSpace(sb.String()), nil
 }
 
 // runCommand runs a shell command when its program is in the allow list.

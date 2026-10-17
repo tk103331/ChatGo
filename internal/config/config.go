@@ -186,6 +186,7 @@ func GetAvailableBuiltinTools() []string {
 		"sequentialthinking",
 		"jssandbox",
 		"webview",
+		"deepseeksearch",
 	}
 }
 
@@ -203,6 +204,7 @@ func GetBuiltinToolDisplayName(toolType string) string {
 		"sequentialthinking": "链式思考",
 		"jssandbox":          "JS 沙箱",
 		"webview":            "网页浏览",
+		"deepseeksearch":     "DeepSeek 搜索",
 	}
 	if name, ok := names[toolType]; ok {
 		return name
@@ -224,6 +226,7 @@ func GetBuiltinToolDescription(toolType string) string {
 		"sequentialthinking": "Sequential Thinking - Chain of thought reasoning tool",
 		"jssandbox":          "JS Sandbox - Run JavaScript/TypeScript code in a secure sandbox (powered by moejs)",
 		"webview":            "WebView - Operate the built-in web view: open URLs, get page content, click elements, fill forms, run JavaScript",
+		"deepseeksearch":     "DeepSeek Search - Search the web and fetch pages using the DeepSeek search engine API",
 	}
 	if desc, ok := descriptions[toolType]; ok {
 		return desc
@@ -254,6 +257,8 @@ func GetBuiltinToolConfigFields(toolType string) []string {
 		return []string{"memory_limit_mb", "timeout_seconds", "typescript"}
 	case "webview":
 		return []string{"timeout"}
+	case "deepseeksearch":
+		return []string{"api_key", "count"}
 	default:
 		return []string{}
 	}
@@ -282,6 +287,8 @@ func GetRequiredConfigFields(toolType string) []string {
 		return []string{} // all fields have defaults
 	case "webview":
 		return []string{} // timeout has default
+	case "deepseeksearch":
+		return []string{"api_key"}
 	default:
 		return []string{}
 	}
