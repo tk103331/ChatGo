@@ -33,8 +33,8 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 	}
 	mchat.MessageBubble(c, role, opts, func() {
 		model := ""
-		if msg.Role == "assistant" && cw.cur != nil {
-			model = cw.headerModel()
+		if msg.Role == "assistant" {
+			model = cw.turnModelLabel(msg)
 		}
 		mchat.MessageHeader(c, mchat.MessageHeaderOptions{Model: model, Time: msg.Timestamp})
 		if len(msg.Segments) > 0 {
@@ -147,27 +147,38 @@ func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, 
 		if mcore.IconAction(c, icons.Must("refresh-cw"), "重新生成").Tooltip("重新生成").Clicked() {
 			cw.regenerate(i)
 		}
-		if msg.TotalTokens > 0 {
-			mgo.Spacer(c)
-			mgo.Text(c, tokenLabel(msg)).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
-				TextColor(mcore.Tokens(c).TextMuted).SingleLine()
+		if t, ok := cw.turnFor(msg); ok {
+			if t.Total > 0 {
+				mgo.Text(c, tokenLabel(t)).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+					TextColor(mcore.Tokens(c).TextMuted).SingleLine()
+			}
 		}
 	})
 }
 
-// tokenLabel formats a message's token usage as "↑prompt ↓completion = total".
-func tokenLabel(msg models.Message) string {
-	return fmt.Sprintf("↑%d ↓%d = %d tokens", msg.PromptTokens, msg.CompletionTokens, msg.TotalTokens)
+// turnFor returns the turn whose reply is msg.
+func (cw *ChatWindow) turnFor(msg models.Message) (models.Turn, bool) {
+	if cw.cur == nil {
+		return models.Turn{}, false
+	}
+	if t := turnOf(cw.cur, msg.ID); t != nil {
+		return *t, true
+	}
+	return models.Turn{}, false
 }
 
-func (cw *ChatWindow) headerModel() string {
-	if cw.cur == nil {
+// turnModelLabel names the model a turn was generated with.
+func (cw *ChatWindow) turnModelLabel(msg models.Message) string {
+	t, ok := cw.turnFor(msg)
+	if !ok || (t.Model == "" && t.Provider == "") {
 		return ""
 	}
-	if strings.HasPrefix(cw.cur.Agent, "acp:") {
-		return ""
-	}
-	return cw.cur.Model
+	return modelLabel(modelRef(t.Provider, t.Model))
+}
+
+// tokenLabel formats a turn's usage as "↑input ↓output = total".
+func tokenLabel(t models.Turn) string {
+	return fmt.Sprintf("↑%s ↓%s = %s tokens", formatCount(t.Input), formatCount(t.Output), formatCount(t.Total))
 }
 
 func roleOf(msg models.Message) mchat.MessageRole {
@@ -256,9 +267,33 @@ func (cw *ChatWindow) regenerate(i int) {
 		return
 	}
 	conv := cw.cur
+	prev := conv.Messages[i]
+	t := turnOf(conv, prev.ID)
 	conv.Messages = conv.Messages[:i]
+	reply := models.Message{
+		ID: cw.newID(), Role: "assistant", Timestamp: time.Now(),
+	}
+	conv.Messages = append(conv.Messages, reply)
+	if t != nil {
+		t.ReplyMsgID = reply.ID
+		t.Assistant = ""
+		t.Input, t.Output, t.Total = 0, 0, 0
+		t.EndedAt = time.Time{}
+	}
 	_ = cw.convManager.SaveConversation(conv)
-	cw.resendFrom(i)
+	cw.streamFrom(conv, i)
+}
+
+// retargetTurn points a turn at a new reply and clears its finished state.
+func (cw *ChatWindow) retargetTurn(conv *models.Conversation, oldReplyID, newReplyID string) {
+	t := turnOf(conv, oldReplyID)
+	if t == nil {
+		return
+	}
+	t.ReplyMsgID = newReplyID
+	t.Assistant = ""
+	t.Input, t.Output, t.Total = 0, 0, 0
+	t.EndedAt = time.Time{}
 }
 
 // resendFrom streams a new assistant reply appended at index i.
@@ -267,7 +302,27 @@ func (cw *ChatWindow) resendFrom(i int) {
 		return
 	}
 	conv := cw.cur
-	conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Timestamp: time.Now()})
+	prev := conv.Messages[i-1]
+	reply := models.Message{ID: cw.newID(), Role: "assistant", Timestamp: time.Now()}
+	conv.Messages = append(conv.Messages, reply)
+	cw.appendTurn(conv, prev, reply)
+	cw.streamFrom(conv, i)
+}
+
+// appendTurn records a turn for an edited message's new reply.
+func (cw *ChatWindow) appendTurn(conv *models.Conversation, userMsg, reply models.Message) {
+	conv.Turns = append(conv.Turns, models.Turn{
+		ID:         cw.newID(),
+		UserMsgID:  userMsg.ID,
+		ReplyMsgID: reply.ID,
+		User:       userMsg.Content,
+		Provider:   cw.provider,
+		Model:      cw.model,
+		StartedAt:  time.Now(),
+	})
+}
+
+func (cw *ChatWindow) streamFrom(conv *models.Conversation, i int) {
 	cw.streaming = true
 	cw.msgList.ScrollToEnd()
 	if strings.HasPrefix(conv.Agent, "acp:") {
@@ -275,10 +330,37 @@ func (cw *ChatWindow) resendFrom(i int) {
 		cw.acpChatStart(conv, strings.TrimPrefix(conv.Agent, "acp:"), i, lastUserText(conv, i))
 		return
 	}
+	cw.applyTurnModelFor(conv, conv.Messages[i].ID)
 	msgs := cw.chatMessages(conv, i)
 	ctx, cancel := context.WithCancel(context.Background())
 	cw.streamCancel = cancel
 	go cw.runStream(ctx, conv, i, msgs)
+}
+
+// applyTurnModelFor rebuilds the client for the model a turn was recorded with.
+func (cw *ChatWindow) applyTurnModelFor(conv *models.Conversation, replyID string) {
+	t := turnOf(conv, replyID)
+	if t == nil {
+		return
+	}
+	cw.applyModel(t.Provider, t.Model)
+}
+
+// applyModel switches the active provider and model, rebuilding the client.
+func (cw *ChatWindow) applyModel(provider, model string) {
+	if provider == "" && model == "" {
+		return
+	}
+	if provider == cw.provider && model == cw.model {
+		return
+	}
+	if provider != "" {
+		cw.provider = provider
+	}
+	if model != "" {
+		cw.model = model
+	}
+	cw.setupProvider(cw.provider)
 }
 
 func lastUserText(conv *models.Conversation, before int) string {

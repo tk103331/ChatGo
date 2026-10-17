@@ -49,6 +49,9 @@ func (cw *ChatWindow) acpCommands() []mchat.SlashCommand {
 		if c.Name == "" || strings.ContainsAny(c.Name, " \t\n") {
 			continue
 		}
+		if strings.HasPrefix(strings.ToLower(c.Name), "skill:") {
+			continue
+		}
 		out = append(out, mchat.SlashCommand{Name: c.Name, Description: c.Description})
 	}
 	return out

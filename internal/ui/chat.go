@@ -222,8 +222,9 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 		return
 	}
 	u := mcore.Density(c).Unit()
+	skipModes := acpConfigCoversModes(rt.configs)
 	mgo.Row(c).Gap(u * 2).Wrap().AlignItems(mgo.End).Children(func() {
-		if len(rt.modes) > 0 {
+		if len(rt.modes) > 0 && !skipModes {
 			opts := make([]minput.SelectOption[string], 0, len(rt.modes))
 			for _, m := range rt.modes {
 				opts = append(opts, minput.SelectOption[string]{Value: string(m.Id), Label: m.Name})

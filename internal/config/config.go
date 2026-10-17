@@ -447,23 +447,37 @@ func firstModel(providers []Provider, name string) string {
 	return ""
 }
 
-// defaultACPAgents returns the ACP connections shipped by default.
+// defaultACPAgents returns the ACP connections shipped by default, shown in
+// the ACP settings page and disabled until the matching CLI is installed.
 func defaultACPAgents() []ACPConnection {
 	return []ACPConnection{
-		{Name: "Claude Code", Command: "npx", Args: []string{"-y", "@zed-industries/claude-code-acp"}},
-		{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}},
+		{Name: "ClaudeCode", Command: "npx", Args: []string{"-y", "@zed-industries/claude-code-acp"}, Disabled: true},
+		{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}, Disabled: true},
+		{Name: "CodexCLI", Command: "npx", Args: []string{"-y", "@agentclientprotocol/codex-acp"}, Disabled: true},
+		{Name: "PiAgent", Command: "npx", Args: []string{"-y", "pi-acp"}, Disabled: true},
 	}
 }
 
-// ensureDefaultACPAgents adds the shipped ACP connections that are missing.
+// ensureDefaultACPAgents adds the shipped ACP connections that are missing,
+// migrating the legacy spaced name "Claude Code" to "ClaudeCode".
 func ensureDefaultACPAgents(existing []ACPConnection) []ACPConnection {
 	have := make(map[string]bool, len(existing))
+	out := make([]ACPConnection, 0, len(existing))
 	for _, a := range existing {
-		have[a.Name] = true
+		key := a.Name
+		if key == "Claude Code" {
+			a.Name = "ClaudeCode"
+			key = "ClaudeCode"
+		}
+		if have[key] {
+			continue
+		}
+		have[key] = true
+		out = append(out, a)
 	}
-	out := append([]ACPConnection(nil), existing...)
 	for _, d := range defaultACPAgents() {
 		if !have[d.Name] {
+			have[d.Name] = true
 			out = append(out, d)
 		}
 	}
@@ -475,7 +489,7 @@ func ensureDefaultACPAgents(existing []ACPConnection) []ACPConnection {
 func defaultChannels() []Channel {
 	return []Channel{
 		{ID: "feishu-default", Type: "feishu", Name: "飞书", Enabled: false},
-		{ID: "wechat-default", Type: "wechat", Name: "微信 ClawBot", Enabled: false},
+		{ID: "wechat-default", Type: "wechat", Name: "微信", Enabled: false},
 	}
 }
 

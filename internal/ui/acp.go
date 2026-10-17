@@ -81,12 +81,21 @@ func (cw *ChatWindow) addACPFromCatalog(e acpCatalogEntry) {
 		cw.toast("已存在同名连接", mcore.SeverityInfo)
 		return
 	}
+	disabled := true
+	switch e.Name {
+	case "PiAgent", "CodexCLI":
+		disabled = false
+	}
 	cw.cfg.ACPAgents = append(cw.cfg.ACPAgents, config.ACPConnection{
-		Name: e.Name, Command: e.Command, Args: e.Args, Disabled: true,
+		Name: e.Name, Command: e.Command, Args: e.Args, Disabled: disabled,
 	})
 	_ = config.SaveConfig(cw.cfg)
 	cw.acpCatalogOpen = false
-	cw.toast("已添加 "+e.Name+"，请先安装对应 CLI 再启用", mcore.SeveritySuccess)
+	if disabled {
+		cw.toast("已添加 "+e.Name+"，请先安装对应 CLI 再启用", mcore.SeveritySuccess)
+	} else {
+		cw.toast("已添加并启用 "+e.Name, mcore.SeveritySuccess)
+	}
 }
 
 func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {

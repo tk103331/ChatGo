@@ -184,6 +184,8 @@ type ChatWindow struct {
 
 	mcp mcpState
 
+	statsCache statsCache
+
 	toolQuery string
 	mcpQuery  string
 
@@ -589,18 +591,6 @@ const titleSystemPrompt = "你是会话标题生成助手。根据用户与助�
 func (cw *ChatWindow) switchProvider(name string) {
 	cw.provider = name
 	cw.cfg.CurrentProvider = name
-	if cw.cur != nil {
-		cw.cur.Provider = name
-		cw.cur.Model = cw.model
-		if cw.cur.Model == "" {
-			if p, ok := cw.findProvider(name); ok {
-				if ms := p.ModelsList(); len(ms) > 0 {
-					cw.cur.Model = ms[0]
-				}
-			}
-		}
-		_ = cw.convManager.SaveConversation(cw.cur)
-	}
 	_ = config.SaveConfig(cw.cfg)
 	cw.setupProvider(name)
 }

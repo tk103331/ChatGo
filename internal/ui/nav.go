@@ -21,6 +21,7 @@ const (
 	sectionSkill
 	sectionAuto
 	sectionMCP
+	sectionStats
 	sectionSettings
 )
 
@@ -36,6 +37,7 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 		cw.navItem(c, "Agent", "bot", sectionAgent)
 		cw.navItem(c, "Skill", "brain", sectionSkill)
 		cw.navItemSVG(c, "MCP", assets.MCPLogo(), sectionMCP)
+		cw.navItem(c, "统计", "chart-column", sectionStats)
 		mgo.Spacer(c)
 		label := "外观：" + themeModeLabel(cw.themeMode)
 		if mcore.IconAction(c, icons.Must(themeModeIcon(cw.themeMode)), label).Tooltip(label).Clicked() {
@@ -123,6 +125,8 @@ func (cw *ChatWindow) sectionView(c *mgo.Context) {
 		cw.autoTasksPage(c)
 	case sectionMCP:
 		cw.mcpPage(c)
+	case sectionStats:
+		cw.statsPage(c)
 	case sectionSettings:
 		cw.settingsPage(c)
 	default:

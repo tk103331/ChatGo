@@ -102,10 +102,10 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "模型", Panel: func() { cw.providersTab(c) }},
 			{Label: "工具", Panel: func() { cw.builtinTab(c) }},
 			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
+			{Label: "渠道", Panel: func() { cw.channelTab(c) }},
 			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
 			{Label: "系统", Panel: func() { cw.systemTab(c) }},
-			{Label: "渠道", Panel: func() { cw.channelTab(c) }},
 		}, mnavigation.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)
 	})

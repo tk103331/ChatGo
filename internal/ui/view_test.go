@@ -84,7 +84,7 @@ func TestSidebarSearchRenders(t *testing.T) {
 func TestAppearanceTabRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	cw.settings.tab = 3
+	cw.settings.tab = 5
 	img := mgo.Render(cw.view, 1000, 700, 1)
 	if img == nil || img.Bounds().Dx() != 1000 {
 		t.Fatalf("appearance render failed: %v", img)
@@ -317,4 +317,124 @@ func TestBuiltinTabShowsContent(t *testing.T) {
 		}
 	}
 	t.Logf("builtin tab nonBg=%d", nonBg)
+}
+
+func TestStatsPageRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionStats
+	now := time.Now()
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "A", CreatedAt: now.AddDate(0, 0, -2),
+			Messages: []models.Message{
+				{ID: "m1", Role: "user", Content: "hi", Timestamp: now.AddDate(0, 0, -2)},
+				{ID: "m2", Role: "assistant", Content: "hello", Timestamp: now,
+					ToolCalls: []models.ToolCall{{ID: "t1", Name: "search"}}},
+			},
+			Turns: []models.Turn{{ID: "t1", UserMsgID: "m1", ReplyMsgID: "m2", Provider: "OpenAI", Model: "gpt-4",
+				Input: 100, Output: 50, Total: 150, StartedAt: now}}},
+	}
+	img := mgo.Render(cw.view, 1280, 820, 1)
+	if img == nil || img.Bounds().Dx() != 1280 {
+		t.Fatalf("stats render failed: %v", img)
+	}
+}
+
+func TestComputeStatsAggregates(t *testing.T) {
+	cw := testWindow()
+	now := time.Now()
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "A", CreatedAt: now,
+			Messages: []models.Message{
+				{ID: "u1", Role: "user", Timestamp: now},
+				{ID: "a1", Role: "assistant", Timestamp: now},
+				{ID: "u2", Role: "user", Timestamp: now},
+				{ID: "a2", Role: "assistant", Timestamp: now},
+			},
+			Turns: []models.Turn{
+				{ID: "t1", UserMsgID: "u1", ReplyMsgID: "a1", Model: "gpt-4", Input: 10, Output: 5, Total: 15, StartedAt: now},
+				{ID: "t2", UserMsgID: "u2", ReplyMsgID: "a2", Model: "gpt-4", Input: 20, Output: 5, Total: 25, StartedAt: now},
+			}},
+	}
+	cw.taskConvs = []models.Conversation{
+		{ID: "t1", Title: "Task", CreatedAt: now, TaskID: "x",
+			Messages: []models.Message{{ID: "a3", Role: "assistant", Timestamp: now}},
+			Turns:    []models.Turn{{ID: "t3", UserMsgID: "u3", ReplyMsgID: "a3", Model: "gpt-4", Input: 1, Output: 1, Total: 2, StartedAt: now}}},
+	}
+	s := cw.computeStats()
+	if s.sessions != 2 || s.messages != 5 || s.total != 42 || s.input != 31 || s.output != 11 {
+		t.Fatalf("aggregate %+v", s)
+	}
+	if len(s.models) != 1 || s.models[0].name != "gpt-4" || s.models[0].value != 42 {
+		t.Fatalf("models %+v", s.models)
+	}
+	if n := len(s.days); n != statsRange {
+		t.Fatalf("days %d", n)
+	}
+	last := s.days[len(s.days)-1]
+	if last.sessions != 2 || last.total != 42 {
+		t.Fatalf("today bucket %+v", last)
+	}
+}
+
+func TestTurnModelLabel(t *testing.T) {
+	cw := testWindow()
+	cw.cur = &models.Conversation{ID: "c1", Turns: []models.Turn{
+		{ID: "t1", ReplyMsgID: "a1", Provider: "OpenAI", Model: "gpt-4"},
+	}}
+	if got := cw.turnModelLabel(models.Message{ID: "a1", Role: "assistant"}); got != "OpenAI · gpt-4" {
+		t.Fatalf("label %q", got)
+	}
+	if got := cw.turnModelLabel(models.Message{ID: "a2", Role: "assistant"}); got != "" {
+		t.Fatalf("empty label %q", got)
+	}
+}
+
+func TestApplyTurnModelForSwitchesOnlyWhenNeeded(t *testing.T) {
+	cw := testWindow()
+	cw.provider, cw.model = "OpenAI", "gpt-4"
+	conv := &models.Conversation{ID: "c1", Turns: []models.Turn{
+		{ID: "t1", ReplyMsgID: "a1", Provider: "OpenAI", Model: "gpt-4"},
+		{ID: "t2", ReplyMsgID: "a2", Provider: "OpenAI", Model: "gpt-4o"},
+	}}
+	cw.applyTurnModelFor(conv, "a1")
+	if cw.provider != "OpenAI" || cw.model != "gpt-4" {
+		t.Fatalf("unexpected switch %q/%q", cw.provider, cw.model)
+	}
+	cw.applyTurnModelFor(conv, "a2")
+	if cw.model != "gpt-4o" {
+		t.Fatalf("model %q", cw.model)
+	}
+	cw.applyTurnModelFor(conv, "missing")
+	if cw.model != "gpt-4o" {
+		t.Fatalf("unknown turn changed model: %q", cw.model)
+	}
+}
+
+func TestStatsCountsModelsPerTurn(t *testing.T) {
+	cw := testWindow()
+	now := time.Now()
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "a", CreatedAt: now, Messages: []models.Message{
+			{ID: "u1", Role: "user", Timestamp: now},
+			{ID: "a1", Role: "assistant", Timestamp: now},
+			{ID: "u2", Role: "user", Timestamp: now},
+			{ID: "a2", Role: "assistant", Timestamp: now},
+		}, Turns: []models.Turn{
+			{ID: "t1", UserMsgID: "u1", ReplyMsgID: "a1", Model: "gpt-4", Total: 100, StartedAt: now},
+			{ID: "t2", UserMsgID: "u2", ReplyMsgID: "a2", Model: "gpt-4o", Total: 300, StartedAt: now},
+		}},
+	}
+	s := cw.computeStats()
+	if len(s.models) != 2 {
+		t.Fatalf("models %+v", s.models)
+	}
+	for _, m := range s.models {
+		want := 100
+		if m.name == "gpt-4o" {
+			want = 300
+		}
+		if m.value != want {
+			t.Fatalf("model %s = %d, want %d", m.name, m.value, want)
+		}
+	}
 }

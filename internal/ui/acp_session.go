@@ -175,6 +175,34 @@ func acpSelectOptions(o acp.SessionConfigSelectOptions) []minput.SelectOption[st
 	return out
 }
 
+// acpConfigCoversModes reports whether the adapter's config options already
+// carry a mode or thought-level selector. The ACP spec lets agents send both
+// configOptions and the older modes field in parallel, telling clients that
+// support configOptions to use them exclusively, so showing both duplicates
+// the control (for example two "Autoreview" or two "Thinking" choices).
+func acpConfigCoversModes(opts []acp.SessionConfigOption) bool {
+	for _, o := range opts {
+		var (
+			name string
+			cat  *acp.SessionConfigOptionCategory
+		)
+		if o.Select != nil {
+			name, cat = o.Select.Name, o.Select.Category
+		} else if o.Boolean != nil {
+			name, cat = o.Boolean.Name, o.Boolean.Category
+		}
+		if cat != nil && (*cat == acp.SessionConfigOptionCategoryMode || *cat == acp.SessionConfigOptionCategoryThoughtLevel) {
+			return true
+		}
+		low := strings.ToLower(name)
+		if strings.Contains(low, "thinking") || strings.Contains(low, "thought") ||
+			low == "mode" || strings.Contains(low, "approval") {
+			return true
+		}
+	}
+	return false
+}
+
 func (cw *ChatWindow) findACPConn(name string) (config.ACPConnection, bool) {
 	for _, a := range cw.cfg.ACPAgents {
 		if a.Name == name {
@@ -187,13 +215,17 @@ func (cw *ChatWindow) findACPConn(name string) (config.ACPConnection, bool) {
 // acpApplyUsage records a turn's token usage when the adapter reports it; the
 // ACP usage fields are unstable and most adapters leave them empty.
 
-func (cw *ChatWindow) acpApplyUsage(msg *models.Message, resp acp.PromptResponse) {
+func (cw *ChatWindow) acpApplyUsage(conv *models.Conversation, replyID string, resp acp.PromptResponse) {
 	if resp.Usage == nil {
 		return
 	}
-	msg.PromptTokens = resp.Usage.InputTokens
-	msg.CompletionTokens = resp.Usage.OutputTokens
-	msg.TotalTokens = resp.Usage.TotalTokens
+	t := turnOf(conv, replyID)
+	if t == nil {
+		return
+	}
+	t.Input = resp.Usage.InputTokens
+	t.Output = resp.Usage.OutputTokens
+	t.Total = resp.Usage.TotalTokens
 }
 
 // acpChatStart runs one turn of a conversation through its ACP coding CLI.
@@ -224,7 +256,11 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 			if perr != nil && conv.Messages[idx].Content == "" {
 				conv.Messages[idx].Content = "⚠️ " + perr.Error()
 			}
-			cw.acpApplyUsage(&conv.Messages[idx], resp)
+			cw.acpApplyUsage(conv, conv.Messages[idx].ID, resp)
+			if t := turnOf(conv, conv.Messages[idx].ID); t != nil {
+				t.Assistant = conv.Messages[idx].Content
+				t.EndedAt = time.Now()
+			}
 			cw.streaming = false
 			conv.UpdatedAt = time.Now()
 			_ = cw.convManager.SaveConversation(conv)

@@ -105,7 +105,22 @@ func (cw *ChatWindow) selectConversation(id string) {
 		cw.workspace = conv.Workspace
 	}
 	cw.applyConversationAgent(conv)
+	cw.applyConversationModel(conv)
 	cw.msgList.ScrollToEnd()
+}
+
+// applyConversationModel restores the model the conversation last used, so
+// continuing it keeps that model instead of the global default.
+func (cw *ChatWindow) applyConversationModel(conv *models.Conversation) {
+	if strings.HasPrefix(conv.Agent, "acp:") {
+		return
+	}
+	for i := len(conv.Turns) - 1; i >= 0; i-- {
+		if t := conv.Turns[i]; t.Model != "" || t.Provider != "" {
+			cw.applyModel(t.Provider, t.Model)
+			return
+		}
+	}
 }
 
 // sendDraft appends the draft as a user turn and streams the assistant reply.
@@ -122,11 +137,27 @@ func (cw *ChatWindow) sendDraft() {
 		return
 	}
 	conv := cw.cur
-	user := models.Message{ID: cw.newID(), Role: "user", Content: text, Timestamp: time.Now()}
+	now := time.Now()
+	user := models.Message{ID: cw.newID(), Role: "user", Content: text, Timestamp: now}
 	conv.Messages = append(conv.Messages, user)
-	conv.UpdatedAt = time.Now()
+	conv.UpdatedAt = now
 	idx := len(conv.Messages)
-	conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Timestamp: time.Now()})
+	reply := models.Message{ID: cw.newID(), Role: "assistant", Timestamp: now}
+	conv.Messages = append(conv.Messages, reply)
+	turn := models.Turn{
+		ID:         cw.newID(),
+		UserMsgID:  user.ID,
+		ReplyMsgID: reply.ID,
+		User:       text,
+		StartedAt:  now,
+	}
+	if strings.HasPrefix(conv.Agent, "acp:") {
+		turn.Provider = strings.TrimPrefix(conv.Agent, "acp:")
+	} else {
+		turn.Provider = cw.provider
+		turn.Model = cw.model
+	}
+	conv.Turns = append(conv.Turns, turn)
 	cw.draft = ""
 	if strings.HasPrefix(conv.Agent, "acp:") && conv.Title == defaultTitle {
 		conv.Title = titleFromText(text)
@@ -281,9 +312,15 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 			conv.Messages[idx].Reasoning = resp.Reasoning
 		}
 		if resp != nil && resp.TotalTokens > 0 {
-			conv.Messages[idx].PromptTokens = resp.PromptTokens
-			conv.Messages[idx].CompletionTokens = resp.CompletionTokens
-			conv.Messages[idx].TotalTokens = resp.TotalTokens
+			if t := turnOf(conv, conv.Messages[idx].ID); t != nil {
+				t.Input = resp.PromptTokens
+				t.Output = resp.CompletionTokens
+				t.Total = resp.TotalTokens
+			}
+		}
+		if t := turnOf(conv, conv.Messages[idx].ID); t != nil {
+			t.Assistant = conv.Messages[idx].Content
+			t.EndedAt = time.Now()
 		}
 		cw.streaming = false
 		cw.streamCancel = nil
@@ -295,6 +332,38 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 	})
 }
 
+// turnProvider returns the provider of the conversation's last turn, falling
+// back to the legacy conversation-level provider.
+func turnProvider(conv *models.Conversation) string {
+	if n := len(conv.Turns); n > 0 {
+		if conv.Turns[n-1].Provider != "" {
+			return conv.Turns[n-1].Provider
+		}
+	}
+	return conv.Provider
+}
+
+// turnModel returns the model of the conversation's last turn, falling back to
+// the legacy conversation-level model.
+func turnModel(conv *models.Conversation) string {
+	if n := len(conv.Turns); n > 0 {
+		if conv.Turns[n-1].Model != "" {
+			return conv.Turns[n-1].Model
+		}
+	}
+	return conv.Model
+}
+
+// turnOf finds the turn whose reply is the message with replyID.
+func turnOf(conv *models.Conversation, replyID string) *models.Turn {
+	for i := len(conv.Turns) - 1; i >= 0; i-- {
+		if conv.Turns[i].ReplyMsgID == replyID {
+			return &conv.Turns[i]
+		}
+	}
+	return nil
+}
+
 func (cw *ChatWindow) generateTitle(conv *models.Conversation) {
 	if conv.Title != defaultTitle || len(conv.Messages) < 2 {
 		return
@@ -303,12 +372,15 @@ func (cw *ChatWindow) generateTitle(conv *models.Conversation) {
 	if user == "" || assistant == "" || strings.HasPrefix(assistant, "⚠️") {
 		return
 	}
-	provider, ok := cw.findProvider(conv.Provider)
+	provider, ok := cw.findProvider(turnProvider(conv))
 	if !ok {
 		provider, ok = cw.firstEnabled()
 	}
 	if !ok {
 		return
+	}
+	if m := turnModel(conv); m != "" {
+		provider.Model = m
 	}
 	client, err := llm.NewClient(provider)
 	if err != nil {

@@ -39,10 +39,25 @@ type Message struct {
 	Segments  []Segment  `json:"segments,omitempty"`  // Ordered blocks for multi-step replies
 	Timestamp time.Time  `json:"timestamp"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // Tool calls made by this message
+}
 
-	PromptTokens     int `json:"prompt_tokens,omitempty"`
-	CompletionTokens int `json:"completion_tokens,omitempty"`
-	TotalTokens      int `json:"total_tokens,omitempty"`
+// Turn is one request/reply round of a conversation: the user's input and the
+// assistant's reply, plus the model and token usage that produced it. A Turn
+// is the unit that owns model choice and usage, so a session may switch models
+// between turns without losing how earlier turns were generated.
+type Turn struct {
+	ID         string    `json:"id"`
+	UserMsgID  string    `json:"user_message_id"`
+	ReplyMsgID string    `json:"reply_message_id"`
+	User       string    `json:"user,omitempty"`
+	Assistant  string    `json:"assistant,omitempty"`
+	Provider   string    `json:"provider,omitempty"`
+	Model      string    `json:"model,omitempty"`
+	Input      int       `json:"input_tokens,omitempty"`
+	Output     int       `json:"output_tokens,omitempty"`
+	Total      int       `json:"total_tokens,omitempty"`
+	StartedAt  time.Time `json:"started_at"`
+	EndedAt    time.Time `json:"ended_at,omitempty"`
 }
 
 // Conversation represents a chat conversation
@@ -50,6 +65,7 @@ type Conversation struct {
 	ID        string            `json:"id"`
 	Title     string            `json:"title"`
 	Messages  []Message         `json:"messages"`
+	Turns     []Turn            `json:"turns,omitempty"`
 	CreatedAt time.Time         `json:"created_at"`
 	UpdatedAt time.Time         `json:"updated_at"`
 	Provider  string            `json:"provider"`
