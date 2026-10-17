@@ -165,8 +165,9 @@ func InputGroup(c *ui.Context, value *string, opts InputGroupOptions) InputGroup
 		border = k.ControlBorder.Mix(k.Text, 0.25)
 	}
 	g.Border(theme.BorderWidth, border)
+	focused := in.Focused()
 	g.DrawOver(func(p *ui.Painter, r ui.Rect) {
-		if in.Focused() {
+		if focused {
 			internal.FocusRing(p, r, theme.ControlRadius, k.Focus)
 		}
 	})

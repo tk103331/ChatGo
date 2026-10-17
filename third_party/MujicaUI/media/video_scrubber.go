@@ -76,7 +76,8 @@ func VideoScrubber(c *ui.Context, pos *time.Duration, opts VideoScrubberOptions)
 	if changed {
 		slog.Debug("mujica: video_scrubber seek", "pos", *pos)
 	}
-	v, buffered, focus := pos.Seconds(), opts.Buffered, s
+	v, buffered := pos.Seconds(), opts.Buffered
+	hot, focusVis := s.Hovered(), s.FocusVisible()
 	s.Draw(func(p *ui.Painter, r ui.Rect) {
 		y := r.Y + g.TrackY
 		x0 := g.X(r, 0)
@@ -87,7 +88,7 @@ func VideoScrubber(c *ui.Context, pos *time.Duration, opts VideoScrubberOptions)
 			p.Fill(ui.Rect{X: b0, Y: y - input.SliderTrack/2, W: b1 - b0, H: input.SliderTrack}, k.TextMuted.Alpha(0.45), 0)
 		}
 		p.Fill(ui.Rect{X: x0, Y: y - input.SliderTrack/2, W: g.X(r, v) - x0, H: input.SliderTrack}, k.AccentText, 0)
-		input.SliderThumbPaint(p, k, g.X(r, v), y, focus.Hovered(), focus.FocusVisible())
+		input.SliderThumbPaint(p, k, g.X(r, v), y, hot, focusVis)
 	})
 	return core.NewChoiceResult(s, changed)
 }

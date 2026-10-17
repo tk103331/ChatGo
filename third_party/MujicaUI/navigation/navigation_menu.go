@@ -118,12 +118,13 @@ func navigationMenuTop(c *ui.Context, l NavigationLink, path string, push func(s
 		b.Background(k.SurfaceHover)
 		fg = k.Text
 	}
+	focus := b.FocusVisible()
 	internal.Ease(b, core.Motion(c, theme.StateDuration), fg)
 	b.FocusRing(false).DrawOver(func(p *ui.Painter, r ui.Rect) {
 		if on {
 			p.Fill(ui.Rect{X: r.X + u*3, Y: r.Y + r.H - 2, W: r.W - u*6, H: 2}, k.AccentText, 1)
 		}
-		if b.FocusVisible() {
+		if focus {
 			internal.FocusRing(p, r, theme.ControlRadius, k.Focus)
 		}
 	})

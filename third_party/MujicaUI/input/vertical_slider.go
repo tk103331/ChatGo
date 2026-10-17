@@ -76,6 +76,7 @@ func VerticalSlider(c *ui.Context, value *float64, opts VerticalSliderOptions) c
 	}
 	hot := s.Hovered() || held
 	v := *value
+	focus, focused := s.FocusVisible(), s.Focused()
 	s.Draw(func(p *ui.Painter, r ui.Rect) {
 		x := r.X + core.Density(c).ControlHeight()/2
 		top, bot := y(r, g.hi), y(r, g.lo)
@@ -90,8 +91,8 @@ func VerticalSlider(c *ui.Context, value *float64, opts VerticalSliderOptions) c
 				p.Text(x+SliderTrack/2+10, my-th/2, m.Label, size, k.TextMuted)
 			}
 		}
-		SliderThumbPaint(p, k, x, y(r, v), hot, s.FocusVisible())
-		if opts.ShowValue && (hot || s.Focused()) {
+		SliderThumbPaint(p, k, x, y(r, v), hot, focus)
+		if opts.ShowValue && (hot || focused) {
 			sliderBubblePaint(p, k, x, y(r, v), format(v), size)
 		}
 	})

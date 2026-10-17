@@ -63,8 +63,9 @@ func Switch(c *ui.Context, on *bool, label string, opts SwitchOptions) ui.Elemen
 				p.Fill(ui.Rect{X: r.X + 9, Y: r.Y + 6, W: 1.5, H: r.H - 12}, k.OnAccent, 0)
 			}
 		})
+		focus := sw.FocusVisible()
 		track.DrawOver(func(p *ui.Painter, r ui.Rect) {
-			if sw.FocusVisible() {
+			if focus {
 				internal.FocusRing(p, r, theme.CardRadius, k.Focus)
 			}
 		})

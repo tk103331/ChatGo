@@ -129,6 +129,7 @@ func leverageTrack(c *ui.Context, st *leverageSliderState, levels []float64, dis
 		}
 	}
 	at = slices.Index(levels, st.draft)
+	focus := t.FocusVisible()
 	t.Draw(func(p *ui.Painter, r ui.Rect) {
 		x0, w := r.X+pad, r.W-2*pad
 		y := r.Y + 14
@@ -155,7 +156,7 @@ func leverageTrack(c *ui.Context, st *leverageSliderState, levels []float64, dis
 		}
 		p.FillPath(internal.Diamond(xs(at), y, 16), k.Surface)
 		p.FillPath(internal.Diamond(xs(at), y, 13), k.AccentText)
-		if t.FocusVisible() {
+		if focus {
 			internal.FocusRing(p, ui.Rect{X: xs(at) - 8, Y: y - 8, W: 16, H: 16}, theme.ControlRadius, k.Focus)
 		}
 	})

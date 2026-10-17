@@ -47,16 +47,17 @@ func ScrollArea(c *ui.Context, state *ui.ScrollState, opts ScrollAreaOptions, ch
 	if overflow {
 		e.Focusable()
 	}
-	focus := core.Tokens(c).Focus
+	focusColor := core.Tokens(c).Focus
+	focus := e.FocusVisible()
 	// The ring goes inside, past the focus gap: areas often fill a clipped pane.
 	e.FocusRing(false).DrawOver(func(p *ui.Painter, r ui.Rect) {
 		if overflow != (state.MaxX > 0 || state.MaxY > 0) {
 			// Layout changed the overflow: rebuild so the focus stop follows it.
 			c.Invalidate()
 		}
-		if e.FocusVisible() {
+		if focus {
 			in := theme.FocusGap + theme.FocusWidth/2
-			p.Stroke(ui.Rect{X: r.X + in, Y: r.Y + in, W: r.W - 2*in, H: r.H - 2*in}, focus, theme.ControlRadius, theme.FocusWidth)
+			p.Stroke(ui.Rect{X: r.X + in, Y: r.Y + in, W: r.W - 2*in, H: r.H - 2*in}, focusColor, theme.ControlRadius, theme.FocusWidth)
 		}
 	})
 	if opts.Label != "" {

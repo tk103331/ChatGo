@@ -95,13 +95,18 @@ func RangeSlider(c *ui.Context, low, high *float64, opts RangeSliderOptions) cor
 	}
 	lo, hi, which := *low, *high, *drag
 	hover := e.Hovered()
+	var knobHot, knobFocus, knobFocused [2]bool
+	for i := range knobs {
+		knobHot[i] = which == i || knobs[i].Hovered()
+		knobFocus[i] = knobs[i].FocusVisible()
+		knobFocused[i] = knobs[i].Focused()
+	}
 	e.Draw(func(p *ui.Painter, r ui.Rect) {
 		x0, x1 := g.X(r, lo), g.X(r, hi)
 		SliderTrackPaint(p, r, g, k, opts.Marks, size, x0, x1)
 		for i, x := range []float32{x0, x1} {
-			hot := which == i || knobs[i].Hovered()
-			SliderThumbPaint(p, k, x, r.Y+g.TrackY, hot, knobs[i].FocusVisible())
-			if opts.ShowValue && (hot || hover || knobs[i].Focused()) {
+			SliderThumbPaint(p, k, x, r.Y+g.TrackY, knobHot[i], knobFocus[i])
+			if opts.ShowValue && (knobHot[i] || hover || knobFocused[i]) {
 				rangeSliderBubble(p, k, x, r.Y+g.TrackY, format([]float64{lo, hi}[i]), i, size)
 			}
 		}

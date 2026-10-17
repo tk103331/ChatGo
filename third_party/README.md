@@ -37,6 +37,19 @@ replace git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI => ./third_party/MujicaUI
 
 **`icons/svg/chart-column.svg`** — 上游精简图标集时移除了此图标，ChatGo 统计页导航需要，予以恢复。
 
+**paint 闭包内 Element 方法调用（跨 pass panic）** — MyGo 的 `ui.Element` 仅在创建它的
+build pass 内有效；`DrawOver`/`Draw` 回调在 paint 阶段执行，且 exit transition 的 ghost
+（`ghostOf` 浅拷贝保留 `paintAfterFn`）会带着上一帧的闭包进入当前帧的 paint。闭包里再调
+`e.FocusVisible()` 等方法时 handle 已过期，开发模式直接 panic：
+`ui: element from pass N used in pass M; keep a ui.Handle instead`。
+补丁：将所有 paint 闭包内的 Element 方法调用（`FocusVisible`/`Focused`/`Hovered`/`IsDisabled`）
+改为 build pass 读入局部变量，闭包只用变量。涉及 `internal/paint.go`（Ring）、
+`input/`（checkbox、switch、text_input、radio_group、color_picker、resizable_panel_group、
+slider、knob、vertical_slider、range_slider、tags_input、input_group、masked_input、mention_input）、
+`layout/`（scroll_area、split_pane）、`navigation/`（tabs、navigation_menu）、
+`code/`（terminal_tabs、flamegraph）、`media/video_scrubber`、`files/presence_avatars`、
+`finance/leverage_slider`、`messaging/video_call_grid`。
+
 ### 重建副本
 
 ```sh
@@ -46,7 +59,8 @@ cp -R /tmp/mujica/. third_party/MujicaUI/
 rm -rf third_party/MujicaUI/.git
 chmod -R u+w third_party/MujicaUI
 # 然后按上文重新应用 highlight.go、text_input.go、text_area.go、prompt_composer.go、
-# tabs.go、terminal_tabs.go 补丁，并恢复 chart-column.svg
+# tabs.go、terminal_tabs.go 补丁，恢复 chart-column.svg，
+# 并重做 paint 闭包 Element 方法调用补丁（见上文）
 ```
 
 完成后 `go build ./...` 即可。若上游修复了上述问题，删除 `replace`、副本，

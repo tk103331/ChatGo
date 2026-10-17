@@ -129,8 +129,9 @@ func textInputFrame(c *ui.Context, look *textInputLook, build func(frame ui.Elem
 		} else {
 			frame.Background(bg).Border(theme.BorderWidth, border).Transition(core.ColorFade)
 		}
+		focus := in.FocusVisible()
 		frame.DrawOver(func(p *ui.Painter, r ui.Rect) {
-			if in.FocusVisible() {
+			if focus {
 				internal.FocusRing(p, r, theme.ControlRadius, k.Focus)
 			}
 		})

@@ -195,11 +195,12 @@ func Slider(c *ui.Context, value *float64, opts SliderOptions) core.ChoiceResult
 	}
 	hover := s.Hovered()
 	v := *value
+	focus, focused := s.FocusVisible(), s.Focused()
 	s.Draw(func(p *ui.Painter, r ui.Rect) {
 		SliderTrackPaint(p, r, g, k, opts.Marks, size, g.X(r, g.lo), g.X(r, v))
 		x := g.X(r, v)
-		SliderThumbPaint(p, k, x, r.Y+g.TrackY, hover || held, s.FocusVisible())
-		if opts.ShowValue && (hover || held || s.Focused()) {
+		SliderThumbPaint(p, k, x, r.Y+g.TrackY, hover || held, focus)
+		if opts.ShowValue && (hover || held || focused) {
 			sliderBubblePaint(p, k, x, r.Y+g.TrackY, format(v), size)
 		}
 	})

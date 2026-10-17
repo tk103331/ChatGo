@@ -80,7 +80,7 @@ func radioGroupItem[T comparable](c *ui.Context, k theme.Tokens, d theme.Density
 		item.FocusRing(false).Focus()
 	}
 	on := *value == it.Value
-	hover, pressed := row.Hovered(), row.Pressed()
+	hover, pressed, focus := row.Hovered(), row.Pressed(), row.FocusVisible()
 	row.Children(func() {
 		bg, border := checkboxColors(k, on, hover, pressed)
 		dot := ui.Box(c).Size(checkboxSize, checkboxSize).Shrink(0).Radius(checkboxSize/2).
@@ -91,7 +91,7 @@ func radioGroupItem[T comparable](c *ui.Context, k theme.Tokens, d theme.Density
 				s := r.W * 0.375
 				p.Fill(ui.Rect{X: r.X + (r.W-s)/2, Y: r.Y + (r.H-s)/2, W: s, H: s}, k.OnAccent, s/2)
 			}
-			if row.FocusVisible() {
+			if focus {
 				internal.FocusRing(p, r, checkboxSize/2, k.Focus)
 			}
 		})

@@ -244,13 +244,14 @@ func resizablePanelGrip(c *ui.Context, k theme.Tokens, u float32, s []float32, a
 		grip.Top(0).Bottom(0).Left(at - 1.5*u).Width(3 * u)
 	}
 	active := held || grip.Hovered()
+	focus := div.FocusVisible()
 	div.Draw(func(p *ui.Painter, r ui.Rect) {
 		line := k.ControlBorder
 		if active {
 			line = k.AccentText
 		}
 		p.Fill(r, line, 0)
-		if div.FocusVisible() {
+		if focus {
 			internal.FocusRing(p, r, 0, k.Focus)
 		}
 	})

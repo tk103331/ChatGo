@@ -264,18 +264,19 @@ func mentionInputView(c *ui.Context, k theme.Tokens, s *mentionInputState, in ui
 		chips[i] = [2]float32{measure(m.Start), measure(m.End)}
 	}
 	spans := mentionInputSpans(k, s, size, placeholder)
+	focused := in.Focused()
 	in.Draw(func(p *ui.Painter, r ui.Rect) {
 		y := r.Y + (r.H-h)/2
 		for _, ch := range chips {
 			p.Fill(ui.Rect{X: r.X + ch[0] - s.offset - 1, Y: y, W: ch[1] - ch[0] + 2, H: h}, k.Selection, theme.ControlRadius)
 		}
-		if a != b && in.Focused() {
+		if a != b && focused {
 			p.Fill(ui.Rect{X: r.X + sel[0] - s.offset, Y: y, W: sel[1] - sel[0], H: h}, k.Selection.Mix(k.AccentText, 0.25), 0)
 		}
 		p.RichText(r.X-s.offset, y, 0, spans...)
 	})
 	in.DrawOver(func(p *ui.Painter, r ui.Rect) {
-		if in.Focused() && s.compose == "" {
+		if focused && s.compose == "" {
 			p.Fill(ui.Rect{X: r.X + x - s.offset, Y: r.Y + (r.H-h)/2, W: 1, H: h}, k.Text, 0)
 		}
 	})

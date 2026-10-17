@@ -197,6 +197,7 @@ func colorPickerSquare(c *ui.Context, st *colorPickerState, set func(colorPicker
 	x = st.hsv
 	sq.Description(fmt.Sprintf(core.Msg(c, "color_picker.sv"), x.s*100, x.v*100))
 	hue := colorPickerHSVA{x.h, 1, 1, 1}.color()
+	focus := sq.FocusVisible()
 	sq.Draw(func(p *ui.Painter, r ui.Rect) {
 		p.FillGradient(r, ui.LinearGradient{From: ui.RGB(255, 255, 255), To: hue, Angle: 90}, theme.ControlRadius)
 		p.FillGradient(r, ui.LinearGradient{From: ui.RGBA(0, 0, 0, 0), To: ui.RGB(0, 0, 0), Angle: 180}, theme.ControlRadius)
@@ -204,7 +205,7 @@ func colorPickerSquare(c *ui.Context, st *colorPickerState, set func(colorPicker
 		p.FillPath(internal.Diamond(cx, cy, 14), ui.RGB(0, 0, 0).Alpha(0.5))
 		p.FillPath(internal.Diamond(cx, cy, 11), ui.RGB(255, 255, 255))
 		p.FillPath(internal.Diamond(cx, cy, 6), x.color().Alpha(1))
-		if sq.FocusVisible() {
+		if focus {
 			internal.FocusRing(p, r, theme.ControlRadius, k.Focus)
 		}
 	})
@@ -216,6 +217,7 @@ func colorPickerSlider(c *ui.Context, v *float64, hi float64, name string, track
 	const knob, look = 10, 18
 	s := ui.SliderBase(c, v, 0, hi).Height(theme.MinHitSize).PaddingX(knob / 2).FocusRing(false).Label(name)
 	frac := float32(*v / hi)
+	focus := s.FocusVisible()
 	s.Draw(func(p *ui.Painter, r ui.Rect) {
 		// The hit area is taller than the drawn slider, which sits in its middle.
 		r = ui.Rect{X: r.X, Y: r.Y + (r.H-look)/2, W: r.W, H: look}
@@ -226,7 +228,7 @@ func colorPickerSlider(c *ui.Context, v *float64, hi float64, name string, track
 		thumb := ui.Rect{X: x - knob/2, Y: r.Y, W: knob, H: r.H}
 		p.Fill(thumb, k.Surface, theme.ControlRadius)
 		p.Stroke(thumb, k.Text, theme.ControlRadius, 1.5)
-		if s.FocusVisible() {
+		if focus {
 			internal.FocusRing(p, thumb, theme.ControlRadius, k.Focus)
 		}
 	})

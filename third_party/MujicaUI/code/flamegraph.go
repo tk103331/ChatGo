@@ -87,11 +87,12 @@ func Flamegraph(c *ui.Context, root *FlameNode, s *FlamegraphState, opts Flamegr
 			}
 		}
 		b := g.Bounds()
+		gfocused := g.Focused()
 		g.Draw(func(p *ui.Painter, r ui.Rect) {
 			if r.W != b.W {
 				c.Invalidate()
 			}
-			flamePaint(p, r, k, root, zoom, focus, q, g.Focused(), core.FontSize(c, theme.CaptionSize))
+			flamePaint(p, r, k, root, zoom, focus, q, gfocused, core.FontSize(c, theme.CaptionSize))
 		})
 		readout := s.Focus
 		if *hover != nil {

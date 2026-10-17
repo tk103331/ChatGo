@@ -140,11 +140,12 @@ func presenceStyle(c *ui.Context, b ui.Element, size float32, following bool) {
 	if b.Hovered() {
 		b.Background(k.SurfaceHover)
 	}
+	focus := b.FocusVisible()
 	b.DrawOver(func(p *ui.Painter, r ui.Rect) {
 		if following {
 			p.Stroke(r, k.AccentText, r.W/2, 2)
 		}
-		if b.FocusVisible() {
+		if focus {
 			internal.FocusRing(p, r, r.W/2, k.Focus)
 		}
 	})

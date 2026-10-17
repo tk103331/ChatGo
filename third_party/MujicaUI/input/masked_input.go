@@ -198,8 +198,9 @@ func MaskedInput(c *ui.Context, value *string, opts MaskedInputOptions) InputRes
 			}
 			ui.Text(c, string(shown[max(at, filled):])).TextColor(k.TextMuted).FontSize(size).SingleLine()
 		})
+		focused, disabled := in.Focused(), in.IsDisabled()
 		in.DrawOver(func(p *ui.Painter, rr ui.Rect) {
-			if in.Focused() && !in.IsDisabled() && s.compose == "" {
+			if focused && !disabled && s.compose == "" {
 				p.Fill(ui.Rect{X: rr.X + w, Y: rr.Y + (rr.H-h)/2, W: 1, H: h}, k.Text, 0)
 			}
 		})

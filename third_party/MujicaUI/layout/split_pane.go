@@ -212,8 +212,9 @@ func splitPaneBuild(c *ui.Context, in ui.Element, state *SplitPaneState, opts Sp
 				}
 			}
 		})
+		focus := div.FocusVisible()
 		handle.Draw(func(p *ui.Painter, r ui.Rect) {
-			if div.FocusVisible() {
+			if focus {
 				internal.FocusRing(p, r, 0, k.Focus)
 			}
 		})

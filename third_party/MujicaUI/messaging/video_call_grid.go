@@ -100,9 +100,10 @@ func callTile(c *ui.Context, k theme.Tokens, p CallParticipant) {
 		})
 	})
 	if p.Speaking {
+		focus := tile.FocusVisible()
 		tile.DrawOver(func(pt *ui.Painter, r ui.Rect) {
 			pt.Stroke(ui.Rect{X: r.X + 1.5, Y: r.Y + 1.5, W: r.W - 3, H: r.H - 3}, k.AccentText, theme.CardRadius, 3)
-			if tile.FocusVisible() {
+			if focus {
 				internal.FocusRing(pt, r, theme.CardRadius, k.Focus)
 			}
 		})
