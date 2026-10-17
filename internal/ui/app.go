@@ -157,6 +157,8 @@ type ChatWindow struct {
 	confirm  confirmState
 	input    inputState
 
+	paletteOpen bool
+
 	agentForm       agentForm
 	agentEditorOpen bool
 	agentSecModels  bool
@@ -379,6 +381,7 @@ func (cw *ChatWindow) view(c *mgo.Context) {
 			})
 		})
 	}
+	cw.commandPalette(c)
 	cw.confirmDialog(c)
 	cw.inputDialog(c)
 	cw.acpPermissionDialog(c)
@@ -501,6 +504,9 @@ func (cw *ChatWindow) titleBar(c *mgo.Context) {
 		mgo.Image(c, assets.BrandBitmap()).Size(16, 16)
 		mgo.Text(c, cw.windowTitle()).FontSize(mcore.FontSize(c, mtheme.BodySize)).FontWeight(600).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		if mcore.IconAction(c, icons.Must("command"), "命令面板").Clicked() {
+			cw.paletteOpen = true
+		}
 		if cw.section == sectionChat {
 			if mcore.IconAction(c, icons.Must("panel-left"), "会话列表").Clicked() {
 				cw.leftHidden = !cw.leftHidden
