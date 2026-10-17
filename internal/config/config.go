@@ -185,6 +185,7 @@ func GetAvailableBuiltinTools() []string {
 		"filesystem",
 		"sequentialthinking",
 		"jssandbox",
+		"webview",
 	}
 }
 
@@ -201,6 +202,7 @@ func GetBuiltinToolDisplayName(toolType string) string {
 		"filesystem":         "文件系统",
 		"sequentialthinking": "链式思考",
 		"jssandbox":          "JS 沙箱",
+		"webview":            "网页浏览",
 	}
 	if name, ok := names[toolType]; ok {
 		return name
@@ -221,6 +223,7 @@ func GetBuiltinToolDescription(toolType string) string {
 		"filesystem":         "Filesystem - Read, write or list files under the working directory",
 		"sequentialthinking": "Sequential Thinking - Chain of thought reasoning tool",
 		"jssandbox":          "JS Sandbox - Run JavaScript/TypeScript code in a secure sandbox (powered by moejs)",
+		"webview":            "WebView - Operate the built-in web view: open URLs, get page content, click elements, fill forms, run JavaScript",
 	}
 	if desc, ok := descriptions[toolType]; ok {
 		return desc
@@ -249,6 +252,8 @@ func GetBuiltinToolConfigFields(toolType string) []string {
 		return []string{"max_iterations"}
 	case "jssandbox":
 		return []string{"memory_limit_mb", "timeout_seconds", "typescript"}
+	case "webview":
+		return []string{"timeout"}
 	default:
 		return []string{}
 	}
@@ -275,6 +280,8 @@ func GetRequiredConfigFields(toolType string) []string {
 		return []string{} // max_iterations has default
 	case "jssandbox":
 		return []string{} // all fields have defaults
+	case "webview":
+		return []string{} // timeout has default
 	default:
 		return []string{}
 	}

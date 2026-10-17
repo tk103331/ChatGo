@@ -79,6 +79,11 @@ type ChatWindow struct {
 	leftHidden bool
 	leftW      float32
 
+	webPanel   bool
+	webURL     string
+	webCurrent string
+	webView    *mygo.WebView
+
 	termOpen     bool
 	terms        []*termTab
 	termTabs     []mcode.TerminalTab
@@ -516,6 +521,9 @@ func (cw *ChatWindow) titleBar(c *mgo.Context) {
 			}
 			if mcore.IconAction(c, assets.PanelRight(), "文件树").Clicked() {
 				cw.rightPanel = !cw.rightPanel
+			}
+			if mcore.IconAction(c, icons.Must("globe"), "网页预览").Clicked() {
+				cw.toggleWebPanel()
 			}
 		}
 	})

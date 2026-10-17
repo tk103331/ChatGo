@@ -50,6 +50,14 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 			"input":    {Type: schema.String, Desc: "传入 run 函数的 JSON 输入，可选"},
 			"function": {Type: schema.String, Desc: "要调用的导出函数名，默认 run"},
 		}
+	case "webview":
+		return map[string]*schema.ParameterInfo{
+			"action":   {Type: schema.String, Desc: "操作：open（打开网址）/ url（获取当前网址）/ title（获取页面标题）/ content（获取文本内容）/ html（获取HTML）/ click（点击元素）/ fill（填写表单）/ submit（提交表单）/ eval（执行JS）", Required: true},
+			"url":      {Type: schema.String, Desc: "要打开的网址，action=open 时必填"},
+			"selector": {Type: schema.String, Desc: "CSS 选择器，定位网页元素（content/html/click/fill/submit 时使用，content/html 可选）"},
+			"value":    {Type: schema.String, Desc: "填写的值，action=fill 时必填"},
+			"code":     {Type: schema.String, Desc: "JavaScript 代码，action=eval 时必填"},
+		}
 	}
 	return map[string]*schema.ParameterInfo{}
 }
@@ -178,6 +186,21 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) 
 				return "", fmt.Errorf("缺少必填参数 code")
 			}
 			return jssandbox.Run(ctx, in.Code, in.Input, in.Function, scfg)
+		}
+	case "webview":
+		timeout := configSeconds(tool.Config["timeout"], 30)
+		return func(ctx context.Context, args string) (string, error) {
+			var in struct {
+				Action   string `json:"action"`
+				URL      string `json:"url"`
+				Selector string `json:"selector"`
+				Value    string `json:"value"`
+				Code     string `json:"code"`
+			}
+			if err := json.Unmarshal([]byte(args), &in); err != nil {
+				return "", fmt.Errorf("参数解析失败: %w", err)
+			}
+			return cw.webviewTool(ctx, in.Action, in.URL, in.Selector, in.Value, in.Code, timeout)
 		}
 	}
 	return func(context.Context, string) (string, error) {

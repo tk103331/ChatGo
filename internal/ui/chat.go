@@ -36,7 +36,7 @@ func (cw *ChatWindow) chatView(c *mgo.Context) {
 	if cw.rightPanel {
 		tree = cw.treeW
 	}
-	hasPreview := len(cw.previewTabs) > 0
+	hasPreview := len(cw.previewTabs) > 0 || cw.webPanel
 	left := cw.leftW
 	if cw.leftHidden {
 		left = 0
@@ -85,11 +85,29 @@ func (cw *ChatWindow) chatMainArea(c *mgo.Context, hasPreview bool) {
 
 // chatArea is the message list and the optional preview column.
 func (cw *ChatWindow) chatArea(c *mgo.Context, hasPreview bool) {
-	if hasPreview {
-		mgo.Split(c, &cw.chatW, func() { cw.messageArea(c) }, func() { cw.previewPanel(c) }).Fill()
+	hasFile := len(cw.previewTabs) > 0
+	hasWeb := cw.webPanel
+	if !hasFile && !hasWeb {
+		cw.messageArea(c)
 		return
 	}
-	cw.messageArea(c)
+	mgo.Split(c, &cw.chatW, func() { cw.messageArea(c) }, func() { cw.rightColumn(c, hasFile, hasWeb) }).Fill()
+}
+
+// rightColumn shows the file preview and the WebView, alone or side by side.
+func (cw *ChatWindow) rightColumn(c *mgo.Context, hasFile, hasWeb bool) {
+	if hasFile && hasWeb {
+		if cw.previewW == 0 {
+			cw.previewW = 320
+		}
+		mgo.Split(c, &cw.previewW, func() { cw.previewPanel(c) }, func() { cw.webPanelView(c) }).Fill()
+		return
+	}
+	if hasFile {
+		cw.previewPanel(c)
+		return
+	}
+	cw.webPanelView(c)
 }
 
 // messageArea is the message list and the composer, without the sidebar.

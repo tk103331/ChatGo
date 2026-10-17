@@ -40,6 +40,7 @@ func (cw *ChatWindow) paletteCommands() []mnavigation.Command {
 		mnavigation.Command{ID: "action:terminal", Label: "切换终端", Group: "操作", Icon: icons.Must("terminal"), Keywords: []string{"toggle", "terminal"}},
 		mnavigation.Command{ID: "action:left", Label: "切换会话列表", Group: "操作", Icon: icons.Must("panel-left"), Keywords: []string{"sidebar", "侧栏"}},
 		mnavigation.Command{ID: "action:quick", Label: "聚焦对话", Group: "操作", Icon: icons.Must("maximize"), Keywords: []string{"quick", "快捷"}},
+		mnavigation.Command{ID: "action:web", Label: "切换网页预览", Group: "操作", Icon: icons.Must("globe"), Keywords: []string{"web", "浏览器", "browser"}},
 	)
 	cmds = append(cmds,
 		mnavigation.Command{ID: "theme:light", Label: "主题：浅色", Group: "外观", Icon: icons.Must("sun"), Keywords: []string{"theme", "light"}},
@@ -120,6 +121,9 @@ func (cw *ChatWindow) runPaletteCommand(id string) {
 		cw.leftHidden = !cw.leftHidden
 	case id == "action:quick":
 		cw.openQuick()
+	case id == "action:web":
+		cw.goConfigure(sectionChat)
+		cw.toggleWebPanel()
 	case id == "theme:light":
 		cw.themeMode = mcore.Light
 		cw.saveAppearance()
