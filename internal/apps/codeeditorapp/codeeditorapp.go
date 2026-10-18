@@ -1,5 +1,5 @@
 // Package codeeditorapp is the Apps menu's code editor: open source files in
-// tabs, edit them with syntax preview, save, and let the Agent read and write.
+// tabs with MyGo's editor, save, and let the Agent read and write.
 package codeeditorapp
 
 import (
@@ -11,12 +11,13 @@ import (
 	"sync"
 
 	mgo "github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/editor"
 
 	"chatgo/internal/apps/appkit"
 	"chatgo/internal/apps/filetools"
 
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
@@ -26,17 +27,12 @@ const System = "你是代码编辑器助手。你可以通过 read_file/write_fi
 
 const maxFile = 2 << 20
 
-// file is one open source file.
+// file is one open source file and its MyGo editor buffer.
 type file struct {
-	path    string
-	content string
-	saved   string
-	find    string
-	repl    string
-	findPos int
-	err     string
-	preview bool
-	view    code.CodeViewerState
+	path string
+	err  string
+	buf  *editor.Buffer
+	st   *editor.State
 }
 
 // Client is one code editor bound to a Host.
@@ -88,13 +84,17 @@ func (cl *Client) Open(path string) string {
 	cl.mu.Lock()
 	if _, ok := cl.docs[key]; !ok {
 		f := &file{path: path}
+		text := ""
 		if path != "" {
 			if data, err := os.ReadFile(cl.abs(path)); err == nil {
-				f.content, f.saved = truncate(string(data)), truncate(string(data))
+				text = truncate(string(data))
 			} else {
 				f.err = err.Error()
 			}
 		}
+		f.buf = editor.NewBuffer(text)
+		f.buf.SetLanguage(editor.LanguageFor(path))
+		f.st = &editor.State{Buffer: f.buf}
 		cl.docs[key] = f
 		cl.tabs.Add(key)
 	} else {
@@ -120,7 +120,7 @@ func (cl *Client) Close(id string) {
 // Tabs exposes the tab list for an embedding tab bar.
 func (cl *Client) Tabs() *appkit.Tabs { return &cl.tabs }
 
-// View draws the active file.
+// View draws the active file with MyGo's editor.
 func (cl *Client) View(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -132,49 +132,22 @@ func (cl *Client) View(c *mgo.Context) {
 		})
 		return
 	}
-	lang := cl.host.Language(filepath.Ext(f.path))
+	dirty := f.buf.Modified()
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(u * 2).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "打开…", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("folder"), Label: "打开"}).Clicked() {
 				cl.openViaDialog()
 			}
-			saveVariant := minput.Secondary
-			if f.content != f.saved {
+			saveVariant := minput.Ghost
+			if dirty {
 				saveVariant = minput.Primary
 			}
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: saveVariant}).Clicked() {
+			if minput.Button(c, "", minput.ButtonOptions{Variant: saveVariant, Icon: icons.Must("download"), Label: "保存"}).Clicked() {
 				cl.save(f)
 			}
-			variant := minput.Ghost
-			if f.preview {
-				variant = minput.Secondary
-			}
-			if minput.Button(c, "预览", minput.ButtonOptions{Variant: variant}).Clicked() {
-				f.preview = !f.preview
-			}
 			mgo.Box(c).Grow(1)
-		})
-		mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Children(func() {
-			find := minput.TextInput(c, &f.find, minput.TextInputOptions{Label: "查找", Placeholder: "查找内容"})
-			find.Element.Grow(1)
-			repl := minput.TextInput(c, &f.repl, minput.TextInputOptions{Label: "替换", Placeholder: "替换为"})
-			repl.Element.Grow(1)
-			if minput.Button(c, "上一个", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
-				f.findPos = findPrev(f.content, f.find, f.findPos, false)
-			}
-			if minput.Button(c, "下一个", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
-				i := findNext(f.content, f.find, f.findPos, false)
-				if i < 0 {
-					i = findNext(f.content, f.find, 0, false)
-				}
-				f.findPos = i
-			}
-			if minput.Button(c, "全部替换", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-				before := f.content
-				f.content = replaceAll(f.content, f.find, f.repl, false)
-				if f.content != before && f.find != "" {
-					cl.host.Toast("已全部替换", mcore.SeveritySuccess)
-				}
+			if f.path != "" {
+				mgo.Text(c, f.path).FontSize(caption).TextColor(k.TextMuted).Shrink(0).SingleLine().Ellipsis("…")
 			}
 		})
 		if f.err != "" {
@@ -182,29 +155,19 @@ func (cl *Client) View(c *mgo.Context) {
 		}
 		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Background(k.Surface).
 			Border(mtheme.BorderWidth, k.Border).Radius(mtheme.ControlRadius).Clip().Children(func() {
-			switch {
-			case f.preview && lang != "":
-				code.CodeViewer(c, strings.Split(f.content, "\n"), &f.view, code.CodeViewerOptions{Language: lang}).Element.Fill()
-			case f.preview:
-				mgo.Scroll(c).Fill().Children(func() {
-					mgo.Text(c, f.content).Font(mtheme.MonoFont).FontSize(caption).Padding(u * 2)
-				})
-			default:
-				mgo.TextAreaBase(c, &f.content).Fill().Padding(u * 2).
-					Placeholder("// 开始编写代码…").Font(mtheme.MonoFont)
-			}
+			editor.View(c, f.st).Grow(1).FillWidth().AutoFocus()
 		})
-		lines := 0
-		if f.content != "" {
-			lines = strings.Count(f.content, "\n") + 1
+		pos := f.st.CursorPos()
+		lang := "Plain Text"
+		if l := f.buf.Language(); l != nil {
+			lang = l.Name
 		}
-		mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Padding(u, 0, 0, 0).Children(func() {
-			mgo.Text(c, f.path).FontSize(caption).TextColor(k.TextMuted).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-			mgo.Text(c, fmt.Sprintf("%d 行 · %d 字符", lines, len([]rune(f.content)))).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-			if f.preview && lang != "" {
-				mgo.Text(c, fmt.Sprintf("当前行 %d", f.view.Line()+1)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-			}
-			if f.content != f.saved {
+		mgo.Row(c).FillWidth().Shrink(0).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+			mgo.Text(c, fmt.Sprintf("行 %d, 列 %d", pos.Line+1, pos.Col+1)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			mgo.Text(c, fmt.Sprintf("%d 行 · %d 字符", f.buf.LineCount(), f.buf.Len())).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			mgo.Text(c, lang).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			mgo.Box(c).Grow(1)
+			if dirty {
 				mgo.Text(c, "未保存").FontSize(caption).TextColor(k.AccentText).Shrink(0)
 			}
 		})
@@ -218,6 +181,7 @@ func (cl *Client) save(f *file) {
 		if picked := cl.host.SaveFileDialog("untitled.go"); picked != "" {
 			path = cl.relOf(picked)
 			f.path = path
+			f.buf.SetLanguage(editor.LanguageFor(path))
 		}
 	}
 	if strings.TrimSpace(path) == "" {
@@ -228,11 +192,12 @@ func (cl *Client) save(f *file) {
 		f.err = err.Error()
 		return
 	}
-	if err := os.WriteFile(abs, []byte(f.content), 0o644); err != nil {
+	if err := os.WriteFile(abs, []byte(f.buf.String()), 0o644); err != nil {
 		f.err = err.Error()
 		return
 	}
-	f.saved, f.err = f.content, ""
+	f.buf.MarkSaved()
+	f.err = ""
 	cl.host.Toast("已保存 "+path, mcore.SeveritySuccess)
 }
 
@@ -366,12 +331,14 @@ func (cl *Client) Tools() []Tool {
 				for _, id := range cl.tabs.Items {
 					f := cl.file(id)
 					name := "未命名"
-					if f != nil && f.path != "" {
-						name = f.path
-					}
-					var mark string
-					if f != nil && f.content != f.saved {
-						mark += "[未保存]"
+					mark := ""
+					if f != nil {
+						if f.path != "" {
+							name = f.path
+						}
+						if f.buf.Modified() {
+							mark += "[未保存]"
+						}
 					}
 					if cl.ctxAll || slices.Contains(cl.ctxTabs, id) {
 						mark += "[上下文]"
@@ -392,14 +359,7 @@ func (cl *Client) writeFile(rel, content string) (string, error) {
 	if err := filetools.Write(cl.host.Root(), rel, content); err != nil {
 		return "", err
 	}
-	cl.host.Post(func() {
-		cl.mu.Lock()
-		if f, ok := cl.docs[rel]; ok {
-			f.content, f.saved, f.err = content, content, ""
-		}
-		cl.mu.Unlock()
-		cl.host.Invalidate()
-	})
+	cl.replaceBuffer(rel, content)
 	return "已写入 " + rel, nil
 }
 
@@ -477,13 +437,30 @@ func (cl *Client) openAndRegister(rel string) {
 	}
 }
 
+// replaceBuffer sets an open tab's text to content on the UI thread and marks
+// it saved, as the Agent just wrote the file.
+func (cl *Client) replaceBuffer(rel, content string) {
+	cl.host.Post(func() {
+		cl.mu.Lock()
+		if f, ok := cl.docs[rel]; ok {
+			f.buf.Set(content)
+			f.buf.MarkSaved()
+			f.err = ""
+		}
+		cl.mu.Unlock()
+		cl.host.Invalidate()
+	})
+}
+
 // syncDoc refreshes an open tab's buffer from disk.
 func (cl *Client) syncDoc(rel string) {
 	cl.host.Post(func() {
 		cl.mu.Lock()
 		if f, ok := cl.docs[rel]; ok {
 			if data, err := os.ReadFile(filepath.Join(cl.host.Root(), rel)); err == nil {
-				f.content, f.saved, f.err = truncate(string(data)), truncate(string(data)), ""
+				f.buf.Set(truncate(string(data)))
+				f.buf.MarkSaved()
+				f.err = ""
 			}
 		}
 		cl.mu.Unlock()

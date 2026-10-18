@@ -152,7 +152,7 @@ func TestListTabs(t *testing.T) {
 	id := cl.Open("main.go")
 	cl.SetContext(false, []string{id})
 	if f := cl.file(id); f != nil {
-		f.content = "package changed"
+		f.buf.Set("package changed")
 	}
 	tools := cl.Tools()
 	out, err := tools[len(tools)-1].Run(nil)
