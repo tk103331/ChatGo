@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"sync"
 
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/apps/appkit"
+	"chatgo/internal/apps/filetools"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
@@ -20,7 +20,7 @@ import (
 )
 
 // System is the app's chat system prompt.
-const System = "你是 Markdown 文档助手。你可以通过 read_file/write_file/list_files 读写项目工作目录中的文件，帮助用户起草和修改文档。"
+const System = "你是 Markdown 文档助手。你可以通过 read_file/write_file/append_file/list_files/rename_file/delete_file/create_directory/search_files 读写与查找项目工作目录中的文件，帮助用户起草和修改文档。"
 
 // doc is one open document.
 type doc struct {
@@ -205,41 +205,62 @@ func (cl *Client) Tools() []Tool {
 				return cl.listFiles(str(args, "dir"))
 			},
 		},
+		{
+			Name:   "append_file",
+			Desc:   "把文本追加到工作目录中的文件末尾，并同步到已打开的编辑器标签",
+			Params: map[string]Param{"path": {Desc: "相对工作目录的路径", Required: true}, "content": {Desc: "要追加的文本", Required: true}},
+			Run: func(args map[string]any) (string, error) {
+				return cl.appendFile(str(args, "path"), str(args, "content"))
+			},
+		},
+		{
+			Name:   "create_directory",
+			Desc:   "创建工作目录下的目录（含父目录）",
+			Params: map[string]Param{"path": {Desc: "相对工作目录的路径", Required: true}},
+			Run: func(args map[string]any) (string, error) {
+				return cl.mkdir(str(args, "path"))
+			},
+		},
+		{
+			Name:   "rename_file",
+			Desc:   "重命名或移动工作目录中的文件（需用户确认）",
+			Params: map[string]Param{"path": {Desc: "原路径", Required: true}, "new_path": {Desc: "新路径", Required: true}},
+			Run: func(args map[string]any) (string, error) {
+				return cl.rename(str(args, "path"), str(args, "new_path"))
+			},
+		},
+		{
+			Name:   "delete_file",
+			Desc:   "删除工作目录中的文件（需用户确认，目录不可删）",
+			Params: map[string]Param{"path": {Desc: "相对工作目录的路径", Required: true}},
+			Run: func(args map[string]any) (string, error) {
+				return cl.remove(str(args, "path"))
+			},
+		},
+		{
+			Name:   "search_files",
+			Desc:   "递归搜索工作目录中的文本，输出 路径:行号: 内容",
+			Params: map[string]Param{
+				"pattern":          {Desc: "搜索内容", Required: true},
+				"dir":              {Desc: "起始目录，可留空"},
+				"regexp":           {Desc: "是否正则，true/false"},
+				"case_insensitive": {Desc: "是否忽略大小写，true/false"},
+			},
+			Run: func(args map[string]any) (string, error) {
+				return cl.search(str(args, "pattern"), str(args, "dir"), str(args, "regexp"), str(args, "case_insensitive"))
+			},
+		},
 	}
 }
 
 // readFile reads a file under the root for the Agent.
 func (cl *Client) readFile(rel string) (string, error) {
-	if strings.TrimSpace(rel) == "" {
-		return "", fmt.Errorf("缺少必填参数 path")
-	}
-	abs, err := within(cl.host.Root(), rel)
-	if err != nil {
-		return "", err
-	}
-	data, err := os.ReadFile(abs)
-	if err != nil {
-		return "", err
-	}
-	if len(data) > 1<<20 {
-		data = data[:1<<20]
-	}
-	return string(data), nil
+	return filetools.Read(cl.host.Root(), rel)
 }
 
 // writeFile writes a file under the root and syncs an open tab.
 func (cl *Client) writeFile(rel, content string) (string, error) {
-	if strings.TrimSpace(rel) == "" {
-		return "", fmt.Errorf("缺少必填参数 path")
-	}
-	abs, err := within(cl.host.Root(), rel)
-	if err != nil {
-		return "", err
-	}
-	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+	if err := filetools.Write(cl.host.Root(), rel, content); err != nil {
 		return "", err
 	}
 	cl.host.Post(func() {
@@ -253,40 +274,82 @@ func (cl *Client) writeFile(rel, content string) (string, error) {
 	return "已写入 " + rel, nil
 }
 
-// listFiles lists a directory under the root for the Agent.
-func (cl *Client) listFiles(rel string) (string, error) {
-	abs, err := within(cl.host.Root(), rel)
-	if err != nil {
+// appendFile appends text under the root and refreshes an open tab.
+func (cl *Client) appendFile(rel, content string) (string, error) {
+	if err := filetools.Append(cl.host.Root(), rel, content); err != nil {
 		return "", err
 	}
-	entries, err := os.ReadDir(abs)
-	if err != nil {
-		return "", err
-	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() {
-			name += "/"
-		}
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	if len(names) == 0 {
-		return "(空目录)", nil
-	}
-	return strings.Join(names, "\n"), nil
+	cl.syncDoc(rel)
+	return "已追加到 " + rel, nil
 }
 
-// within joins rel to root, rejecting paths that escape it.
-func within(root, rel string) (string, error) {
-	abs := filepath.Join(root, rel)
-	clean := filepath.Clean(abs)
-	base := filepath.Clean(root)
-	if clean != base && !strings.HasPrefix(clean, base+string(filepath.Separator)) {
-		return "", fmt.Errorf("路径越权: %s", rel)
+// mkdir creates a directory under the root.
+func (cl *Client) mkdir(rel string) (string, error) {
+	if err := filetools.Mkdir(cl.host.Root(), rel); err != nil {
+		return "", err
 	}
-	return clean, nil
+	return "已创建目录 " + rel, nil
+}
+
+// remove deletes a file under the root after the user confirms.
+func (cl *Client) remove(rel string) (string, error) {
+	if strings.TrimSpace(rel) == "" {
+		return "", fmt.Errorf("缺少必填参数 path")
+	}
+	cl.host.Post(func() {
+		cl.host.Confirm("删除文件", "确定删除 "+rel+" 吗？", func() {
+			if err := filetools.Delete(cl.host.Root(), rel); err != nil {
+				cl.host.Toast("删除失败："+err.Error(), mcore.SeverityError)
+				return
+			}
+			cl.host.Toast("已删除 "+rel, mcore.SeveritySuccess)
+		})
+	})
+	return "已请求用户确认删除 " + rel, nil
+}
+
+// rename renames a file under the root after the user confirms.
+func (cl *Client) rename(old, newPath string) (string, error) {
+	if strings.TrimSpace(old) == "" || strings.TrimSpace(newPath) == "" {
+		return "", fmt.Errorf("缺少必填参数 path/new_path")
+	}
+	cl.host.Post(func() {
+		cl.host.Confirm("重命名文件", "确定把 "+old+" 重命名为 "+newPath+" 吗？", func() {
+			if err := filetools.Rename(cl.host.Root(), old, newPath); err != nil {
+				cl.host.Toast("重命名失败："+err.Error(), mcore.SeverityError)
+				return
+			}
+			cl.host.Toast("已重命名 "+old+" → "+newPath, mcore.SeveritySuccess)
+		})
+	})
+	return "已请求用户确认重命名 " + old, nil
+}
+
+// search greps text under the root for the Agent.
+func (cl *Client) search(pattern, dir, regexp, ci string) (string, error) {
+	return filetools.Search(cl.host.Root(), dir, pattern, filetools.SearchOpts{
+		Regexp:          strings.EqualFold(regexp, "true"),
+		CaseInsensitive: strings.EqualFold(ci, "true"),
+	})
+}
+
+// syncDoc refreshes an open tab's buffer from disk.
+func (cl *Client) syncDoc(rel string) {
+	cl.host.Post(func() {
+		cl.mu.Lock()
+		if d, ok := cl.docs[rel]; ok {
+			if data, err := os.ReadFile(filepath.Join(cl.host.Root(), rel)); err == nil {
+				d.content, d.loaded, d.err = string(data), true, ""
+			}
+		}
+		cl.mu.Unlock()
+		cl.host.Invalidate()
+	})
+}
+
+// listFiles lists a directory under the root for the Agent.
+func (cl *Client) listFiles(rel string) (string, error) {
+	return filetools.List(cl.host.Root(), rel)
 }
 
 func str(args map[string]any, key string) string {

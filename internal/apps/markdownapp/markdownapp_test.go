@@ -3,6 +3,7 @@ package markdownapp
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"chatgo/internal/apps/appkit"
@@ -73,5 +74,55 @@ func TestListFiles(t *testing.T) {
 	}
 	if out != "a.md\nsub/" {
 		t.Fatalf("list: %q", out)
+	}
+}
+
+func TestNewFileTools(t *testing.T) {
+	dir := t.TempDir()
+	h := &host{dir: dir}
+	cl := New(h)
+	if _, err := cl.appendFile("log.md", "# t\n"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "log.md"))
+	if string(data) != "# t\n" {
+		t.Fatalf("append: %q", data)
+	}
+	if _, err := cl.mkdir("sub/dir"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sub/dir")); err != nil {
+		t.Fatal("mkdir failed")
+	}
+	out, err := cl.search("t", "", "false", "false")
+	if err != nil || !strings.Contains(out, "log.md:1:") {
+		t.Fatalf("search: %q %v", out, err)
+	}
+	if _, err := cl.search("", "", "false", "false"); err == nil {
+		t.Fatal("empty pattern should fail")
+	}
+}
+
+func TestDeleteConfirm(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	os.WriteFile(filepath.Join(dir, "x.md"), []byte("x"), 0o644)
+	if _, err := cl.remove("x.md"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "x.md")); !os.IsNotExist(err) {
+		t.Fatal("confirm should delete the file")
+	}
+}
+
+func TestRenameConfirm(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	os.WriteFile(filepath.Join(dir, "a.md"), []byte("x"), 0o644)
+	if _, err := cl.rename("a.md", "b.md"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "b.md")); err != nil {
+		t.Fatal("rename failed")
 	}
 }
