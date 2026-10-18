@@ -96,3 +96,9 @@ webmcp:
 
 `draw/` 是一个画布应用：拖动节点、连线，并向 Agent 导出 4 个工具
 （`draw_list_nodes`、`draw_add_node`、`draw_connect`、`draw_export`）。
+
+`slidev/` 是一个 [Slidev](https://cn.sli.dev) 风格的幻灯片编辑器：左侧写
+Markdown、右侧实时预览并翻页（单独一行 `---` 分页，开头的 `---...---` 为
+frontmatter），向 Agent 导出 8 个工具（`slidev_get_source`、`slidev_set_source`、
+`slidev_list_slides`、`slidev_get_slide`、`slidev_add_slide`、`slidev_update_slide`、
+`slidev_delete_slide`、`slidev_go_to`）。内容存在浏览器 localStorage 中。

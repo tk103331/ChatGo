@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slidev 编辑器</title>
+<style>
+  :root {
+    --bg: #f4efe6;
+    --surface: #fffdf8;
+    --ink: #26211c;
+    --muted: #857a6d;
+    --line: #e2d8c9;
+    --accent: #8b2942;
+    --accent-soft: #f3e6e9;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1a18;
+      --surface: #26231f;
+      --ink: #ece5da;
+      --muted: #a2978a;
+      --line: #3a352f;
+      --accent: #d8849a;
+      --accent-soft: #3a2830;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; flex-direction: column;
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; overflow: hidden;
+  }
+  .bar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 8px 14px; border-bottom: 1px solid var(--line);
+    background: var(--surface); flex: none;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; letter-spacing: .3px; }
+  .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+  .nav { display: flex; align-items: center; gap: 6px; }
+  .nav button {
+    width: 26px; height: 26px; border: 1px solid var(--line); border-radius: 6px;
+    background: transparent; color: var(--ink); cursor: pointer; font-size: 15px; line-height: 1;
+  }
+  .nav button:hover { background: var(--accent-soft); border-color: var(--accent); }
+  #counter { min-width: 54px; text-align: center; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .actions { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .actions button {
+    padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: transparent; color: var(--ink); cursor: pointer; font-size: 12px;
+  }
+  .actions button:hover { background: var(--accent-soft); border-color: var(--accent); }
+  .actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .actions button.primary:hover { filter: brightness(1.08); background: var(--accent); }
+  main {
+    flex: 1; min-height: 0; display: grid;
+    grid-template-columns: 1fr 6px 1fr; gap: 0;
+  }
+  .pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .pane-head {
+    flex: none; padding: 6px 12px; color: var(--muted);
+    border-bottom: 1px solid var(--line); background: var(--surface);
+    font-size: 11px; letter-spacing: .4px; text-transform: uppercase;
+  }
+  #editor {
+    flex: 1; min-height: 0; width: 100%; resize: none; border: 0; outline: 0;
+    padding: 14px 16px; background: var(--surface); color: var(--ink);
+    font-family: var(--mono); font-size: 13px; line-height: 1.6;
+    tab-size: 2;
+  }
+  .gutter { cursor: col-resize; background: var(--line); }
+  body.dragging { cursor: col-resize; user-select: none; }
+  .stage {
+    flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+    padding: 22px; overflow: auto; background: var(--bg);
+  }
+  .slide {
+    width: 100%; max-width: 900px; aspect-ratio: 16 / 9;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.08);
+    padding: 44px 56px; overflow: auto;
+    font-size: 15px; line-height: 1.65;
+  }
+  .slide h1 { font-size: 2em; margin: .2em 0 .5em; color: var(--accent); }
+  .slide h2 { font-size: 1.5em; margin: .4em 0 .5em; color: var(--accent); }
+  .slide h3 { font-size: 1.2em; margin: .6em 0 .4em; }
+  .slide h4, .slide h5, .slide h6 { margin: .6em 0 .3em; }
+  .slide p { margin: .5em 0; }
+  .slide ul, .slide ol { margin: .4em 0; padding-left: 1.4em; }
+  .slide li { margin: .2em 0; }
+  .slide blockquote {
+    margin: .6em 0; padding: .3em .9em; color: var(--muted);
+    border-left: 3px solid var(--accent); background: var(--accent-soft);
+  }
+  .slide pre {
+    margin: .7em 0; padding: 12px 14px; overflow: auto;
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+  }
+  .slide code { font-family: var(--mono); font-size: .92em; }
+  .slide :not(pre) > code { background: var(--accent-soft); padding: 1px 5px; border-radius: 4px; }
+  .slide a { color: var(--accent); }
+  .slide img { max-width: 100%; border-radius: 6px; }
+  .hint {
+    flex: none; padding: 5px 14px; color: var(--muted); font-size: 11px;
+    border-top: 1px solid var(--line); background: var(--surface);
+    display: flex; gap: 10px; align-items: center;
+  }
+  .toast {
+    position: fixed; right: 16px; bottom: 40px; padding: 7px 12px;
+    background: var(--ink); color: var(--bg); border-radius: 6px;
+    opacity: 0; transform: translateY(6px); transition: .18s ease;
+    pointer-events: none; font-size: 12px;
+  }
+  .toast.show { opacity: 1; transform: none; }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><span class="dot"></span>Slidev 编辑器</div>
+  <div class="nav">
+    <button id="prev" title="上一页">‹</button>
+    <span id="counter">1 / 1</span>
+    <button id="next" title="下一页">›</button>
+  </div>
+  <div class="actions">
+    <button id="add" class="primary">＋ 幻灯片</button>
+    <button id="dup">复制本页</button>
+    <button id="del">删除本页</button>
+    <button id="copy">复制 Markdown</button>
+    <button id="reset">重置</button>
+  </div>
+</header>
+<main id="main">
+  <section class="pane" style="grid-column:1">
+    <div class="pane-head">Markdown 源码</div>
+    <textarea id="editor" spellcheck="false"></textarea>
+  </section>
+  <div class="gutter" id="gutter" style="grid-column:2"></div>
+  <section class="pane" style="grid-column:3">
+    <div class="pane-head">预览</div>
+    <div class="stage"><div class="slide" id="slide"></div></div>
+  </section>
+</main>
+<div class="hint"><span>用单独一行 --- 分隔幻灯片</span><span>·</span><span>编辑后自动保存</span></div>
+<div class="toast" id="toast"></div>
+<script>
+(function () {
+  "use strict";
+
+  var STORE = "slidev:source";
+  var DEFAULT_SOURCE = [
+    "---",
+    "theme: default",
+    "title: 我的演示文稿",
+    "---",
+    "",
+    "# 欢迎使用 Slidev",
+    "",
+    "用 **Markdown** 编写幻灯片，右侧实时预览。",
+    "",
+    "- 用单独一行 `---` 分隔幻灯片",
+    "- 支持标题、列表、引用、代码块与链接",
+    "- 编辑内容会自动保存",
+    "",
+    "---",
+    "",
+    "## 代码示例",
+    "",
+    "```go",
+    "package main",
+    "",
+    "func main() {",
+    "\tprintln(\"Hello, Slidev\")",
+    "}",
+    "```",
+    "",
+    "> 提示：顶部 `---` 块是 frontmatter，不是分页符。"
+  ].join("\n");
+
+  var source = "";
+  try { source = localStorage.getItem(STORE) || DEFAULT_SOURCE; } catch (e) { source = DEFAULT_SOURCE; }
+  var current = 0;
+
+  var editor = document.getElementById("editor");
+  var slide = document.getElementById("slide");
+  var counter = document.getElementById("counter");
+  var toast = document.getElementById("toast");
+
+  function escapeHTML(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function inline(s) {
+    s = escapeHTML(s);
+    s = s.replace(/`([^`]+)`/g, "<code>$1</code>");
+    s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    s = s.replace(/(^|[^*])\*([^*]+)\*/g, "$1<em>$2</em>");
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2">');
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>');
+    return s;
+  }
+
+  function renderMarkdown(md) {
+    md = String(md || "").replace(/<!--[\s\S]*?-->/g, "");
+    var lines = md.replace(/\r\n/g, "\n").split("\n");
+    var html = "";
+    var list = null;
+    var code = null;
+
+    function closeList() {
+      if (list) { html += list === "ul" ? "</ul>" : "</ol>"; list = null; }
+    }
+    function closeCode() {
+      if (code !== null) {
+        html += "<pre><code>" + escapeHTML(code.join("\n")) + "</code></pre>";
+        code = null;
+      }
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var raw = lines[i];
+      var line = raw.replace(/\s+$/, "");
+      if (code !== null) {
+        if (/^```/.test(line)) { closeCode(); } else { code.push(raw); }
+        continue;
+      }
+      if (/^```/.test(line)) { closeList(); code = []; continue; }
+      if (!line.trim()) { closeList(); continue; }
+      var m;
+      if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
+        closeList();
+        var n = m[1].length;
+        html += "<h" + n + ">" + inline(m[2]) + "</h" + n + ">";
+        continue;
+      }
+      if ((m = line.match(/^\s*[-*]\s+(.*)$/))) {
+        if (list !== "ul") { closeList(); html += "<ul>"; list = "ul"; }
+        html += "<li>" + inline(m[1]) + "</li>";
+        continue;
+      }
+      if ((m = line.match(/^\s*\d+\.\s+(.*)$/))) {
+        if (list !== "ol") { closeList(); html += "<ol>"; list = "ol"; }
+        html += "<li>" + inline(m[1]) + "</li>";
+        continue;
+      }
+      if ((m = line.match(/^>\s?(.*)$/))) {
+        closeList();
+        html += "<blockquote>" + inline(m[1]) + "</blockquote>";
+        continue;
+      }
+      closeList();
+      html += "<p>" + inline(line) + "</p>";
+    }
+    closeCode();
+    closeList();
+    return html;
+  }
+
+  function splitSource(src) {
+    var lines = String(src || "").replace(/\r\n/g, "\n").split("\n");
+    var start = 0;
+    var frontmatter = "";
+    if (lines.length && lines[0].trim() === "---") {
+      for (var j = 1; j < lines.length; j++) {
+        if (lines[j].trim() === "---") {
+          frontmatter = lines.slice(0, j + 1).join("\n");
+          start = j + 1;
+          break;
+        }
+      }
+    }
+    var body = lines.slice(start).join("\n");
+    var parts = body.split(/\n^---\s*$/m);
+    var slides = parts.map(function (s) { return s.replace(/^\n+|\n+$/g, ""); });
+    if (!slides.length) { slides = [""]; }
+    return { frontmatter: frontmatter, slides: slides };
+  }
+
+  function joinSource(frontmatter, slides) {
+    var body = slides.join("\n\n---\n\n");
+    return frontmatter ? frontmatter + "\n\n" + body : body;
+  }
+
+  function slides() { return splitSource(source).slides; }
+
+  function titleOf(md, index) {
+    var lines = String(md || "").split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim();
+      if (!t) { continue; }
+      t = t.replace(/^#{1,6}\s+/, "").replace(/[*_`>]/g, "").trim();
+      if (t) { return t.length > 48 ? t.slice(0, 48) + "…" : t; }
+    }
+    return "第 " + index + " 页";
+  }
+
+  function persist() {
+    try { localStorage.setItem(STORE, source); } catch (e) { /* ignore */ }
+  }
+
+  function showToast(text) {
+    toast.textContent = text;
+    toast.classList.add("show");
+    clearTimeout(showToast.timer);
+    showToast.timer = setTimeout(function () { toast.classList.remove("show"); }, 1400);
+  }
+
+  function render() {
+    var s = splitSource(source);
+    var n = s.slides.length;
+    if (current >= n) { current = n - 1; }
+    if (current < 0) { current = 0; }
+    slide.innerHTML = renderMarkdown(s.slides[current] || "");
+    counter.textContent = (current + 1) + " / " + n;
+  }
+
+  function setSource(next, keepCaret) {
+    source = String(next);
+    if (!keepCaret && editor.value !== source) { editor.value = source; }
+    persist();
+    render();
+  }
+
+  function goTo(index) {
+    var n = slides().length;
+    var i = Math.round(Number(index) || 1) - 1;
+    if (i < 0) { i = 0; }
+    if (i > n - 1) { i = n - 1; }
+    current = i;
+    render();
+    return current + 1;
+  }
+
+  function addSlide(markdown) {
+    var s = splitSource(source);
+    var text = String(markdown == null ? "" : markdown).trim();
+    s.slides.push(text || "# 新的一页");
+    setSource(joinSource(s.frontmatter, s.slides));
+    current = s.slides.length - 1;
+    render();
+    return current + 1;
+  }
+
+  function updateSlide(index, markdown) {
+    var s = splitSource(source);
+    var i = clampIndex(index, s.slides.length);
+    s.slides[i] = String(markdown == null ? "" : markdown);
+    setSource(joinSource(s.frontmatter, s.slides));
+    return i + 1;
+  }
+
+  function deleteSlide(index) {
+    var s = splitSource(source);
+    if (s.slides.length <= 1) {
+      s.slides = [""];
+    } else {
+      var i = clampIndex(index, s.slides.length);
+      s.slides.splice(i, 1);
+    }
+    setSource(joinSource(s.frontmatter, s.slides));
+    render();
+    return s.slides.length;
+  }
+
+  function clampIndex(index, len) {
+    var i = Math.round(Number(index) || 1) - 1;
+    if (i < 0) { i = 0; }
+    if (i > len - 1) { i = len - 1; }
+    return i;
+  }
+
+  editor.addEventListener("input", function () {
+    source = editor.value;
+    persist();
+    render();
+  });
+
+  document.getElementById("prev").onclick = function () { goTo(current); current = Math.max(0, current - 1); render(); };
+  document.getElementById("next").onclick = function () { current = Math.min(slides().length - 1, current + 1); render(); };
+  document.getElementById("add").onclick = function () { addSlide(""); };
+  document.getElementById("dup").onclick = function () {
+    var list = slides();
+    addSlide(list[current] || "");
+  };
+  document.getElementById("del").onclick = function () {
+    deleteSlide(current + 1);
+    showToast("已删除本页");
+  };
+  document.getElementById("copy").onclick = function () {
+    var text = source;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { showToast("已复制 Markdown"); }, function () { showToast("复制失败"); });
+    } else {
+      showToast("当前环境不支持剪贴板");
+    }
+  };
+  document.getElementById("reset").onclick = function () {
+    if (!confirm("重置为示例演示文稿？当前内容会丢失。")) { return; }
+    current = 0;
+    setSource(DEFAULT_SOURCE);
+    showToast("已重置");
+  };
+
+  window.addEventListener("keydown", function (e) {
+    if (e.target === editor) { return; }
+    if (e.key === "ArrowLeft") { document.getElementById("prev").onclick(); }
+    if (e.key === "ArrowRight") { document.getElementById("next").onclick(); }
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") { e.preventDefault(); persist(); showToast("已保存"); }
+  });
+
+  // Draggable divider between source and preview.
+  (function () {
+    var gutter = document.getElementById("gutter");
+    var main = document.getElementById("main");
+    var dragging = false;
+    gutter.addEventListener("mousedown", function (e) {
+      dragging = true;
+      document.body.classList.add("dragging");
+      e.preventDefault();
+    });
+    window.addEventListener("mousemove", function (e) {
+      if (!dragging) { return; }
+      var r = main.getBoundingClientRect();
+      var x = Math.max(260, Math.min(r.width - 260, e.clientX - r.left));
+      main.style.gridTemplateColumns = x + "px 6px 1fr";
+    });
+    window.addEventListener("mouseup", function () {
+      dragging = false;
+      document.body.classList.remove("dragging");
+    });
+  })();
+
+  // Agent tools.
+  if (window.chatgo) {
+    window.chatgo.registerTools({
+      slidev_get_source: function () {
+        return source;
+      },
+      slidev_set_source: function (args) {
+        var md = String(args.markdown == null ? "" : args.markdown);
+        current = 0;
+        setSource(md);
+        return { slides: slides().length };
+      },
+      slidev_list_slides: function () {
+        return slides().map(function (s, i) { return { index: i + 1, title: titleOf(s, i + 1) }; });
+      },
+      slidev_get_slide: function (args) {
+        var list = slides();
+        var i = clampIndex(args.index, list.length);
+        return { index: i + 1, markdown: list[i] };
+      },
+      slidev_add_slide: function (args) {
+        var index = addSlide(args.markdown);
+        return { index: index, slides: slides().length };
+      },
+      slidev_update_slide: function (args) {
+        var index = updateSlide(args.index, args.markdown);
+        return { index: index, slides: slides().length };
+      },
+      slidev_delete_slide: function (args) {
+        deleteSlide(args.index);
+        return { slides: slides().length };
+      },
+      slidev_go_to: function (args) {
+        var index = goTo(args.index);
+        return { index: index, slides: slides().length };
+      }
+    });
+  }
+
+  editor.value = source;
+  render();
+})();
+</script>
+</body>
+</html>

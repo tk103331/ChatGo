@@ -1,0 +1,54 @@
+id: slidev
+name: Slidev 编辑器
+description: 用 Markdown 编写演示文稿（Slidev 风格），实时预览、翻页，并把幻灯片读写能力开放给 Agent。
+icon: file-text
+entry: index.html
+tools:
+  - name: slidev_get_source
+    description: 读取完整的幻灯片 Markdown 源码
+    params: []
+  - name: slidev_set_source
+    description: 用给定 Markdown 替换整个演示文稿
+    params:
+      - name: markdown
+        description: 完整的 Markdown 源码
+        required: true
+  - name: slidev_list_slides
+    description: 列出所有幻灯片（序号与标题）
+    params: []
+  - name: slidev_get_slide
+    description: 读取某一页幻灯片的内容，序号从 1 开始
+    params:
+      - name: index
+        description: 幻灯片序号，从 1 开始
+        required: true
+  - name: slidev_add_slide
+    description: 在末尾新增一页幻灯片，并跳转到它
+    params:
+      - name: markdown
+        description: 新页的 Markdown 内容
+        required: true
+  - name: slidev_update_slide
+    description: 替换某一页幻灯片的内容
+    params:
+      - name: index
+        description: 幻灯片序号，从 1 开始
+        required: true
+      - name: markdown
+        description: 新的 Markdown 内容
+        required: true
+  - name: slidev_delete_slide
+    description: 删除某一页幻灯片
+    params:
+      - name: index
+        description: 幻灯片序号，从 1 开始
+        required: true
+  - name: slidev_go_to
+    description: 预览跳转到指定幻灯片
+    params:
+      - name: index
+        description: 幻灯片序号，从 1 开始
+        required: true
+skills:
+  - name: slidev
+    path: skills/slidev
