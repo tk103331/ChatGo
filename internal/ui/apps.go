@@ -92,6 +92,8 @@ func (cw *ChatWindow) ensureAppState() {
 	cw.appTabs = map[string][]string{}
 	cw.appTab = map[string]string{}
 	cw.appConv = map[string]string{}
+	cw.appCtxTabs = map[string][]string{}
+	cw.appCtxAll = map[string]bool{}
 }
 
 // appsPage is the Apps menu: a grid of application cards.
@@ -153,6 +155,10 @@ func (cw *ChatWindow) openApp(id string) {
 	}
 	cw.appActive = id
 	cw.appTabList(id)
+	if _, ok := cw.appCtxTabs[id]; !ok {
+		cw.appCtxTabs[id] = []string{cw.appTab[id]}
+	}
+	cw.syncAppContext(id)
 	cw.startAppSession(id)
 	cw.invalidate()
 }
@@ -303,6 +309,20 @@ func (cw *ChatWindow) closeAppTab(id string, i int) {
 			cw.appTab[id] = cw.appTabs[id][i]
 		}
 	}
+	if cur, ok := cw.appCtxTabs[id]; ok {
+		for j, s := range cur {
+			if s == closed {
+				cur = append(cur[:j], cur[j+1:]...)
+				break
+			}
+		}
+		if len(cur) == 0 && cw.appTab[id] != "" {
+			cur = []string{cw.appTab[id]}
+		}
+		cw.appCtxTabs[id] = cur
+	}
+	cw.syncAppContext(id)
+	cw.refreshAppSystemPrompt(id)
 }
 
 // appLeft is the left work area: the tab bar and the active tab's body.

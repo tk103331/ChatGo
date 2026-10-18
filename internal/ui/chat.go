@@ -5,9 +5,9 @@ import (
 	"strings"
 
 	"chatgo/internal/config"
-	"chatgo/internal/ui/common"
 	"chatgo/internal/ui/assets"
 	"chatgo/internal/ui/chatpanel"
+	"chatgo/internal/ui/common"
 	"chatgo/pkg/models"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -133,6 +133,7 @@ func (cw *ChatWindow) chatPanelOptions() chatpanel.Options {
 		ContextRoot:    cw.fileRoot,
 		OnCopy:         func(string) { cw.toast("已复制到剪贴板", mcore.SeveritySuccess) },
 		Invalidate:     cw.invalidate,
+		BeforeComposer: cw.appContextChips,
 	}
 }
 

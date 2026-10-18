@@ -99,3 +99,41 @@ func TestToolCount(t *testing.T) {
 		t.Fatalf("want 4 tools, got %d", len(cl.Tools()))
 	}
 }
+
+func TestTargetIDs(t *testing.T) {
+	cl := New(&host{dir: t.TempDir()})
+	cl.byID["a"] = &shellTab{id: "a"}
+	cl.byID["b"] = &shellTab{id: "b"}
+	cl.tabs.Add("a")
+	cl.tabs.Add("b")
+	if got := cl.targetIDs(); len(got) != 1 || got[0] != "b" {
+		t.Fatalf("default should be active tab: %v", got)
+	}
+	cl.SetContext(false, []string{"a"})
+	if got := cl.targetIDs(); len(got) != 1 || got[0] != "a" {
+		t.Fatalf("set should win: %v", got)
+	}
+	cl.SetContext(true, nil)
+	if got := cl.targetIDs(); len(got) != 2 {
+		t.Fatalf("all should pick every tab: %v", got)
+	}
+	cl.SetContext(false, nil)
+	cl.tabs.Active = ""
+	if got := cl.targetIDs(); len(got) != 0 {
+		t.Fatalf("no active should yield none: %v", got)
+	}
+}
+
+func TestListTabs(t *testing.T) {
+	cl := New(&host{dir: t.TempDir()})
+	cl.byID["a"] = &shellTab{id: "a", title: "zsh"}
+	cl.tabs.Add("a")
+	cl.SetContext(false, []string{"a"})
+	out, err := cl.Tools()[1].Run(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "- a: zsh（启动中）[上下文]") {
+		t.Fatalf("list_tabs: %q", out)
+	}
+}

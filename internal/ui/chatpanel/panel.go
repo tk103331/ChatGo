@@ -113,6 +113,10 @@ type Options struct {
 	// or nil disables the mention menu.
 	ContextRoot func() string
 
+	// BeforeComposer draws extra controls above the composer, centered in
+	// the content column; nil omits it.
+	BeforeComposer func(c *mgo.Context)
+
 	// OnCopy is called after the user copies a message; nil does nothing.
 	OnCopy func(text string)
 	// Invalidate requests a redraw.
@@ -142,6 +146,13 @@ func (p *Panel) View(c *mgo.Context, opts Options) {
 		})
 		mgo.Column(c).Shrink(0).Padding(u*3, u*4).BorderWidth(mtheme.BorderWidth, 0, 0, 0).
 			BorderColor(k.Border).Children(func() {
+			if opts.BeforeComposer != nil {
+				mgo.Row(c).Justify(mgo.Center).Children(func() {
+					mgo.Box(c).MaxWidth(maxWidth).Grow(1).MinWidth(0).Children(func() {
+						opts.BeforeComposer(c)
+					})
+				})
+			}
 			mgo.Row(c).Justify(mgo.Center).Children(func() {
 				mgo.Box(c).MaxWidth(maxWidth).Grow(1).MinWidth(0).Children(func() { p.composer(c, opts) })
 			})

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -23,7 +24,7 @@ import (
 )
 
 // System is the app's chat system prompt.
-const System = "你是终端应用助手。你可以通过 run_command（命令有白名单限制）在工作目录中执行 shell 命令，通过 send_keys 向终端发送按键、read_screen 读取终端内容，把结果反馈给用户。"
+const System = "你是终端应用助手。你可以通过 run_command（命令有白名单限制）在工作目录中执行 shell 命令，通过 list_tabs 查看打开的终端标签，通过 send_keys 向上下文终端标签发送按键、read_screen 读取终端内容，把结果反馈给用户。"
 
 const (
 	defaultTimeout = 60
@@ -50,9 +51,11 @@ type shellTab struct {
 
 // Client is one terminal app bound to a Host.
 type Client struct {
-	host Host
-	tabs appkit.Tabs
-	byID map[string]*shellTab
+	host    Host
+	tabs    appkit.Tabs
+	byID    map[string]*shellTab
+	ctxAll  bool
+	ctxTabs []string
 }
 
 // Host is the capability set the app needs from its shell.
@@ -61,6 +64,12 @@ type Host = appkit.Host
 // New returns a terminal app driving the given host.
 func New(h Host) *Client {
 	return &Client{host: h, byID: map[string]*shellTab{}}
+}
+
+// SetContext stores the chat's selected context tabs; all picks every tab.
+func (cl *Client) SetContext(all bool, ids []string) {
+	cl.ctxAll = all
+	cl.ctxTabs = ids
 }
 
 // Title labels the active tab for a tab bar.
@@ -189,22 +198,30 @@ func (cl *Client) Tools() []Tool {
 			},
 		},
 		{
-			Name: "list_terminals",
-			Desc: "列出当前打开的终端标签页标题",
+			Name: "list_tabs",
+			Desc: "列出当前打开的终端标签（id、标题、状态；选中的标 [上下文]）",
 			Run: func(map[string]any) (string, error) {
 				if len(cl.tabs.Items) == 0 {
 					return "(没有打开的终端)", nil
 				}
 				var b strings.Builder
 				for _, id := range cl.tabs.Items {
-					fmt.Fprintf(&b, "- %s\n", cl.Title(id))
+					tb := cl.byID[id]
+					status := "启动中"
+					if tb != nil && tb.term != nil {
+						status = "运行中"
+						if tb.exited {
+							status = "已退出"
+						}
+					}
+					fmt.Fprintf(&b, "- %s: %s（%s）%s\n", id, cl.Title(id), status, cl.ctxMark(id))
 				}
 				return strings.TrimRight(b.String(), "\n"), nil
 			},
 		},
 		{
 			Name:   "send_keys",
-			Desc:   "把文本作为按键发送到当前终端标签（配合交互式程序）",
+			Desc:   "把文本作为按键发送到当前上下文终端标签（配合交互式程序）",
 			Params: map[string]Param{"text": {Desc: "要发送的文本", Required: true}},
 			Run: func(args map[string]any) (string, error) {
 				return cl.sendKeys(str(args, "text"))
@@ -212,12 +229,20 @@ func (cl *Client) Tools() []Tool {
 		},
 		{
 			Name: "read_screen",
-			Desc: "读取当前终端标签的屏幕与回滚文本",
+			Desc: "读取当前上下文终端标签的屏幕与回滚文本",
 			Run: func(map[string]any) (string, error) {
 				return cl.readScreen()
 			},
 		},
 	}
+}
+
+// ctxMark is "[上下文]" when id is in the chat's context set.
+func (cl *Client) ctxMark(id string) string {
+	if cl.ctxAll || slices.Contains(cl.ctxTabs, id) {
+		return "[上下文]"
+	}
+	return ""
 }
 
 // runCommand runs a shell command in the workspace with a bounded timeout.
@@ -270,35 +295,65 @@ func (cl *Client) runCommandWith(command, workdir string, timeoutSec int) (strin
 	return result, nil
 }
 
-// activeTerm returns the active tab's shell, or nil.
-func (cl *Client) activeTerm() *term.Terminal {
-	if tb := cl.byID[cl.tabs.Active]; tb != nil {
-		return tb.term
+// targetIDs returns the ids the context-selected tabs map to: every tab
+// when ctxAll, the picked set when set, else the active tab.
+func (cl *Client) targetIDs() []string {
+	var ids []string
+	switch {
+	case cl.ctxAll:
+		ids = append(ids, cl.tabs.Items...)
+	case len(cl.ctxTabs) > 0:
+		ids = append(ids, cl.ctxTabs...)
+	default:
+		if cl.tabs.Active != "" {
+			ids = []string{cl.tabs.Active}
+		}
 	}
-	return nil
+	return ids
 }
 
-// sendKeys writes text into the active tab's shell.
+// targetTerms returns the shells of the context-selected tabs.
+func (cl *Client) targetTerms() []*term.Terminal {
+	var out []*term.Terminal
+	for _, id := range cl.targetIDs() {
+		if tb := cl.byID[id]; tb != nil && tb.term != nil {
+			out = append(out, tb.term)
+		}
+	}
+	return out
+}
+
+// sendKeys writes text into every context-selected shell.
 func (cl *Client) sendKeys(text string) (string, error) {
-	t := cl.activeTerm()
-	if t == nil {
+	terms := cl.targetTerms()
+	if len(terms) == 0 {
 		return "", fmt.Errorf("没有打开的终端")
 	}
-	t.Send([]byte(text))
+	for _, t := range terms {
+		t.Send([]byte(text))
+	}
 	return "已发送到终端", nil
 }
 
-// readScreen returns the active tab's screen and scrollback text.
+// readScreen returns the context-selected screens, one block per tab.
 func (cl *Client) readScreen() (string, error) {
-	t := cl.activeTerm()
-	if t == nil {
+	terms := cl.targetTerms()
+	if len(terms) == 0 {
 		return "", fmt.Errorf("没有打开的终端")
 	}
-	out := strings.TrimSpace(t.Text())
-	if out == "" {
-		return "(空屏幕)", nil
+	var b strings.Builder
+	for i, t := range terms {
+		if i > 0 {
+			b.WriteString("\n\n")
+		}
+		out := strings.TrimSpace(t.Text())
+		if out == "" {
+			b.WriteString("(空屏幕)")
+		} else {
+			b.WriteString(out)
+		}
 	}
-	return out, nil
+	return b.String(), nil
 }
 
 func firstWord(s string) string {

@@ -2,8 +2,8 @@ package ui
 
 import (
 	"chatgo/internal/config"
-	"chatgo/internal/ui/common"
 	"chatgo/internal/llm"
+	"chatgo/internal/ui/common"
 	"chatgo/pkg/models"
 	"context"
 	"fmt"
@@ -262,7 +262,8 @@ func (cw *ChatWindow) applyApp(id string) {
 	cw.currentAgent = ""
 	cw.currentApp = id
 	cw.agentMode = true
-	cw.systemPrompt = cw.appSystemPrompt(id)
+	cw.syncAppContext(id)
+	cw.systemPrompt = cw.appSystemPrompt(id) + cw.appContextPrompt(id)
 	cw.setupProvider(cw.provider)
 }
 

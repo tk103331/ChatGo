@@ -17,21 +17,21 @@ import (
 
 	"chatgo/internal/apps/browserapp"
 	"chatgo/internal/apps/codeeditorapp"
-	"chatgo/internal/config"
 	"chatgo/internal/apps/gitapp"
-	"chatgo/internal/llm"
 	"chatgo/internal/apps/markdownapp"
 	"chatgo/internal/apps/terminalapp"
-		"chatgo/internal/ui/assets"
-		agentspkg "chatgo/internal/ui/agents"
-		"chatgo/internal/ui/chatpanel"
-		mcppage "chatgo/internal/ui/mcppage"
-		autotaskpkg "chatgo/internal/ui/autotask"
-		settingspkg "chatgo/internal/ui/settings"
-		"chatgo/internal/ui/stats"
-		skillspkg "chatgo/internal/ui/skills"
-		"chatgo/internal/ui/theme"
 	"chatgo/internal/apps/webapp"
+	"chatgo/internal/config"
+	"chatgo/internal/llm"
+	agentspkg "chatgo/internal/ui/agents"
+	"chatgo/internal/ui/assets"
+	autotaskpkg "chatgo/internal/ui/autotask"
+	"chatgo/internal/ui/chatpanel"
+	mcppage "chatgo/internal/ui/mcppage"
+	settingspkg "chatgo/internal/ui/settings"
+	skillspkg "chatgo/internal/ui/skills"
+	"chatgo/internal/ui/stats"
+	"chatgo/internal/ui/theme"
 	"chatgo/pkg/models"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -80,6 +80,8 @@ type ChatWindow struct {
 	appTabs    map[string][]string
 	appTab     map[string]string
 	appConv    map[string]string
+	appCtxTabs map[string][]string
+	appCtxAll  map[string]bool
 	appsGrid   mgo.GridState
 	currentApp string
 
@@ -148,8 +150,8 @@ type ChatWindow struct {
 	convList mgo.ListState
 	panel    *chatpanel.Panel
 
-	provider string
-	model    string
+	provider  string
+	model     string
 	agentMode bool
 
 	searchQuery string
@@ -255,27 +257,27 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		return nil, fmt.Errorf("failed to create conversation manager: %w", err)
 	}
 	cw := &ChatWindow{
-		cfg:            cfg,
-		convManager:    cm,
-		mcpManager:     NewMCPManagerWrapper(),
-		provider:       cfg.CurrentProvider,
-		agentMode:      cfg.UseReactAgent,
-		toolOn:         map[string]bool{},
-		skillOn:        map[string]bool{},
-		acp:            newACPState(),
-		mcp:            mcppage.State{},
-		rightPanel:     false,
-		wsCollapsed:    map[string]bool{},
-		themeMode:      theme.ParseMode(cfg.ThemeMode),
-		colorTheme:     theme.ByName(cfg.ColorTheme),
-		density:        mtheme.Compact,
-		locale:         theme.ParseLocale(cfg.Locale),
-		panel:          chatpanel.New(),
-		statsPage:      stats.New(),
-		agents:         agentspkg.State{SecModels: true, SecTools: true, SecMCP: true, SecSkills: true, Form: agentspkg.Form{Editing: -1}},
-		autotasks:      autotaskpkg.State{Running: map[string]bool{}},
-		avatarPNG:      map[string]*mgo.Bitmap{},
-		iconCache:      map[string]iconImage{},
+		cfg:         cfg,
+		convManager: cm,
+		mcpManager:  NewMCPManagerWrapper(),
+		provider:    cfg.CurrentProvider,
+		agentMode:   cfg.UseReactAgent,
+		toolOn:      map[string]bool{},
+		skillOn:     map[string]bool{},
+		acp:         newACPState(),
+		mcp:         mcppage.State{},
+		rightPanel:  false,
+		wsCollapsed: map[string]bool{},
+		themeMode:   theme.ParseMode(cfg.ThemeMode),
+		colorTheme:  theme.ByName(cfg.ColorTheme),
+		density:     mtheme.Compact,
+		locale:      theme.ParseLocale(cfg.Locale),
+		panel:       chatpanel.New(),
+		statsPage:   stats.New(),
+		agents:      agentspkg.State{SecModels: true, SecTools: true, SecMCP: true, SecSkills: true, Form: agentspkg.Form{Editing: -1}},
+		autotasks:   autotaskpkg.State{Running: map[string]bool{}},
+		avatarPNG:   map[string]*mgo.Bitmap{},
+		iconCache:   map[string]iconImage{},
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd

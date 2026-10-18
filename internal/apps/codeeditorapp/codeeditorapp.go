@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -21,7 +22,7 @@ import (
 )
 
 // System is the app's chat system prompt.
-const System = "你是代码编辑器助手。你可以通过 read_file/write_file/append_file/list_files/rename_file/delete_file/create_directory/search_files/open_file 读写与查找项目中的源文件，帮助用户查看、修改与生成代码。"
+const System = "你是代码编辑器助手。你可以通过 read_file/write_file/append_file/list_files/rename_file/delete_file/create_directory/search_files/open_file 读写与查找项目中的源文件，通过 list_tabs 查看打开的代码标签，帮助用户查看、修改与生成代码。"
 
 const maxFile = 2 << 20
 
@@ -40,10 +41,12 @@ type file struct {
 
 // Client is one code editor bound to a Host.
 type Client struct {
-	host Host
-	mu   sync.Mutex
-	tabs appkit.Tabs
-	docs map[string]*file
+	host    Host
+	mu      sync.Mutex
+	tabs    appkit.Tabs
+	docs    map[string]*file
+	ctxAll  bool
+	ctxTabs []string
 }
 
 // Host is the capability set the app needs from its shell.
@@ -52,6 +55,12 @@ type Host = appkit.Host
 // New returns an editor driving the given host.
 func New(h Host) *Client {
 	return &Client{host: h, docs: map[string]*file{}}
+}
+
+// SetContext stores the chat's selected context tabs; all picks every tab.
+func (cl *Client) SetContext(all bool, ids []string) {
+	cl.ctxAll = all
+	cl.ctxTabs = ids
 }
 
 // Title labels a tab with its file name.
@@ -319,6 +328,32 @@ func (cl *Client) Tools() []Tool {
 			Params: map[string]Param{"path": {Desc: "相对工作目录的路径", Required: true}},
 			Run: func(args map[string]any) (string, error) {
 				return cl.openTool(str(args, "path"))
+			},
+		},
+		{
+			Name: "list_tabs",
+			Desc: "列出当前打开的代码标签（id、路径；未保存或选中的标注）",
+			Run: func(map[string]any) (string, error) {
+				if len(cl.tabs.Items) == 0 {
+					return "(没有打开的文件)", nil
+				}
+				var b strings.Builder
+				for _, id := range cl.tabs.Items {
+					f := cl.file(id)
+					name := "未命名"
+					if f != nil && f.path != "" {
+						name = f.path
+					}
+					var mark string
+					if f != nil && f.content != f.saved {
+						mark += "[未保存]"
+					}
+					if cl.ctxAll || slices.Contains(cl.ctxTabs, id) {
+						mark += "[上下文]"
+					}
+					fmt.Fprintf(&b, "- %s: %s%s\n", id, name, mark)
+				}
+				return strings.TrimRight(b.String(), "\n"), nil
 			},
 		},
 	}

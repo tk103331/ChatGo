@@ -142,3 +142,22 @@ func TestOpenFileTool(t *testing.T) {
 		t.Fatal("escape should fail")
 	}
 }
+
+func TestListTabs(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0o644)
+	cl := New(&host{dir: dir})
+	id := cl.Open("main.go")
+	cl.SetContext(false, []string{id})
+	if f := cl.file(id); f != nil {
+		f.content = "package changed"
+	}
+	tools := cl.Tools()
+	out, err := tools[len(tools)-1].Run(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "- "+id+": main.go[未保存][上下文]") {
+		t.Fatalf("list_tabs: %q", out)
+	}
+}

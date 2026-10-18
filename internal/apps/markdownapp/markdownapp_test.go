@@ -126,3 +126,22 @@ func TestRenameConfirm(t *testing.T) {
 		t.Fatal("rename failed")
 	}
 }
+
+func TestListTabs(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "doc.md"), []byte("# hi"), 0o644)
+	cl := New(&host{dir: dir})
+	id := cl.Open("doc.md")
+	cl.SetContext(false, []string{id})
+	if d := cl.doc(id); d != nil {
+		d.content = "# changed"
+	}
+	tools := cl.Tools()
+	out, err := tools[len(tools)-1].Run(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "- "+id+": doc.md[未保存][上下文]") {
+		t.Fatalf("list_tabs: %q", out)
+	}
+}
