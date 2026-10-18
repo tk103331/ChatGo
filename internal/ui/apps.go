@@ -188,9 +188,9 @@ func (cw *ChatWindow) appWorkspace(c *mgo.Context) {
 // appChatMinW is the narrowest the chat pane may be, so it stays usable
 // while the work area takes the rest of the width.
 const (
-	appChatMinW  float32 = 520
+	appChatMinW  float32 = 340
 	appWorkMinW  float32 = 520
-	appWorkRatio float32 = 0.72
+	appWorkRatio float32 = 0.80
 )
 
 // appDefaultLeftW gives the work area most of the width and leaves the chat
