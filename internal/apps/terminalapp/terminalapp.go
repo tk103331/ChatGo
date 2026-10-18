@@ -18,6 +18,7 @@ import (
 	"chatgo/internal/apps/filetools"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
@@ -40,10 +41,11 @@ var commandWhitelist = map[string]bool{
 
 // shellTab is one open shell.
 type shellTab struct {
-	id    string
-	title string
-	term  *term.Terminal
-	err   string
+	id     string
+	title  string
+	term   *term.Terminal
+	err    string
+	exited bool
 }
 
 // Client is one terminal app bound to a Host.
@@ -98,7 +100,9 @@ func (cl *Client) start(tb *shellTab, dir string) {
 	t, err := term.New(term.Options{
 		Dir:     dir,
 		OnTitle: func(title string) { cl.host.Post(func() { tb.title = title; cl.host.Invalidate() }) },
-		OnExit:  func(int) { cl.host.Post(cl.host.Invalidate) },
+		OnExit: func(int) {
+			cl.host.Post(func() { tb.exited = true; cl.host.Invalidate() })
+		},
 	})
 	cl.host.Post(func() {
 		if err != nil {
@@ -131,7 +135,7 @@ func (cl *Client) View(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	tb := cl.byID[cl.tabs.Active]
-	mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
+	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		switch {
 		case tb == nil:
 			mgo.Text(c, "正在启动终端…").Padding(u * 3).FontSize(caption).TextColor(k.TextMuted)
@@ -140,7 +144,28 @@ func (cl *Client) View(c *mgo.Context) {
 		case tb.term == nil:
 			mgo.Text(c, "正在启动终端…").Padding(u * 3).FontSize(caption).TextColor(k.TextMuted)
 		default:
-			term.View(c, tb.term).Fill()
+			mgo.Row(c).FillWidth().Shrink(0).Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
+				BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
+				if minput.Button(c, "清屏", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
+					tb.term.Send([]byte("\x0c"))
+				}
+				if minput.Button(c, "中断", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
+					tb.term.Send([]byte("\x03"))
+				}
+				mgo.Box(c).Grow(1)
+				if dir := tb.term.Dir(); dir != "" {
+					mgo.Text(c, dir).FontSize(caption).TextColor(k.TextMuted).
+						Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				}
+				status := "运行中"
+				if tb.exited {
+					status = "已退出"
+				}
+				mgo.Text(c, status).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			})
+			mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+				term.View(c, tb.term).Fill()
+			})
 		}
 	})
 }
