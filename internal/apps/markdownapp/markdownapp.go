@@ -32,7 +32,7 @@ type doc struct {
 	saved       string
 	loaded      bool
 	mode        int
-	splitW      float32
+	splitP      float32
 	jumpStart   int
 	jumpEnd     int
 	jumpSel     bool
@@ -98,7 +98,7 @@ func (cl *Client) Open(path string) string {
 	}
 	cl.mu.Lock()
 	if _, ok := cl.docs[key]; !ok {
-		d := &doc{path: path, splitW: 260, previewJump: -1}
+		d := &doc{path: path, splitP: 50, previewJump: -1}
 		if path != "" {
 			if data, err := os.ReadFile(cl.abs(path)); err == nil {
 				d.content, d.saved, d.loaded = string(data), string(data), true
@@ -181,7 +181,7 @@ func (cl *Client) View(c *mgo.Context) {
 				case modePreview:
 					cl.previewArea(c, d)
 				case modeSplit:
-					mgo.Split(c, &d.splitW, func() { cl.sourceArea(c, d, u) }, func() { cl.previewArea(c, d) }).
+					mgo.SplitPercent(c, &d.splitP, func() { cl.sourceArea(c, d, u) }, func() { cl.previewArea(c, d) }).
 						Grow(1).MinWidth(0).MinHeight(0)
 				default:
 					cl.sourceArea(c, d, u)
