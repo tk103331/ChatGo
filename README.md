@@ -142,6 +142,10 @@ Toggle built-in tools and whole MCP servers, and pick Skills, from the composer;
 
 The title bar toggles the session list, the file tree and the terminal. Double-click a file for a tabbed preview (code, image, SVG, diff); the terminal supports multiple tabs.
 
+### Apps 上下文标签
+
+Apps 里的终端、Markdown、代码与浏览器都可开多个标签。聊天输入框上方可以**选择上下文标签**（单个、多个或全部）：Agent 的标签工具（`list_tabs`、`send_keys`、`read_screen` 等）随选择聚焦到对应标签，系统提示词也会标注当前上下文。
+
 ## 🛠️ Tech Stack
 
 - **Go 1.27.1+** - Main programming language

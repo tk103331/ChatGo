@@ -221,17 +221,18 @@ func (cl *Client) Tools() []Tool {
 		},
 		{
 			Name:   "send_keys",
-			Desc:   "把文本作为按键发送到当前上下文终端标签（配合交互式程序）",
-			Params: map[string]Param{"text": {Desc: "要发送的文本", Required: true}},
+			Desc:   "把文本作为按键发送到指定或上下文终端标签（配合交互式程序）",
+			Params: map[string]Param{"text": {Desc: "要发送的文本", Required: true}, "tab": {Desc: "目标标签 id（来自 list_tabs），留空用上下文"}},
 			Run: func(args map[string]any) (string, error) {
-				return cl.sendKeys(str(args, "text"))
+				return cl.sendKeys(str(args, "text"), str(args, "tab"))
 			},
 		},
 		{
-			Name: "read_screen",
-			Desc: "读取当前上下文终端标签的屏幕与回滚文本",
-			Run: func(map[string]any) (string, error) {
-				return cl.readScreen()
+			Name:   "read_screen",
+			Desc:   "读取指定或上下文终端标签的屏幕与回滚文本",
+			Params: map[string]Param{"tab": {Desc: "目标标签 id（来自 list_tabs），留空用上下文"}},
+			Run: func(args map[string]any) (string, error) {
+				return cl.readScreen(str(args, "tab"))
 			},
 		},
 	}
@@ -312,8 +313,15 @@ func (cl *Client) targetIDs() []string {
 	return ids
 }
 
-// targetTerms returns the shells of the context-selected tabs.
-func (cl *Client) targetTerms() []*term.Terminal {
+// targetTerms returns the shells of the context-selected tabs, or of one
+// explicit tab id when tab is non-empty.
+func (cl *Client) targetTerms(tab string) []*term.Terminal {
+	if tab != "" {
+		if tb := cl.byID[tab]; tb != nil && tb.term != nil {
+			return []*term.Terminal{tb.term}
+		}
+		return nil
+	}
 	var out []*term.Terminal
 	for _, id := range cl.targetIDs() {
 		if tb := cl.byID[id]; tb != nil && tb.term != nil {
@@ -323,9 +331,9 @@ func (cl *Client) targetTerms() []*term.Terminal {
 	return out
 }
 
-// sendKeys writes text into every context-selected shell.
-func (cl *Client) sendKeys(text string) (string, error) {
-	terms := cl.targetTerms()
+// sendKeys writes text into every target shell.
+func (cl *Client) sendKeys(text, tab string) (string, error) {
+	terms := cl.targetTerms(tab)
 	if len(terms) == 0 {
 		return "", fmt.Errorf("没有打开的终端")
 	}
@@ -335,9 +343,9 @@ func (cl *Client) sendKeys(text string) (string, error) {
 	return "已发送到终端", nil
 }
 
-// readScreen returns the context-selected screens, one block per tab.
-func (cl *Client) readScreen() (string, error) {
-	terms := cl.targetTerms()
+// readScreen returns the target screens, one block per tab.
+func (cl *Client) readScreen(tab string) (string, error) {
+	terms := cl.targetTerms(tab)
 	if len(terms) == 0 {
 		return "", fmt.Errorf("没有打开的终端")
 	}

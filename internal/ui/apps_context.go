@@ -27,36 +27,37 @@ func (cw *ChatWindow) appContextChips(c *mgo.Context) {
 	tabs := cw.appTabList(cw.currentApp)
 	sel := cw.appCtxTabs[cw.currentApp]
 	all := cw.appCtxAll[cw.currentApp]
-	mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-		mgo.Text(c, "上下文").FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-		allVariant := minput.Ghost
-		if all {
-			allVariant = minput.Secondary
-		}
-		if minput.Button(c, "全部", minput.ButtonOptions{Variant: allVariant, Label: "全部"}).Clicked() {
-			cw.setAppContextAll(cw.currentApp, !all)
-		}
-		for _, tab := range tabs {
-			tab := tab
-			selected := false
-			if !all {
-				for _, s := range sel {
-					if s == tab {
-						selected = true
-						break
+	mgo.ScrollHorizontal(c).FillWidth().Children(func() {
+		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			mgo.Text(c, "上下文").FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			allVariant := minput.Ghost
+			if all {
+				allVariant = minput.Secondary
+			}
+			if minput.Button(c, "全部", minput.ButtonOptions{Variant: allVariant, Label: "全部"}).Clicked() {
+				cw.setAppContextAll(cw.currentApp, !all)
+			}
+			for _, tab := range tabs {
+				tab := tab
+				selected := false
+				if !all {
+					for _, s := range sel {
+						if s == tab {
+							selected = true
+							break
+						}
 					}
 				}
+				variant := minput.Ghost
+				if selected {
+					variant = minput.Secondary
+				}
+				label := cw.appTabLabel(cw.currentApp, tab)
+				if minput.Button(c, label, minput.ButtonOptions{Variant: variant, Label: label}).Clicked() {
+					cw.toggleAppContextTab(cw.currentApp, tab)
+				}
 			}
-			variant := minput.Ghost
-			if selected {
-				variant = minput.Secondary
-			}
-			label := cw.appTabLabel(cw.currentApp, tab)
-			if minput.Button(c, label, minput.ButtonOptions{Variant: variant, Label: label}).Clicked() {
-				cw.toggleAppContextTab(cw.currentApp, tab)
-			}
-		}
-		mgo.Box(c).Grow(1)
+		})
 	})
 }
 
@@ -139,5 +140,7 @@ func (cw *ChatWindow) syncAppContext(id string) {
 		cw.markdownClient().SetContext(all, ids)
 	case "code":
 		cw.codeClient().SetContext(all, ids)
+	case "browser":
+		cw.browserClient().SetContext(all, ids)
 	}
 }

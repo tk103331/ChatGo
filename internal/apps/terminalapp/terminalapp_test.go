@@ -85,11 +85,14 @@ func TestRunCommandWorkdir(t *testing.T) {
 
 func TestSendKeysReadScreenNoTab(t *testing.T) {
 	cl := New(&host{dir: t.TempDir()})
-	if _, err := cl.sendKeys("ls"); err == nil {
+	if _, err := cl.sendKeys("ls", ""); err == nil {
 		t.Fatal("send_keys without a tab should fail")
 	}
-	if _, err := cl.readScreen(); err == nil {
+	if _, err := cl.readScreen(""); err == nil {
 		t.Fatal("read_screen without a tab should fail")
+	}
+	if _, err := cl.sendKeys("ls", "nope"); err == nil {
+		t.Fatal("send_keys with an unknown tab should fail")
 	}
 }
 

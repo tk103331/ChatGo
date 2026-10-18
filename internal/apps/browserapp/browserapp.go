@@ -5,6 +5,7 @@ package browserapp
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 )
 
 // System is the app's chat system prompt.
-const System = "你是浏览器助手。你可以通过 browser 工具打开网页、读取页面文本与标题、执行 JS，帮助用户浏览与提取信息。"
+const System = "你是浏览器助手。你可以通过 list_tabs 查看打开的标签，通过 browser 工具打开网页、读取页面文本与标题、执行 JS，帮助用户浏览与提取信息。"
 
 const homeURL = "https://www.bing.com"
 
@@ -34,9 +35,11 @@ type page struct {
 
 // Client is one browser bound to a Host.
 type Client struct {
-	host Host
-	tabs appkit.Tabs
-	byID map[string]*page
+	host    Host
+	tabs    appkit.Tabs
+	byID    map[string]*page
+	ctxAll  bool
+	ctxTabs []string
 }
 
 // Host is the capability set the app needs from its shell.
@@ -45,6 +48,12 @@ type Host = appkit.Host
 // New returns a browser driving the given host.
 func New(h Host) *Client {
 	return &Client{host: h, byID: map[string]*page{}}
+}
+
+// SetContext stores the chat's selected context tabs; all picks every tab.
+func (cl *Client) SetContext(all bool, ids []string) {
+	cl.ctxAll = all
+	cl.ctxTabs = ids
 }
 
 // Title labels a tab with the page title or host.
@@ -186,8 +195,35 @@ func normalize(raw string) string {
 func (cl *Client) Tools() []Tool {
 	return []Tool{
 		{
+			Name: "list_tabs",
+			Desc: "列出当前打开的浏览器标签（id、标题/网址；选中的标 [上下文]）",
+			Run: func(map[string]any) (string, error) {
+				if len(cl.tabs.Items) == 0 {
+					return "(没有打开的标签页)", nil
+				}
+				var b strings.Builder
+				for _, id := range cl.tabs.Items {
+					p := cl.byID[id]
+					label := "新标签页"
+					if p != nil {
+						if p.title != "" {
+							label = p.title
+						} else if p.url != "" {
+							label = p.url
+						}
+					}
+					status := "加载中"
+					if p != nil && p.view != nil && !p.view.IsDestroyed() {
+						status = "已打开"
+					}
+					fmt.Fprintf(&b, "- %s: %s（%s）%s\n", id, label, status, cl.ctxMark(id))
+				}
+				return strings.TrimRight(b.String(), "\n"), nil
+			},
+		},
+		{
 			Name: "browser",
-			Desc: "浏览器操作：open 打开网址、text 读取页面文本、title 读取标题、html 读取 HTML、eval 执行 JS",
+			Desc: "浏览器操作：open 打开网址、text 读取页面文本、title 读取标题、html 读取 HTML、eval 执行 JS（读取作用于上下文标签）",
 			Params: map[string]Param{
 				"action": {Desc: "open、text、title、html 或 eval", Required: true},
 				"url":    {Desc: "动作 open 时的网址"},
@@ -200,6 +236,42 @@ func (cl *Client) Tools() []Tool {
 	}
 }
 
+// ctxMark is "[上下文]" when id is in the chat's context set.
+func (cl *Client) ctxMark(id string) string {
+	if cl.ctxAll || slices.Contains(cl.ctxTabs, id) {
+		return "[上下文]"
+	}
+	return ""
+}
+
+// targetIDs returns the ids the context-selected tabs map to: every tab
+// when ctxAll, the picked set when set, else the active tab.
+func (cl *Client) targetIDs() []string {
+	var ids []string
+	switch {
+	case cl.ctxAll:
+		ids = append(ids, cl.tabs.Items...)
+	case len(cl.ctxTabs) > 0:
+		ids = append(ids, cl.ctxTabs...)
+	default:
+		if cl.tabs.Active != "" {
+			ids = []string{cl.tabs.Active}
+		}
+	}
+	return ids
+}
+
+// targetPages returns the context-selected pages that are open.
+func (cl *Client) targetPages() []*page {
+	var out []*page
+	for _, id := range cl.targetIDs() {
+		if p := cl.byID[id]; p != nil && p.view != nil && !p.view.IsDestroyed() {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 // run executes one browser tool action.
 func (cl *Client) run(action, url, js string) (string, error) {
 	switch action {
@@ -210,10 +282,6 @@ func (cl *Client) run(action, url, js string) (string, error) {
 		cl.NewTab(url)
 		return "已打开 " + normalize(url), nil
 	case "title", "text", "html", "eval":
-		p := cl.byID[cl.tabs.Active]
-		if p == nil || p.view == nil || p.view.IsDestroyed() {
-			return "", fmt.Errorf("当前没有打开的网页")
-		}
 		var script string
 		switch action {
 		case "title":
@@ -228,11 +296,22 @@ func (cl *Client) run(action, url, js string) (string, error) {
 			}
 			script = js
 		}
-		out, err := evalString(p.view, script)
-		if err != nil {
-			return "", err
+		pages := cl.targetPages()
+		if len(pages) == 0 {
+			return "", fmt.Errorf("当前上下文没有打开的网页")
 		}
-		return out, nil
+		var b strings.Builder
+		for i, p := range pages {
+			if i > 0 {
+				b.WriteString("\n\n")
+			}
+			out, err := evalString(p.view, script)
+			if err != nil {
+				return "", err
+			}
+			b.WriteString(out)
+		}
+		return b.String(), nil
 	default:
 		return "", fmt.Errorf("不支持的 action: %s", action)
 	}
