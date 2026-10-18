@@ -110,6 +110,8 @@ func (cw *ChatWindow) rightColumn(c *mgo.Context, hasFile, hasWeb bool) {
 	cw.webPanelView(c)
 }
 
+const chatMaxWidth = 768
+
 // messageArea is the message list and the composer, without the sidebar.
 func (cw *ChatWindow) messageArea(c *mgo.Context) {
 	msgs := cw.messages()
@@ -117,14 +119,22 @@ func (cw *ChatWindow) messageArea(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	row := func(i int) { cw.messageRow(c, i, msgs[i]) }
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(k.Background).Children(func() {
-		res := mchat.MessageList(c, &cw.msgList, len(msgs), mchat.MessageListOptions{
-			ID:    func(i int) string { return msgs[i].ID },
-			Date:  func(i int) time.Time { return msgs[i].Timestamp },
-			Label: func(i int) string { return msgs[i].Role },
-		}, row)
-		res.Element.Grow(1).MinHeight(0)
+		mgo.Row(c).Grow(1).MinHeight(0).Justify(mgo.Center).Children(func() {
+			mgo.Box(c).MaxWidth(chatMaxWidth).Grow(1).MinWidth(0).Children(func() {
+				res := mchat.MessageList(c, &cw.msgList, len(msgs), mchat.MessageListOptions{
+					ID:    func(i int) string { return msgs[i].ID },
+					Date:  func(i int) time.Time { return msgs[i].Timestamp },
+					Label: func(i int) string { return msgs[i].Role },
+				}, row)
+				res.Element.Grow(1).MinHeight(0)
+			})
+		})
 		mgo.Column(c).Shrink(0).Padding(u*3, u*4).BorderWidth(mtheme.BorderWidth, 0, 0, 0).
-			BorderColor(k.Border).Children(func() { cw.composer(c) })
+			BorderColor(k.Border).Children(func() {
+				mgo.Row(c).Justify(mgo.Center).Children(func() {
+					mgo.Box(c).MaxWidth(chatMaxWidth).Grow(1).MinWidth(0).Children(func() { cw.composer(c) })
+				})
+			})
 	})
 }
 
