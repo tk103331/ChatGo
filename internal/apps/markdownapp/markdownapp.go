@@ -14,6 +14,7 @@ import (
 	"chatgo/internal/apps/appkit"
 	"chatgo/internal/apps/filetools"
 
+	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
@@ -26,7 +27,9 @@ const System = "你是 Markdown 文档助手。你可以通过 read_file/write_f
 type doc struct {
 	path    string
 	content string
+	saved   string
 	loaded  bool
+	preview bool
 	err     string
 }
 
@@ -68,7 +71,7 @@ func (cl *Client) Open(path string) string {
 		d := &doc{path: path}
 		if path != "" {
 			if data, err := os.ReadFile(cl.abs(path)); err == nil {
-				d.content, d.loaded = string(data), true
+				d.content, d.saved, d.loaded = string(data), string(data), true
 			} else {
 				d.err = err.Error()
 			}
@@ -119,8 +122,19 @@ func (cl *Client) View(c *mgo.Context) {
 			if minput.Button(c, "打开", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
 				cl.load(d)
 			}
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			saveVariant := minput.Secondary
+			if d.content != d.saved {
+				saveVariant = minput.Primary
+			}
+			if minput.Button(c, "保存", minput.ButtonOptions{Variant: saveVariant}).Clicked() {
 				cl.save(d)
+			}
+			previewVariant := minput.Ghost
+			if d.preview {
+				previewVariant = minput.Secondary
+			}
+			if minput.Button(c, "预览", minput.ButtonOptions{Variant: previewVariant}).Clicked() {
+				d.preview = !d.preview
 			}
 		})
 		if d.err != "" {
@@ -128,8 +142,26 @@ func (cl *Client) View(c *mgo.Context) {
 		}
 		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Background(k.Surface).
 			Border(mtheme.BorderWidth, k.Border).Radius(mtheme.ControlRadius).Clip().Children(func() {
-			mgo.TextAreaBase(c, &d.content).Fill().Padding(u * 2).
-				Placeholder("# 标题\n\n开始编写 Markdown…")
+			switch {
+			case d.preview:
+				mgo.Scroll(c).Fill().Children(func() {
+					mchat.MarkdownView(c, d.content).Element.FillWidth()
+				})
+			default:
+				mgo.TextAreaBase(c, &d.content).Fill().Padding(u * 2).
+					Placeholder("# 标题\n\n开始编写 Markdown…")
+			}
+		})
+		lines := 0
+		if d.content != "" {
+			lines = strings.Count(d.content, "\n") + 1
+		}
+		mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Padding(u, 0, 0, 0).Children(func() {
+			mgo.Text(c, d.path).FontSize(caption).TextColor(k.TextMuted).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			mgo.Text(c, fmt.Sprintf("%d 行 · %d 字符", lines, len([]rune(d.content)))).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			if d.content != d.saved {
+				mgo.Text(c, "未保存").FontSize(caption).TextColor(k.AccentText).Shrink(0)
+			}
 		})
 	})
 }
@@ -145,7 +177,7 @@ func (cl *Client) load(d *doc) {
 		d.err = err.Error()
 		return
 	}
-	d.content, d.loaded, d.err = string(data), true, ""
+	d.content, d.saved, d.loaded, d.err = string(data), string(data), true, ""
 }
 
 // save writes the document's content back to its path.
@@ -163,7 +195,7 @@ func (cl *Client) save(d *doc) {
 		d.err = err.Error()
 		return
 	}
-	d.loaded, d.err = true, ""
+	d.saved, d.loaded, d.err = d.content, true, ""
 	cl.host.Toast("已保存 "+d.path, mcore.SeveritySuccess)
 }
 
@@ -266,7 +298,7 @@ func (cl *Client) writeFile(rel, content string) (string, error) {
 	cl.host.Post(func() {
 		cl.mu.Lock()
 		if d, ok := cl.docs[rel]; ok {
-			d.content, d.loaded, d.err = content, true, ""
+			d.content, d.saved, d.loaded, d.err = content, content, true, ""
 		}
 		cl.mu.Unlock()
 		cl.host.Invalidate()
@@ -339,7 +371,7 @@ func (cl *Client) syncDoc(rel string) {
 		cl.mu.Lock()
 		if d, ok := cl.docs[rel]; ok {
 			if data, err := os.ReadFile(filepath.Join(cl.host.Root(), rel)); err == nil {
-				d.content, d.loaded, d.err = string(data), true, ""
+				d.content, d.saved, d.loaded, d.err = string(data), string(data), true, ""
 			}
 		}
 		cl.mu.Unlock()
