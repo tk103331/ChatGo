@@ -50,11 +50,52 @@ func TestRunCommandUsesRoot(t *testing.T) {
 
 func TestTools(t *testing.T) {
 	cl := New(&host{dir: t.TempDir()})
-	if len(cl.Tools()) != 2 {
-		t.Fatalf("want 2 tools, got %d", len(cl.Tools()))
+	if len(cl.Tools()) != 4 {
+		t.Fatalf("want 4 tools, got %d", len(cl.Tools()))
 	}
 	out, err := cl.Tools()[1].Run(nil)
 	if err != nil || out != "(没有打开的终端)" {
 		t.Fatalf("list: %q %v", out, err)
+	}
+}
+
+func TestRunCommandWhitelist(t *testing.T) {
+	cl := New(&host{dir: t.TempDir()})
+	if _, err := cl.runCommand("evil_thing -x"); err == nil {
+		t.Fatal("non-whitelisted command should fail")
+	}
+	out, err := cl.runCommand("echo hi")
+	if err != nil || !strings.Contains(out, "hi") {
+		t.Fatalf("whitelisted command: %q %v", out, err)
+	}
+}
+
+func TestRunCommandWorkdir(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(filepath.Join(dir, "sub"), 0o755)
+	cl := New(&host{dir: dir})
+	out, err := cl.runCommandWith("pwd", "sub", 0)
+	if err != nil || !strings.Contains(out, "sub") {
+		t.Fatalf("workdir: %q %v", out, err)
+	}
+	if _, err := cl.runCommandWith("pwd", "../../etc", 0); err == nil {
+		t.Fatal("workdir escape should fail")
+	}
+}
+
+func TestSendKeysReadScreenNoTab(t *testing.T) {
+	cl := New(&host{dir: t.TempDir()})
+	if _, err := cl.sendKeys("ls"); err == nil {
+		t.Fatal("send_keys without a tab should fail")
+	}
+	if _, err := cl.readScreen(); err == nil {
+		t.Fatal("read_screen without a tab should fail")
+	}
+}
+
+func TestToolCount(t *testing.T) {
+	cl := New(&host{dir: t.TempDir()})
+	if len(cl.Tools()) != 4 {
+		t.Fatalf("want 4 tools, got %d", len(cl.Tools()))
 	}
 }

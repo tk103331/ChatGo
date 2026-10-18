@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -14,13 +15,28 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/apps/appkit"
+	"chatgo/internal/apps/filetools"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // System is the app's chat system prompt.
-const System = "你是终端应用助手。你可以通过 run_command 在项目工作目录中执行 shell 命令，把结果反馈给用户。命令有白名单限制。"
+const System = "你是终端应用助手。你可以通过 run_command（命令有白名单限制）在工作目录中执行 shell 命令，通过 send_keys 向终端发送按键、read_screen 读取终端内容，把结果反馈给用户。"
+
+const (
+	defaultTimeout = 60
+	maxTimeout     = 300
+	maxOutput      = 64 << 10
+)
+
+// commandWhitelist is the only command prefix run_command accepts.
+var commandWhitelist = map[string]bool{
+	"ls": true, "pwd": true, "echo": true, "cat": true, "head": true,
+	"tail": true, "wc": true, "grep": true, "find": true, "git": true,
+	"mkdir": true, "date": true, "uname": true, "du": true, "df": true,
+	"ps": true, "curl": true, "node": true, "python3": true, "go": true, "make": true,
+}
 
 // shellTab is one open shell.
 type shellTab struct {
@@ -137,10 +153,14 @@ func (cl *Client) Tools() []Tool {
 	return []Tool{
 		{
 			Name:   "run_command",
-			Desc:   "在工作目录中执行一条 shell 命令并返回输出",
-			Params: map[string]Param{"command": {Desc: "要执行的 shell 命令", Required: true}},
+			Desc:   "在工作目录中执行一条白名单内的 shell 命令并返回输出",
+			Params: map[string]Param{
+				"command": {Desc: "要执行的 shell 命令", Required: true},
+				"workdir": {Desc: "相对根目录的工作目录，可留空"},
+				"timeout": {Desc: "超时秒数，1-300，默认 60"},
+			},
 			Run: func(args map[string]any) (string, error) {
-				return cl.runCommand(str(args, "command"))
+				return cl.runCommandWith(str(args, "command"), str(args, "workdir"), intFrom(args, "timeout"))
 			},
 		},
 		{
@@ -157,23 +177,65 @@ func (cl *Client) Tools() []Tool {
 				return strings.TrimRight(b.String(), "\n"), nil
 			},
 		},
+		{
+			Name:   "send_keys",
+			Desc:   "把文本作为按键发送到当前终端标签（配合交互式程序）",
+			Params: map[string]Param{"text": {Desc: "要发送的文本", Required: true}},
+			Run: func(args map[string]any) (string, error) {
+				return cl.sendKeys(str(args, "text"))
+			},
+		},
+		{
+			Name: "read_screen",
+			Desc: "读取当前终端标签的屏幕与回滚文本",
+			Run: func(map[string]any) (string, error) {
+				return cl.readScreen()
+			},
+		},
 	}
 }
 
 // runCommand runs a shell command in the workspace with a bounded timeout.
 func (cl *Client) runCommand(command string) (string, error) {
+	return cl.runCommandWith(command, "", 0)
+}
+
+// runCommandWith runs a whitelisted shell command in workdir (or the root)
+// with a bounded timeout, capping the output.
+func (cl *Client) runCommandWith(command, workdir string, timeoutSec int) (string, error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return "", fmt.Errorf("缺少必填参数 command")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	name := firstWord(command)
+	if !commandWhitelist[name] {
+		return "", fmt.Errorf("命令 %q 不在白名单内", name)
+	}
+	dir := cl.host.Root()
+	if strings.TrimSpace(workdir) != "" {
+		abs, err := filetools.Within(cl.host.Root(), workdir)
+		if err != nil {
+			return "", err
+		}
+		dir = abs
+	}
+	if timeoutSec <= 0 {
+		timeoutSec = defaultTimeout
+	}
+	if timeoutSec > maxTimeout {
+		timeoutSec = maxTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 	c := exec.CommandContext(ctx, "sh", "-c", command)
-	if root := cl.host.Root(); root != "" {
-		c.Dir = root
+	if dir != "" {
+		c.Dir = dir
 	}
 	out, err := c.CombinedOutput()
 	result := strings.TrimSpace(string(out))
+	if len(result) > maxOutput {
+		result = result[:maxOutput] + "\n(输出已截断)"
+	}
 	if err != nil {
 		return result + "\n" + err.Error(), nil
 	}
@@ -181,6 +243,55 @@ func (cl *Client) runCommand(command string) (string, error) {
 		result = "(无输出)"
 	}
 	return result, nil
+}
+
+// activeTerm returns the active tab's shell, or nil.
+func (cl *Client) activeTerm() *term.Terminal {
+	if tb := cl.byID[cl.tabs.Active]; tb != nil {
+		return tb.term
+	}
+	return nil
+}
+
+// sendKeys writes text into the active tab's shell.
+func (cl *Client) sendKeys(text string) (string, error) {
+	t := cl.activeTerm()
+	if t == nil {
+		return "", fmt.Errorf("没有打开的终端")
+	}
+	t.Send([]byte(text))
+	return "已发送到终端", nil
+}
+
+// readScreen returns the active tab's screen and scrollback text.
+func (cl *Client) readScreen() (string, error) {
+	t := cl.activeTerm()
+	if t == nil {
+		return "", fmt.Errorf("没有打开的终端")
+	}
+	out := strings.TrimSpace(t.Text())
+	if out == "" {
+		return "(空屏幕)", nil
+	}
+	return out, nil
+}
+
+func firstWord(s string) string {
+	if i := strings.IndexAny(s, " \t\n"); i >= 0 {
+		return s[:i]
+	}
+	return s
+}
+
+func intFrom(args map[string]any, key string) int {
+	if v, ok := args[key]; ok {
+		if s, ok := v.(string); ok {
+			if n, err := strconv.Atoi(strings.TrimSpace(s)); err == nil {
+				return n
+			}
+		}
+	}
+	return 0
 }
 
 func str(args map[string]any, key string) string {
