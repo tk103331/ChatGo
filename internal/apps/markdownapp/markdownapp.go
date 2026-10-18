@@ -270,8 +270,8 @@ func (cl *Client) Tools() []Tool {
 			},
 		},
 		{
-			Name:   "search_files",
-			Desc:   "递归搜索工作目录中的文本，输出 路径:行号: 内容",
+			Name: "search_files",
+			Desc: "递归搜索工作目录中的文本，输出 路径:行号: 内容",
 			Params: map[string]Param{
 				"pattern":          {Desc: "搜索内容", Required: true},
 				"dir":              {Desc: "起始目录，可留空"},

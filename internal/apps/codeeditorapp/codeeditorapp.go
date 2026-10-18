@@ -178,25 +178,25 @@ func (cl *Client) View(c *mgo.Context) {
 				mgo.Scroll(c).Fill().Children(func() {
 					mgo.Text(c, f.content).Font(mtheme.MonoFont).FontSize(caption).Padding(u * 2)
 				})
-		default:
-			mgo.TextAreaBase(c, &f.content).Fill().Padding(u * 2).
-				Placeholder("// 开始编写代码…").Font(mtheme.MonoFont)
+			default:
+				mgo.TextAreaBase(c, &f.content).Fill().Padding(u * 2).
+					Placeholder("// 开始编写代码…").Font(mtheme.MonoFont)
+			}
+		})
+		lines := 0
+		if f.content != "" {
+			lines = strings.Count(f.content, "\n") + 1
 		}
-	})
-	lines := 0
-	if f.content != "" {
-		lines = strings.Count(f.content, "\n") + 1
-	}
-	mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Padding(u, 0, 0, 0).Children(func() {
-		mgo.Text(c, f.path).FontSize(caption).TextColor(k.TextMuted).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-		mgo.Text(c, fmt.Sprintf("%d 行 · %d 字符", lines, len([]rune(f.content)))).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-		if f.preview && lang != "" {
-			mgo.Text(c, fmt.Sprintf("当前行 %d", f.view.Line()+1)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-		}
-		if f.content != f.saved {
-			mgo.Text(c, "未保存").FontSize(caption).TextColor(k.AccentText).Shrink(0)
-		}
-	})
+		mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Padding(u, 0, 0, 0).Children(func() {
+			mgo.Text(c, f.path).FontSize(caption).TextColor(k.TextMuted).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			mgo.Text(c, fmt.Sprintf("%d 行 · %d 字符", lines, len([]rune(f.content)))).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			if f.preview && lang != "" {
+				mgo.Text(c, fmt.Sprintf("当前行 %d", f.view.Line()+1)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			}
+			if f.content != f.saved {
+				mgo.Text(c, "未保存").FontSize(caption).TextColor(k.AccentText).Shrink(0)
+			}
+		})
 	})
 }
 
@@ -301,8 +301,8 @@ func (cl *Client) Tools() []Tool {
 			},
 		},
 		{
-			Name:   "search_files",
-			Desc:   "递归搜索工作目录中的文本，输出 路径:行号: 内容",
+			Name: "search_files",
+			Desc: "递归搜索工作目录中的文本，输出 路径:行号: 内容",
 			Params: map[string]Param{
 				"pattern":          {Desc: "搜索内容", Required: true},
 				"dir":              {Desc: "起始目录，可留空"},

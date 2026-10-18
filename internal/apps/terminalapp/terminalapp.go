@@ -177,8 +177,8 @@ func (cl *Client) Tabs() *appkit.Tabs { return &cl.tabs }
 func (cl *Client) Tools() []Tool {
 	return []Tool{
 		{
-			Name:   "run_command",
-			Desc:   "在工作目录中执行一条白名单内的 shell 命令并返回输出",
+			Name: "run_command",
+			Desc: "在工作目录中执行一条白名单内的 shell 命令并返回输出",
 			Params: map[string]Param{
 				"command": {Desc: "要执行的 shell 命令", Required: true},
 				"workdir": {Desc: "相对根目录的工作目录，可留空"},
