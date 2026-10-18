@@ -18,6 +18,7 @@ import (
 
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
@@ -37,9 +38,8 @@ type doc struct {
 	jumpEnd     int
 	jumpSel     bool
 	previewJump int
-	srcScroll   mgo.ScrollState
-	prevScroll  mgo.ScrollState
-	lastSrcY    float32
+	activeHead  int
+	lastCaret   int
 	err         string
 }
 
@@ -98,7 +98,7 @@ func (cl *Client) Open(path string) string {
 	}
 	cl.mu.Lock()
 	if _, ok := cl.docs[key]; !ok {
-		d := &doc{path: path, splitP: 50, previewJump: -1}
+		d := &doc{path: path, splitP: 50, previewJump: -1, activeHead: -1, lastCaret: -1}
 		if path != "" {
 			if data, err := os.ReadFile(cl.abs(path)); err == nil {
 				d.content, d.saved, d.loaded = string(data), string(data), true
@@ -155,20 +155,25 @@ func (cl *Client) View(c *mgo.Context) {
 			if minput.Button(c, "保存", minput.ButtonOptions{Variant: saveVariant}).Clicked() {
 				cl.save(d)
 			}
+			mgo.Box(c).Grow(1)
 			for _, m := range []struct {
 				mode  int
+				icon  string
 				label string
-			}{{modeSource, "源码"}, {modePreview, "预览"}, {modeSplit, "分屏"}} {
+			}{
+				{modeSource, "file-code", "源码"},
+				{modePreview, "eye", "预览"},
+				{modeSplit, "layout-grid", "分屏"},
+			} {
 				m := m
 				variant := minput.Ghost
 				if d.mode == m.mode {
 					variant = minput.Secondary
 				}
-				if minput.Button(c, m.label, minput.ButtonOptions{Variant: variant, Label: m.label}).Clicked() {
+				if minput.Button(c, "", minput.ButtonOptions{Variant: variant, Icon: icons.Must(m.icon), Label: m.label}).Clicked() {
 					d.mode = m.mode
 				}
 			}
-			mgo.Box(c).Grow(1)
 		})
 		if d.err != "" {
 			mgo.Text(c, d.err).FontSize(caption).TextColor(k.Danger)
@@ -202,14 +207,18 @@ func (cl *Client) View(c *mgo.Context) {
 	})
 }
 
-// sourceArea draws the editing text area, applying a pending outline jump.
+// sourceArea draws the editing text area, applying a pending outline jump
+// and syncing the outline and preview to the caret's section.
 func (cl *Client) sourceArea(c *mgo.Context, d *doc, u float32) {
 	ta := mgo.TextAreaBase(c, &d.content).Fill().Padding(u * 2).
-		Placeholder("# 标题\n\n开始编写 Markdown…").
-		TrackScroll(&d.srcScroll)
+		Placeholder("# 标题\n\n开始编写 Markdown…")
 	if d.jumpSel {
 		ta = ta.SetTextSelection(d.jumpStart, d.jumpEnd)
 		d.jumpSel = false
+	}
+	if start, _ := ta.TextSelection(); start != d.lastCaret {
+		d.lastCaret = start
+		cl.focusHeadingAt(d, start)
 	}
 }
 
@@ -221,7 +230,7 @@ func (cl *Client) previewArea(c *mgo.Context, d *doc) {
 	secs := splitSections(d.content, hs)
 	var target mgo.Element
 	found := false
-	mgo.Scroll(c).Fill().TrackScroll(&d.prevScroll).Children(func() {
+	mgo.Scroll(c).Fill().Children(func() {
 		mgo.Column(c).FillWidth().Gap(u*3).Padding(u*3, u*5).Children(func() {
 			for _, s := range secs {
 				el := mchat.MarkdownView(c, s.text).Element.FillWidth()
@@ -253,17 +262,24 @@ func (cl *Client) outlinePanel(c *mgo.Context, d *doc, k mtheme.Tokens, u, capti
 			mgo.Column(c).FillWidth().Children(func() {
 				for i, h := range hs {
 					h := h
+					active := i == d.activeHead
 					b := mgo.ButtonBase(c).Key(fmt.Sprintf("outline-%s-%d", d.path, i)).FillWidth().Padding(u, u*2).Children(func() {
 						mgo.Row(c).FillWidth().Gap(u * 2).Children(func() {
 							mgo.Box(c).Width(float32(h.level-1) * u * 2).Shrink(0)
-							mgo.Text(c, h.text).FontSize(caption).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+							txt := mgo.Text(c, h.text).FontSize(caption).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+							if active {
+								txt.FontWeight(600).TextColor(k.AccentText)
+							}
 						})
 					})
-					if b.Hovered() {
+					if active {
+						b.Background(k.SurfaceHover)
+					} else if b.Hovered() {
 						b.Background(k.SurfaceHover)
 					}
 					if b.Clicked() {
 						cl.jumpToHeading(d, i, h)
+						d.activeHead = i
 					}
 				}
 			})
@@ -281,6 +297,29 @@ func (cl *Client) jumpToHeading(d *doc, idx int, h heading) {
 		d.previewJump = idx
 	}
 	cl.host.Invalidate()
+}
+
+// focusHeadingAt marks the heading containing caret pos and, in split mode,
+// scrolls the preview to that section.
+func (cl *Client) focusHeadingAt(d *doc, pos int) {
+	idx := headingIndexAt(parseHeadings(d.content), pos)
+	d.activeHead = idx
+	if d.mode == modeSplit && idx >= 0 {
+		d.previewJump = idx
+	}
+}
+
+// headingIndexAt returns the index of the last heading starting at or before
+// pos, or -1 before the first heading.
+func headingIndexAt(hs []heading, pos int) int {
+	idx := -1
+	for i, h := range hs {
+		if h.start > pos {
+			break
+		}
+		idx = i
+	}
+	return idx
 }
 
 // heading is one ATX heading of a document, with its rune and byte offsets.

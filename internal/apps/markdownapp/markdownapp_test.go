@@ -251,3 +251,21 @@ func TestOpenHandlerMirrorsTab(t *testing.T) {
 		t.Fatalf("active: %q", cl.Tabs().Active)
 	}
 }
+
+func TestHeadingIndexAt(t *testing.T) {
+	content := "intro\n# A\ntext\n## B\nmore\n"
+	hs := parseHeadings(content)
+	// rune offsets: "intro\n" = 6, "# A\n" = 10, "text\n" = 11
+	if got := headingIndexAt(hs, 0); got != -1 {
+		t.Fatalf("preamble: %d", got)
+	}
+	if got := headingIndexAt(hs, hs[0].start); got != 0 {
+		t.Fatalf("first heading: %d", got)
+	}
+	if got := headingIndexAt(hs, hs[1].start); got != 1 {
+		t.Fatalf("second heading: %d", got)
+	}
+	if got := headingIndexAt(hs, len([]rune(content))); got != 1 {
+		t.Fatalf("end: %d", got)
+	}
+}
