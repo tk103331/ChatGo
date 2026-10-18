@@ -41,12 +41,13 @@ type file struct {
 
 // Client is one code editor bound to a Host.
 type Client struct {
-	host    Host
-	mu      sync.Mutex
-	tabs    appkit.Tabs
-	docs    map[string]*file
-	ctxAll  bool
-	ctxTabs []string
+	host        Host
+	mu          sync.Mutex
+	tabs        appkit.Tabs
+	docs        map[string]*file
+	ctxAll      bool
+	ctxTabs     []string
+	openHandler func(path string)
 }
 
 // Host is the capability set the app needs from its shell.
@@ -56,6 +57,10 @@ type Host = appkit.Host
 func New(h Host) *Client {
 	return &Client{host: h, docs: map[string]*file{}}
 }
+
+// SetOpenHandler registers a callback run when a file is opened into a new
+// tab, so the shell can mirror it into its own tab bar.
+func (cl *Client) SetOpenHandler(fn func(path string)) { cl.openHandler = fn }
 
 // SetContext stores the chat's selected context tabs; all picks every tab.
 func (cl *Client) SetContext(all bool, ids []string) {
@@ -240,7 +245,7 @@ func (cl *Client) openViaDialog() {
 		}
 		rel := cl.relOf(picked)
 		cl.host.Post(func() {
-			cl.Open(rel)
+			cl.openAndRegister(rel)
 			cl.host.Invalidate()
 		})
 	}()
@@ -459,8 +464,17 @@ func (cl *Client) openTool(rel string) (string, error) {
 	if _, err := filetools.Within(cl.host.Root(), rel); err != nil {
 		return "", err
 	}
-	id := cl.Open(rel)
-	return "已在编辑器打开 " + cl.Title(id), nil
+	cl.openAndRegister(rel)
+	return "已在编辑器打开 " + rel, nil
+}
+
+// openAndRegister opens a path in a tab and mirrors it into the shell's tab
+// bar through the open handler.
+func (cl *Client) openAndRegister(rel string) {
+	cl.Open(rel)
+	if cl.openHandler != nil {
+		cl.openHandler(rel)
+	}
 }
 
 // syncDoc refreshes an open tab's buffer from disk.

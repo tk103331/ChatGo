@@ -182,3 +182,20 @@ func TestAbsAndRel(t *testing.T) {
 		t.Fatalf("relOf outside: %q", got)
 	}
 }
+
+func TestOpenToolRegisters(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0o644)
+	cl := New(&host{dir: dir})
+	var got []string
+	cl.SetOpenHandler(func(p string) { got = append(got, p) })
+	if _, err := cl.openTool("main.go"); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != "main.go" {
+		t.Fatalf("handler: %v", got)
+	}
+	if cl.Tabs().Active != "main.go" {
+		t.Fatalf("active: %q", cl.Tabs().Active)
+	}
+}

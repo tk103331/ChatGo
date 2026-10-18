@@ -237,3 +237,17 @@ func TestSplitSections(t *testing.T) {
 		t.Fatalf("no headings: %+v", got)
 	}
 }
+
+func TestOpenHandlerMirrorsTab(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	var got []string
+	cl.SetOpenHandler(func(p string) { got = append(got, p) })
+	cl.openAndRegister("a.md")
+	if len(got) != 1 || got[0] != "a.md" {
+		t.Fatalf("handler: %v", got)
+	}
+	if cl.Tabs().Active != "a.md" {
+		t.Fatalf("active: %q", cl.Tabs().Active)
+	}
+}

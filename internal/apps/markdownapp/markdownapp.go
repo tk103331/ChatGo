@@ -37,6 +37,9 @@ type doc struct {
 	jumpEnd     int
 	jumpSel     bool
 	previewJump int
+	srcScroll   mgo.ScrollState
+	prevScroll  mgo.ScrollState
+	lastSrcY    float32
 	err         string
 }
 
@@ -49,12 +52,13 @@ const (
 
 // Client is one Markdown editor bound to a Host.
 type Client struct {
-	host    Host
-	mu      sync.Mutex
-	tabs    appkit.Tabs
-	docs    map[string]*doc
-	ctxAll  bool
-	ctxTabs []string
+	host        Host
+	mu          sync.Mutex
+	tabs        appkit.Tabs
+	docs        map[string]*doc
+	ctxAll      bool
+	ctxTabs     []string
+	openHandler func(path string)
 }
 
 // Host is the capability set the app needs from its shell.
@@ -64,6 +68,10 @@ type Host = appkit.Host
 func New(h Host) *Client {
 	return &Client{host: h, docs: map[string]*doc{}}
 }
+
+// SetOpenHandler registers a callback run when a file is opened into a new
+// tab, so the shell can mirror it into its own tab bar.
+func (cl *Client) SetOpenHandler(fn func(path string)) { cl.openHandler = fn }
 
 // SetContext stores the chat's selected context tabs; all picks every tab.
 func (cl *Client) SetContext(all bool, ids []string) {
@@ -197,7 +205,8 @@ func (cl *Client) View(c *mgo.Context) {
 // sourceArea draws the editing text area, applying a pending outline jump.
 func (cl *Client) sourceArea(c *mgo.Context, d *doc, u float32) {
 	ta := mgo.TextAreaBase(c, &d.content).Fill().Padding(u * 2).
-		Placeholder("# 标题\n\n开始编写 Markdown…")
+		Placeholder("# 标题\n\n开始编写 Markdown…").
+		TrackScroll(&d.srcScroll)
 	if d.jumpSel {
 		ta = ta.SetTextSelection(d.jumpStart, d.jumpEnd)
 		d.jumpSel = false
@@ -212,7 +221,7 @@ func (cl *Client) previewArea(c *mgo.Context, d *doc) {
 	secs := splitSections(d.content, hs)
 	var target mgo.Element
 	found := false
-	mgo.Scroll(c).Fill().Children(func() {
+	mgo.Scroll(c).Fill().TrackScroll(&d.prevScroll).Children(func() {
 		mgo.Column(c).FillWidth().Gap(u*3).Padding(u*3, u*5).Children(func() {
 			for _, s := range secs {
 				el := mchat.MarkdownView(c, s.text).Element.FillWidth()
@@ -376,10 +385,19 @@ func (cl *Client) openViaDialog() {
 		}
 		rel := cl.relOf(picked)
 		cl.host.Post(func() {
-			cl.Open(rel)
+			cl.openAndRegister(rel)
 			cl.host.Invalidate()
 		})
 	}()
+}
+
+// openAndRegister opens a path in a tab and mirrors it into the shell's tab
+// bar through the open handler.
+func (cl *Client) openAndRegister(rel string) {
+	cl.Open(rel)
+	if cl.openHandler != nil {
+		cl.openHandler(rel)
+	}
 }
 
 // relOf converts an absolute path to a workspace-relative one when inside

@@ -34,9 +34,9 @@ type appDef struct {
 	Body     func(cw *ChatWindow, c *mgo.Context, tab string)
 
 	// Static hides the tab bar for apps that render their own navigation.
-	// ChatMinW is the narrowest the chat pane may be; zero uses the default.
-	// Dense work areas, such as a three-pane Git client, ask for less.
-	ChatMinW float32
+	// ChatW is the fixed chat pane width; zero uses the default. Dense work
+	// areas, such as a three-pane Git client, ask for a wider chat.
+	ChatW float32
 
 	// CloseTab releases an app-owned resource when a tab closes.
 	CloseTab func(cw *ChatWindow, tab string)
@@ -171,8 +171,10 @@ func (cw *ChatWindow) appWorkspace(c *mgo.Context) {
 		cw.appsPage(c)
 		return
 	}
-	if cw.appLeftW == 0 || cw.appLeftFor != cw.appActive {
+	winW, _ := c.Size()
+	if cw.appLeftW == 0 || cw.appLeftFor != cw.appActive || cw.appWinW != winW {
 		cw.appLeftFor = cw.appActive
+		cw.appWinW = winW
 		cw.appLeftW = cw.appDefaultLeftW(c, a)
 	}
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Children(func() {
@@ -185,31 +187,26 @@ func (cw *ChatWindow) appWorkspace(c *mgo.Context) {
 	})
 }
 
-// appChatMinW is the narrowest the chat pane may be, so it stays usable
-// while the work area takes the rest of the width.
+// appChatW is the fixed chat pane width; the work area takes all the rest,
+// so a larger window widens the editor and leaves the chat unchanged.
 const (
-	appChatMinW  float32 = 300
-	appWorkMinW  float32 = 520
-	appWorkRatio float32 = 0.85
+	appChatW    float32 = 300
+	appWorkMinW float32 = 520
 )
 
-// appDefaultLeftW gives the work area most of the width and leaves the chat
-// pane a comfortable column. It reads the live window size; before the first
-// real frame it falls back to the ratio applied to the context width.
+// appDefaultLeftW gives the work area the window minus the fixed chat pane.
+// It reads the live window size; before the first real frame it falls back
+// to the minimum work width.
 func (cw *ChatWindow) appDefaultLeftW(c *mgo.Context, a appDef) float32 {
 	winW, _ := c.Size()
 	if winW <= 0 {
 		return appWorkMinW
 	}
-	chatMin := appChatMinW
-	if a.ChatMinW > 0 {
-		chatMin = a.ChatMinW
+	chatW := appChatW
+	if a.ChatW > 0 {
+		chatW = a.ChatW
 	}
-	room := winW - 60
-	left := room * appWorkRatio
-	if maxLeft := room - chatMin; left > maxLeft {
-		left = maxLeft
-	}
+	left := winW - 60 - chatW
 	if left < appWorkMinW {
 		left = appWorkMinW
 	}
@@ -286,6 +283,22 @@ func (cw *ChatWindow) addAppTab(id string) {
 	tab := a.NewTab(cw)
 	cw.appTabs[id] = append(cw.appTabs[id], tab)
 	cw.appTab[id] = tab
+}
+
+// openAppPath mirrors a file opened by an app into the tab bar, selecting
+// it, without duplicating an already-open tab.
+func (cw *ChatWindow) openAppPath(id, path string) {
+	cw.ensureAppState()
+	for _, t := range cw.appTabs[id] {
+		if t == path {
+			cw.appTab[id] = path
+			cw.invalidate()
+			return
+		}
+	}
+	cw.appTabs[id] = append(cw.appTabs[id], path)
+	cw.appTab[id] = path
+	cw.invalidate()
 }
 
 // closeAppTab closes a tab and selects a neighbour.

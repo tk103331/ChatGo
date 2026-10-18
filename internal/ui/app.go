@@ -76,6 +76,7 @@ type ChatWindow struct {
 	appActive  string
 	appLeftW   float32
 	appLeftFor string
+	appWinW    float32
 	appsLoaded bool
 	appTabs    map[string][]string
 	appTab     map[string]string

@@ -23,7 +23,7 @@ func gitApp() appDef {
 		Icon:      "git-branch",
 		System:    gitapp.System,
 		Static:    true,
-		ChatMinW:  400,
+		ChatW:     400,
 		NewTab:    func(cw *ChatWindow) string { return "" },
 		Workspace: func(cw *ChatWindow, c *mgo.Context) { cw.gitClient().View(c) },
 		Tools: func(cw *ChatWindow) []appTool {

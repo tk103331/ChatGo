@@ -69,6 +69,7 @@ func (cw *ChatWindow) terminalClient() *terminalapp.Client {
 func (cw *ChatWindow) markdownClient() *markdownapp.Client {
 	if cw.mdApp == nil {
 		cw.mdApp = markdownapp.New(appHost{cw: cw})
+		cw.mdApp.SetOpenHandler(func(path string) { cw.openAppPath("markdown", path) })
 	}
 	return cw.mdApp
 }
@@ -163,6 +164,7 @@ func markdownParams(params map[string]markdownapp.Param) map[string]appParam {
 func (cw *ChatWindow) codeClient() *codeeditorapp.Client {
 	if cw.codeApp == nil {
 		cw.codeApp = codeeditorapp.New(appHost{cw: cw})
+		cw.codeApp.SetOpenHandler(func(path string) { cw.openAppPath("code", path) })
 	}
 	return cw.codeApp
 }
