@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"chatgo/internal/config"
+	"chatgo/internal/ui/common"
 )
 
 // agentWorkspace is the directory an agent runs in, or empty for the caller's.
@@ -59,7 +60,7 @@ func (cw *ChatWindow) visibleBuiltinToolNames() []string {
 		if !t.Enabled {
 			continue
 		}
-		if ok && !containsStr(a.BuiltinTools, t.Name) {
+		if ok && !common.ContainsStr(a.BuiltinTools, t.Name) {
 			continue
 		}
 		out = append(out, t.Name)
@@ -75,7 +76,7 @@ func (cw *ChatWindow) visibleMCPServerNames() []string {
 		if !s.Enabled {
 			continue
 		}
-		if ok && !containsStr(a.MCPServers, s.Name) {
+		if ok && !common.ContainsStr(a.MCPServers, s.Name) {
 			continue
 		}
 		out = append(out, s.Name)
@@ -85,11 +86,11 @@ func (cw *ChatWindow) visibleMCPServerNames() []string {
 
 // availableSkillIDs lists the skills enabled globally on the Skill page.
 func (cw *ChatWindow) availableSkillIDs() []string {
-	if !cw.skills.loaded {
+	if !cw.skills.Loaded {
 		cw.loadSkills()
 	}
 	var out []string
-	for _, s := range cw.skills.list {
+	for _, s := range cw.skills.List {
 		if cw.skillEnabled(s.ID) {
 			out = append(out, s.ID)
 		}
@@ -107,7 +108,7 @@ func (cw *ChatWindow) visibleSkillIDs() []string {
 	allow := cw.skillIDsByName(a.Skills)
 	var filtered []string
 	for _, id := range out {
-		if containsStr(allow, id) {
+		if common.ContainsStr(allow, id) {
 			filtered = append(filtered, id)
 		}
 	}
@@ -123,13 +124,13 @@ func (cw *ChatWindow) loadChatSelection() {
 		return
 	}
 	for _, name := range cw.visibleBuiltinToolNames() {
-		cw.toolOn["builtin:"+name] = containsStr(cw.cfg.Chat.BuiltinTools, name)
+		cw.toolOn["builtin:"+name] = common.ContainsStr(cw.cfg.Chat.BuiltinTools, name)
 	}
 	for _, name := range cw.visibleMCPServerNames() {
-		cw.toolOn["mcp:"+name] = containsStr(cw.cfg.Chat.MCPServers, name)
+		cw.toolOn["mcp:"+name] = common.ContainsStr(cw.cfg.Chat.MCPServers, name)
 	}
 	for _, id := range cw.visibleSkillIDs() {
-		cw.skillOn[id] = containsStr(cw.cfg.Chat.Skills, id)
+		cw.skillOn[id] = common.ContainsStr(cw.cfg.Chat.Skills, id)
 	}
 }
 

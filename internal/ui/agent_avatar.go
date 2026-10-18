@@ -24,5 +24,4 @@ func (cw *ChatWindow) agentAvatar(c *mgo.Context) func() {
 	default:
 		return func() { mgo.Icon(c, icons.Must(chatAgentIcon)).Size(24, 24).TextColor(mcore.Tokens(c).AccentText) }
 	}
-	return nil
 }

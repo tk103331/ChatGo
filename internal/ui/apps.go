@@ -355,11 +355,11 @@ func (cw *ChatWindow) appLeft(c *mgo.Context, a appDef) {
 	})
 }
 
-// appChat is the right chat pane of the app, reusing the shared composer and
-// message list against the app's own session.
+// appChat is the right chat pane of the app, reusing the shared panel
+// against the app's own session.
 func (cw *ChatWindow) appChat(c *mgo.Context) {
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(mcore.Tokens(c).Background).
-		Children(func() { cw.messageArea(c) })
+		Children(func() { cw.panel.View(c, cw.chatPanelOptions()) })
 }
 
 // buildAppTools adapts the app's operations to Eino tools for the React agent.

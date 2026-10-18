@@ -64,10 +64,10 @@ func (cw *ChatWindow) paletteCommands() []mnavigation.Command {
 	for _, s := range cw.cfg.MCPServers {
 		cmds = append(cmds, mnavigation.Command{ID: "mcp:" + s.Name, Label: "MCP：" + s.Name, Group: "MCP 服务器", Icon: icons.Must("layout-grid")})
 	}
-	if !cw.skills.loaded {
+	if !cw.skills.Loaded {
 		cw.loadSkills()
 	}
-	for _, s := range cw.skills.list {
+	for _, s := range cw.skills.List {
 		cmds = append(cmds, mnavigation.Command{ID: "skill:" + s.ID, Label: "Skill：" + s.Name, Group: "Skill", Icon: icons.Must("brain"), Keywords: []string{s.Description}})
 	}
 	return cmds
@@ -108,7 +108,7 @@ func (cw *ChatWindow) runPaletteCommand(id string) {
 	case id == "nav:stats":
 		cw.goConfigure(sectionStats)
 	case id == "nav:settings":
-		cw.settings.tab = 0
+		cw.settings.Tab = 0
 		cw.goConfigure(sectionSettings)
 	case id == "action:new":
 		cw.goConfigure(sectionChat)
@@ -135,7 +135,7 @@ func (cw *ChatWindow) runPaletteCommand(id string) {
 		cw.saveAppearance()
 	case strings.HasPrefix(id, "settings:"):
 		if n, ok := settingsPaletteTabIdx[strings.TrimPrefix(id, "settings:")]; ok {
-			cw.settings.tab = n
+			cw.settings.Tab = n
 			cw.goConfigure(sectionSettings)
 		}
 	case strings.HasPrefix(id, "conv:"):

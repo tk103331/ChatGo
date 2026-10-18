@@ -1,7 +1,14 @@
 package ui
 
 import (
+	"chatgo/internal/config"
+	agentspkg "chatgo/internal/ui/agents"
 	"chatgo/internal/ui/assets"
+	mcppage "chatgo/internal/ui/mcppage"
+	autotaskpkg "chatgo/internal/ui/autotask"
+	settingspkg "chatgo/internal/ui/settings"
+	skillspkg "chatgo/internal/ui/skills"
+	"chatgo/internal/ui/stats"
 
 	mgo "github.com/egoist/mygo/ui"
 
@@ -119,17 +126,23 @@ func (cw *ChatWindow) sectionView(c *mgo.Context) {
 			cw.appWorkspace(c)
 		}
 	case sectionAgent:
-		cw.agentsPage(c)
+		agentspkg.View(c, &cw.agents, cw.agentOptions())
 	case sectionSkill:
-		cw.skillsPage(c)
+		skillspkg.View(c, &cw.skills, skillspkg.Options{
+			SkillEnabled:    cw.skillEnabled,
+			SetSkillEnabled: cw.setSkillEnabled,
+		})
 	case sectionAuto:
-		cw.autoTasksPage(c)
+		autotaskpkg.View(c, &cw.autotasks, cw.autoTaskOptions())
 	case sectionMCP:
-		cw.mcpPage(c)
+		mcppage.View(c, &cw.mcp, cw.mcpOptions())
 	case sectionStats:
-		cw.statsPage(c)
+		cw.statsPage.View(c, stats.Deps{
+			Conversations: cw.allConversations,
+			Invalidate:    cw.invalidate,
+		})
 	case sectionSettings:
-		cw.settingsPage(c)
+		settingspkg.View(c, &cw.settings, cw.settingsOptions())
 	default:
 		if cw.mode == modeHome {
 			cw.homeView(c)
@@ -147,6 +160,20 @@ func themeModeLabel(m mcore.Mode) string {
 		return "深色"
 	default:
 		return "跟随系统"
+	}
+}
+
+func (cw *ChatWindow) mcpOptions() mcppage.Options {
+	return mcppage.Options{
+		Config:     func() *config.Config { return cw.cfg },
+		Manager:    cw.mcpManager,
+		Toast:      cw.toast,
+		Fail:       cw.fail,
+		Status:     func() string { return cw.status },
+		SetStatus:  func(s string) { cw.status = s },
+		AskConfirm: cw.askConfirm,
+		MarkDirty:  func() { cw.clientDirty.Store(true) },
+		PostMain:   cw.postMain,
 	}
 }
 

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"chatgo/internal/config"
+	"chatgo/internal/ui/common"
 	"chatgo/internal/llm"
 	"chatgo/pkg/models"
 	"context"
@@ -30,7 +31,7 @@ func (cw *ChatWindow) workspaces() []string {
 }
 
 func (cw *ChatWindow) addWorkspace(dir string) {
-	if dir == "" || containsStr(cw.cfg.Workspaces, dir) {
+	if dir == "" || common.ContainsStr(cw.cfg.Workspaces, dir) {
 		cw.workspace = dir
 		return
 	}
@@ -87,7 +88,7 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 		cw.workspace = ws
 	}
 	cw.mode = modeChat
-	cw.msgList.ScrollToEnd()
+	cw.panel.List.ScrollToEnd()
 	cw.applyConversationAgent(conv)
 	cw.reloadConvs()
 }
@@ -106,7 +107,7 @@ func (cw *ChatWindow) selectConversation(id string) {
 	}
 	cw.applyConversationAgent(conv)
 	cw.applyConversationModel(conv)
-	cw.msgList.ScrollToEnd()
+	cw.panel.List.ScrollToEnd()
 }
 
 // applyConversationModel restores the model the conversation last used, so
@@ -123,10 +124,10 @@ func (cw *ChatWindow) applyConversationModel(conv *models.Conversation) {
 	}
 }
 
-// sendDraft appends the draft as a user turn and streams the assistant reply.
+// sendDraft appends the text as a user turn and streams the assistant reply.
 
-func (cw *ChatWindow) sendDraft() {
-	text := strings.TrimSpace(cw.draft)
+func (cw *ChatWindow) sendDraft(text string) {
+	text = strings.TrimSpace(text)
 	if text == "" {
 		return
 	}
@@ -158,12 +159,12 @@ func (cw *ChatWindow) sendDraft() {
 		turn.Model = cw.model
 	}
 	conv.Turns = append(conv.Turns, turn)
-	cw.draft = ""
+	cw.panel.Draft = ""
 	if strings.HasPrefix(conv.Agent, "acp:") && conv.Title == defaultTitle {
 		conv.Title = titleFromText(text)
 	}
 	_ = cw.convManager.SaveConversation(conv)
-	cw.msgList.ScrollToEnd()
+	cw.panel.List.ScrollToEnd()
 	cw.streaming = true
 	if strings.HasPrefix(conv.Agent, "acp:") {
 		cw.reloadConvs()
@@ -207,7 +208,7 @@ func (cw *ChatWindow) startAppSession(id string) {
 			cw.cur = conv
 			cw.mode = modeChat
 			cw.applyApp(id)
-			cw.msgList.ScrollToEnd()
+			cw.panel.List.ScrollToEnd()
 			return
 		}
 	}
@@ -247,7 +248,7 @@ func (cw *ChatWindow) newAppConversation(id string) {
 	cw.cur = conv
 	cw.mode = modeChat
 	cw.applyApp(id)
-	cw.msgList.ScrollToEnd()
+	cw.panel.List.ScrollToEnd()
 }
 
 // applyApp switches the client to an app's session: its system prompt and its

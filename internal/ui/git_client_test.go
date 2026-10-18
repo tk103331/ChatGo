@@ -6,7 +6,7 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	"chatgo/internal/gitapp"
+	"chatgo/internal/apps/gitapp"
 	"chatgo/pkg/models"
 )
 

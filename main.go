@@ -1,15 +1,15 @@
 package main
 
 import (
-	"chatgo/internal/browserapp"
-	"chatgo/internal/codeeditorapp"
+	"chatgo/internal/apps/browserapp"
+	"chatgo/internal/apps/codeeditorapp"
 	"chatgo/internal/config"
-	"chatgo/internal/gitapp"
-	"chatgo/internal/markdownapp"
+	"chatgo/internal/apps/gitapp"
+	"chatgo/internal/apps/markdownapp"
 	"chatgo/internal/shellenv"
-	"chatgo/internal/terminalapp"
+	"chatgo/internal/apps/terminalapp"
 	"chatgo/internal/ui"
-	"chatgo/internal/webapp"
+	"chatgo/internal/apps/webapp"
 	"flag"
 	"fmt"
 	"log"

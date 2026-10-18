@@ -12,6 +12,7 @@ import (
 
 	"chatgo/internal/config"
 	"chatgo/internal/shellenv"
+	"chatgo/internal/ui/common"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
@@ -329,7 +330,7 @@ func (cw *ChatWindow) loadACPForm(i int) {
 	a := cw.cfg.ACPAgents[i]
 	cw.acpForm = acpForm{
 		editing: i, name: a.Name, command: a.Command,
-		args: strings.Join(a.Args, "\n"), env: joinKV(a.Env), cwd: a.Cwd,
+		args: strings.Join(a.Args, "\n"), env: common.JoinKV(a.Env), cwd: a.Cwd,
 		icon: a.Icon, avatarSeed: a.AvatarSeed, disabled: a.Disabled,
 	}
 }
@@ -345,8 +346,8 @@ func (cw *ChatWindow) saveACP() {
 		return
 	}
 	conn := config.ACPConnection{
-		Name: f.name, Command: f.command, Args: splitLines(f.args),
-		Env: parseKV(f.env), Cwd: f.cwd, Icon: f.icon, AvatarSeed: f.avatarSeed, Disabled: f.disabled,
+		Name: f.name, Command: f.command, Args: common.SplitLines(f.args),
+		Env: common.ParseKV(f.env), Cwd: f.cwd, Icon: f.icon, AvatarSeed: f.avatarSeed, Disabled: f.disabled,
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.ACPAgents) {
 		cw.cfg.ACPAgents[f.editing] = conn

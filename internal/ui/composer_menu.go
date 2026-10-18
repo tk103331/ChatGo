@@ -1,37 +1,12 @@
 package ui
 
 import (
-	"io/fs"
-	"path/filepath"
 	"strings"
-
-	mgo "github.com/egoist/mygo/ui"
 
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	acp "github.com/coder/acp-go-sdk"
 )
-
-func (cw *ChatWindow) chatMenus(c *mgo.Context, in minput.InputResult) {
-	if cw.isACP() {
-		if _, ok := mchat.SlashCommandMenu(c, in, &cw.draft, cw.acpCommands()).Chosen(); ok {
-			in.Input.Focus()
-			cw.invalidate()
-		}
-	} else {
-		cmds, tokens := cw.slashSkills()
-		if cmd, ok := mchat.SlashCommandMenu(c, in, &cw.draft, cmds).Chosen(); ok {
-			cw.selectSkill(tokens[cmd.Name])
-			in.Input.Focus()
-			return
-		}
-	}
-	if it, ok := mchat.ContextMentionMenu(c, in, &cw.draft, cw.contextItems(), mchat.ContextMentionOptions{}).Chosen(); ok {
-		cw.insertContextMention(it)
-		in.Input.Focus()
-	}
-}
 
 func (cw *ChatWindow) acpCommands() []mchat.SlashCommand {
 	if cw.cur == nil {
@@ -83,13 +58,13 @@ func (cw *ChatWindow) slashSkills() ([]mchat.SlashCommand, map[string]string) {
 }
 
 func (cw *ChatWindow) slashSkillIDs() []string {
-	if !cw.skills.loaded {
+	if !cw.skills.Loaded {
 		cw.loadSkills()
 	}
 	a, ok := cw.currentAgentDef()
 	if !ok {
-		out := make([]string, 0, len(cw.skills.list))
-		for _, s := range cw.skills.list {
+		out := make([]string, 0, len(cw.skills.List))
+		for _, s := range cw.skills.List {
 			out = append(out, s.ID)
 		}
 		return out
@@ -109,7 +84,7 @@ func skillToken(name string) string {
 }
 
 func (cw *ChatWindow) selectSkill(id string) {
-	cw.draft = ""
+	cw.panel.Draft = ""
 	if id == "" {
 		return
 	}
@@ -131,75 +106,4 @@ func (cw *ChatWindow) selectSkill(id string) {
 	cw.clientDirty.Store(true)
 	cw.toast("已启用 Skill："+name, mcore.SeveritySuccess)
 	cw.invalidate()
-}
-
-func (cw *ChatWindow) contextItems() []mchat.ContextItem {
-	root := cw.fileRoot()
-	if cw.mentionRoot != root {
-		cw.mentionRoot = root
-		cw.mentionFiles = listWorkspaceFiles(root)
-	}
-	q := strings.ToLower(mentionQuery(cw.draft))
-	if q == "" {
-		return cw.mentionFiles
-	}
-	out := make([]mchat.ContextItem, 0, len(cw.mentionFiles))
-	for _, it := range cw.mentionFiles {
-		if strings.Contains(strings.ToLower(it.Label), q) {
-			out = append(out, it)
-		}
-	}
-	return out
-}
-
-func (cw *ChatWindow) insertContextMention(it mchat.ContextItem) {
-	if cw.draft != "" && !strings.HasSuffix(cw.draft, " ") {
-		cw.draft += " "
-	}
-	cw.draft += "@" + it.Label + " "
-	cw.invalidate()
-}
-
-func mentionQuery(s string) string {
-	at := strings.LastIndexByte(s, '@')
-	if at < 0 {
-		return ""
-	}
-	q := s[at+1:]
-	if strings.ContainsAny(q, " \t\n") {
-		return ""
-	}
-	if at > 0 && !strings.ContainsRune(" \t\n", rune(s[at-1])) {
-		return ""
-	}
-	return q
-}
-
-func listWorkspaceFiles(root string) []mchat.ContextItem {
-	var out []mchat.ContextItem
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		name := d.Name()
-		if d.IsDir() {
-			if path != root && (name == ".git" || name == "node_modules" || name == "vendor" || strings.HasPrefix(name, ".")) {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if strings.HasPrefix(name, ".") {
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return nil
-		}
-		out = append(out, mchat.ContextItem{ID: rel, Label: rel, Kind: mchat.ContextFile})
-		if len(out) >= 300 {
-			return filepath.SkipAll
-		}
-		return nil
-	})
-	return out
 }

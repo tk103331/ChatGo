@@ -15,23 +15,29 @@ import (
 	"sync/atomic"
 	"time"
 
-	"chatgo/internal/browserapp"
-	"chatgo/internal/codeeditorapp"
+	"chatgo/internal/apps/browserapp"
+	"chatgo/internal/apps/codeeditorapp"
 	"chatgo/internal/config"
-	"chatgo/internal/gitapp"
+	"chatgo/internal/apps/gitapp"
 	"chatgo/internal/llm"
-	"chatgo/internal/markdownapp"
-	"chatgo/internal/terminalapp"
-	"chatgo/internal/ui/assets"
-	"chatgo/internal/ui/theme"
-	"chatgo/internal/webapp"
+	"chatgo/internal/apps/markdownapp"
+	"chatgo/internal/apps/terminalapp"
+		"chatgo/internal/ui/assets"
+		agentspkg "chatgo/internal/ui/agents"
+		"chatgo/internal/ui/chatpanel"
+		mcppage "chatgo/internal/ui/mcppage"
+		autotaskpkg "chatgo/internal/ui/autotask"
+		settingspkg "chatgo/internal/ui/settings"
+		"chatgo/internal/ui/stats"
+		skillspkg "chatgo/internal/ui/skills"
+		"chatgo/internal/ui/theme"
+	"chatgo/internal/apps/webapp"
 	"chatgo/pkg/models"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcode "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
@@ -140,18 +146,13 @@ type ChatWindow struct {
 
 	homeList mgo.ListState
 	convList mgo.ListState
-	msgList  mchat.MessageListState
+	panel    *chatpanel.Panel
 
-	draft        string
-	mentionRoot  string
-	mentionFiles []mchat.ContextItem
-	provider     string
-	model        string
-	agentMode    bool
+	provider string
+	model    string
+	agentMode bool
 
 	searchQuery string
-	editingIdx  int
-	editDraft   string
 
 	llmClient   *llm.Client
 	reactClient *llm.ReactClient
@@ -171,25 +172,15 @@ type ChatWindow struct {
 	density    mtheme.Density
 	locale     mcore.Locale
 
-	settings settingsState
+	settings settingspkg.State
 	confirm  confirmState
 	input    inputState
 
 	paletteOpen bool
 
-	agentForm       agentForm
-	agentEditorOpen bool
-	agentSecModels  bool
-	agentSecTools   bool
-	agentSecMCP     bool
-	agentSecSkills  bool
+	agents agentspkg.State
 
-	autoTaskEditorOpen bool
-	autoForm           autoForm
-	autoRunning        map[string]bool
-	autoConvsOpen      bool
-	autoConvsTaskID    string
-	autoConvs          []models.Conversation
+	autotasks autotaskpkg.State
 
 	avatarMu  sync.Mutex
 	avatarPNG map[string]*mgo.Bitmap
@@ -202,14 +193,14 @@ type ChatWindow struct {
 	acpCatalogOpen  bool
 	acpCatalogQuery string
 
-	mcp mcpState
+	mcp mcppage.State
 
-	statsCache statsCache
+	statsPage *stats.Page
 
 	toolQuery string
 	mcpQuery  string
 
-	skills skillsState
+	skills skillspkg.State
 
 	acp acpState
 
@@ -272,33 +263,28 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		toolOn:         map[string]bool{},
 		skillOn:        map[string]bool{},
 		acp:            newACPState(),
-		skills:         newSkillsState(),
-		mcp:            mcpState{},
+		mcp:            mcppage.State{},
 		rightPanel:     false,
 		wsCollapsed:    map[string]bool{},
 		themeMode:      theme.ParseMode(cfg.ThemeMode),
 		colorTheme:     theme.ByName(cfg.ColorTheme),
 		density:        mtheme.Compact,
 		locale:         theme.ParseLocale(cfg.Locale),
-		editingIdx:     -1,
-		agentSecModels: true,
-		agentSecTools:  true,
-		agentSecMCP:    true,
-		agentSecSkills: true,
+		panel:          chatpanel.New(),
+		statsPage:      stats.New(),
+		agents:         agentspkg.State{SecModels: true, SecTools: true, SecMCP: true, SecSkills: true, Form: agentspkg.Form{Editing: -1}},
+		autotasks:      autotaskpkg.State{Running: map[string]bool{}},
 		avatarPNG:      map[string]*mgo.Bitmap{},
 		iconCache:      map[string]iconImage{},
-		autoRunning:    map[string]bool{},
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd
 	}
-	cw.settings.prov.editing = -1
-	cw.settings.mcp.editing = -1
-	cw.settings.builtin.editing = -1
-	cw.settings.channel.editing = -1
-	cw.settings.channel.typ = "feishu"
-	cw.settings.shortcut.value = cw.quickChatShortcut()
-	cw.agentForm.editing = -1
+	cw.settings.Prov.Editing = -1
+	cw.settings.Builtin.Editing = -1
+	cw.settings.Channel.Editing = -1
+	cw.settings.Channel.Typ = "feishu"
+	cw.settings.Shortcut.Value = cw.quickChatShortcut()
 	cw.acpForm.editing = -1
 	cw.reloadConvs()
 	cw.currentAgent = ""
@@ -418,7 +404,7 @@ func (cw *ChatWindow) quickView(c *mgo.Context) {
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Children(func() {
 		cw.quickBar(c)
 		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
-			cw.messageArea(c)
+			cw.panel.View(c, cw.chatPanelOptions())
 		})
 	})
 }
@@ -593,6 +579,13 @@ func convLast(conv models.Conversation) time.Time {
 		return conv.CreatedAt
 	}
 	return conv.Messages[len(conv.Messages)-1].Timestamp
+}
+
+func (cw *ChatWindow) allConversations() []models.Conversation {
+	all := make([]models.Conversation, 0, len(cw.convs)+len(cw.taskConvs))
+	all = append(all, cw.convs...)
+	all = append(all, cw.taskConvs...)
+	return all
 }
 
 const defaultSystemPrompt = "You are a helpful AI assistant with access to various tools. Use tools when appropriate. When you use a tool, provide accurate parameters."

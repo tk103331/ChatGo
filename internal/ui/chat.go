@@ -3,10 +3,11 @@ package ui
 import (
 	"strconv"
 	"strings"
-	"time"
 
 	"chatgo/internal/config"
+	"chatgo/internal/ui/common"
 	"chatgo/internal/ui/assets"
+	"chatgo/internal/ui/chatpanel"
 	"chatgo/pkg/models"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -88,10 +89,10 @@ func (cw *ChatWindow) chatArea(c *mgo.Context, hasPreview bool) {
 	hasFile := len(cw.previewTabs) > 0
 	hasWeb := cw.webPanel
 	if !hasFile && !hasWeb {
-		cw.messageArea(c)
+		cw.panel.View(c, cw.chatPanelOptions())
 		return
 	}
-	mgo.Split(c, &cw.chatW, func() { cw.messageArea(c) }, func() { cw.rightColumn(c, hasFile, hasWeb) }).Fill()
+	mgo.Split(c, &cw.chatW, func() { cw.panel.View(c, cw.chatPanelOptions()) }, func() { cw.rightColumn(c, hasFile, hasWeb) }).Fill()
 }
 
 // rightColumn shows the file preview and the WebView, alone or side by side.
@@ -110,32 +111,68 @@ func (cw *ChatWindow) rightColumn(c *mgo.Context, hasFile, hasWeb bool) {
 	cw.webPanelView(c)
 }
 
-const chatMaxWidth = 768
+// chatPanelOptions wires the host's data and actions into the reusable panel.
+func (cw *ChatWindow) chatPanelOptions() chatpanel.Options {
+	return chatpanel.Options{
+		Placeholder:    "输入消息，Enter 发送，Shift+Enter 换行",
+		Messages:       cw.messages,
+		Streaming:      func() bool { return cw.streaming },
+		Status:         func() string { return cw.status },
+		Avatar:         cw.agentAvatar,
+		ModelLabel:     cw.turnModelLabel,
+		TokenLabel:     cw.tokenLabelFor,
+		Toolbar:        cw.composerToolbar,
+		Loading:        cw.composerLoading,
+		LoadingText:    "正在初始化 ACP 进程…",
+		Send:           cw.sendDraft,
+		Stop:           cw.stopStreaming,
+		Regenerate:     cw.regenerate,
+		EditSaved:      cw.applyEdit,
+		SlashCommands:  cw.panelSlashCommands,
+		OnSlashCommand: cw.panelOnSlashCommand,
+		ContextRoot:    cw.fileRoot,
+		OnCopy:         func(string) { cw.toast("已复制到剪贴板", mcore.SeveritySuccess) },
+		Invalidate:     cw.invalidate,
+	}
+}
 
-// messageArea is the message list and the composer, without the sidebar.
-func (cw *ChatWindow) messageArea(c *mgo.Context) {
-	msgs := cw.messages()
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	row := func(i int) { cw.messageRow(c, i, msgs[i]) }
-	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(k.Background).Children(func() {
-		mgo.Row(c).Grow(1).MinHeight(0).Justify(mgo.Center).Children(func() {
-			mgo.Box(c).MaxWidth(chatMaxWidth).Grow(1).MinWidth(0).Children(func() {
-				res := mchat.MessageList(c, &cw.msgList, len(msgs), mchat.MessageListOptions{
-					ID:    func(i int) string { return msgs[i].ID },
-					Date:  func(i int) time.Time { return msgs[i].Timestamp },
-					Label: func(i int) string { return msgs[i].Role },
-				}, row)
-				res.Element.Grow(1).MinHeight(0)
-			})
-		})
-		mgo.Column(c).Shrink(0).Padding(u*3, u*4).BorderWidth(mtheme.BorderWidth, 0, 0, 0).
-			BorderColor(k.Border).Children(func() {
-				mgo.Row(c).Justify(mgo.Center).Children(func() {
-					mgo.Box(c).MaxWidth(chatMaxWidth).Grow(1).MinWidth(0).Children(func() { cw.composer(c) })
-				})
-			})
-	})
+// composerToolbar builds the composer's left controls for the current mode.
+func (cw *ChatWindow) composerToolbar(c *mgo.Context) {
+	if cw.isACP() {
+		cw.acpControls(c)
+		return
+	}
+	cw.agentSelector(c)
+	cw.modelSelector(c)
+	cw.toolMenu(c)
+	cw.mcpMenu(c)
+	cw.skillMenu(c)
+}
+
+// composerLoading reports whether the composer is busy starting an ACP process.
+func (cw *ChatWindow) composerLoading() bool {
+	return cw.isACP() && cw.cur != nil && cw.acpInitializing(cw.cur.ID)
+}
+
+// panelSlashCommands returns the slash commands for the current conversation.
+func (cw *ChatWindow) panelSlashCommands() []mchat.SlashCommand {
+	if cw.isACP() {
+		return cw.acpCommands()
+	}
+	cmds, _ := cw.slashSkills()
+	return cmds
+}
+
+// panelOnSlashCommand handles a slash command chosen from the panel's menu.
+func (cw *ChatWindow) panelOnSlashCommand(name string) {
+	if cw.isACP() {
+		cw.invalidate()
+		return
+	}
+	_, tokens := cw.slashSkills()
+	if id, ok := tokens[name]; ok {
+		cw.selectSkill(id)
+	}
 }
 
 // isACP reports whether the current conversation runs through an ACP CLI.
@@ -150,56 +187,6 @@ func (cw *ChatWindow) messages() []models.Message {
 	return cw.cur.Messages
 }
 
-// composer builds the message input with its model, mode and tool controls.
-func (cw *ChatWindow) composer(c *mgo.Context) {
-	initializing := cw.isACP() && cw.cur != nil && cw.acpInitializing(cw.cur.ID)
-	in := composer(c, &cw.draft, composerOptions{
-		Placeholder: "输入消息，Enter 发送，Shift+Enter 换行",
-		MaxHeight:   220,
-		Disabled:    initializing,
-		Tools: func() {
-			if cw.isACP() {
-				cw.acpControls(c)
-				return
-			}
-			cw.agentSelector(c)
-			cw.modelSelector(c)
-			cw.toolMenu(c)
-			cw.mcpMenu(c)
-			cw.skillMenu(c)
-		},
-		Actions: func() {
-			if initializing {
-				mgo.Row(c).Gap(mcore.Density(c).Unit()).AlignItems(mgo.Center).Children(func() {
-					mcore.Spinner(c, mcore.SpinnerOptions{Size: 12})
-					mgo.Text(c, "正在初始化 ACP 进程…").
-						FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
-				})
-			}
-			r := mchat.SendButton(c, mchat.SendButtonOptions{
-				Streaming: cw.streaming,
-				Disabled:  initializing || strings.TrimSpace(cw.draft) == "",
-			})
-			if r.Sent() {
-				cw.sendDraft()
-			}
-			if r.Stopped() {
-				cw.stopStreaming()
-			}
-		},
-	})
-	if !initializing {
-		cw.chatMenus(c, in)
-	}
-	if in.Submitted() && !initializing {
-		cw.sendDraft()
-	}
-	if cw.status != "" {
-		k := mcore.Tokens(c)
-		mgo.Text(c, cw.status).TextColor(k.Danger).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-	}
-}
-
 // modelSelector chooses among the models the active agent may use.
 func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	refs := cw.agentModelRefs()
@@ -209,13 +196,13 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	}
 	if len(models) == 0 {
 		if minput.Button(c, "配置模型", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
-			cw.settings.tab = 0
+			cw.settings.Tab = 0
 			cw.goConfigure(sectionSettings)
 		}
 		return
 	}
 	cur := cw.currentModelRef()
-	if !containsStr(refs, cur) {
+	if !common.ContainsStr(refs, cur) {
 		cur = refs[0]
 	}
 	r := mchat.ModelSelector(c, &cur, models, mchat.ModelSelectorOptions{Label: "模型"})
@@ -324,7 +311,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 			if prefix == "mcp:" {
 				cw.goConfigure(sectionMCP)
 			} else {
-				cw.settings.tab = 1
+				cw.settings.Tab = 1
 				cw.goConfigure(sectionSettings)
 			}
 		}
@@ -370,7 +357,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 	changed := false
 	moverlay.Popover(c, b, open, moverlay.PopoverOptions{Title: title, Width: 340}, func() {
 		mgo.Column(c).Gap(u * 2).Children(func() {
-			agentSearch(c, query, "搜索"+buttonLabel).Height(mcore.Density(c).ControlHeight() - 6)
+			common.SearchField(c, query, "搜索"+buttonLabel).Height(mcore.Density(c).ControlHeight() - 6)
 			for _, mt := range filterMetas(list, *query) {
 				mt := mt
 				v := cw.toolEnabled(mt.ID)

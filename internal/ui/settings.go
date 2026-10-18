@@ -1,80 +1,22 @@
 package ui
 
 import (
+	"chatgo/internal/config"
+	settingspkg "chatgo/internal/ui/settings"
+	"chatgo/internal/ui/theme"
+
+	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/devtools"
-	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
+	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
-type settingsState struct {
-	tab         int
-	prov        providerForm
-	mcp         mcpForm
-	builtin     builtinForm
-	shortcut    shortcutForm
-	channel     channelForm
-	provList    mgo.ListState
-	builtinList mgo.ListState
-	channelList mgo.ListState
-}
-
-type channelForm struct {
-	editing   int
-	name      string
-	typ       string
-	agent     string
-	workspace string
-	appID     string
-	appSecret string
-	baseURL   string
-	enabled   bool
-	scanning  bool
-	qr        *mgo.Bitmap
-	qrTip     string
-}
-
-type shortcutForm struct {
-	value string
-}
-
-type providerForm struct {
-	editing  int
-	name     string
-	typ      string
-	apiKey   string
-	baseURL  string
-	models   []string
-	newModel string
-	enabled  bool
-	preset   bool
-}
-
-type mcpForm struct {
-	editing int
-	name    string
-	typ     string
-	enabled bool
-	command string
-	args    string
-	env     []devtools.KeyValue
-	url     string
-	headers []devtools.KeyValue
-	timeout string
-	hint    string
-}
-
-type builtinForm struct {
-	editing int
-	enabled bool
-	config  map[string]string
-}
-
 // confirmState is a reusable confirmation dialog.
-
 type confirmState struct {
 	open   bool
 	active bool
@@ -83,37 +25,40 @@ type confirmState struct {
 	action func()
 }
 
-var providerTypes = []string{"openai", "anthropic", "claude", "ollama", "custom", "qwen", "deepseek", "gemini"}
-
-var mcpTypes = []string{"stdio", "sse", "streamable_http"}
-
-// settingsPage shows the tabbed configuration page.
-
-func (cw *ChatWindow) settingsPage(c *mgo.Context) {
-	u := mcore.Density(c).Unit()
-	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
-		mgo.Text(c, "设置").Font(mtheme.SerifFont).
-			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
-		if cw.status != "" {
-			mgo.Text(c, cw.status).TextColor(mcore.Tokens(c).Danger).
-				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Shrink(0)
-		}
-		res := mnavigation.Tabs(c, &cw.settings.tab, []mnavigation.Tab{
-			{Label: "模型", Panel: func() { cw.providersTab(c) }},
-			{Label: "工具", Panel: func() { cw.builtinTab(c) }},
-			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
-			{Label: "渠道", Panel: func() { cw.channelTab(c) }},
-			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
-			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
-			{Label: "系统", Panel: func() { cw.systemTab(c) }},
-		}, mnavigation.TabsOptions{})
-		res.Element.Grow(1).MinHeight(0)
-	})
+// settingsOptions builds the settings page Options from host state.
+func (cw *ChatWindow) settingsOptions() settingspkg.Options {
+	return settingspkg.Options{
+		Config:            func() *config.Config { return cw.cfg },
+		Status:            func() string { return cw.status },
+		SetStatus:         func(s string) { cw.status = s },
+		Fail:              cw.fail,
+		Toast:             cw.toast,
+		AskConfirm:        cw.askConfirm,
+		SaveConfig:        func() error { return config.SaveConfig(cw.cfg) },
+		MarkDirty:         func() { cw.clientDirty.Store(true) },
+		PickDirectory:     cw.pickDirectory,
+		Invalidate:        cw.invalidate,
+		ChatAgentName:     chatAgentName,
+		CurrentProvider:   func() string { return cw.provider },
+		FeishuStatusView:  func() (mfeedback.Status, string) { return feishuStatusView(cw.feishuStatus()) },
+		WechatStatusView:  func() (mfeedback.Status, string) { return wechatStatusView(cw.wechatStatus()) },
+		StartWechatLogin:  cw.startWechatLogin,
+		StartFeishuRegister: cw.startFeishuRegister,
+		RestartChannels:   cw.restartChannels,
+		ACPTab:            cw.acpTab,
+		ThemeMode:         func() mcore.Mode { return cw.themeMode },
+		SetThemeMode:      func(m mcore.Mode) { cw.themeMode = m; cw.saveAppearance() },
+		ColorThemeName:    func() string { return cw.colorTheme.Name },
+		SetColorTheme:     func(name string) { cw.colorTheme = theme.ByName(name); cw.saveAppearance() },
+		DefaultShortcut:   defaultQuickShortcut,
+		SaveQuickShortcut: cw.saveQuickShortcut,
+		AppVersion:        cw.appVersion,
+		SaveSystemSettings: cw.saveSystemSettings,
+	}
 }
 
 // confirmDialog shows the pending confirmation and runs its action. It keeps
 // building for one frame after closing so the dialog releases the focus.
-
 func (cw *ChatWindow) confirmDialog(c *mgo.Context) {
 	if !cw.confirm.open && !cw.confirm.active {
 		return
@@ -134,16 +79,6 @@ func (cw *ChatWindow) askConfirm(title, desc string, action func()) {
 	cw.confirm = confirmState{open: true, active: true, title: title, desc: desc, action: action}
 }
 
-func removeStr(s []string, v string) []string {
-	out := s[:0:0]
-	for _, x := range s {
-		if x != v {
-			out = append(out, x)
-		}
-	}
-	return out
-}
-
 func (cw *ChatWindow) askDeleteConversation(id, title string) {
 	cw.askConfirm("删除会话", "确定删除「"+title+"」？此操作不可撤销。", func() {
 		cw.acpConvClose(id)
@@ -157,9 +92,78 @@ func (cw *ChatWindow) askDeleteConversation(id, title string) {
 	})
 }
 
-// acpTab configures the ACP connections used by ACP agents.
-
 func (cw *ChatWindow) fail(msg string) {
 	cw.status = msg
 	cw.toast(msg, mcore.SeverityError)
+}
+
+// feishuStatusView maps a feishu connection state to an indicator status.
+func feishuStatusView(state feishuConnState, note string) (mfeedback.Status, string) {
+	switch state {
+	case feishuConnected:
+		return mfeedback.StatusSuccess, "已连接 · " + note
+	case feishuConnecting:
+		return mfeedback.StatusBusy, "正在连接…"
+	case feishuReconnecting:
+		return mfeedback.StatusBusy, "重连中…"
+	case feishuError:
+		return mfeedback.StatusError, "连接失败：" + note
+	default:
+		return mfeedback.StatusOffline, "未连接"
+	}
+}
+
+// acpTab configures the ACP connections used by ACP agents.
+func (cw *ChatWindow) acpTab(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
+	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
+			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+				mgo.Text(c, "ACP").Font(mtheme.SerifFont).
+					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
+				mgo.Row(c).Gap(u).Children(func() {
+					if minput.Button(c, "从目录添加", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
+						cw.acpCatalogOpen = true
+					}
+					if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
+						cw.addNewACP()
+					}
+				})
+			})
+			if len(cw.cfg.ACPAgents) == 0 {
+				mgo.Text(c, "暂无连接，从目录添加或手动新增").TextColor(k.TextMuted).
+					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+			}
+			for i := range cw.cfg.ACPAgents {
+				cw.acpCard(c, i)
+			}
+		})
+	})
+	cw.acpCatalogDialog(c)
+}
+
+// restartChannels restarts all enabled IM channels after a config change.
+func (cw *ChatWindow) restartChannels() {
+	cw.stopFeishuChannel()
+	cw.stopWechatChannel()
+	cw.startFeishuChannel()
+	cw.startWechatChannel()
+}
+
+// appVersion returns the packaged version, or a dev marker when unbundled.
+func (cw *ChatWindow) appVersion() string {
+	if v := mygo.App.Version(); v != "" {
+		return v
+	}
+	return "(开发版)"
+}
+
+func (cw *ChatWindow) saveSystemSettings() {
+	if cw.cfg.RunInBackground {
+		cw.cfg.ShowTrayIcon = true
+	}
+	_ = config.SaveConfig(cw.cfg)
+	cw.syncTray()
+	cw.toast("系统设置已保存", mcore.SeveritySuccess)
 }

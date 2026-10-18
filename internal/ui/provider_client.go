@@ -287,6 +287,10 @@ func (m *MCPManagerWrapper) DisconnectServer(name string) error {
 	return m.manager.DisconnectServer(name)
 }
 
+func (m *MCPManagerWrapper) InitializeServer(s config.MCPServer) (*mcp.MCPServerStatus, error) {
+	return m.manager.InitializeServer(s)
+}
+
 // startMCP initializes configured MCP servers, then rebuilds the model client.
 
 func (cw *ChatWindow) startMCP() {

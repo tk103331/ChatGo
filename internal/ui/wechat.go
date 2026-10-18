@@ -147,22 +147,22 @@ func (cw *ChatWindow) stopWechatChannel() {
 }
 
 func (cw *ChatWindow) startWechatLogin() {
-	f := &cw.settings.channel
-	if f.scanning {
+	f := &cw.settings.Channel
+	if f.Scanning {
 		return
 	}
-	f.scanning = true
-	f.qr = nil
-	f.qrTip = "正在获取二维码…"
+	f.Scanning = true
+	f.QR = nil
+	f.QRTip = "正在获取二维码…"
 	cw.invalidate()
 
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				cw.postMain(func() {
-					f.scanning = false
-					f.qr = nil
-					f.qrTip = fmt.Sprintf("登录失败：%v", r)
+					f.Scanning = false
+					f.QR = nil
+					f.QRTip = fmt.Sprintf("登录失败：%v", r)
 					cw.invalidate()
 				})
 			}
@@ -174,8 +174,8 @@ func (cw *ChatWindow) startWechatLogin() {
 		qrResp, err := channel.FetchQRCode(ctx)
 		if err != nil {
 			cw.postMain(func() {
-				f.scanning = false
-				f.qrTip = "获取二维码失败：" + err.Error()
+				f.Scanning = false
+				f.QRTip = "获取二维码失败：" + err.Error()
 				cw.invalidate()
 			})
 			return
@@ -183,9 +183,9 @@ func (cw *ChatWindow) startWechatLogin() {
 
 		cw.postMain(func() {
 			if bmp := feishuQRBitmap(qrResp.QRCodeImgContent); bmp != nil {
-				f.qr = bmp
+				f.QR = bmp
 			}
-			f.qrTip = "请用微信扫码登录（10 分钟内有效）"
+			f.QRTip = "请用微信扫码登录（10 分钟内有效）"
 			cw.invalidate()
 		})
 
@@ -193,30 +193,30 @@ func (cw *ChatWindow) startWechatLogin() {
 			cw.postMain(func() {
 				switch status {
 				case "scaned":
-					f.qrTip = "已扫码，等待确认…"
+					f.QRTip = "已扫码，等待确认…"
 				case "wait":
-					f.qrTip = "等待扫码…"
+					f.QRTip = "等待扫码…"
 				}
 				cw.invalidate()
 			})
 		})
 		cw.postMain(func() {
-			f.scanning = false
-			f.qr = nil
+			f.Scanning = false
+			f.QR = nil
 			if err != nil {
 				if ctx.Err() != nil {
-					f.qrTip = "登录超时"
+					f.QRTip = "登录超时"
 				} else {
-					f.qrTip = "登录失败：" + err.Error()
+					f.QRTip = "登录失败：" + err.Error()
 				}
 			} else {
-				f.appID = creds.ILinkBotID
-				f.appSecret = creds.BotToken
-				f.baseURL = creds.BaseURL
-				if strings.TrimSpace(f.name) == "" {
-					f.name = "WeChat Bot"
+				f.AppID = creds.ILinkBotID
+				f.AppSecret = creds.BotToken
+				f.BaseURL = creds.BaseURL
+				if strings.TrimSpace(f.Name) == "" {
+					f.Name = "WeChat Bot"
 				}
-				f.qrTip = "登录成功，已自动填入凭证，请点击保存"
+				f.QRTip = "登录成功，已自动填入凭证，请点击保存"
 			}
 			cw.invalidate()
 		})

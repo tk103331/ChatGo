@@ -1,6 +1,10 @@
 package ui
 
-import "strings"
+import (
+	"strings"
+
+	"chatgo/internal/ui/common"
+)
 
 // modelRef identifies a model: "provider::model", or "::model" for a custom
 // model name run through the active provider.
@@ -69,7 +73,7 @@ func (cw *ChatWindow) setModelRef(ref string) {
 func (cw *ChatWindow) modelOptions(custom []string) []string {
 	out := cw.allModelRefs()
 	for _, ref := range custom {
-		if !containsStr(out, ref) {
+		if !common.ContainsStr(out, ref) {
 			out = append(out, ref)
 		}
 	}

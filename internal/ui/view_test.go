@@ -8,6 +8,10 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 
 	"chatgo/internal/config"
+	agentspkg "chatgo/internal/ui/agents"
+	"chatgo/internal/ui/chatpanel"
+	mcppage "chatgo/internal/ui/mcppage"
+	"chatgo/internal/ui/stats"
 	"chatgo/pkg/models"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -24,7 +28,8 @@ func testWindow() *ChatWindow {
 		mcpManager: NewMCPManagerWrapper(),
 		provider:   "OpenAI",
 		toolOn:     map[string]bool{},
-		editingIdx: -1,
+		panel:      chatpanel.New(),
+		statsPage:  stats.New(),
 		acp:        newACPState(),
 	}
 }
@@ -59,7 +64,7 @@ func TestChatViewRenders(t *testing.T) {
 func TestSettingsDialogRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	cw.settings.prov.editing = 0
+	cw.settings.Prov.Editing = 0
 	img := mgo.Render(cw.view, 1000, 700, 1)
 	if img == nil || img.Bounds().Dx() != 1000 {
 		t.Fatalf("settings render failed: %v", img)
@@ -84,7 +89,7 @@ func TestSidebarSearchRenders(t *testing.T) {
 func TestAppearanceTabRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	cw.settings.tab = 5
+	cw.settings.Tab = 5
 	img := mgo.Render(cw.view, 1000, 700, 1)
 	if img == nil || img.Bounds().Dx() != 1000 {
 		t.Fatalf("appearance render failed: %v", img)
@@ -97,8 +102,8 @@ func TestAgentPageRenders(t *testing.T) {
 	cw.cfg.Agents = []config.AgentDef{
 		{Name: "代码助手", Description: "帮助写代码", SystemPrompt: "You are a coding assistant.", Mode: "agent"},
 	}
-	cw.agentForm.editing = 0
-	cw.loadAgentForm(0)
+	cw.agents.Form.Editing = 0
+	agentspkg.LoadForm(&cw.agents, cw.agentOptions(), 0)
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("agent render failed: %v", img)
@@ -108,7 +113,7 @@ func TestAgentPageRenders(t *testing.T) {
 func TestACPPageRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	cw.settings.tab = 2
+	cw.settings.Tab = 2
 	cw.cfg.ACPAgents = []config.ACPConnection{
 		{Name: "Claude Code", Command: "claude-code-acp"},
 	}
@@ -123,7 +128,7 @@ func TestACPPageRenders(t *testing.T) {
 func TestACPCatalogDialogRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	cw.settings.tab = 2
+	cw.settings.Tab = 2
 	cw.acpCatalogOpen = true
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
@@ -177,17 +182,17 @@ func TestMCPPageRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionMCP
 	cw.cfg.MCPServers = []config.MCPServer{{Name: "filesystem", Type: "stdio", Command: "npx"}}
-	cw.mcp.marketLoaded = true
-	cw.mcp.market = []mcpMarketServer{
+	cw.mcp.MarketLoaded = true
+	cw.mcp.Market = []mcppage.MarketServer{
 		{ID: "github", Name: "GitHub", Description: "GitHub MCP", Command: "npx", Args: []string{"-y", "@modelcontextprotocol/server-github"}},
 		{ID: "sqlite", Name: "SQLite", Description: "SQLite MCP", Command: "uvx", Args: []string{"mcp-server-sqlite"}},
 	}
-	cw.mcp.tabSel = 1
+	cw.mcp.TabSel = 1
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("mcp render failed: %v", img)
 	}
-	cw.mcp.tabSel = 0
+	cw.mcp.TabSel = 0
 	img2 := mgo.Render(cw.view, 1280, 820, 1)
 	if img2 == nil || img2.Bounds().Dx() != 1280 {
 		t.Fatalf("mcp servers render failed: %v", img2)
@@ -197,7 +202,7 @@ func TestMCPPageRenders(t *testing.T) {
 func TestMCPEmptyStateRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionMCP
-	cw.mcp.tabSel = 0
+	cw.mcp.TabSel = 0
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("mcp empty state render failed: %v", img)
@@ -207,12 +212,12 @@ func TestMCPEmptyStateRenders(t *testing.T) {
 func TestMCPMarketEmptyResultRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionMCP
-	cw.mcp.tabSel = 1
-	cw.mcp.marketLoaded = true
-	cw.mcp.market = []mcpMarketServer{
+	cw.mcp.TabSel = 1
+	cw.mcp.MarketLoaded = true
+	cw.mcp.Market = []mcppage.MarketServer{
 		{ID: "github", Name: "GitHub", Description: "GitHub MCP"},
 	}
-	cw.mcp.marketQuery = "zzz-no-match"
+	cw.mcp.MarketQuery = "zzz-no-match"
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
 		t.Fatalf("mcp market empty result render failed: %v", img)
@@ -276,7 +281,7 @@ func TestProvidersTabShowsCards(t *testing.T) {
 	cw := testWindow()
 	cw.cfg.Providers = config.ProviderPresets()
 	cw.section = sectionSettings
-	cw.settings.tab = 0
+	cw.settings.Tab = 0
 	img := mgo.Render(cw.view, 1000, 700, 1)
 	if img == nil || img.Bounds().Dx() != 1000 {
 		t.Fatalf("providers tab render failed: %v", img)
@@ -301,7 +306,7 @@ func TestProvidersTabShowsCards(t *testing.T) {
 func TestBuiltinTabShowsContent(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	cw.settings.tab = 1
+	cw.settings.Tab = 1
 	img := mgo.Render(cw.view, 1000, 700, 1)
 	if img == nil {
 		t.Fatal("builtin tab render failed")
@@ -339,43 +344,6 @@ func TestStatsPageRenders(t *testing.T) {
 	}
 }
 
-func TestComputeStatsAggregates(t *testing.T) {
-	cw := testWindow()
-	now := time.Now()
-	cw.convs = []models.Conversation{
-		{ID: "c1", Title: "A", CreatedAt: now,
-			Messages: []models.Message{
-				{ID: "u1", Role: "user", Timestamp: now},
-				{ID: "a1", Role: "assistant", Timestamp: now},
-				{ID: "u2", Role: "user", Timestamp: now},
-				{ID: "a2", Role: "assistant", Timestamp: now},
-			},
-			Turns: []models.Turn{
-				{ID: "t1", UserMsgID: "u1", ReplyMsgID: "a1", Model: "gpt-4", Input: 10, Output: 5, Total: 15, StartedAt: now},
-				{ID: "t2", UserMsgID: "u2", ReplyMsgID: "a2", Model: "gpt-4", Input: 20, Output: 5, Total: 25, StartedAt: now},
-			}},
-	}
-	cw.taskConvs = []models.Conversation{
-		{ID: "t1", Title: "Task", CreatedAt: now, TaskID: "x",
-			Messages: []models.Message{{ID: "a3", Role: "assistant", Timestamp: now}},
-			Turns:    []models.Turn{{ID: "t3", UserMsgID: "u3", ReplyMsgID: "a3", Model: "gpt-4", Input: 1, Output: 1, Total: 2, StartedAt: now}}},
-	}
-	s := cw.computeStats()
-	if s.sessions != 2 || s.messages != 5 || s.total != 42 || s.input != 31 || s.output != 11 {
-		t.Fatalf("aggregate %+v", s)
-	}
-	if len(s.models) != 1 || s.models[0].name != "gpt-4" || s.models[0].value != 42 {
-		t.Fatalf("models %+v", s.models)
-	}
-	if n := len(s.days); n != statsRange {
-		t.Fatalf("days %d", n)
-	}
-	last := s.days[len(s.days)-1]
-	if last.sessions != 2 || last.total != 42 {
-		t.Fatalf("today bucket %+v", last)
-	}
-}
-
 func TestTurnModelLabel(t *testing.T) {
 	cw := testWindow()
 	cw.cur = &models.Conversation{ID: "c1", Turns: []models.Turn{
@@ -410,31 +378,4 @@ func TestApplyTurnModelForSwitchesOnlyWhenNeeded(t *testing.T) {
 	}
 }
 
-func TestStatsCountsModelsPerTurn(t *testing.T) {
-	cw := testWindow()
-	now := time.Now()
-	cw.convs = []models.Conversation{
-		{ID: "c1", Title: "a", CreatedAt: now, Messages: []models.Message{
-			{ID: "u1", Role: "user", Timestamp: now},
-			{ID: "a1", Role: "assistant", Timestamp: now},
-			{ID: "u2", Role: "user", Timestamp: now},
-			{ID: "a2", Role: "assistant", Timestamp: now},
-		}, Turns: []models.Turn{
-			{ID: "t1", UserMsgID: "u1", ReplyMsgID: "a1", Model: "gpt-4", Total: 100, StartedAt: now},
-			{ID: "t2", UserMsgID: "u2", ReplyMsgID: "a2", Model: "gpt-4o", Total: 300, StartedAt: now},
-		}},
-	}
-	s := cw.computeStats()
-	if len(s.models) != 2 {
-		t.Fatalf("models %+v", s.models)
-	}
-	for _, m := range s.models {
-		want := 100
-		if m.name == "gpt-4o" {
-			want = 300
-		}
-		if m.value != want {
-			t.Fatalf("model %s = %d, want %d", m.name, m.value, want)
-		}
-	}
-}
+

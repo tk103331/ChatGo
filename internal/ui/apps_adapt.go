@@ -4,12 +4,12 @@ import (
 	mygo "github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
-	"chatgo/internal/browserapp"
-	"chatgo/internal/codeeditorapp"
+	"chatgo/internal/apps/browserapp"
+	"chatgo/internal/apps/codeeditorapp"
 	"chatgo/internal/config"
-	"chatgo/internal/markdownapp"
-	"chatgo/internal/terminalapp"
-	"chatgo/internal/webapp"
+	"chatgo/internal/apps/markdownapp"
+	"chatgo/internal/apps/terminalapp"
+	"chatgo/internal/apps/webapp"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 )

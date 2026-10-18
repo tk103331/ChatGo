@@ -3,7 +3,7 @@ package ui
 import (
 	mgo "github.com/egoist/mygo/ui"
 
-	"chatgo/internal/gitapp"
+	"chatgo/internal/apps/gitapp"
 )
 
 // gitClient is the gitapp client bound to this window.

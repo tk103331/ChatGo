@@ -547,22 +547,22 @@ func onMain[T any](cw *ChatWindow, fn func() T) T {
 }
 
 func (cw *ChatWindow) startFeishuRegister() {
-	f := &cw.settings.channel
-	if f.scanning {
+	f := &cw.settings.Channel
+	if f.Scanning {
 		return
 	}
-	f.scanning = true
-	f.qr = nil
-	f.qrTip = "正在获取二维码…"
+	f.Scanning = true
+	f.QR = nil
+	f.QRTip = "正在获取二维码…"
 	cw.invalidate()
 
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {
 				cw.postMain(func() {
-					f.scanning = false
-					f.qr = nil
-					f.qrTip = fmt.Sprintf("创建失败：%v", r)
+					f.Scanning = false
+					f.QR = nil
+					f.QRTip = fmt.Sprintf("创建失败：%v", r)
 					cw.invalidate()
 				})
 			}
@@ -579,33 +579,33 @@ func (cw *ChatWindow) startFeishuRegister() {
 				url := info.URL
 				cw.postMain(func() {
 					if bmp := feishuQRBitmap(url); bmp != nil {
-						f.qr = bmp
+						f.QR = bmp
 					}
-					f.qrTip = "请用飞书 App 扫码授权创建应用（10 分钟内有效）"
+					f.QRTip = "请用飞书 App 扫码授权创建应用（10 分钟内有效）"
 					cw.invalidate()
 				})
 			},
 			OnStatusChange: func(info *registration.StatusChangeInfo) {
 				cw.postMain(func() {
 					if info.Status == registration.StatusSlowDown {
-						f.qrTip = "等待授权中…"
+						f.QRTip = "等待授权中…"
 						cw.invalidate()
 					}
 				})
 			},
 		})
 		cw.postMain(func() {
-			f.scanning = false
-			f.qr = nil
+			f.Scanning = false
+			f.QR = nil
 			if err != nil {
-				f.qrTip = "创建失败：" + err.Error()
+				f.QRTip = "创建失败：" + err.Error()
 			} else {
-				f.appID = result.ClientID
-				f.appSecret = result.ClientSecret
-				if strings.TrimSpace(f.name) == "" {
-					f.name = "Feishu Bot"
+				f.AppID = result.ClientID
+				f.AppSecret = result.ClientSecret
+				if strings.TrimSpace(f.Name) == "" {
+					f.Name = "Feishu Bot"
 				}
-				f.qrTip = "应用创建成功，已自动填入 AppID / AppSecret，请点击保存"
+				f.QRTip = "应用创建成功，已自动填入 AppID / AppSecret，请点击保存"
 			}
 			cw.invalidate()
 		})

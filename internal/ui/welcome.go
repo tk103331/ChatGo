@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"chatgo/internal/ui/assets"
+	"chatgo/internal/ui/chatpanel"
 	"chatgo/pkg/models"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -25,7 +26,7 @@ func (cw *ChatWindow) homeView(c *mgo.Context) {
 		view = cw.welcome(c)
 	})
 	if view.Example != "" {
-		cw.draft = view.Example
+		cw.panel.Draft = view.Example
 	}
 	if cw.status != "" {
 		mgo.Text(c, cw.status).TextColor(k.Danger).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
@@ -42,12 +43,12 @@ func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
 			{Title: "多会话", Description: "会话自动保存，支持搜索、重命名与导出", Icon: icons.Must("message-square"), Examples: []string{"写一个 Go 的快速排序"}},
 		},
 		Prompts: func() {
-			in := composer(c, &cw.draft, composerOptions{
-				Placeholder: "输入消息，Enter 开始对话",
-				MaxHeight:   160,
-				Tools:       func() { cw.homeSelectors(c) },
-				Actions: func() {
-					r := mchat.SendButton(c, mchat.SendButtonOptions{Disabled: strings.TrimSpace(cw.draft) == ""})
+		in := chatpanel.Composer(c, &cw.panel.Draft, chatpanel.ComposerOptions{
+			Placeholder: "输入消息，Enter 开始对话",
+			MaxHeight:   160,
+			Tools:       func() { cw.homeSelectors(c) },
+			Actions: func() {
+				r := mchat.SendButton(c, mchat.SendButtonOptions{Disabled: strings.TrimSpace(cw.panel.Draft) == ""})
 					if r.Sent() {
 						cw.startFromHome()
 					}
@@ -105,11 +106,12 @@ func (cw *ChatWindow) homeSelectors(c *mgo.Context) {
 
 // startFromHome creates a conversation and sends whatever is in the composer.
 func (cw *ChatWindow) startFromHome() {
-	if strings.TrimSpace(cw.draft) == "" {
+	text := strings.TrimSpace(cw.panel.Draft)
+	if text == "" {
 		return
 	}
 	cw.newConversationIn(cw.workspace, cw.homeAgent)
-	cw.sendDraft()
+	cw.sendDraft(text)
 }
 
 // recentConversations lists the ten most recent saved conversations in a

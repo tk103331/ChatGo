@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"chatgo/internal/ui/common"
+
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
@@ -239,7 +241,7 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 				menuItem(c, logoLeading(c, name), name, func() { pick("acp:" + name) })
 			}
 		})
-		if containsStr(cw.cfg.Workspaces, ws) {
+		if common.ContainsStr(cw.cfg.Workspaces, ws) {
 			if mcore.IconAction(c, icons.Must("x"), "移除工作区").Clicked() {
 				cw.removeWorkspace(ws)
 			}
