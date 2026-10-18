@@ -29,10 +29,13 @@ const maxFile = 2 << 20
 
 // file is one open source file and its MyGo editor buffer.
 type file struct {
-	path string
-	err  string
-	buf  *editor.Buffer
-	st   *editor.State
+	path   string
+	err    string
+	buf    *editor.Buffer
+	base   *editor.Buffer
+	st     *editor.State
+	wrap   bool
+	lineNo bool
 }
 
 // Client is one code editor bound to a Host.
@@ -83,7 +86,7 @@ func (cl *Client) Open(path string) string {
 	}
 	cl.mu.Lock()
 	if _, ok := cl.docs[key]; !ok {
-		f := &file{path: path}
+		f := &file{path: path, lineNo: true}
 		text := ""
 		if path != "" {
 			if data, err := os.ReadFile(cl.abs(path)); err == nil {
@@ -92,9 +95,12 @@ func (cl *Client) Open(path string) string {
 				f.err = err.Error()
 			}
 		}
+		lang := editor.LanguageFor(path)
 		f.buf = editor.NewBuffer(text)
-		f.buf.SetLanguage(editor.LanguageFor(path))
-		f.st = &editor.State{Buffer: f.buf}
+		f.buf.SetLanguage(lang)
+		f.base = editor.NewBuffer(text)
+		f.base.SetLanguage(lang)
+		f.st = &editor.State{Buffer: f.buf, DiffBase: f.base}
 		cl.docs[key] = f
 		cl.tabs.Add(key)
 	} else {
@@ -133,9 +139,25 @@ func (cl *Client) View(c *mgo.Context) {
 		return
 	}
 	dirty := f.buf.Modified()
+	f.st.SoftWrap = f.wrap
+	if f.lineNo {
+		f.st.LineNumbers = editor.LineNumbersOn
+	} else {
+		f.st.LineNumbers = editor.LineNumbersOff
+	}
+	iconBtn := func(icon, label string) bool {
+		return minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must(icon), Label: label}).Clicked()
+	}
+	toggleBtn := func(icon, label string, on bool) bool {
+		variant := minput.Ghost
+		if on {
+			variant = minput.Secondary
+		}
+		return minput.Button(c, "", minput.ButtonOptions{Variant: variant, Icon: icons.Must(icon), Label: label}).Clicked()
+	}
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(u * 2).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("folder"), Label: "打开"}).Clicked() {
+			if iconBtn("folder", "打开") {
 				cl.openViaDialog()
 			}
 			saveVariant := minput.Ghost
@@ -144,6 +166,34 @@ func (cl *Client) View(c *mgo.Context) {
 			}
 			if minput.Button(c, "", minput.ButtonOptions{Variant: saveVariant, Icon: icons.Must("download"), Label: "保存"}).Clicked() {
 				cl.save(f)
+			}
+			mgo.Box(c).Width(1).Height(18).Shrink(0).Background(k.ControlBorder)
+			if iconBtn("search", "查找") {
+				cl.runCmd(f, "find")
+			}
+			if iconBtn("message-square", "注释") {
+				cl.runCmd(f, "toggleComment")
+			}
+			if iconBtn("chevron-left", "减少缩进") {
+				cl.runCmd(f, "outdent")
+			}
+			if iconBtn("chevron-right", "增加缩进") {
+				cl.runCmd(f, "indent")
+			}
+			if iconBtn("chevrons-up-down", "折叠全部") {
+				cl.runCmd(f, "foldAll")
+			}
+			if iconBtn("arrow-up-down", "跳转到行") {
+				cl.runCmd(f, "goToLine")
+			}
+			if toggleBtn("wrap-text", "软换行", f.wrap) {
+				f.wrap = !f.wrap
+			}
+			if toggleBtn("list", "行号", f.lineNo) {
+				f.lineNo = !f.lineNo
+			}
+			if toggleBtn("lock", "只读", f.st.ReadOnly) {
+				f.st.ReadOnly = !f.st.ReadOnly
 			}
 			mgo.Box(c).Grow(1)
 			if f.path != "" {
@@ -166,12 +216,23 @@ func (cl *Client) View(c *mgo.Context) {
 			mgo.Text(c, fmt.Sprintf("行 %d, 列 %d", pos.Line+1, pos.Col+1)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
 			mgo.Text(c, fmt.Sprintf("%d 行 · %d 字符", f.buf.LineCount(), f.buf.Len())).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
 			mgo.Text(c, lang).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			if n, cur := f.st.FindMatches(); n > 0 {
+				mgo.Text(c, fmt.Sprintf("%d/%d", cur+1, n)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			}
 			mgo.Box(c).Grow(1)
 			if dirty {
 				mgo.Text(c, "未保存").FontSize(caption).TextColor(k.AccentText).Shrink(0)
 			}
 		})
 	})
+}
+
+// runCmd runs a named editor command on the file's state.
+func (cl *Client) runCmd(f *file, name string) {
+	if cmd, ok := editor.CommandNamed(name); ok {
+		f.st.Run(cmd)
+		cl.host.Invalidate()
+	}
 }
 
 // save writes the buffer back to its path.
@@ -197,6 +258,7 @@ func (cl *Client) save(f *file) {
 		return
 	}
 	f.buf.MarkSaved()
+	f.base.Reset(f.buf.String())
 	f.err = ""
 	cl.host.Toast("已保存 "+path, mcore.SeveritySuccess)
 }
@@ -445,6 +507,7 @@ func (cl *Client) replaceBuffer(rel, content string) {
 		if f, ok := cl.docs[rel]; ok {
 			f.buf.Set(content)
 			f.buf.MarkSaved()
+			f.base.Reset(content)
 			f.err = ""
 		}
 		cl.mu.Unlock()
@@ -458,8 +521,10 @@ func (cl *Client) syncDoc(rel string) {
 		cl.mu.Lock()
 		if f, ok := cl.docs[rel]; ok {
 			if data, err := os.ReadFile(filepath.Join(cl.host.Root(), rel)); err == nil {
-				f.buf.Set(truncate(string(data)))
+				text := truncate(string(data))
+				f.buf.Set(text)
 				f.buf.MarkSaved()
+				f.base.Reset(text)
 				f.err = ""
 			}
 		}
