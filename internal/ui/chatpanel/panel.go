@@ -134,8 +134,8 @@ func (p *Panel) View(c *mgo.Context, opts Options) {
 	}
 	row := func(i int) { p.messageRow(c, i, msgs[i], len(msgs), opts) }
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(k.Background).Children(func() {
-		mgo.Row(c).Grow(1).MinHeight(0).Justify(mgo.Center).Children(func() {
-			mgo.Box(c).MaxWidth(maxWidth).Grow(1).MinWidth(0).Children(func() {
+		mgo.Row(c).Grow(1).MinHeight(0).AlignItems(mgo.Stretch).Justify(mgo.Center).Children(func() {
+			mgo.Box(c).MaxWidth(maxWidth).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 				res := mchat.MessageList(c, &p.List, len(msgs), mchat.MessageListOptions{
 					ID:    func(i int) string { return msgs[i].ID },
 					Date:  func(i int) time.Time { return msgs[i].Timestamp },

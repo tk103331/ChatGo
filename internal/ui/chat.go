@@ -113,7 +113,7 @@ func (cw *ChatWindow) rightColumn(c *mgo.Context, hasFile, hasWeb bool) {
 
 // chatPanelOptions wires the host's data and actions into the reusable panel.
 func (cw *ChatWindow) chatPanelOptions() chatpanel.Options {
-	return chatpanel.Options{
+	opts := chatpanel.Options{
 		Placeholder:    "输入消息，Enter 发送，Shift+Enter 换行",
 		Messages:       cw.messages,
 		Streaming:      func() bool { return cw.streaming },
@@ -133,8 +133,11 @@ func (cw *ChatWindow) chatPanelOptions() chatpanel.Options {
 		ContextRoot:    cw.fileRoot,
 		OnCopy:         func(string) { cw.toast("已复制到剪贴板", mcore.SeveritySuccess) },
 		Invalidate:     cw.invalidate,
-		BeforeComposer: cw.appContextChips,
 	}
+	if cw.currentApp != "" {
+		opts.BeforeComposer = cw.appContextChips
+	}
+	return opts
 }
 
 // composerToolbar builds the composer's left controls for the current mode.
