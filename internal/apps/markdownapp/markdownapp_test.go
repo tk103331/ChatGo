@@ -166,3 +166,40 @@ func TestAbsAndRel(t *testing.T) {
 		t.Fatalf("relOf outside: %q", got)
 	}
 }
+
+func TestParseHeadings(t *testing.T) {
+	content := "# Title\n\n## Sub\nSome text\n### Deep\n#nospace\n```go\n# code comment\n```\n"
+	hs := parseHeadings(content)
+	if len(hs) != 3 {
+		t.Fatalf("headings: %d %+v", len(hs), hs)
+	}
+	if hs[0].level != 1 || hs[0].text != "Title" || hs[0].start != 0 {
+		t.Fatalf("h1: %+v", hs[0])
+	}
+	if hs[1].level != 2 || hs[1].text != "Sub" {
+		t.Fatalf("h2: %+v", hs[1])
+	}
+	if hs[2].level != 3 || hs[2].text != "Deep" {
+		t.Fatalf("h3: %+v", hs[2])
+	}
+	if hs[1].start <= hs[0].end || hs[2].start <= hs[1].end {
+		t.Fatalf("offsets not increasing: %+v", hs)
+	}
+}
+
+func TestJumpToHeading(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	id := cl.Open("doc.md")
+	d := cl.doc(id)
+	d.content = "# A\n## B\n"
+	d.mode = modePreview
+	hs := parseHeadings(d.content)
+	cl.jumpToHeading(d, hs[1])
+	if d.mode != modeSplit {
+		t.Fatal("jump from preview should switch to split")
+	}
+	if !d.jumpSel || d.jumpStart != hs[1].start || d.jumpEnd != hs[1].end {
+		t.Fatalf("pending selection: %+v", d)
+	}
+}

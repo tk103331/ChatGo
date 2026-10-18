@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	mgo "github.com/egoist/mygo/ui"
 
@@ -26,13 +27,24 @@ const System = "你是 Markdown 文档助手。你可以通过 read_file/write_f
 
 // doc is one open document.
 type doc struct {
-	path    string
-	content string
-	saved   string
-	loaded  bool
-	preview bool
-	err     string
+	path      string
+	content   string
+	saved     string
+	loaded    bool
+	mode      int
+	splitW    float32
+	jumpStart int
+	jumpEnd   int
+	jumpSel   bool
+	err       string
 }
+
+// Edit modes of the Markdown editor.
+const (
+	modeSource = iota
+	modePreview
+	modeSplit
+)
 
 // Client is one Markdown editor bound to a Host.
 type Client struct {
@@ -77,7 +89,7 @@ func (cl *Client) Open(path string) string {
 	}
 	cl.mu.Lock()
 	if _, ok := cl.docs[key]; !ok {
-		d := &doc{path: path}
+		d := &doc{path: path, splitW: 260}
 		if path != "" {
 			if data, err := os.ReadFile(cl.abs(path)); err == nil {
 				d.content, d.saved, d.loaded = string(data), string(data), true
@@ -134,29 +146,38 @@ func (cl *Client) View(c *mgo.Context) {
 			if minput.Button(c, "保存", minput.ButtonOptions{Variant: saveVariant}).Clicked() {
 				cl.save(d)
 			}
-			previewVariant := minput.Ghost
-			if d.preview {
-				previewVariant = minput.Secondary
-			}
-			if minput.Button(c, "预览", minput.ButtonOptions{Variant: previewVariant}).Clicked() {
-				d.preview = !d.preview
+			for _, m := range []struct {
+				mode  int
+				label string
+			}{{modeSource, "源码"}, {modePreview, "预览"}, {modeSplit, "分屏"}} {
+				m := m
+				variant := minput.Ghost
+				if d.mode == m.mode {
+					variant = minput.Secondary
+				}
+				if minput.Button(c, m.label, minput.ButtonOptions{Variant: variant, Label: m.label}).Clicked() {
+					d.mode = m.mode
+				}
 			}
 			mgo.Box(c).Grow(1)
 		})
 		if d.err != "" {
 			mgo.Text(c, d.err).FontSize(caption).TextColor(k.Danger)
 		}
-		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Background(k.Surface).
-			Border(mtheme.BorderWidth, k.Border).Radius(mtheme.ControlRadius).Clip().Children(func() {
-			switch {
-			case d.preview:
-				mgo.Scroll(c).Fill().Children(func() {
-					mchat.MarkdownView(c, d.content).Element.FillWidth()
-				})
-			default:
-				mgo.TextAreaBase(c, &d.content).Fill().Padding(u * 2).
-					Placeholder("# 标题\n\n开始编写 Markdown…")
-			}
+		mgo.Row(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			cl.outlinePanel(c, d, k, u, caption)
+			mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Background(k.Surface).
+				Border(mtheme.BorderWidth, k.Border).Radius(mtheme.ControlRadius).Clip().Children(func() {
+				switch d.mode {
+				case modePreview:
+					cl.previewArea(c, d)
+				case modeSplit:
+					mgo.Split(c, &d.splitW, func() { cl.sourceArea(c, d, u) }, func() { cl.previewArea(c, d) }).
+						Grow(1).MinWidth(0).MinHeight(0)
+				default:
+					cl.sourceArea(c, d, u)
+				}
+			})
 		})
 		lines := 0
 		if d.content != "" {
@@ -170,6 +191,105 @@ func (cl *Client) View(c *mgo.Context) {
 			}
 		})
 	})
+}
+
+// sourceArea draws the editing text area, applying a pending outline jump.
+func (cl *Client) sourceArea(c *mgo.Context, d *doc, u float32) {
+	ta := mgo.TextAreaBase(c, &d.content).Fill().Padding(u * 2).
+		Placeholder("# 标题\n\n开始编写 Markdown…")
+	if d.jumpSel {
+		ta = ta.SetTextSelection(d.jumpStart, d.jumpEnd)
+		d.jumpSel = false
+	}
+}
+
+// previewArea draws the rendered Markdown.
+func (cl *Client) previewArea(c *mgo.Context, d *doc) {
+	mgo.Scroll(c).Fill().Children(func() {
+		mchat.MarkdownView(c, d.content).Element.FillWidth()
+	})
+}
+
+// outlinePanel draws the document's heading list; clicking one selects its
+// line in the source (switching to split when only previewing).
+func (cl *Client) outlinePanel(c *mgo.Context, d *doc, k mtheme.Tokens, u, caption float32) {
+	hs := parseHeadings(d.content)
+	mgo.Column(c).Fill().Width(150).Shrink(0).
+		BorderWidth(0, mtheme.BorderWidth, 0, 0).BorderColor(k.Border).Children(func() {
+		mgo.Text(c, "大纲").FontSize(caption).TextColor(k.TextMuted).Padding(u*2, u*2, u, u*2)
+		if len(hs) == 0 {
+			mgo.Text(c, "无标题").FontSize(caption).TextColor(k.TextMuted).Padding(0, u*2)
+			return
+		}
+		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			mgo.Column(c).FillWidth().Children(func() {
+				for i, h := range hs {
+					h := h
+					b := mgo.ButtonBase(c).Key(fmt.Sprintf("outline-%s-%d", d.path, i)).FillWidth().Padding(u, u*2).Children(func() {
+						mgo.Row(c).FillWidth().Gap(u * 2).Children(func() {
+							mgo.Box(c).Width(float32(h.level-1) * u * 2).Shrink(0)
+							mgo.Text(c, h.text).FontSize(caption).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+						})
+					})
+					if b.Hovered() {
+						b.Background(k.SurfaceHover)
+					}
+					if b.Clicked() {
+						cl.jumpToHeading(d, h)
+					}
+				}
+			})
+		})
+	})
+}
+
+// jumpToHeading schedules a source selection at the heading's line.
+func (cl *Client) jumpToHeading(d *doc, h heading) {
+	if d.mode == modePreview {
+		d.mode = modeSplit
+	}
+	d.jumpStart, d.jumpEnd, d.jumpSel = h.start, h.end, true
+	cl.host.Invalidate()
+}
+
+// heading is one ATX heading of a document, with its rune offsets.
+type heading struct {
+	level int
+	text  string
+	start int
+	end   int
+}
+
+// parseHeadings lists the ATX headings outside fenced code blocks.
+func parseHeadings(content string) []heading {
+	var out []heading
+	inCode := false
+	runeOff := 0
+	for _, row := range strings.Split(content, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(row), "```") {
+			inCode = !inCode
+		}
+		if !inCode {
+			if h, ok := atxHeading(row); ok {
+				lineRunes := utf8.RuneCountInString(row)
+				out = append(out, heading{level: h.level, text: h.text, start: runeOff, end: runeOff + lineRunes})
+			}
+		}
+		runeOff += utf8.RuneCountInString(row) + 1
+	}
+	return out
+}
+
+func atxHeading(row string) (heading, bool) {
+	trimmed := strings.TrimLeft(row, " \t")
+	n := 0
+	for n < len(trimmed) && trimmed[n] == '#' {
+		n++
+	}
+	if n == 0 || n > 6 || n >= len(trimmed) || trimmed[n] != ' ' {
+		return heading{}, false
+	}
+	return heading{level: n, text: strings.TrimSpace(trimmed[n:])}, true
 }
 
 // save writes the document's content back to its path.
