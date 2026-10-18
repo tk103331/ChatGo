@@ -193,13 +193,47 @@ func TestJumpToHeading(t *testing.T) {
 	id := cl.Open("doc.md")
 	d := cl.doc(id)
 	d.content = "# A\n## B\n"
-	d.mode = modePreview
 	hs := parseHeadings(d.content)
-	cl.jumpToHeading(d, hs[1])
-	if d.mode != modeSplit {
-		t.Fatal("jump from preview should switch to split")
+
+	d.mode = modePreview
+	cl.jumpToHeading(d, 1, hs[1])
+	if d.mode != modePreview {
+		t.Fatal("preview jump should stay in preview")
 	}
-	if !d.jumpSel || d.jumpStart != hs[1].start || d.jumpEnd != hs[1].end {
-		t.Fatalf("pending selection: %+v", d)
+	if d.jumpSel || d.previewJump != 1 {
+		t.Fatalf("preview jump: %+v", d)
+	}
+
+	d.mode = modeSplit
+	cl.jumpToHeading(d, 0, hs[0])
+	if !d.jumpSel || d.jumpStart != hs[0].start || d.previewJump != 0 {
+		t.Fatalf("split jump: %+v", d)
+	}
+
+	d.mode = modeSource
+	cl.jumpToHeading(d, 1, hs[1])
+	if !d.jumpSel || d.previewJump != -1 {
+		t.Fatalf("source jump: %+v", d)
+	}
+}
+
+func TestSplitSections(t *testing.T) {
+	content := "intro\n# A\ntext\n## B\nmore\n"
+	hs := parseHeadings(content)
+	secs := splitSections(content, hs)
+	if len(secs) != 3 {
+		t.Fatalf("sections: %d %+v", len(secs), secs)
+	}
+	if secs[0].heading != -1 || secs[0].text != "intro\n" {
+		t.Fatalf("preamble: %+v", secs[0])
+	}
+	if secs[1].heading != 0 || secs[1].text != "# A\ntext\n" {
+		t.Fatalf("section 1: %+v", secs[1])
+	}
+	if secs[2].heading != 1 || secs[2].text != "## B\nmore\n" {
+		t.Fatalf("section 2: %+v", secs[2])
+	}
+	if got := splitSections("plain", nil); len(got) != 1 || got[0].heading != -1 {
+		t.Fatalf("no headings: %+v", got)
 	}
 }

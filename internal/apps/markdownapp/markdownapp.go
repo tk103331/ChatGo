@@ -27,16 +27,17 @@ const System = "你是 Markdown 文档助手。你可以通过 read_file/write_f
 
 // doc is one open document.
 type doc struct {
-	path      string
-	content   string
-	saved     string
-	loaded    bool
-	mode      int
-	splitW    float32
-	jumpStart int
-	jumpEnd   int
-	jumpSel   bool
-	err       string
+	path        string
+	content     string
+	saved       string
+	loaded      bool
+	mode        int
+	splitW      float32
+	jumpStart   int
+	jumpEnd     int
+	jumpSel     bool
+	previewJump int
+	err         string
 }
 
 // Edit modes of the Markdown editor.
@@ -89,7 +90,7 @@ func (cl *Client) Open(path string) string {
 	}
 	cl.mu.Lock()
 	if _, ok := cl.docs[key]; !ok {
-		d := &doc{path: path, splitW: 260}
+		d := &doc{path: path, splitW: 260, previewJump: -1}
 		if path != "" {
 			if data, err := os.ReadFile(cl.abs(path)); err == nil {
 				d.content, d.saved, d.loaded = string(data), string(data), true
@@ -164,7 +165,7 @@ func (cl *Client) View(c *mgo.Context) {
 		if d.err != "" {
 			mgo.Text(c, d.err).FontSize(caption).TextColor(k.Danger)
 		}
-		mgo.Row(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+		mgo.Row(c).Grow(1).MinWidth(0).MinHeight(0).AlignItems(mgo.Stretch).Children(func() {
 			cl.outlinePanel(c, d, k, u, caption)
 			mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Background(k.Surface).
 				Border(mtheme.BorderWidth, k.Border).Radius(mtheme.ControlRadius).Clip().Children(func() {
@@ -203,18 +204,36 @@ func (cl *Client) sourceArea(c *mgo.Context, d *doc, u float32) {
 	}
 }
 
-// previewArea draws the rendered Markdown.
+// previewArea draws the rendered Markdown, split into sections so an
+// outline jump can scroll the matching section into view.
 func (cl *Client) previewArea(c *mgo.Context, d *doc) {
+	u := mcore.Density(c).Unit()
+	hs := parseHeadings(d.content)
+	secs := splitSections(d.content, hs)
+	var target mgo.Element
+	found := false
 	mgo.Scroll(c).Fill().Children(func() {
-		mchat.MarkdownView(c, d.content).Element.FillWidth()
+		mgo.Column(c).FillWidth().Gap(u*3).Padding(u*3, u*5).Children(func() {
+			for _, s := range secs {
+				el := mchat.MarkdownView(c, s.text).Element.FillWidth()
+				if d.previewJump >= 0 && s.heading == d.previewJump {
+					target = el
+					found = true
+				}
+			}
+		})
 	})
+	if found && d.previewJump >= 0 {
+		target.ScrollIntoView()
+		d.previewJump = -1
+	}
 }
 
 // outlinePanel draws the document's heading list; clicking one selects its
 // line in the source (switching to split when only previewing).
 func (cl *Client) outlinePanel(c *mgo.Context, d *doc, k mtheme.Tokens, u, caption float32) {
 	hs := parseHeadings(d.content)
-	mgo.Column(c).Fill().Width(150).Shrink(0).
+	mgo.Column(c).Width(150).Shrink(0).FillHeight().
 		BorderWidth(0, mtheme.BorderWidth, 0, 0).BorderColor(k.Border).Children(func() {
 		mgo.Text(c, "大纲").FontSize(caption).TextColor(k.TextMuted).Padding(u*2, u*2, u, u*2)
 		if len(hs) == 0 {
@@ -235,7 +254,7 @@ func (cl *Client) outlinePanel(c *mgo.Context, d *doc, k mtheme.Tokens, u, capti
 						b.Background(k.SurfaceHover)
 					}
 					if b.Clicked() {
-						cl.jumpToHeading(d, h)
+						cl.jumpToHeading(d, i, h)
 					}
 				}
 			})
@@ -243,28 +262,32 @@ func (cl *Client) outlinePanel(c *mgo.Context, d *doc, k mtheme.Tokens, u, capti
 	})
 }
 
-// jumpToHeading schedules a source selection at the heading's line.
-func (cl *Client) jumpToHeading(d *doc, h heading) {
-	if d.mode == modePreview {
-		d.mode = modeSplit
+// jumpToHeading schedules a source selection and/or a preview scroll at the
+// heading's line.
+func (cl *Client) jumpToHeading(d *doc, idx int, h heading) {
+	d.jumpStart, d.jumpEnd = h.start, h.end
+	d.jumpSel = d.mode != modePreview
+	d.previewJump = -1
+	if d.mode != modeSource {
+		d.previewJump = idx
 	}
-	d.jumpStart, d.jumpEnd, d.jumpSel = h.start, h.end, true
 	cl.host.Invalidate()
 }
 
-// heading is one ATX heading of a document, with its rune offsets.
+// heading is one ATX heading of a document, with its rune and byte offsets.
 type heading struct {
-	level int
-	text  string
-	start int
-	end   int
+	level  int
+	text   string
+	start  int
+	end    int
+	byteAt int
 }
 
 // parseHeadings lists the ATX headings outside fenced code blocks.
 func parseHeadings(content string) []heading {
 	var out []heading
 	inCode := false
-	runeOff := 0
+	runeOff, byteOff := 0, 0
 	for _, row := range strings.Split(content, "\n") {
 		if strings.HasPrefix(strings.TrimSpace(row), "```") {
 			inCode = !inCode
@@ -272,10 +295,37 @@ func parseHeadings(content string) []heading {
 		if !inCode {
 			if h, ok := atxHeading(row); ok {
 				lineRunes := utf8.RuneCountInString(row)
-				out = append(out, heading{level: h.level, text: h.text, start: runeOff, end: runeOff + lineRunes})
+				out = append(out, heading{level: h.level, text: h.text, start: runeOff, end: runeOff + lineRunes, byteAt: byteOff})
 			}
 		}
 		runeOff += utf8.RuneCountInString(row) + 1
+		byteOff += len(row) + 1
+	}
+	return out
+}
+
+// section is a slice of Markdown starting at a heading, or the preamble.
+type section struct {
+	heading int
+	text    string
+}
+
+// splitSections cuts content at each heading so preview blocks line up with
+// the outline.
+func splitSections(content string, hs []heading) []section {
+	if len(hs) == 0 {
+		return []section{{heading: -1, text: content}}
+	}
+	var out []section
+	if hs[0].byteAt > 0 {
+		out = append(out, section{heading: -1, text: content[:hs[0].byteAt]})
+	}
+	for i, h := range hs {
+		end := len(content)
+		if i+1 < len(hs) {
+			end = hs[i+1].byteAt
+		}
+		out = append(out, section{heading: i, text: content[h.byteAt:end]})
 	}
 	return out
 }
