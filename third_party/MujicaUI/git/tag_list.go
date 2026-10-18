@@ -37,7 +37,7 @@ func TagList(c *ui.Context, s *data.ListState[string], tags []GitTag, opts TagLi
 	}, func(i int) {
 		t := tags[i]
 		small := core.FontSize(c, theme.CaptionSize)
-		row := ui.Row(c).AlignItems(ui.Center).Gap(core.Density(c).Unit()).MinWidth(0)
+		row := ui.Row(c).AlignItems(ui.Center).Gap(core.Density(c).Unit()).MinWidth(0).Grow(1)
 		row.Children(func() {
 			ui.Icon(c, icons.Must("tag")).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
 			ui.Text(c, t.Name).FontWeight(600).SingleLine().Shrink(0).MaxWidth(200)

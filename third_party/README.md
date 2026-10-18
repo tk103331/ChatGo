@@ -71,3 +71,9 @@ chmod -R u+w third_party/MujicaUI
 接受 `func(c *ui.Context, item string)`，在行元素上挂 `overlay.ContextMenu`，
 点击右键时回调当前行条目（文件路径 / 分支名 / 标签名）。
 分支行与标签行改为在 `ui.Row` 中构建并返回该行元素，其余布局保持不变。
+
+**`git/branch_list.go` + `git/tag_list.go`** — 修复行右侧图标错位。
+上一补丁把分支/标签行改为独立 `ui.Row` 元素后，该行不再 `Grow(1)`，
+在 `data.List` 的内层 `Grow(1)` 容器里只占内容宽度，导致行内 `Spacer`（分支）
+与 `Grow(1)` 注释（标签）没有剩余空间可拉伸，右侧 upstream / 动作图标随名称长度漂移。
+补丁：给这两处行元素补 `.Grow(1)`，使右侧内容贴齐右边缘、跨行对齐。

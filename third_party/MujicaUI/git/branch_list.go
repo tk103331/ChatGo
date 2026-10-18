@@ -79,7 +79,7 @@ func branchListRow(c *ui.Context, b Branch) ui.Element {
 	k := core.Tokens(c)
 	u := core.Density(c).Unit()
 	small := core.FontSize(c, theme.CaptionSize)
-	row := ui.Row(c).AlignItems(ui.Center).Gap(u*2).MinWidth(0)
+	row := ui.Row(c).AlignItems(ui.Center).Gap(u*2).MinWidth(0).Grow(1)
 	row.Children(func() {
 		mark := ui.Box(c).Size(16, 16).Shrink(0).Center().Role(ui.RoleNone)
 		if b.Current {
