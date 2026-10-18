@@ -3,6 +3,7 @@ package codeeditorapp
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"chatgo/internal/apps/appkit"
@@ -73,5 +74,71 @@ func TestListFiles(t *testing.T) {
 	}
 	if out != "a.md\nsub/" {
 		t.Fatalf("list: %q", out)
+	}
+}
+
+func TestNewFileTools(t *testing.T) {
+	dir := t.TempDir()
+	h := &host{dir: dir}
+	cl := New(h)
+	if _, err := cl.appendFile("log.go", "package log\n"); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "log.go"))
+	if string(data) != "package log\n" {
+		t.Fatalf("append: %q", data)
+	}
+	if _, err := cl.mkdir("sub/dir"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "sub/dir")); err != nil {
+		t.Fatal("mkdir failed")
+	}
+	out, err := cl.search("log", "", "false", "false")
+	if err != nil || !strings.Contains(out, "log.go:1:") {
+		t.Fatalf("search: %q %v", out, err)
+	}
+	if _, err := cl.search("", "", "false", "false"); err == nil {
+		t.Fatal("empty pattern should fail")
+	}
+}
+
+func TestDeleteConfirm(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	os.WriteFile(filepath.Join(dir, "x.go"), []byte("x"), 0o644)
+	if _, err := cl.remove("x.go"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "x.go")); !os.IsNotExist(err) {
+		t.Fatal("confirm should delete the file")
+	}
+}
+
+func TestRenameConfirm(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	os.WriteFile(filepath.Join(dir, "a.go"), []byte("x"), 0o644)
+	if _, err := cl.rename("a.go", "b.go"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "b.go")); err != nil {
+		t.Fatal("rename failed")
+	}
+}
+
+func TestOpenFileTool(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0o644)
+	out, err := cl.openTool("main.go")
+	if err != nil || !strings.Contains(out, "main.go") {
+		t.Fatalf("open: %q %v", out, err)
+	}
+	if cl.Tabs().Active != "main.go" {
+		t.Fatalf("open should activate tab: %q", cl.Tabs().Active)
+	}
+	if _, err := cl.openTool("../../x"); err == nil {
+		t.Fatal("escape should fail")
 	}
 }
