@@ -29,6 +29,10 @@ const maxFile = 2 << 20
 type file struct {
 	path    string
 	content string
+	saved   string
+	find    string
+	repl    string
+	findPos int
 	err     string
 	preview bool
 	view    code.CodeViewerState
@@ -72,7 +76,7 @@ func (cl *Client) Open(path string) string {
 		f := &file{path: path}
 		if path != "" {
 			if data, err := os.ReadFile(cl.abs(path)); err == nil {
-				f.content = truncate(string(data))
+				f.content, f.saved = truncate(string(data)), truncate(string(data))
 			} else {
 				f.err = err.Error()
 			}
@@ -124,7 +128,11 @@ func (cl *Client) View(c *mgo.Context) {
 			if minput.Button(c, "打开", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
 				cl.load(f)
 			}
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			saveVariant := minput.Secondary
+			if f.content != f.saved {
+				saveVariant = minput.Primary
+			}
+			if minput.Button(c, "保存", minput.ButtonOptions{Variant: saveVariant}).Clicked() {
 				cl.save(f)
 			}
 			variant := minput.Ghost
@@ -133,6 +141,29 @@ func (cl *Client) View(c *mgo.Context) {
 			}
 			if minput.Button(c, "预览", minput.ButtonOptions{Variant: variant}).Clicked() {
 				f.preview = !f.preview
+			}
+		})
+		mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Children(func() {
+			find := minput.TextInput(c, &f.find, minput.TextInputOptions{Label: "查找", Placeholder: "查找内容"})
+			find.Element.Grow(1)
+			repl := minput.TextInput(c, &f.repl, minput.TextInputOptions{Label: "替换", Placeholder: "替换为"})
+			repl.Element.Grow(1)
+			if minput.Button(c, "上一个", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
+				f.findPos = findPrev(f.content, f.find, f.findPos, false)
+			}
+			if minput.Button(c, "下一个", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
+				i := findNext(f.content, f.find, f.findPos, false)
+				if i < 0 {
+					i = findNext(f.content, f.find, 0, false)
+				}
+				f.findPos = i
+			}
+			if minput.Button(c, "全部替换", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				before := f.content
+				f.content = replaceAll(f.content, f.find, f.repl, false)
+				if f.content != before && f.find != "" {
+					cl.host.Toast("已全部替换", mcore.SeveritySuccess)
+				}
 			}
 		})
 		if f.err != "" {
@@ -147,11 +178,25 @@ func (cl *Client) View(c *mgo.Context) {
 				mgo.Scroll(c).Fill().Children(func() {
 					mgo.Text(c, f.content).Font(mtheme.MonoFont).FontSize(caption).Padding(u * 2)
 				})
-			default:
-				mgo.TextAreaBase(c, &f.content).Fill().Padding(u * 2).
-					Placeholder("// 开始编写代码…").Font(mtheme.MonoFont)
-			}
-		})
+		default:
+			mgo.TextAreaBase(c, &f.content).Fill().Padding(u * 2).
+				Placeholder("// 开始编写代码…").Font(mtheme.MonoFont)
+		}
+	})
+	lines := 0
+	if f.content != "" {
+		lines = strings.Count(f.content, "\n") + 1
+	}
+	mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Padding(u, 0, 0, 0).Children(func() {
+		mgo.Text(c, f.path).FontSize(caption).TextColor(k.TextMuted).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		mgo.Text(c, fmt.Sprintf("%d 行 · %d 字符", lines, len([]rune(f.content)))).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+		if f.preview && lang != "" {
+			mgo.Text(c, fmt.Sprintf("当前行 %d", f.view.Line()+1)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+		}
+		if f.content != f.saved {
+			mgo.Text(c, "未保存").FontSize(caption).TextColor(k.AccentText).Shrink(0)
+		}
+	})
 	})
 }
 
@@ -166,7 +211,7 @@ func (cl *Client) load(f *file) {
 		f.err = err.Error()
 		return
 	}
-	f.content, f.err = truncate(string(data)), ""
+	f.content, f.saved, f.err = truncate(string(data)), truncate(string(data)), ""
 }
 
 // save writes the buffer back to its path.
@@ -184,7 +229,7 @@ func (cl *Client) save(f *file) {
 		f.err = err.Error()
 		return
 	}
-	f.err = ""
+	f.saved, f.err = f.content, ""
 	cl.host.Toast("已保存 "+f.path, mcore.SeveritySuccess)
 }
 
@@ -290,7 +335,7 @@ func (cl *Client) writeFile(rel, content string) (string, error) {
 	cl.host.Post(func() {
 		cl.mu.Lock()
 		if f, ok := cl.docs[rel]; ok {
-			f.content, f.err = content, ""
+			f.content, f.saved, f.err = content, content, ""
 		}
 		cl.mu.Unlock()
 		cl.host.Invalidate()
@@ -369,7 +414,7 @@ func (cl *Client) syncDoc(rel string) {
 		cl.mu.Lock()
 		if f, ok := cl.docs[rel]; ok {
 			if data, err := os.ReadFile(filepath.Join(cl.host.Root(), rel)); err == nil {
-				f.content, f.err = truncate(string(data)), ""
+				f.content, f.saved, f.err = truncate(string(data)), truncate(string(data)), ""
 			}
 		}
 		cl.mu.Unlock()
