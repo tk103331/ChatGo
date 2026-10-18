@@ -625,8 +625,10 @@ func (cl *Client) treeDirRow(c *mgo.Context, g *state, v *viewerState, row treeR
 			}
 			mgo.Icon(c, icons.Must(icon)).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
 			mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
-			mgo.Text(c, row.name).FontSize(caption).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-			mgo.Text(c, fmt.Sprintf("%d", row.count)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u / 2).Grow(1).MinWidth(0).Children(func() {
+				mgo.Text(c, row.name).FontSize(caption).Shrink(0).SingleLine().Ellipsis("…")
+				mgo.Text(c, fmt.Sprintf("[%d]", row.count)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+			})
 		})
 	})
 	clicked := b.Clicked()

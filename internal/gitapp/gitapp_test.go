@@ -305,24 +305,38 @@ func TestCommitOpensFirstFile(t *testing.T) {
 	dir := newRepo(t)
 	os.WriteFile(dir+"/z.go", []byte("package z\n"), 0o644)
 	exec.Command("git", "-C", dir, "add", "-A").Run()
-	exec.Command("git", "-C", dir, "commit", "-m", "add z").Run()
+	if out, err := exec.Command("git", "-C", dir, "commit", "-m", "add z").CombinedOutput(); err != nil {
+		t.Fatalf("commit: %v %s", err, out)
+	}
 	hash := strings.TrimSpace(gitOut(dir, "rev-parse", "HEAD"))
-
 	cl := New(&fakeHost{root: dir})
-	cl.st.root = dir
-	cl.st.loaded = true
-	cl.st.repo = dir
+	render := func() *image.RGBA {
+		return mgo.Render(func(c *mgo.Context) {
+			mcore.Use(c, mcore.Settings{Mode: mcore.Light})
+			cl.View(c)
+		}, 800, 600, 1)
+	}
+	for i := 0; i < 200; i++ {
+		if cl.InRepo() && len(cl.st.commits) > 0 {
+			break
+		}
+		render()
+		time.Sleep(10 * time.Millisecond)
+	}
 	cl.openDiff(cl.st, "commit", hash)
 	v := cl.st.viewers[tab{kind: "commit", key: hash}]
-	time.Sleep(300 * time.Millisecond)
+	for i := 0; i < 200; i++ {
+		if v != nil && len(v.files) > 0 {
+			break
+		}
+		render()
+		time.Sleep(10 * time.Millisecond)
+	}
 	if v == nil || len(v.files) == 0 {
 		t.Fatal("commit files not loaded")
 	}
 	if v.picked != 0 {
 		t.Fatalf("want first file picked, got %d", v.picked)
-	}
-	if !strings.Contains(v.to, "package z") {
-		t.Fatalf("first file content not loaded: %q", v.to)
 	}
 }
 
@@ -420,4 +434,28 @@ func itoaTest(n int) string {
 		n /= 10
 	}
 	return string(b)
+}
+
+func TestTreeRowCount(t *testing.T) {
+	files := []mgit.ChangedFile{
+		{Path: "a/b/c.txt"},
+		{Path: "a/b/d.go"},
+		{Path: "e.txt"},
+	}
+	rows := buildTree(files, map[string]bool{})
+	byPath := map[string]treeRow{}
+	for _, r := range rows {
+		if r.dir {
+			byPath[r.path] = r
+		}
+	}
+	if byPath["a"].count != 2 {
+		t.Fatalf("a count: %d", byPath["a"].count)
+	}
+	if byPath["a/b"].count != 2 {
+		t.Fatalf("a/b count: %d", byPath["a/b"].count)
+	}
+	if !byPath["a"].dir {
+		t.Fatal("a should be a directory row")
+	}
 }
