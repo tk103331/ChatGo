@@ -31,6 +31,12 @@ type Host interface {
 	Prompt(title, label, initial string, action func(string))
 	// OpenFile shows a file in the shell's preview area.
 	OpenFile(path string)
+	// OpenFileDialog asks for a file to open and returns its absolute path,
+	// or "" when the user cancels.
+	OpenFileDialog(dir string) string
+	// SaveFileDialog asks where to save a file and returns the chosen
+	// absolute path, or "" when the user cancels.
+	SaveFileDialog(name string) string
 	// Language maps a path extension, as ".go", to a syntax name.
 	Language(ext string) string
 	// NewID returns an id unique within the shell.
@@ -171,6 +177,24 @@ func (s *Standalone) Prompt(_, _, _ string, action func(string)) { action("") }
 
 // OpenFile is a no-op: a standalone window has no preview pane.
 func (s *Standalone) OpenFile(string) {}
+
+// OpenFileDialog asks for a file with the native dialog.
+func (s *Standalone) OpenFileDialog(dir string) string {
+	picks, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: s.NativeWindow(), Title: "打开文件", DefaultPath: dir})
+	if err != nil || len(picks) == 0 {
+		return ""
+	}
+	return picks[0]
+}
+
+// SaveFileDialog asks where to save with the native dialog.
+func (s *Standalone) SaveFileDialog(name string) string {
+	p, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: s.NativeWindow(), Title: "保存文件", DefaultPath: name})
+	if err != nil || p == "" {
+		return ""
+	}
+	return p
+}
 
 // Language names a path extension's syntax.
 func (s *Standalone) Language(ext string) string {

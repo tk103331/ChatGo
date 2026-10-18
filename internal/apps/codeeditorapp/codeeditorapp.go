@@ -130,12 +130,8 @@ func (cl *Client) View(c *mgo.Context) {
 	lang := cl.host.Language(filepath.Ext(f.path))
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(u * 2).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-			in := minput.TextInput(c, &f.path, minput.TextInputOptions{
-				Label: "路径", Placeholder: "相对工作目录，如 main.go",
-			})
-			in.Element.Grow(1)
-			if minput.Button(c, "打开", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
-				cl.load(f)
+			if minput.Button(c, "打开…", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				cl.openViaDialog()
 			}
 			saveVariant := minput.Secondary
 			if f.content != f.saved {
@@ -151,6 +147,7 @@ func (cl *Client) View(c *mgo.Context) {
 			if minput.Button(c, "预览", minput.ButtonOptions{Variant: variant}).Clicked() {
 				f.preview = !f.preview
 			}
+			mgo.Box(c).Grow(1)
 		})
 		mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			find := minput.TextInput(c, &f.find, minput.TextInputOptions{Label: "查找", Placeholder: "查找内容"})
@@ -209,27 +206,19 @@ func (cl *Client) View(c *mgo.Context) {
 	})
 }
 
-// load reads the file's path into its buffer.
-func (cl *Client) load(f *file) {
-	if strings.TrimSpace(f.path) == "" {
-		f.err = "请填写路径"
-		return
-	}
-	data, err := os.ReadFile(cl.abs(f.path))
-	if err != nil {
-		f.err = err.Error()
-		return
-	}
-	f.content, f.saved, f.err = truncate(string(data)), truncate(string(data)), ""
-}
-
 // save writes the buffer back to its path.
 func (cl *Client) save(f *file) {
-	if strings.TrimSpace(f.path) == "" {
-		f.err = "请填写路径"
+	path := f.path
+	if strings.TrimSpace(path) == "" {
+		if picked := cl.host.SaveFileDialog("untitled.go"); picked != "" {
+			path = cl.relOf(picked)
+			f.path = path
+		}
+	}
+	if strings.TrimSpace(path) == "" {
 		return
 	}
-	abs := cl.abs(f.path)
+	abs := cl.abs(path)
 	if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 		f.err = err.Error()
 		return
@@ -239,7 +228,33 @@ func (cl *Client) save(f *file) {
 		return
 	}
 	f.saved, f.err = f.content, ""
-	cl.host.Toast("已保存 "+f.path, mcore.SeveritySuccess)
+	cl.host.Toast("已保存 "+path, mcore.SeveritySuccess)
+}
+
+// openViaDialog picks a file with the native dialog and opens it in a tab.
+func (cl *Client) openViaDialog() {
+	go func() {
+		picked := cl.host.OpenFileDialog(cl.host.Root())
+		if picked == "" {
+			return
+		}
+		rel := cl.relOf(picked)
+		cl.host.Post(func() {
+			cl.Open(rel)
+			cl.host.Invalidate()
+		})
+	}()
+}
+
+// relOf converts an absolute path to a workspace-relative one when inside
+// the root, keeping the absolute path otherwise.
+func (cl *Client) relOf(abs string) string {
+	if root := cl.host.Root(); root != "" {
+		if r, err := filepath.Rel(root, abs); err == nil && !strings.HasPrefix(r, "..") {
+			return r
+		}
+	}
+	return abs
 }
 
 func (cl *Client) file(id string) *file {
@@ -248,7 +263,12 @@ func (cl *Client) file(id string) *file {
 	return cl.docs[id]
 }
 
-func (cl *Client) abs(rel string) string { return filepath.Join(cl.host.Root(), rel) }
+func (cl *Client) abs(rel string) string {
+	if filepath.IsAbs(rel) {
+		return filepath.Clean(rel)
+	}
+	return filepath.Join(cl.host.Root(), rel)
+}
 
 // Tools returns the operations the Agent may run.
 func (cl *Client) Tools() []Tool {

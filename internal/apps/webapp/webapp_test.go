@@ -276,6 +276,8 @@ func (nopHost) Toast(string, mcore.Severity)                        {}
 func (nopHost) Confirm(_ string, _ string, a func())                { a() }
 func (nopHost) Prompt(_ string, _ string, _ string, a func(string)) { a("") }
 func (nopHost) OpenFile(string)                                     {}
+func (nopHost) OpenFileDialog(string) string                        { return "" }
+func (nopHost) SaveFileDialog(string) string                        { return "" }
 func (nopHost) Language(string) string                              { return "" }
 func (nopHost) NewID() string                                       { return "id" }
 func (nopHost) NativeWindow() *mygo.Window                          { return nil }

@@ -20,6 +20,8 @@ func (h *host) Toast(string, mcore.Severity)                        {}
 func (h *host) Confirm(_ string, _ string, a func())                { a() }
 func (h *host) Prompt(_ string, _ string, _ string, a func(string)) { a("") }
 func (h *host) OpenFile(string)                                     {}
+func (h *host) OpenFileDialog(string) string                        { return "" }
+func (h *host) SaveFileDialog(string) string                        { return "" }
 func (h *host) Language(ext string) string                          { return appkit.DefaultLanguage(ext) }
 func (h *host) NewID() string                                       { return "id" }
 func (h *host) NativeWindow() *mygo.Window                          { return nil }

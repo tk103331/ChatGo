@@ -28,6 +28,8 @@ func (h *fakeHost) Toast(msg string, _ mcore.Severity)                  { h.toas
 func (h *fakeHost) Confirm(_ string, _ string, action func())           { action() }
 func (h *fakeHost) Prompt(_ string, _ string, _ string, a func(string)) { a("") }
 func (h *fakeHost) OpenFile(path string)                                { h.opened = append(h.opened, path) }
+func (h *fakeHost) OpenFileDialog(string) string                        { return "" }
+func (h *fakeHost) SaveFileDialog(string) string                        { return "" }
 func (h *fakeHost) Language(ext string) string                          { return strings.TrimPrefix(ext, ".") }
 func (h *fakeHost) Workspace() string                                   { return h.root }
 func (h *fakeHost) NewID() string                                       { return "id" }

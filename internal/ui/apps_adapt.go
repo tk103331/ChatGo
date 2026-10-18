@@ -6,10 +6,10 @@ import (
 
 	"chatgo/internal/apps/browserapp"
 	"chatgo/internal/apps/codeeditorapp"
-	"chatgo/internal/config"
 	"chatgo/internal/apps/markdownapp"
 	"chatgo/internal/apps/terminalapp"
 	"chatgo/internal/apps/webapp"
+	"chatgo/internal/config"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 )
@@ -34,6 +34,22 @@ func (h appHost) Prompt(title, label, initial string, action func(string)) {
 }
 
 func (h appHost) OpenFile(path string) { h.cw.openPreview(path) }
+
+func (h appHost) OpenFileDialog(dir string) string {
+	picks, err := mygo.Dialog.Open(mygo.OpenDialogOptions{Parent: h.NativeWindow(), Title: "打开文件", DefaultPath: dir})
+	if err != nil || len(picks) == 0 {
+		return ""
+	}
+	return picks[0]
+}
+
+func (h appHost) SaveFileDialog(name string) string {
+	p, err := mygo.Dialog.Save(mygo.SaveDialogOptions{Parent: h.NativeWindow(), Title: "保存文件", DefaultPath: name})
+	if err != nil || p == "" {
+		return ""
+	}
+	return p
+}
 
 func (h appHost) Language(ext string) string { return langOfExt(ext) }
 

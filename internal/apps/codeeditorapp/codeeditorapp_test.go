@@ -25,6 +25,8 @@ func (h *host) Toast(msg string, _ mcore.Severity)                  { h.toasts =
 func (h *host) Confirm(_ string, _ string, a func())                { a() }
 func (h *host) Prompt(_ string, _ string, _ string, a func(string)) { a("") }
 func (h *host) OpenFile(string)                                     {}
+func (h *host) OpenFileDialog(string) string                        { return "" }
+func (h *host) SaveFileDialog(string) string                        { return "" }
 func (h *host) Language(ext string) string                          { return appkit.DefaultLanguage(ext) }
 func (h *host) NewID() string                                       { return "id" }
 func (h *host) NativeWindow() *mygo.Window                          { return nil }
@@ -159,5 +161,24 @@ func TestListTabs(t *testing.T) {
 	}
 	if !strings.Contains(out, "- "+id+": main.go[未保存][上下文]") {
 		t.Fatalf("list_tabs: %q", out)
+	}
+}
+
+func TestAbsAndRel(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	if got := cl.abs("sub/main.go"); got != filepath.Join(dir, "sub/main.go") {
+		t.Fatalf("abs rel: %q", got)
+	}
+	abs := filepath.Join(dir, "main.go")
+	if got := cl.abs(abs); got != abs {
+		t.Fatalf("abs absolute: %q", got)
+	}
+	if got := cl.relOf(abs); got != "main.go" {
+		t.Fatalf("relOf inside: %q", got)
+	}
+	outside := filepath.Join(filepath.Dir(dir), "x.go")
+	if got := cl.relOf(outside); got != outside {
+		t.Fatalf("relOf outside: %q", got)
 	}
 }
