@@ -269,3 +269,33 @@ func TestHeadingIndexAt(t *testing.T) {
 		t.Fatalf("end: %d", got)
 	}
 }
+
+func TestWrapSelection(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	d := cl.doc(cl.Open("doc.md"))
+	d.content = "hello world"
+	d.caretStart, d.caretEnd = 6, 11
+	cl.wrapSelection(d, "**", "**")
+	if d.content != "hello **world**" {
+		t.Fatalf("wrap: %q", d.content)
+	}
+	if !d.jumpSel || d.jumpStart != 8 || d.jumpEnd != 13 {
+		t.Fatalf("selection: %+v", d)
+	}
+}
+
+func TestPrefixLine(t *testing.T) {
+	dir := t.TempDir()
+	cl := New(&host{dir: dir})
+	d := cl.doc(cl.Open("doc.md"))
+	d.content = "a\nb\n"
+	d.caretStart, d.caretEnd = 3, 3
+	cl.prefixLine(d, "- ")
+	if d.content != "a\n- b\n" {
+		t.Fatalf("prefix: %q", d.content)
+	}
+	if d.jumpStart != 5 || d.jumpEnd != 5 {
+		t.Fatalf("caret: %+v", d)
+	}
+}

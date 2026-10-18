@@ -40,6 +40,8 @@ type doc struct {
 	previewJump int
 	activeHead  int
 	lastCaret   int
+	caretStart  int
+	caretEnd    int
 	err         string
 }
 
@@ -145,15 +147,34 @@ func (cl *Client) View(c *mgo.Context) {
 	}
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(u * 2).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "打开…", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("folder"), Label: "打开"}).Clicked() {
 				cl.openViaDialog()
 			}
-			saveVariant := minput.Secondary
+			saveVariant := minput.Ghost
 			if d.content != d.saved {
 				saveVariant = minput.Primary
 			}
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: saveVariant}).Clicked() {
+			if minput.Button(c, "", minput.ButtonOptions{Variant: saveVariant, Icon: icons.Must("download"), Label: "保存"}).Clicked() {
 				cl.save(d)
+			}
+			for _, a := range []struct {
+				icon  string
+				label string
+				run   func()
+			}{
+				{"bold", "加粗", func() { cl.wrapSelection(d, "**", "**") }},
+				{"italic", "斜体", func() { cl.wrapSelection(d, "*", "*") }},
+				{"file-text", "标题", func() { cl.prefixLine(d, "# ") }},
+				{"list", "无序列表", func() { cl.prefixLine(d, "- ") }},
+				{"message-square", "引用", func() { cl.prefixLine(d, "> ") }},
+				{"terminal", "行内代码", func() { cl.wrapSelection(d, "`", "`") }},
+				{"external-link", "链接", func() { cl.wrapSelection(d, "[", "](url)") }},
+				{"image", "图片", func() { cl.wrapSelection(d, "![", "](url)") }},
+			} {
+				a := a
+				if minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must(a.icon), Label: a.label}).Clicked() {
+					a.run()
+				}
 			}
 			mgo.Box(c).Grow(1)
 			for _, m := range []struct {
@@ -216,7 +237,8 @@ func (cl *Client) sourceArea(c *mgo.Context, d *doc, u float32) {
 		ta = ta.SetTextSelection(d.jumpStart, d.jumpEnd)
 		d.jumpSel = false
 	}
-	if start, _ := ta.TextSelection(); start != d.lastCaret {
+	if start, end := ta.TextSelection(); start != d.lastCaret {
+		d.caretStart, d.caretEnd = start, end
 		d.lastCaret = start
 		cl.focusHeadingAt(d, start)
 	}
@@ -388,6 +410,46 @@ func atxHeading(row string) (heading, bool) {
 		return heading{}, false
 	}
 	return heading{level: n, text: strings.TrimSpace(trimmed[n:])}, true
+}
+
+// wrapSelection wraps the selected text with before and after, placing the
+// caret after it.
+func (cl *Client) wrapSelection(d *doc, before, after string) {
+	runes := []rune(d.content)
+	s, e := clampIndex(d.caretStart, len(runes)), clampIndex(d.caretEnd, len(runes))
+	if s > e {
+		s, e = e, s
+	}
+	sel := string(runes[s:e])
+	d.content = string(runes[:s]) + before + sel + after + string(runes[e:])
+	bs := s + len([]rune(before))
+	d.jumpStart, d.jumpEnd, d.jumpSel = bs, bs+len([]rune(sel)), true
+	cl.host.Invalidate()
+}
+
+// prefixLine inserts prefix at the caret line's start, keeping the caret
+// after it.
+func (cl *Client) prefixLine(d *doc, prefix string) {
+	runes := []rune(d.content)
+	pos := clampIndex(d.caretStart, len(runes))
+	lineStart := pos
+	for lineStart > 0 && runes[lineStart-1] != '\n' {
+		lineStart--
+	}
+	d.content = string(runes[:lineStart]) + prefix + string(runes[lineStart:])
+	np := pos + len([]rune(prefix))
+	d.jumpStart, d.jumpEnd, d.jumpSel = np, np, true
+	cl.host.Invalidate()
+}
+
+func clampIndex(i, n int) int {
+	if i < 0 {
+		return 0
+	}
+	if i > n {
+		return n
+	}
+	return i
 }
 
 // save writes the document's content back to its path.
