@@ -20,6 +20,7 @@ import (
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
@@ -157,24 +158,37 @@ func (cl *Client) View(c *mgo.Context) {
 			if minput.Button(c, "", minput.ButtonOptions{Variant: saveVariant, Icon: icons.Must("download"), Label: "保存"}).Clicked() {
 				cl.save(d)
 			}
-			for _, a := range []struct {
-				icon  string
-				label string
-				run   func()
-			}{
-				{"bold", "加粗", func() { cl.wrapSelection(d, "**", "**") }},
-				{"italic", "斜体", func() { cl.wrapSelection(d, "*", "*") }},
-				{"file-text", "标题", func() { cl.prefixLine(d, "# ") }},
-				{"list", "无序列表", func() { cl.prefixLine(d, "- ") }},
-				{"message-square", "引用", func() { cl.prefixLine(d, "> ") }},
-				{"terminal", "行内代码", func() { cl.wrapSelection(d, "`", "`") }},
-				{"external-link", "链接", func() { cl.wrapSelection(d, "[", "](url)") }},
-				{"image", "图片", func() { cl.wrapSelection(d, "![", "](url)") }},
-			} {
-				a := a
-				if minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must(a.icon), Label: a.label}).Clicked() {
-					a.run()
+			mgo.Box(c).Width(1).Height(18).Shrink(0).Background(k.ControlBorder)
+			iconBtn := func(icon, label string) bool {
+				return minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must(icon), Label: label}).Clicked()
+			}
+			if iconBtn("bold", "加粗") {
+				cl.wrapSelection(d, "**", "**")
+			}
+			if iconBtn("italic", "斜体") {
+				cl.wrapSelection(d, "*", "*")
+			}
+			moverlay.DropdownMenu(c, "", moverlay.DropdownMenuOptions{Icon: icons.Must("file-text"), Label: "标题"}, func(m *moverlay.PopupMenu) {
+				for lvl := 1; lvl <= 6; lvl++ {
+					if m.Item(fmt.Sprintf("标题 %d", lvl), moverlay.PopupMenuItemOptions{}) {
+						cl.prefixLine(d, strings.Repeat("#", lvl)+" ")
+					}
 				}
+			})
+			if iconBtn("list", "无序列表") {
+				cl.prefixLine(d, "- ")
+			}
+			if iconBtn("message-square", "引用") {
+				cl.prefixLine(d, "> ")
+			}
+			if iconBtn("terminal", "行内代码") {
+				cl.wrapSelection(d, "`", "`")
+			}
+			if iconBtn("external-link", "链接") {
+				cl.wrapSelection(d, "[", "](url)")
+			}
+			if iconBtn("image", "图片") {
+				cl.wrapSelection(d, "![", "](url)")
 			}
 			mgo.Box(c).Grow(1)
 			for _, m := range []struct {
