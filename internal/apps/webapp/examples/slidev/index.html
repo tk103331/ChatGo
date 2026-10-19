@@ -235,7 +235,7 @@
       var m;
       if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
         closeList();
-        var n = m[1].length;
+      var n = m[1].length;
         html += "<h" + n + ">" + inline(m[2]) + "</h" + n + ">";
         continue;
       }
@@ -436,43 +436,56 @@
     });
   })();
 
-  // Agent tools.
-  if (window.chatgo) {
-    window.chatgo.registerTools({
-      slidev_get_source: function () {
-        return source;
-      },
-      slidev_set_source: function (args) {
-        var md = String(args.markdown == null ? "" : args.markdown);
-        current = 0;
-        setSource(md);
-        return { slides: slides().length };
-      },
-      slidev_list_slides: function () {
-        return slides().map(function (s, i) { return { index: i + 1, title: titleOf(s, i + 1) }; });
-      },
-      slidev_get_slide: function (args) {
-        var list = slides();
-        var i = clampIndex(args.index, list.length);
-        return { index: i + 1, markdown: list[i] };
-      },
-      slidev_add_slide: function (args) {
-        var index = addSlide(args.markdown);
-        return { index: index, slides: slides().length };
-      },
-      slidev_update_slide: function (args) {
-        var index = updateSlide(args.index, args.markdown);
-        return { index: index, slides: slides().length };
-      },
-      slidev_delete_slide: function (args) {
-        deleteSlide(args.index);
-        return { slides: slides().length };
-      },
-      slidev_go_to: function (args) {
-        var index = goTo(args.index);
-        return { index: index, slides: slides().length };
-      }
-    });
+  // Agent tools. The host injects window.chatgo into the entry page; when it
+  // is not there yet, wait for it so registration never silently vanishes.
+  function registerTools() {
+    if (!window.chatgo || !window.chatgo.registerTools) { return false; }
+    window.chatgo.registerTools(TOOLS);
+    return true;
+  }
+
+  var TOOLS = {
+    slidev_get_source: function () {
+      return source;
+    },
+    slidev_set_source: function (args) {
+      var md = String(args.markdown == null ? "" : args.markdown);
+      current = 0;
+      setSource(md);
+      return { slides: slides().length };
+    },
+    slidev_list_slides: function () {
+      return slides().map(function (s, i) { return { index: i + 1, title: titleOf(s, i + 1) }; });
+    },
+    slidev_get_slide: function (args) {
+      var list = slides();
+      var i = clampIndex(args.index, list.length);
+      return { index: i + 1, markdown: list[i] };
+    },
+    slidev_add_slide: function (args) {
+      var index = addSlide(args.markdown);
+      return { index: index, slides: slides().length };
+    },
+    slidev_update_slide: function (args) {
+      var index = updateSlide(args.index, args.markdown);
+      return { index: index, slides: slides().length };
+    },
+    slidev_delete_slide: function (args) {
+      deleteSlide(args.index);
+      return { slides: slides().length };
+    },
+    slidev_go_to: function (args) {
+      var index = goTo(args.index);
+      return { index: index, slides: slides().length };
+    }
+  };
+
+  if (!registerTools()) {
+    var waited = 0;
+    var timer = setInterval(function () {
+      waited += 100;
+      if (registerTools() || waited > 5000) { clearInterval(timer); }
+    }, 100);
   }
 
   editor.value = source;

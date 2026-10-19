@@ -50,7 +50,7 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
-	if p == "" {
+	if p == "" || p == strings.TrimPrefix(path.Clean("/"+h.app.Entry), "/") {
 		h.serveIndex(w, r)
 		return
 	}
