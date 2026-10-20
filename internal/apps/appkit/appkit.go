@@ -156,7 +156,7 @@ func (s *Standalone) Invalidate() {
 	inv := s.invalid
 	s.mu.Unlock()
 	if inv != nil {
-		inv(nil)
+		inv(func() {})
 	}
 }
 
