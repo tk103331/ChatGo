@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
+	"os/exec"
 	"strings"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -163,6 +165,26 @@ func (cw *ChatWindow) openApp(id string) {
 	cw.invalidate()
 }
 
+// openStandaloneApp launches the app in its own window as a detached child
+// process, reusing the --app entry point so protocol registration and the
+// standalone runtime stay isolated from the main shell.
+func (cw *ChatWindow) openStandaloneApp(id string) {
+	exe, err := os.Executable()
+	if err != nil {
+		cw.toast("无法定位可执行文件: "+err.Error(), mcore.SeverityError)
+		return
+	}
+	cmd := exec.Command(exe, "--app", id, "--dir", cw.fileRoot())
+	cmd.Dir = cw.fileRoot()
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, nil, nil
+	if err := cmd.Start(); err != nil {
+		cw.toast("独立打开失败: "+err.Error(), mcore.SeverityError)
+		return
+	}
+	go func() { _ = cmd.Wait() }()
+	cw.toast("已在独立窗口打开", mcore.SeveritySuccess)
+}
+
 // appWorkspace lays out the active app: the left work area and the chat pane.
 func (cw *ChatWindow) appWorkspace(c *mgo.Context) {
 	a, ok := appByID(cw.appActive)
@@ -179,6 +201,10 @@ func (cw *ChatWindow) appWorkspace(c *mgo.Context) {
 	}
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Children(func() {
 		cw.appHeader(c, a)
+		if cw.appChatHidden {
+			mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Children(func() { cw.appLeft(c, a) })
+			return
+		}
 		mgo.Split(c, &cw.appLeftW, func() {
 			mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Children(func() { cw.appLeft(c, a) })
 		}, func() {
@@ -213,7 +239,8 @@ func (cw *ChatWindow) appDefaultLeftW(c *mgo.Context, a appDef) float32 {
 	return left
 }
 
-// appHeader shows the app title and a way back to the card grid.
+// appHeader shows the app title, a way back to the card grid, and on the
+// right a toggle for the chat pane and a button to open the app standalone.
 func (cw *ChatWindow) appHeader(c *mgo.Context, a appDef) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -226,6 +253,20 @@ func (cw *ChatWindow) appHeader(c *mgo.Context, a appDef) {
 		mgo.Icon(c, icons.Must(a.Icon)).Size(18, 18).TextColor(k.AccentText)
 		mgo.Text(c, a.Title).Font(mtheme.SerifFont).
 			FontSize(mcore.FontSize(c, mtheme.BodySize)).FontWeight(600)
+		mgo.Box(c).Grow(1)
+		chatIcon := "message-square"
+		chatLabel := "隐藏对话"
+		if cw.appChatHidden {
+			chatIcon = "panel-left"
+			chatLabel = "显示对话"
+		}
+		if mcore.IconAction(c, icons.Must(chatIcon), chatLabel).Clicked() {
+			cw.appChatHidden = !cw.appChatHidden
+			cw.appLeftFor = ""
+		}
+		if mcore.IconAction(c, icons.Must("external-link"), "独立打开").Clicked() {
+			cw.openStandaloneApp(a.ID)
+		}
 	})
 }
 

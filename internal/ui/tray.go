@@ -81,6 +81,13 @@ func (cw *ChatWindow) updateTrayMenu() {
 
 func (cw *ChatWindow) trayMenuKey() string {
 	var b strings.Builder
+	for _, a := range apps() {
+		b.WriteString("app:")
+		b.WriteString(a.ID)
+		b.WriteByte('|')
+		b.WriteString(a.Title)
+		b.WriteByte('\n')
+	}
 	for _, conv := range cw.recentConvs(trayRecentMax) {
 		b.WriteString(conv.ID)
 		b.WriteByte('|')
@@ -107,6 +114,16 @@ func (cw *ChatWindow) buildTrayMenu() *mygo.Menu {
 			}})
 		}
 		items = append(items, &mygo.MenuItem{Label: "最近会话", Submenu: sub})
+	}
+	if list := apps(); len(list) > 0 {
+		sub := make([]*mygo.MenuItem, 0, len(list))
+		for _, a := range list {
+			a := a
+			sub = append(sub, &mygo.MenuItem{Label: a.Title, Click: func(*mygo.MenuItem, *mygo.Window) {
+				cw.openStandaloneApp(a.ID)
+			}})
+		}
+		items = append(items, &mygo.MenuItem{Label: "应用", Submenu: sub})
 	}
 	items = append(items, &mygo.MenuItem{Label: "检查更新…", Click: func(*mygo.MenuItem, *mygo.Window) {
 		updater.CheckForUpdates()

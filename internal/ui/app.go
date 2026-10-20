@@ -84,6 +84,7 @@ type ChatWindow struct {
 	appCtxTabs map[string][]string
 	appCtxAll  map[string]bool
 	appsGrid   mgo.GridState
+	appChatHidden bool
 	currentApp string
 
 	gitCommitMsg string
