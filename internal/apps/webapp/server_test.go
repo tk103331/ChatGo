@@ -24,3 +24,19 @@ func TestEntryPathGetsBridge(t *testing.T) {
 		}
 	}
 }
+
+func TestCallScriptPassesNameAndArgs(t *testing.T) {
+	js, err := callScript("c1", "slidev_add_slide", map[string]any{"markdown": "# hi \" '"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(js, `window.chatgo.handle("slidev_add_slide",{`) {
+		t.Fatalf("name must be the first argument: %s", js)
+	}
+	if strings.Contains(js, `handle({"id"`) {
+		t.Fatalf("payload object must not be passed as the name: %s", js)
+	}
+	if !strings.Contains(js, `"id":"c1"`) && !strings.Contains(js, `id:"c1"`) {
+		t.Fatalf("result must carry the call id: %s", js)
+	}
+}

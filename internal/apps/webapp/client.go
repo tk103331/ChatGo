@@ -197,15 +197,10 @@ func (cl *Client) call(name string, args map[string]any) (string, error) {
 	}
 	id, req := cl.br.begin(name, args)
 	defer cl.br.finish(id)
-	payload, err := jsonFor(map[string]any{"id": id, "name": name, "args": args})
+	wrapped, err := callScript(id, name, args)
 	if err != nil {
 		return "", err
 	}
-	wrapped := `(function(){var p=window.chatgo.handle(` + string(payload) + `);` +
-		`p.then(function(r){fetch("/__chatgo/result",{method:"POST",headers:{"Content-Type":"application/json"},` +
-		`body:JSON.stringify({id:"` + id + `",result:r})})},` +
-		`function(e){fetch("/__chatgo/result",{method:"POST",headers:{"Content-Type":"application/json"},` +
-		`body:JSON.stringify({id:"` + id + `",error:String(e)})})});return "pending"})()`
 	ctx, cancel := contextWithTimeout()
 	defer cancel()
 	if _, err := v.Page().EvalContext(ctx, wrapped); err != nil {

@@ -25,6 +25,7 @@ const BridgeJS = `
     },
     tools: function () { return Object.keys(handlers); },
     handle: function (name, args) {
+      if (name && typeof name === "object") { args = name.args; name = name.name; }
       var fn = handlers[name];
       if (!fn) return Promise.reject(new Error("tool not registered: " + name));
       return Promise.resolve(fn(args || {}));
