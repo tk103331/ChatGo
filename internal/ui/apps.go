@@ -126,6 +126,7 @@ func (cw *ChatWindow) appCard(c *mgo.Context, a appDef) {
 	if b.Hovered() {
 		b.Background(k.SurfaceHover)
 	}
+	standaloneClicked := false
 	b.Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u * 2).Children(func() {
 			mgo.Icon(c, icons.Must(a.Icon)).Size(20, 20).TextColor(k.AccentText).Shrink(0)
@@ -141,10 +142,14 @@ func (cw *ChatWindow) appCard(c *mgo.Context, a appDef) {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Shrink(0).Children(func() {
 			mgo.Text(c, fmt.Sprintf("%d 个工具", len(cw.appToolsFor(a.ID)))).
 				FontSize(caption).TextColor(k.TextMuted).Grow(1)
+			if mcore.IconAction(c, icons.Must("external-link"), "独立打开").Clicked() {
+				standaloneClicked = true
+				cw.openStandaloneApp(a.ID)
+			}
 			mgo.Icon(c, icons.Must("chevron-right")).Size(16, 16).TextColor(k.TextMuted)
 		})
 	})
-	if b.Clicked() {
+	if b.Clicked() && !standaloneClicked {
 		cw.openApp(a.ID)
 	}
 }

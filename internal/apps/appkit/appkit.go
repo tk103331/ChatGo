@@ -4,11 +4,17 @@
 package appkit
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	mygo "github.com/egoist/mygo"
+
+	"chatgo/internal/config"
+	"chatgo/internal/llm"
+	"chatgo/internal/ui/chatpanel"
+	"chatgo/pkg/models"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 )
@@ -91,6 +97,19 @@ type Standalone struct {
 	toasts  []Toast
 	seq     atomic.Int64
 	started time.Time
+
+	panel        *chatpanel.Panel
+	messages     []models.Message
+	streaming    bool
+	streamCancel context.CancelFunc
+	react        *llm.ReactClient
+	cfg          *config.Config
+	system       string
+	tools        []Tool
+	bodyW        float32
+	chatHidden   bool
+	status       string
+	agentTried   bool
 }
 
 // Toast is a message queued for the standalone window's status line.

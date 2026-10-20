@@ -7,6 +7,7 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
@@ -16,10 +17,17 @@ type Window struct {
 	Width  int
 	Height int
 	Body   func(c *mgo.Context, rt *Standalone)
+	// Tools are the operations exposed to the window's chat agent; when
+	// empty the window has no chat pane.
+	Tools []Tool
+	// System is the chat agent's system prompt.
+	System string
 }
 
 // Run opens the app in its own window and blocks until it closes.
 func Run(win Window, rt *Standalone) {
+	rt.tools = win.Tools
+	rt.system = win.System
 	mygo.App.WhenReady(func() {
 		var w *mygo.Window
 		w = mygo.NewWindow(mygo.WindowOptions{
@@ -42,7 +50,8 @@ func Run(win Window, rt *Standalone) {
 	}
 }
 
-// Column lays out a standalone app with its own title bar and status line.
+// Column lays out a standalone app with its own title bar, an optional chat
+// pane on the right, and a status line.
 func Column(c *mgo.Context, w *mygo.Window, win Window, rt *Standalone) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -54,8 +63,40 @@ func Column(c *mgo.Context, w *mygo.Window, win Window, rt *Standalone) {
 			AlignItems(mgo.Center).Gap(u).Background(k.Background).Children(func() {
 			mgo.Text(c, win.Title).Font(mtheme.SerifFont).FontWeight(600).
 				FontSize(mcore.FontSize(c, mtheme.BodySize)).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			if rt.HasChat() {
+				icon := "message-square"
+				label := "隐藏对话"
+				if rt.chatHidden {
+					icon = "panel-left"
+					label = "显示对话"
+				}
+				if mcore.IconAction(c, icons.Must(icon), label).Clicked() {
+					rt.ToggleChat()
+				}
+			}
 		})
-		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { win.Body(c, rt) })
+		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
+			if !rt.HasChat() || rt.chatHidden {
+				win.Body(c, rt)
+				return
+			}
+			winW, _ := c.Size()
+			if rt.bodyW == 0 {
+				rt.bodyW = winW - 340
+				if rt.bodyW < 380 {
+					rt.bodyW = 380
+				}
+			}
+			mgo.Split(c, &rt.bodyW, func() {
+				mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Children(func() { win.Body(c, rt) })
+			}, func() {
+				mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
+					mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(k.Background).
+						BorderWidth(mtheme.BorderWidth, 0, 0, 0).BorderColor(k.Border).
+						Children(func() { rt.ChatView(c) })
+				})
+			}).Grow(1).MinHeight(0)
+		})
 		if toasts := rt.Toasts(); len(toasts) > 0 {
 			last := toasts[len(toasts)-1]
 			col := k.TextMuted
