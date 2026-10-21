@@ -199,3 +199,33 @@ func TestOpenToolRegisters(t *testing.T) {
 		t.Fatalf("active: %q", cl.Tabs().Active)
 	}
 }
+
+func TestTreeLoadAndLabel(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "pkg", "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cl := New(&host{dir: dir})
+	if !cl.treeLoaded[treeRoot] {
+		t.Fatal("root should be preloaded")
+	}
+	kids := cl.treeDirs[treeRoot]
+	if len(kids) != 2 || kids[0] != "pkg" || kids[1] != "main.go" {
+		t.Fatalf("children = %v, want [pkg main.go]", kids)
+	}
+	if !cl.treeIsDir["pkg"] {
+		t.Error("pkg should be a dir")
+	}
+	if cl.treeIsDir["main.go"] {
+		t.Error("main.go should not be a dir")
+	}
+	if got := cl.treeLabel("main.go"); got != "main.go" {
+		t.Errorf("treeLabel = %q", got)
+	}
+	if got := cl.treeLabel("pkg"); got != "pkg/" {
+		t.Errorf("treeLabel dir = %q, want pkg/", got)
+	}
+}

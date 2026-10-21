@@ -17,6 +17,7 @@ import (
 	"chatgo/internal/apps/filetools"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
@@ -47,6 +48,13 @@ type Client struct {
 	ctxAll      bool
 	ctxTabs     []string
 	openHandler func(path string)
+
+	treeOn     bool
+	treeW      float32
+	tree       data.TreeState[string]
+	treeDirs   map[string][]string
+	treeLoaded map[string]bool
+	treeIsDir  map[string]bool
 }
 
 // Host is the capability set the app needs from its shell.
@@ -54,7 +62,12 @@ type Host = appkit.Host
 
 // New returns an editor driving the given host.
 func New(h Host) *Client {
-	return &Client{host: h, docs: map[string]*file{}}
+	cl := &Client{
+		host: h, docs: map[string]*file{}, treeOn: true, treeW: 220,
+		treeDirs: map[string][]string{}, treeLoaded: map[string]bool{}, treeIsDir: map[string]bool{},
+	}
+	cl.loadTree(treeRoot)
+	return cl
 }
 
 // SetOpenHandler registers a callback run when a file is opened into a new
@@ -126,12 +139,39 @@ func (cl *Client) Close(id string) {
 // Tabs exposes the tab list for an embedding tab bar.
 func (cl *Client) Tabs() *appkit.Tabs { return &cl.tabs }
 
-// View draws the active file with MyGo's editor.
+// View draws the file tree, toolbar, editor and status line.
 func (cl *Client) View(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	f := cl.file(cl.tabs.Active)
+	if f == nil && !cl.treeOn {
+		mgo.Column(c).Fill().Center().Children(func() {
+			mgo.Text(c, "打开一个源文件开始编辑").FontSize(caption).TextColor(k.TextMuted)
+		})
+		return
+	}
+	if f != nil {
+		f.st.SoftWrap = f.wrap
+		if f.lineNo {
+			f.st.LineNumbers = editor.LineNumbersOn
+		} else {
+			f.st.LineNumbers = editor.LineNumbersOff
+		}
+	}
+	if cl.treeOn {
+		mgo.Split(c, &cl.treeW, func() {
+			cl.treePanel(c, k, u, caption)
+		}, func() {
+			cl.editorPane(c, f, k, u, caption)
+		}).Fill()
+		return
+	}
+	cl.editorPane(c, f, k, u, caption)
+}
+
+// editorPane draws the toolbar, editor and status line.
+func (cl *Client) editorPane(c *mgo.Context, f *file, k mtheme.Tokens, u, caption float32) {
 	if f == nil {
 		mgo.Column(c).Fill().Center().Children(func() {
 			mgo.Text(c, "打开一个源文件开始编辑").FontSize(caption).TextColor(k.TextMuted)
@@ -139,12 +179,6 @@ func (cl *Client) View(c *mgo.Context) {
 		return
 	}
 	dirty := f.buf.Modified()
-	f.st.SoftWrap = f.wrap
-	if f.lineNo {
-		f.st.LineNumbers = editor.LineNumbersOn
-	} else {
-		f.st.LineNumbers = editor.LineNumbersOff
-	}
 	iconBtn := func(icon, label string) bool {
 		return minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must(icon), Label: label}).Clicked()
 	}
@@ -155,10 +189,13 @@ func (cl *Client) View(c *mgo.Context) {
 		}
 		return minput.Button(c, "", minput.ButtonOptions{Variant: variant, Icon: icons.Must(icon), Label: label}).Clicked()
 	}
-	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(u * 2).Gap(u * 2).Children(func() {
+	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(u*2).Gap(u*2).Children(func() {
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
 			if iconBtn("folder", "打开") {
 				cl.openViaDialog()
+			}
+			if toggleBtn("panel-left", "文件树", cl.treeOn) {
+				cl.treeOn = !cl.treeOn
 			}
 			saveVariant := minput.Ghost
 			if dirty {
@@ -212,7 +249,7 @@ func (cl *Client) View(c *mgo.Context) {
 		if l := f.buf.Language(); l != nil {
 			lang = l.Name
 		}
-		mgo.Row(c).FillWidth().Shrink(0).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+		mgo.Row(c).FillWidth().Shrink(0).Gap(u*2).AlignItems(mgo.Center).Children(func() {
 			mgo.Text(c, fmt.Sprintf("行 %d, 列 %d", pos.Line+1, pos.Col+1)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
 			mgo.Text(c, fmt.Sprintf("%d 行 · %d 字符", f.buf.LineCount(), f.buf.Len())).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
 			mgo.Text(c, lang).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
