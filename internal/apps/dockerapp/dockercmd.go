@@ -743,7 +743,10 @@ func (t *termConn) Send(line string) error {
 // Close tears down the terminal session.
 func (t *termConn) Close() {
 	t.conn.Close()
-	<-t.done
+	select {
+	case <-t.done:
+	case <-time.After(2 * time.Second):
+	}
 	t.cli.Close()
 }
 

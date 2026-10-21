@@ -116,7 +116,18 @@ func (cl *Client) termPane(c *mgo.Context, st *state, k mtheme.Tokens, u, captio
 		})
 		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Background(k.Surface).
 			Border(mtheme.BorderWidth, k.Border).Radius(mtheme.ControlRadius).Clip().Padding(u, u*2).Children(func() {
-			lines := st.term.Lines()
+			var lines []string
+			if st.term != nil {
+				lines = st.term.Lines()
+			}
+			if len(lines) == 0 {
+				if st.termBusy {
+					mgo.Text(c, "连接终端中…").FontSize(caption).TextColor(k.TextMuted)
+				} else {
+					mgo.Text(c, "(终端未连接)").FontSize(caption).TextColor(k.TextMuted)
+				}
+				return
+			}
 			mgo.Column(c).Fill().Gap(2).Children(func() {
 				for _, ln := range lines {
 					mgo.Text(c, ln).FontSize(caption).Font(mtheme.MonoFont).TextColor(k.Text).Grow(1)

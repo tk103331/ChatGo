@@ -1,6 +1,13 @@
 package dockerapp
 
-import "testing"
+import (
+	"testing"
+
+	mygo "github.com/egoist/mygo"
+	mgo "github.com/egoist/mygo/ui"
+
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+)
 
 func TestParseLevel(t *testing.T) {
 	cases := []struct {
@@ -124,3 +131,53 @@ func TestShortErr(t *testing.T) {
 type multiLineErr struct{}
 
 func (multiLineErr) Error() string { return "line1\nline2\n" }
+
+type fakeHost struct{}
+
+func (fakeHost) Root() string                              { return "" }
+func (fakeHost) Workspace() string                         { return "" }
+func (fakeHost) Post(fn func())                            { fn() }
+func (fakeHost) Invalidate()                               {}
+func (fakeHost) Toast(msg string, sev mcore.Severity)                  { _ = msg; _ = sev }
+func (fakeHost) Confirm(_, _ string, a func())             { if a != nil { a() } }
+func (fakeHost) Prompt(_, _, _ string, a func(string))     { if a != nil { a("") } }
+func (fakeHost) OpenFile(string)                           {}
+func (fakeHost) OpenFileDialog(string) string              { return "" }
+func (fakeHost) SaveFileDialog(string) string              { return "" }
+func (fakeHost) Language(string) string                    { return "" }
+func (fakeHost) NewID() string                             { return "" }
+func (fakeHost) NativeWindow() *mygo.Window               { return nil }
+
+func TestTermPaneNilTerm(t *testing.T) {
+	cl := New(fakeHost{})
+	cl.mu.Lock()
+	cl.st.containers = []Container{{ID: "abc", Names: []string{"/t"}, Image: "img", State: "running"}}
+	cl.st.detail = "abc"
+	cl.st.detailTab = tabTerm
+	cl.st.term = nil
+	cl.st.termBusy = true
+	cl.mu.Unlock()
+	img := mgo.Render(func(c *mgo.Context) {
+		mcore.Use(c, mcore.Settings{Mode: mcore.System})
+		cl.View(c)
+	}, 800, 600, 1)
+	if img == nil {
+		t.Fatal("render returned nil image")
+	}
+}
+
+func TestDetailPaneTabBar(t *testing.T) {
+	cl := New(fakeHost{})
+	cl.mu.Lock()
+	cl.st.containers = []Container{{ID: "abc", Names: []string{"/t"}, Image: "img", State: "running"}}
+	cl.st.detail = "abc"
+	cl.st.detailTab = tabInfo
+	cl.mu.Unlock()
+	img := mgo.Render(func(c *mgo.Context) {
+		mcore.Use(c, mcore.Settings{Mode: mcore.System})
+		cl.View(c)
+	}, 800, 600, 1)
+	if img == nil {
+		t.Fatal("render returned nil image")
+	}
+}
