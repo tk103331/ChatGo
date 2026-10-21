@@ -116,3 +116,21 @@ func TestOpenAppCreatesSession(t *testing.T) {
 		t.Fatal("apps should have separate conversations")
 	}
 }
+
+func TestOpenAppSkipsSessionWhenChatHidden(t *testing.T) {
+	cw := testWindow()
+	cm, err := models.NewConversationManagerAt(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cw.convManager = cm
+	cw.section = sectionApps
+	cw.appChatHidden = true
+	cw.openApp("markdown")
+	if cw.appConv["markdown"] != "" {
+		t.Fatalf("hidden chat should not create a session, got %q", cw.appConv["markdown"])
+	}
+	if cw.currentApp != "markdown" {
+		t.Fatalf("want currentApp markdown, got %q", cw.currentApp)
+	}
+}

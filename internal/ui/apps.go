@@ -170,7 +170,11 @@ func (cw *ChatWindow) openApp(id string) {
 		cw.appCtxTabs[id] = []string{cw.appTab[id]}
 	}
 	cw.syncAppContext(id)
-	cw.startAppSession(id)
+	if cw.appChatHidden {
+		cw.applyApp(id)
+	} else {
+		cw.startAppSession(id)
+	}
 	cw.invalidate()
 }
 
@@ -272,6 +276,9 @@ func (cw *ChatWindow) appHeader(c *mgo.Context, a appDef) {
 		if mcore.IconAction(c, icons.Must(chatIcon), chatLabel).Clicked() {
 			cw.appChatHidden = !cw.appChatHidden
 			cw.appLeftFor = ""
+			if !cw.appChatHidden {
+				cw.startAppSession(a.ID)
+			}
 		}
 		if mcore.IconAction(c, icons.Must("external-link"), "独立打开").Clicked() {
 			cw.openStandaloneApp(a.ID)
