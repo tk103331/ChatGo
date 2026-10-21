@@ -20,6 +20,7 @@ import (
 	"chatgo/internal/apps/filetools"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
@@ -43,11 +44,13 @@ var commandWhitelist = map[string]bool{
 
 // shellTab is one open shell.
 type shellTab struct {
-	id     string
-	title  string
-	term   *term.Terminal
-	err    string
-	exited bool
+	id       string
+	title    string
+	dir      string
+	term     *term.Terminal
+	err      string
+	exited   bool
+	restarts int
 }
 
 // Client is one terminal app bound to a Host.
@@ -102,7 +105,7 @@ func (cl *Client) NewTab() string {
 	if dir == "" {
 		dir, _ = os.UserHomeDir()
 	}
-	tb := &shellTab{id: cl.host.NewID()}
+	tb := &shellTab{id: cl.host.NewID(), dir: dir}
 	cl.byID[tb.id] = tb
 	cl.tabs.Add(tb.id)
 	go cl.start(tb, dir)
@@ -115,7 +118,7 @@ func (cl *Client) start(tb *shellTab, dir string) {
 		Dir:     dir,
 		OnTitle: func(title string) { cl.host.Post(func() { tb.title = title; cl.host.Invalidate() }) },
 		OnExit: func(int) {
-			cl.host.Post(func() { tb.exited = true; cl.host.Invalidate() })
+			cl.host.Post(func() { cl.onExit(tb) })
 		},
 	})
 	cl.host.Post(func() {
@@ -127,6 +130,33 @@ func (cl *Client) start(tb *shellTab, dir string) {
 		tb.term = t
 		cl.host.Invalidate()
 	})
+}
+
+// onExit reopens the shell when it exits, unless it keeps exiting.
+func (cl *Client) onExit(tb *shellTab) {
+	if _, ok := cl.byID[tb.id]; !ok {
+		return
+	}
+	if tb.restarts < 3 {
+		tb.restarts++
+		tb.err = ""
+		go cl.start(tb, tb.dir)
+		return
+	}
+	tb.exited = true
+	cl.host.Invalidate()
+}
+
+// Restart relaunches a tab's shell.
+func (cl *Client) Restart(id string) {
+	tb := cl.byID[id]
+	if tb == nil {
+		return
+	}
+	tb.exited = false
+	tb.restarts = 0
+	tb.err = ""
+	go cl.start(tb, tb.dir)
 }
 
 // Close stops a tab's shell and drops it.
@@ -158,25 +188,17 @@ func (cl *Client) View(c *mgo.Context) {
 		case tb.term == nil:
 			mgo.Text(c, "正在启动终端…").Padding(u * 3).FontSize(caption).TextColor(k.TextMuted)
 		default:
-			mgo.Row(c).FillWidth().Shrink(0).Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
-				BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
-				if minput.Button(c, "清屏", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
-					tb.term.Send([]byte("\x0c"))
+			if tb.exited {
+				if minput.Button(c, "已退出，点击重连", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("refresh-cw")}).Clicked() {
+					cl.Restart(tb.id)
 				}
-				if minput.Button(c, "中断", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
-					tb.term.Send([]byte("\x03"))
-				}
-				mgo.Box(c).Grow(1)
-				if dir := tb.term.Dir(); dir != "" {
-					mgo.Text(c, dir).FontSize(caption).TextColor(k.TextMuted).
-						Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				}
-				status := "运行中"
-				if tb.exited {
-					status = "已退出"
-				}
-				mgo.Text(c, status).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-			})
+			}
+			if title := tb.term.Title(); title != "" {
+				mgo.Row(c).FillWidth().Shrink(0).Padding(u/2, u*2).AlignItems(mgo.Center).Children(func() {
+					mgo.Text(c, title).FontSize(caption).TextColor(k.TextMuted).
+						SingleLine().Ellipsis("…")
+				})
+			}
 			mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 				term.View(c, tb.term).Fill()
 			})
