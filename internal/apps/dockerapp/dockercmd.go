@@ -4,6 +4,7 @@
 package dockerapp
 
 import (
+	"archive/tar"
 	"bufio"
 	"bytes"
 	"context"
@@ -11,6 +12,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -558,4 +560,274 @@ func humanSize(n int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+// inspectText renders a container's key metadata as text.
+func inspectText(id string) (string, error) {
+	cli, err := newClient()
+	if err != nil {
+		return "", err
+	}
+	defer cli.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	info, err := cli.ContainerInspect(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "ID:   %s\n", info.ID)
+	fmt.Fprintf(&b, "名称: %s\n", strings.TrimPrefix(info.Name, "/"))
+	fmt.Fprintf(&b, "镜像: %s\n", info.Config.Image)
+	fmt.Fprintf(&b, "创建: %s\n", info.Created)
+	if st := info.State; st != nil {
+		fmt.Fprintf(&b, "状态: %s\n", st.Status)
+		fmt.Fprintf(&b, "运行: %v\n", st.Running)
+		fmt.Fprintf(&b, "暂停: %v\n", st.Paused)
+		fmt.Fprintf(&b, "重启: %v\n", st.Restarting)
+		fmt.Fprintf(&b, "退出码: %d\n", st.ExitCode)
+		fmt.Fprintf(&b, "OOM: %v\n", st.OOMKilled)
+		if st.Error != "" {
+			fmt.Fprintf(&b, "错误: %s\n", st.Error)
+		}
+		if st.StartedAt != "" {
+			fmt.Fprintf(&b, "启动: %s\n", st.StartedAt)
+		}
+		if st.FinishedAt != "" {
+			fmt.Fprintf(&b, "结束: %s\n", st.FinishedAt)
+		}
+	}
+	if cfg := info.Config; cfg != nil {
+		if len(cfg.Cmd) > 0 {
+			fmt.Fprintf(&b, "命令: %s\n", strings.Join(cfg.Cmd, " "))
+		}
+		if len(cfg.Entrypoint) > 0 {
+			fmt.Fprintf(&b, "入口: %s\n", strings.Join(cfg.Entrypoint, " "))
+		}
+		if cfg.WorkingDir != "" {
+			fmt.Fprintf(&b, "工作目录: %s\n", cfg.WorkingDir)
+		}
+		if cfg.User != "" {
+			fmt.Fprintf(&b, "用户: %s\n", cfg.User)
+		}
+		if len(cfg.Env) > 0 {
+			fmt.Fprintf(&b, "环境变量:\n")
+			for _, e := range cfg.Env {
+				fmt.Fprintf(&b, "  %s\n", e)
+			}
+		}
+	}
+	if hc := info.HostConfig; hc != nil {
+		if len(hc.Binds) > 0 {
+			fmt.Fprintf(&b, "挂载:\n")
+			for _, m := range hc.Binds {
+				fmt.Fprintf(&b, "  %s\n", m)
+			}
+		}
+		if hc.RestartPolicy.Name != "" {
+			fmt.Fprintf(&b, "重启策略: %s\n", hc.RestartPolicy.Name)
+		}
+		if hc.Memory > 0 {
+			fmt.Fprintf(&b, "内存限制: %s\n", humanSize(hc.Memory))
+		}
+	}
+	if len(info.Mounts) > 0 {
+		fmt.Fprintf(&b, "挂载点:\n")
+		for _, m := range info.Mounts {
+			fmt.Fprintf(&b, "  %s:%s (%s)\n", m.Source, m.Destination, m.Type)
+		}
+	}
+	if ns := info.NetworkSettings; ns != nil {
+		if ns.IPAddress != "" {
+			fmt.Fprintf(&b, "IP: %s\n", ns.IPAddress)
+		}
+		if len(ns.Ports) > 0 {
+			fmt.Fprintf(&b, "端口:\n")
+			for port, binds := range ns.Ports {
+				for _, pb := range binds {
+					fmt.Fprintf(&b, "  %s -> %s:%s\n", port, pb.HostIP, pb.HostPort)
+				}
+			}
+		}
+		if len(ns.Networks) > 0 {
+			fmt.Fprintf(&b, "网络:\n")
+			for name, ep := range ns.Networks {
+				fmt.Fprintf(&b, "  %s (%s)\n", name, ep.IPAddress)
+			}
+		}
+	}
+	return strings.TrimRight(b.String(), "\n"), nil
+}
+
+// openTerminal execs an interactive shell in a container and returns the
+// hijacked connection plus a read loop feeding output lines.
+func openTerminal(id, shell string) (*termConn, error) {
+	cli, err := newClient()
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+	created, err := cli.ContainerExecCreate(ctx, id, types.ExecConfig{
+		Cmd: []string{shell}, Tty: true,
+		AttachStdin: true, AttachStdout: true, AttachStderr: true,
+	})
+	if err != nil {
+		cancel()
+		cli.Close()
+		return nil, err
+	}
+	attach, err := cli.ContainerExecAttach(ctx, created.ID, types.ExecStartCheck{})
+	if err != nil {
+		cancel()
+		cli.Close()
+		return nil, err
+	}
+	tc := &termConn{
+		cli: cli, conn: attach.Conn, reader: attach.Reader,
+		done: make(chan struct{}),
+	}
+	go tc.readLoop(cancel)
+	return tc, nil
+}
+
+// termConn is an attached interactive terminal to a container.
+type termConn struct {
+	cli    *client.Client
+	conn   interface {
+		Write([]byte) (int, error)
+		Close() error
+	}
+	reader interface {
+		Read([]byte) (int, error)
+	}
+	done  chan struct{}
+	lines []string
+	mu    sync.Mutex
+}
+
+// readLoop reads the terminal output into lines until the stream closes.
+func (t *termConn) readLoop(cancel context.CancelFunc) {
+	defer close(t.done)
+	defer cancel()
+	scanner := bufio.NewScanner(t.reader)
+	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimRight(scanner.Text(), "\r")
+		t.mu.Lock()
+		t.lines = append(t.lines, line)
+		if len(t.lines) > 5000 {
+			t.lines = t.lines[len(t.lines)-5000:]
+		}
+		t.mu.Unlock()
+	}
+}
+
+// Lines returns a copy of the collected output lines.
+func (t *termConn) Lines() []string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	out := make([]string, len(t.lines))
+	copy(out, t.lines)
+	return out
+}
+
+// Send writes a command line to the terminal.
+func (t *termConn) Send(line string) error {
+	_, err := t.conn.Write([]byte(line + "\n"))
+	return err
+}
+
+// Close tears down the terminal session.
+func (t *termConn) Close() {
+	t.conn.Close()
+	<-t.done
+	t.cli.Close()
+}
+
+// fileEntry is one line of a container directory listing.
+type fileEntry struct {
+	Name    string
+	Mode    string
+	Size    int64
+	IsDir   bool
+	ModTime string
+}
+
+// listDir lists a container directory via ls -la.
+func listDir(id, path string) ([]fileEntry, error) {
+	out, err := execContainer(id, []string{"ls", "-la", path})
+	if err != nil {
+		return nil, err
+	}
+	return parseLS(out), nil
+}
+
+// parseLS parses ls -la output into entries.
+func parseLS(out string) []fileEntry {
+	var entries []fileEntry
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 8 {
+			continue
+		}
+		mode := fields[0]
+		if len(mode) != 10 || !strings.HasPrefix(mode, "-") && !strings.HasPrefix(mode, "d") && !strings.HasPrefix(mode, "l") {
+			continue
+		}
+		size, _ := strconv.ParseInt(fields[4], 10, 64)
+		name := strings.Join(fields[8:], " ")
+		name = strings.TrimSuffix(name, "*")
+		if i := strings.Index(name, " -> "); i >= 0 {
+			name = name[:i]
+		}
+		if name == "." || name == ".." {
+			continue
+		}
+		isDir := strings.HasPrefix(mode, "d")
+		if strings.HasSuffix(name, "/") {
+			isDir = true
+			name = strings.TrimSuffix(name, "/")
+		}
+		entries = append(entries, fileEntry{
+			Name: name, Mode: mode, Size: size, IsDir: isDir,
+			ModTime: fields[5] + " " + fields[6],
+		})
+	}
+	return entries
+}
+
+// readFile reads one file from a container via CopyFromContainer.
+func readFile(id, path string, max int) (string, error) {
+	cli, err := newClient()
+	if err != nil {
+		return "", err
+	}
+	defer cli.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	r, _, err := cli.CopyFromContainer(ctx, id, path)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	tr := tar.NewReader(r)
+	for {
+		hdr, err := tr.Next()
+		if err != nil {
+			if err == io.EOF {
+				return "", fmt.Errorf("文件 %s 为空或不存在", path)
+			}
+			return "", err
+		}
+		if hdr.Typeflag == tar.TypeReg {
+			var buf bytes.Buffer
+			if _, err := io.CopyN(&buf, tr, int64(max)); err != nil && err != io.EOF {
+				return "", err
+			}
+			return buf.String(), nil
+		}
+	}
 }

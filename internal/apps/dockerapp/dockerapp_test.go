@@ -78,3 +78,49 @@ func TestImageTag(t *testing.T) {
 		t.Errorf("Tag = %q, want <none>", got)
 	}
 }
+
+func TestParseLS(t *testing.T) {
+	out := `total 8
+drwxr-xr-x 1 root root 4096 Jan  1 00:00 .
+drwxr-xr-x 1 root root 4096 Jan  1 00:00 ..
+-rw-r--r-- 1 root root   15 Jan  1 00:00 hello.txt
+drwxr-xr-x 1 root root 4096 Jan  1 00:00 subdir
+lrwxrwxrwx 1 root root   11 Jan  1 00:00 link -> /etc/hostname`
+	entries := parseLS(out)
+	if len(entries) != 3 {
+		t.Fatalf("parseLS = %d entries, want 3", len(entries))
+	}
+	if entries[0].Name != "hello.txt" || entries[0].IsDir || entries[0].Size != 15 {
+		t.Errorf("entry 0 = %+v, want hello.txt file size 15", entries[0])
+	}
+	if !entries[1].IsDir || entries[1].Name != "subdir" {
+		t.Errorf("entry 1 = %+v, want subdir dir", entries[1])
+	}
+	if entries[2].Name != "link" {
+		t.Errorf("entry 2 = %+v, want link", entries[2])
+	}
+}
+
+func TestJoinPath(t *testing.T) {
+	cases := []struct{ dir, name, want string }{
+		{"/", "etc", "/etc"},
+		{"", "var", "/var"},
+		{"/etc", "nginx.conf", "/etc/nginx.conf"},
+		{"/etc/", "nginx.conf", "/etc/nginx.conf"},
+	}
+	for _, tc := range cases {
+		if got := joinPath(tc.dir, tc.name); got != tc.want {
+			t.Errorf("joinPath(%q,%q) = %q, want %q", tc.dir, tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestShortErr(t *testing.T) {
+	if got := shortErr(multiLineErr{}); got != "line1" {
+		t.Errorf("shortErr = %q, want line1", got)
+	}
+}
+
+type multiLineErr struct{}
+
+func (multiLineErr) Error() string { return "line1\nline2\n" }

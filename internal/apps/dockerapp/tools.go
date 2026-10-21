@@ -194,8 +194,8 @@ func (cl *Client) toolLogs(id, tail, follow string) (string, error) {
 		n = v
 	}
 	if strings.EqualFold(follow, "true") {
+		cl.openDetail(shortID(id), tabLogs)
 		cl.mu.Lock()
-		cl.st.logFor = shortID(id)
 		cl.st.logLines = nil
 		cl.st.logState = mcodeLogViewerState()
 		cl.stopFollowLocked()
@@ -208,9 +208,9 @@ func (cl *Client) toolLogs(id, tail, follow string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	cl.openDetail(shortID(id), tabLogs)
 	cl.host.Post(func() {
 		cl.mu.Lock()
-		cl.st.logFor = shortID(id)
 		cl.st.logLines = toLogLines(lines)
 		cl.st.logState = mcodeLogViewerState()
 		cl.stopFollowLocked()

@@ -28,6 +28,14 @@ const (
 	pageSystem
 )
 
+// Detail tabs of a container.
+const (
+	tabInfo = iota
+	tabLogs
+	tabTerm
+	tabFiles
+)
+
 const logTailDefault = 200
 
 // state is the client's retained model.
@@ -43,7 +51,13 @@ type state struct {
 	err        string
 	lastLoad   time.Time
 
-	logFor      string
+	// container detail pane
+	detail      string
+	detailTab   int
+	inspectText string
+	inspecting  bool
+
+	// logs tab
 	logLines    []mcode.LogLine
 	logState    mcode.LogViewerState
 	logFollow   bool
@@ -51,7 +65,20 @@ type state struct {
 	logLoading  bool
 	logStop     func()
 
-	splitLogW float32
+	// terminal tab
+	term     *termConn
+	termBusy bool
+	termErr  string
+	termInput string
+
+	// files tab
+	filesPath     string
+	files         []fileEntry
+	filesLoading  bool
+	fileContent   string
+	fileViewPath  string
+
+	splitDetailW float32
 }
 
 // Client is one Docker manager bound to a Host.
@@ -66,7 +93,7 @@ type Host = appkit.Host
 
 // New returns a Docker manager driving the given host.
 func New(h Host) *Client {
-	return &Client{host: h, st: &state{splitLogW: 300, logTailText: fmt.Sprintf("%d", logTailDefault)}}
+	return &Client{host: h, st: &state{splitDetailW: 300, logTailText: fmt.Sprintf("%d", logTailDefault)}}
 }
 
 // View renders the Docker manager: page tabs above a content area.
@@ -156,7 +183,7 @@ func (cl *Client) Refresh() {
 }
 
 // containersView draws the container list with per-row actions and an
-// optional log panel below.
+// optional detail pane on the right.
 func (cl *Client) containersView(c *mgo.Context, st *state) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -166,11 +193,11 @@ func (cl *Client) containersView(c *mgo.Context, st *state) {
 		return
 	}
 	mgo.Column(c).Fill().Children(func() {
-		if st.logFor != "" {
-			mgo.Split(c, &cl.st.splitLogW, func() {
+		if st.detail != "" {
+			mgo.Split(c, &cl.st.splitDetailW, func() {
 				cl.containerList(c, st, k, u, caption)
 			}, func() {
-				cl.logPanel(c, st, k, u, caption)
+				cl.detailPane(c, st, k, u, caption)
 			}).Column().Grow(1).MinHeight(0)
 			return
 		}
@@ -238,46 +265,12 @@ func (cl *Client) rowActions(c *mgo.Context, state, id string, u float32) {
 			cl.doAction("start", id)
 		}
 	}
-	if iconBtn("list", "日志") {
-		cl.openLogs(id)
+	if iconBtn("maximize", "详情") {
+		cl.openDetail(id, tabInfo)
 	}
 	if iconBtn("trash-2", "删除") {
 		cl.confirmAction("删除容器", "确定删除容器 "+id+" 吗？", "remove", id)
 	}
-}
-
-// logPanel draws the log viewer for the selected container.
-func (cl *Client) logPanel(c *mgo.Context, st *state, k mtheme.Tokens, u, caption float32) {
-	mgo.Column(c).Fill().Background(k.Background).Children(func() {
-		mgo.Row(c).FillWidth().Shrink(0).Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
-			BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
-			mgo.Text(c, "日志: "+st.logFor).FontSize(caption).FontWeight(600).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-			minput.TextInput(c, &cl.st.logTailText, minput.TextInputOptions{Placeholder: "行数"}).Element.Width(60).Shrink(0)
-			if minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("list"), Label: "Tail"}).Clicked() {
-				cl.reloadLogs()
-			}
-			followVariant := minput.Ghost
-			if st.logFollow {
-				followVariant = minput.Secondary
-			}
-			if minput.Button(c, "", minput.ButtonOptions{Variant: followVariant, Icon: icons.Must("eye"), Label: "跟踪"}).Clicked() {
-				cl.toggleLogFollow()
-			}
-			if mcore.IconAction(c, icons.Must("x"), "关闭日志").Clicked() {
-				cl.closeLogs()
-			}
-		})
-		if st.logLoading {
-			mgo.Row(c).FillWidth().Shrink(0).Padding(u, u*2).Children(func() {
-				mcore.Spinner(c, mcore.SpinnerOptions{Size: 12})
-				mgo.Text(c, "加载日志中…").FontSize(caption).TextColor(k.TextMuted)
-			})
-		}
-		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Background(k.Surface).
-			Border(mtheme.BorderWidth, k.Border).Radius(mtheme.ControlRadius).Clip().Children(func() {
-			mcode.LogViewer(c, cl.st.logLines, &cl.st.logState, mcode.LogViewerOptions{}).Element.Fill()
-		})
-	})
 }
 
 // imagesView draws the image list with remove actions.

@@ -178,10 +178,10 @@ func (cl *Client) tailN() int {
 	return logTailDefault
 }
 
-// openLogs loads a container's recent logs into the log panel.
+// openLogs loads a container's recent logs into the logs tab.
 func (cl *Client) openLogs(id string) {
 	cl.mu.Lock()
-	cl.st.logFor = id
+	cl.st.detail = id
 	cl.st.logLines = nil
 	cl.st.logLoading = true
 	cl.st.logState = mcode.LogViewerState{}
@@ -207,7 +207,7 @@ func (cl *Client) openLogs(id string) {
 // reloadLogs re-reads the current container's logs.
 func (cl *Client) reloadLogs() {
 	cl.mu.Lock()
-	id := cl.st.logFor
+	id := cl.st.detail
 	cl.mu.Unlock()
 	if id == "" {
 		return
@@ -229,7 +229,7 @@ func (cl *Client) toggleLogFollow() {
 
 // startFollowLocked begins streaming new log lines; caller holds cl.mu.
 func (cl *Client) startFollowLocked() {
-	id := cl.st.logFor
+	id := cl.st.detail
 	if id == "" {
 		return
 	}
@@ -260,11 +260,15 @@ func (cl *Client) stopFollowLocked() {
 	cl.st.logFollow = false
 }
 
-// closeLogs hides the log panel and stops any stream.
+// closeLogs stops any log stream and hides the detail pane.
 func (cl *Client) closeLogs() {
 	cl.mu.Lock()
 	cl.stopFollowLocked()
-	cl.st.logFor = ""
+	if cl.st.term != nil {
+		cl.st.term.Close()
+		cl.st.term = nil
+	}
+	cl.st.detail = ""
 	cl.st.logLines = nil
 	cl.mu.Unlock()
 	cl.host.Invalidate()
