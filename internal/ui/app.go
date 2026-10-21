@@ -20,6 +20,7 @@ import (
 	"chatgo/internal/apps/gitapp"
 	"chatgo/internal/apps/dockerapp"
 	"chatgo/internal/apps/logapp"
+	"chatgo/internal/apps/redisapp"
 	"chatgo/internal/apps/markdownapp"
 	"chatgo/internal/apps/terminalapp"
 	"chatgo/internal/apps/webapp"
@@ -97,6 +98,7 @@ type ChatWindow struct {
 	browserApp   *browserapp.Client
 	logApp       *logapp.Client
 	dockerApp    *dockerapp.Client
+	redisApp     *redisapp.Client
 	webApps      map[string]*webapp.Client
 	webAppList   []webapp.App
 	preAppConvID string

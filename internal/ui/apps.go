@@ -73,6 +73,7 @@ func apps() []appDef {
 		gitApp(),
 		logApp(),
 		dockerApp(),
+		redisApp(),
 	}
 	return append(base, webApps()...)
 }
