@@ -8,6 +8,7 @@ import (
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
@@ -70,7 +71,7 @@ func Column(c *mgo.Context, w *mygo.Window, win Window, rt *Standalone) {
 					icon = "panel-left"
 					label = "显示对话"
 				}
-				if mcore.IconAction(c, icons.Must(icon), label).Clicked() {
+				if minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must(icon), Label: label}).Clicked() {
 					rt.ToggleChat()
 				}
 			}

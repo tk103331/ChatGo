@@ -122,6 +122,7 @@ type Toast struct {
 func (s *Standalone) Attach(w *mygo.Window, post, invalidate func(func())) {
 	s.mu.Lock()
 	s.win, s.post, s.invalid = w, post, invalidate
+	s.chatHidden = true
 	s.mu.Unlock()
 }
 
