@@ -7,13 +7,14 @@ import (
 	"strings"
 
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/files"
 )
 
-// currentDir returns the explorer's current folder.
+// currentDir returns the current folder.
 func (cl *Client) currentDir(st *state) string {
-	if st.explorer.Current != "" {
-		return st.explorer.Current
+	if st.current != "" {
+		return st.current
 	}
 	return st.root
 }
@@ -26,18 +27,69 @@ func (cl *Client) navigate(dir string) {
 		return
 	}
 	cl.mu.Lock()
-	cl.st.explorer.Navigate(abs)
-	cl.mu.Unlock()
-}
-
-// onNavigate refreshes the preview when the folder changes.
-func (cl *Client) onNavigate(dir string) {
-	cl.mu.Lock()
+	if cl.st.current == abs {
+		cl.mu.Unlock()
+		return
+	}
+	if cl.st.current != "" {
+		cl.st.back = append(cl.st.back, cl.st.current)
+	}
+	cl.st.current = abs
+	cl.st.forward = nil
+	cl.st.list.Selection.Clear()
+	cl.st.list = data.ListState[string]{}
 	cl.st.previewPath = ""
 	cl.st.previewText = ""
 	cl.st.previewErr = ""
 	cl.mu.Unlock()
 	cl.host.Invalidate()
+}
+
+// goBack returns to the previous folder.
+func (cl *Client) goBack() {
+	cl.mu.Lock()
+	n := len(cl.st.back)
+	if n == 0 {
+		cl.mu.Unlock()
+		return
+	}
+	cl.st.forward = append(cl.st.forward, cl.st.current)
+	cl.st.current = cl.st.back[n-1]
+	cl.st.back = cl.st.back[:n-1]
+	cl.st.list = data.ListState[string]{}
+	cl.st.previewPath = ""
+	cl.st.previewText = ""
+	cl.mu.Unlock()
+	cl.host.Invalidate()
+}
+
+// goForward returns to the folder we came back from.
+func (cl *Client) goForward() {
+	cl.mu.Lock()
+	n := len(cl.st.forward)
+	if n == 0 {
+		cl.mu.Unlock()
+		return
+	}
+	cl.st.back = append(cl.st.back, cl.st.current)
+	cl.st.current = cl.st.forward[n-1]
+	cl.st.forward = cl.st.forward[:n-1]
+	cl.st.list = data.ListState[string]{}
+	cl.st.previewPath = ""
+	cl.st.previewText = ""
+	cl.mu.Unlock()
+	cl.host.Invalidate()
+}
+
+// listSelection returns the list's selected paths.
+func (cl *Client) listSelection() []string {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+	var out []string
+	for p := range cl.st.list.Selection.All() {
+		out = append(out, p)
+	}
+	return out
 }
 
 // onSelect records the current selection.
@@ -91,7 +143,7 @@ func (cl *Client) closePreview() {
 	cl.host.Invalidate()
 }
 
-// refresh clears the cache and reloads the explorer.
+// refresh clears the cache and reloads the file list.
 func (cl *Client) refresh() {
 	cl.mu.Lock()
 	cl.st.revision++
@@ -227,9 +279,13 @@ func (cl *Client) confirmRemove() {
 	})
 }
 
-// selectedPaths returns the explorer's selected paths.
+// selectedPaths returns the list's selected paths.
 func (cl *Client) selectedPaths() []string {
 	cl.mu.Lock()
 	defer cl.mu.Unlock()
-	return cl.st.explorer.Selected()
+	var out []string
+	for p := range cl.st.list.Selection.All() {
+		out = append(out, p)
+	}
+	return out
 }

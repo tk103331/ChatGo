@@ -24,7 +24,10 @@ const System = "你是文件管理器助手。你可以通过 fs_list 列出目�
 // state is the client's retained model.
 type state struct {
 	root       string
-	explorer   files.FileExplorerState
+	current    string
+	back       []string
+	forward    []string
+	list       data.ListState[string]
 	showHidden bool
 	revision   uint64
 	cache      map[string][]files.FileEntry
@@ -59,13 +62,14 @@ func New(h Host) *Client {
 		root, _ = os.Getwd()
 	}
 	return &Client{host: h, st: &state{
-		root:   root,
-		cache:  map[string][]files.FileEntry{},
-		splitW: 520,
+		root:    root,
+		current: root,
+		cache:   map[string][]files.FileEntry{},
+		splitW:  520,
 	}}
 }
 
-// View renders the file manager: path bar, explorer and preview.
+// View renders the file manager: toolbar, file list and preview.
 func (cl *Client) View(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -74,7 +78,20 @@ func (cl *Client) View(c *mgo.Context) {
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		mgo.Row(c).FillWidth().Shrink(0).Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
 			BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
-			cur := cl.currentDir(st)
+			cur := st.current
+			navBtn := func(icon, label string, enabled bool) bool {
+				a := mcore.IconAction(c, icons.Must(icon), label).Disabled(!enabled)
+				return a.Clicked() && enabled
+			}
+			if navBtn("chevron-left", "后退", len(st.back) > 0) {
+				cl.goBack()
+			}
+			if navBtn("chevron-right", "前进", len(st.forward) > 0) {
+				cl.goForward()
+			}
+			if navBtn("arrow-up", "上一级", filepath.Dir(cur) != cur) {
+				cl.navigate(filepath.Dir(cur))
+			}
 			if cur != "" {
 				bar := files.PathBar(c, cur, files.PathBarOptions{RootLabel: "~"})
 				bar.Element.Grow(1).MinWidth(0)
@@ -110,7 +127,7 @@ func (cl *Client) View(c *mgo.Context) {
 		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
 			cl.body(c, st, k, u, caption)
 		})
-		if st.previewPath != "" || len(st.explorer.Selected()) > 0 {
+		if st.previewPath != "" || len(cl.listSelection()) > 0 {
 			mgo.Row(c).FillWidth().Shrink(0).Padding(u, u*2).
 				BorderWidth(mtheme.BorderWidth, 0, 0, 0).BorderColor(k.Border).Children(func() {
 				cl.statusLine(c, st, k, caption)
@@ -127,42 +144,51 @@ func (cl *Client) snapshot() *state {
 	return &cp
 }
 
-// body draws the explorer and the preview pane.
+// body draws the file list and the preview pane.
 func (cl *Client) body(c *mgo.Context, st *state, k mtheme.Tokens, u, caption float32) {
-	explorer := func() {
-		cl.explorerPane(c, st, k, u, caption)
+	list := func() {
+		cl.fileList(c, st, k, u, caption)
 	}
 	if st.previewPath == "" {
-		mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Children(explorer)
+		mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Children(list)
 		return
 	}
-	mgo.Split(c, &cl.st.splitW, explorer, func() {
+	mgo.Split(c, &cl.st.splitW, list, func() {
 		cl.previewPane(c, st, k, u, caption)
 	}).Fill()
 }
 
-// explorerPane draws the FileExplorer component.
-func (cl *Client) explorerPane(c *mgo.Context, st *state, k mtheme.Tokens, u, caption float32) {
-	root := st.root
-	res := files.FileExplorer(c, &cl.st.explorer, files.FileExplorerOptions{
-		Roots:    []string{root},
-		Revision: st.revision,
-		Folders: func(dir string) []string {
-			return listDirs(dir, st.showHidden)
-		},
-		Entries: func(dir string) []files.FileEntry {
-			return cl.cachedEntries(dir, st.showHidden)
-		},
+// fileList draws the current folder's entries.
+func (cl *Client) fileList(c *mgo.Context, st *state, k mtheme.Tokens, u, caption float32) {
+	entries := cl.cachedEntries(st.current, st.showHidden)
+	v := data.List(c, &cl.st.list, len(entries), data.ListOptions[string]{
+		Multiple: true,
+		Key:      func(i int) string { return entries[i].Path },
+		Label:    func(i int) string { return entries[i].Name },
+		Empty:    "空目录",
+	}, func(i int) {
+		e := entries[i]
+		files.FileIcon(c, e.Name, files.FileIconOptions{Folder: e.Dir})
+		mgo.Text(c, e.Name).SingleLine().Grow(1).MinWidth(0)
+		if !e.Dir {
+			mgo.Text(c, humanBytes(e.Size)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+		}
+		if !e.Modified.IsZero() {
+			mgo.Text(c, formatTime(e.Modified)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+		}
 	})
-	res.Element.FillWidth().Grow(1).MinWidth(0).MinHeight(0)
-	if res.Navigated {
-		cl.onNavigate(cl.st.explorer.Current)
+	v.Element.FillWidth().Grow(1).MinWidth(0).MinHeight(0)
+	if v.Changed() {
+		cl.onSelect(cl.listSelection())
 	}
-	if res.Changed {
-		cl.onSelect(cl.st.explorer.Selected())
-	}
-	if res.Opened != nil {
-		cl.openPreview(res.Opened.Path)
+	if v.Submitted() {
+		if key, ok := cl.st.list.Selected(); ok {
+			if info, err := os.Stat(key); err == nil && info.IsDir() {
+				cl.navigate(key)
+			} else {
+				cl.openPreview(key)
+			}
+		}
 	}
 }
 
@@ -210,7 +236,7 @@ func (cl *Client) previewPane(c *mgo.Context, st *state, k mtheme.Tokens, u, cap
 
 // statusLine draws the selection summary.
 func (cl *Client) statusLine(c *mgo.Context, st *state, k mtheme.Tokens, caption float32) {
-	sel := st.explorer.Selected()
+	sel := cl.listSelection()
 	msg := ""
 	if len(sel) == 1 {
 		msg = sel[0]
