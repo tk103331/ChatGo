@@ -299,3 +299,73 @@ func TestPrefixLine(t *testing.T) {
 		t.Fatalf("caret: %+v", d)
 	}
 }
+
+func TestOpenReusesBlankUntitledTab(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cl := New(&host{dir: dir})
+	blank := cl.NewTab()
+	if len(cl.Tabs().Items) != 1 {
+		t.Fatalf("tabs = %v, want 1", cl.Tabs().Items)
+	}
+	opened := cl.Open("a.md")
+	if opened != "a.md" {
+		t.Fatalf("Open = %q, want a.md", opened)
+	}
+	if len(cl.Tabs().Items) != 1 {
+		t.Fatalf("tabs = %v, want reuse of blank tab", cl.Tabs().Items)
+	}
+	if cl.Tabs().Items[0] != "a.md" || cl.Tabs().Active != "a.md" {
+		t.Fatalf("tabs = %v active=%q, want a.md", cl.Tabs().Items, cl.Tabs().Active)
+	}
+	d := cl.doc("a.md")
+	if d == nil || d.content != "# hello" {
+		t.Fatalf("doc content = %+v, want # hello", d)
+	}
+	if cl.doc(blank) != nil {
+		t.Error("blank tab should be removed")
+	}
+}
+
+func TestOpenKeepsDirtyUntitledTab(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cl := New(&host{dir: dir})
+	blank := cl.NewTab()
+	d := cl.doc(blank)
+	if d == nil {
+		t.Fatal("blank doc missing")
+	}
+	d.content = "draft"
+	opened := cl.Open("a.md")
+	if opened != "a.md" {
+		t.Fatalf("Open = %q", opened)
+	}
+	if len(cl.Tabs().Items) != 2 {
+		t.Fatalf("tabs = %v, want 2 (dirty untitled kept)", cl.Tabs().Items)
+	}
+}
+
+func TestOpenReusesOnlyActiveUntitled(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "a.md"), []byte("# a"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "b.md"), []byte("# b"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cl := New(&host{dir: dir})
+	cl.Open("b.md")
+	cl.NewTab()
+	opened := cl.Open("a.md")
+	if opened != "a.md" {
+		t.Fatalf("Open = %q", opened)
+	}
+	if len(cl.Tabs().Items) != 2 {
+		t.Fatalf("tabs = %v, want 2 (b.md plus reused blank)", cl.Tabs().Items)
+	}
+}

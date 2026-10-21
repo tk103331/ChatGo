@@ -94,29 +94,63 @@ func (cl *Client) Title(id string) string {
 // NewTab opens an empty document.
 func (cl *Client) NewTab() string { return cl.Open("") }
 
-// Open opens a workspace-relative path in a tab, reusing an existing tab.
+// Open opens a workspace-relative path in a tab, reusing an existing tab
+// or the active empty untitled tab.
 func (cl *Client) Open(path string) string {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
 	key := path
 	if key == "" {
 		key = "untitled-" + cl.host.NewID()
-	}
-	cl.mu.Lock()
-	if _, ok := cl.docs[key]; !ok {
-		d := &doc{path: path, splitP: 50, previewJump: -1, activeHead: -1, lastCaret: -1}
-		if path != "" {
-			if data, err := os.ReadFile(cl.abs(path)); err == nil {
-				d.content, d.saved, d.loaded = string(data), string(data), true
-			} else {
-				d.err = err.Error()
-			}
-		}
-		cl.docs[key] = d
+		cl.docs[key] = &doc{splitP: 50, previewJump: -1, activeHead: -1, lastCaret: -1}
 		cl.tabs.Add(key)
-	} else {
-		cl.tabs.Active = key
+		return key
 	}
-	cl.mu.Unlock()
+	if _, ok := cl.docs[key]; ok {
+		cl.tabs.Active = key
+		return key
+	}
+	if reused := cl.reuseBlankLocked(path); reused != "" {
+		return reused
+	}
+	d := &doc{path: path, splitP: 50, previewJump: -1, activeHead: -1, lastCaret: -1}
+	if data, err := os.ReadFile(cl.abs(path)); err == nil {
+		d.content, d.saved, d.loaded = string(data), string(data), true
+	} else {
+		d.err = err.Error()
+	}
+	cl.docs[key] = d
+	cl.tabs.Add(key)
 	return key
+}
+
+// reuseBlankLocked turns the active empty untitled tab into path.
+func (cl *Client) reuseBlankLocked(path string) string {
+	active := cl.tabs.Active
+	if !strings.HasPrefix(active, "untitled-") {
+		return ""
+	}
+	d := cl.docs[active]
+	if d == nil || d.content != "" || d.saved != "" {
+		return ""
+	}
+	delete(cl.docs, active)
+	for i, k := range cl.tabs.Items {
+		if k == active {
+			cl.tabs.Items[i] = path
+			break
+		}
+	}
+	cl.tabs.Active = path
+	d.path = path
+	d.err = ""
+	if data, err := os.ReadFile(cl.abs(path)); err == nil {
+		d.content, d.saved, d.loaded = string(data), string(data), true
+	} else {
+		d.err = err.Error()
+	}
+	cl.docs[path] = d
+	return path
 }
 
 // Close drops a tab.
