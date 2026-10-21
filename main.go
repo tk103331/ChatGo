@@ -5,6 +5,7 @@ import (
 	"chatgo/internal/apps/codeeditorapp"
 	"chatgo/internal/config"
 	"chatgo/internal/apps/gitapp"
+	"chatgo/internal/apps/dockerapp"
 	"chatgo/internal/apps/logapp"
 	"chatgo/internal/apps/markdownapp"
 	"chatgo/internal/shellenv"
@@ -26,7 +27,7 @@ func main() {
 	shellenv.AugmentPath()
 	mygo.Use(native.Plugin)
 
-	app := flag.String("app", "", "独立打开一个应用窗口: git, terminal, markdown, code, browser, logs, 或 webapp:<id>")
+	app := flag.String("app", "", "独立打开一个应用窗口: git, terminal, markdown, code, browser, logs, docker, 或 webapp:<id>")
 	dir := flag.String("dir", "", "独立打开时的工作目录，默认为当前目录")
 	flag.Parse()
 	if *app != "" {
@@ -95,8 +96,10 @@ func runStandalone(id, dir string) {
 		browserapp.Standalone(root)
 	case "logs":
 		logapp.Standalone(root)
+	case "docker":
+		dockerapp.Standalone(root)
 	default:
-		fmt.Printf("未知应用 %q，可选: git, terminal, markdown, code, browser, logs, webapp:<id>\n", id)
+		fmt.Printf("未知应用 %q，可选: git, terminal, markdown, code, browser, logs, docker, webapp:<id>\n", id)
 		os.Exit(1)
 	}
 }
