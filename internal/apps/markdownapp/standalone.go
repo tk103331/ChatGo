@@ -28,12 +28,6 @@ func Standalone(root string) {
 			mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 				mgo.Row(c).FillWidth().Shrink(0).Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
 					BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
-					if minput.Button(c, "打开", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("folder")}).Clicked() {
-						if path := rt.OpenFileDialog(cl.host.Root()); path != "" {
-							cl.Open(cl.relOf(path))
-							w.Invalidate()
-						}
-					}
 					closing := ""
 					for _, tab := range cl.Tabs().Items {
 						tab := tab
