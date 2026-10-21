@@ -116,7 +116,7 @@ func (cl *Client) resolve(path string) (string, error) {
 		cl.mu.Unlock()
 		path = filepath.Join(root, path)
 	}
-	return insideRoot(cl.rootPath(), path)
+	return resolvePath(path)
 }
 
 // rootPath returns the workspace root.

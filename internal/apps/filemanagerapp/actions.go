@@ -20,7 +20,7 @@ func (cl *Client) currentDir(st *state) string {
 
 // navigate switches the current folder.
 func (cl *Client) navigate(dir string) {
-	abs, err := insideRoot(cl.st.root, dir)
+	abs, err := resolvePath(dir)
 	if err != nil {
 		cl.setErr(err)
 		return
@@ -129,7 +129,7 @@ func (cl *Client) promptMkdir() {
 		if name == "" {
 			return
 		}
-		target, err := insideRoot(cl.st.root, filepath.Join(dir, name))
+		target, err := resolvePath(filepath.Join(dir, name))
 		if err != nil {
 			cl.setErr(err)
 			return
@@ -162,7 +162,7 @@ func (cl *Client) promptRename() {
 		if name == "" {
 			return
 		}
-		target, err := insideRoot(cl.st.root, filepath.Join(filepath.Dir(oldPath), name))
+		target, err := resolvePath(filepath.Join(filepath.Dir(oldPath), name))
 		if err != nil {
 			cl.setErr(err)
 			return
@@ -203,7 +203,7 @@ func (cl *Client) confirmRemove() {
 		go func() {
 			var failed []string
 			for _, p := range sel {
-				if _, err := insideRoot(cl.st.root, p); err != nil {
+				if _, err := resolvePath(p); err != nil {
 					failed = append(failed, filepath.Base(p))
 					continue
 				}

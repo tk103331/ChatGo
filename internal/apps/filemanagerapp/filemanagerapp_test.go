@@ -6,13 +6,21 @@ import (
 	"testing"
 )
 
-func TestInsideRoot(t *testing.T) {
+func TestResolvePath(t *testing.T) {
 	root := t.TempDir()
-	if _, err := insideRoot(root, filepath.Join(root, "a", "b")); err != nil {
-		t.Errorf("inside path rejected: %v", err)
+	got, err := resolvePath(filepath.Join(root, "a", "b"))
+	if err != nil {
+		t.Fatalf("resolvePath: %v", err)
 	}
-	if _, err := insideRoot(root, filepath.Join(root, "..", "escape")); err == nil {
-		t.Error("escaping path should be rejected")
+	if !filepath.IsAbs(got) {
+		t.Errorf("resolvePath = %q, want absolute", got)
+	}
+	parent, err := resolvePath(filepath.Join(root, ".."))
+	if err != nil {
+		t.Fatalf("resolvePath parent: %v", err)
+	}
+	if parent != filepath.Dir(root) {
+		t.Errorf("resolvePath parent = %q, want %q", parent, filepath.Dir(root))
 	}
 }
 

@@ -19,7 +19,7 @@ import (
 )
 
 // System is the app's chat system prompt.
-const System = "你是文件管理器助手。你可以通过 fs_list 列出目录，通过 fs_read 读取文本文件，通过 fs_write 写入文件，通过 fs_mkdir 新建目录，通过 fs_rename 重命名或移动，通过 fs_remove 删除，通过 fs_search 按名称搜索。所有路径都限制在工作目录内。删除和覆盖写入前先向用户确认。"
+const System = "你是文件管理器助手。你可以通过 fs_list 列出目录，通过 fs_read 读取文本文件，通过 fs_write 写入文件，通过 fs_mkdir 新建目录，通过 fs_rename 重命名或移动，通过 fs_remove 删除，通过 fs_search 按名称搜索。相对路径以用户主目录为基准，也可使用绝对路径。删除和覆盖写入前先向用户确认。"
 
 // state is the client's retained model.
 type state struct {
@@ -54,8 +54,8 @@ type Host = appkit.Host
 
 // New returns a file manager driving the given host.
 func New(h Host) *Client {
-	root := h.Root()
-	if root == "" {
+	root, err := os.UserHomeDir()
+	if err != nil || root == "" {
 		root, _ = os.Getwd()
 	}
 	return &Client{host: h, st: &state{
@@ -76,7 +76,7 @@ func (cl *Client) View(c *mgo.Context) {
 			BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
 			cur := cl.currentDir(st)
 			if cur != "" {
-				bar := files.PathBar(c, cur, files.PathBarOptions{RootLabel: "工作区"})
+				bar := files.PathBar(c, cur, files.PathBarOptions{RootLabel: "~"})
 				bar.Element.Grow(1).MinWidth(0)
 				if bar.Navigated != "" {
 					cl.navigate(bar.Navigated)

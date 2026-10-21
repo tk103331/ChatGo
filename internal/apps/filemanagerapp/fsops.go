@@ -16,24 +16,13 @@ import (
 // maxPreviewBytes caps a file's preview content.
 const maxPreviewBytes = 1 << 20
 
-// insideRoot reports whether p stays inside root after resolving.
-func insideRoot(root, p string) (string, error) {
+// resolvePath returns an absolute, cleaned path.
+func resolvePath(p string) (string, error) {
 	abs, err := filepath.Abs(p)
 	if err != nil {
 		return "", err
 	}
-	rootAbs, err := filepath.Abs(root)
-	if err != nil {
-		return "", err
-	}
-	rel, err := filepath.Rel(rootAbs, abs)
-	if err != nil {
-		return "", err
-	}
-	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		return "", fmt.Errorf("路径 %s 超出工作目录", p)
-	}
-	return abs, nil
+	return filepath.Clean(abs), nil
 }
 
 // readDir lists one directory as file entries.
