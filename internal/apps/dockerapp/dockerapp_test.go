@@ -1,7 +1,9 @@
 package dockerapp
 
 import (
+	"strings"
 	"testing"
+	"time"
 
 	mygo "github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
@@ -180,4 +182,90 @@ func TestDetailPaneTabBar(t *testing.T) {
 	if img == nil {
 		t.Fatal("render returned nil image")
 	}
+}
+
+func TestFilesPaneRender(t *testing.T) {
+	cl := New(fakeHost{})
+	cl.mu.Lock()
+	cl.st.containers = []Container{{ID: "abc", Names: []string{"/t"}, Image: "img", State: "running"}}
+	cl.st.detail = "abc"
+	cl.st.detailTab = tabFiles
+	cl.st.fileViewPath = "/etc/hosts"
+	cl.st.fileContent = "127.0.0.1 localhost"
+	cl.mu.Unlock()
+	img := mgo.Render(func(c *mgo.Context) {
+		mcore.Use(c, mcore.Settings{Mode: mcore.System})
+		cl.View(c)
+	}, 800, 600, 1)
+	if img == nil {
+		t.Fatal("render returned nil image")
+	}
+}
+
+func TestFileTreeHelpers(t *testing.T) {
+	cl := New(fakeHost{})
+	cl.mu.Lock()
+	cl.st.files["/"] = []fileEntry{
+		{Name: "etc", IsDir: true},
+		{Name: "app.jar", Size: 1024},
+	}
+	cl.st.filesLoaded["/"] = true
+	cl.st.filesDir["/etc"] = true
+	cl.mu.Unlock()
+	if !cl.fileIsDir("/etc") {
+		t.Error("/etc should be a dir")
+	}
+	if cl.fileIsDir("/app.jar") {
+		t.Error("/app.jar should not be a dir")
+	}
+	if got := cl.fileLabel("/etc"); got != "etc/" {
+		t.Errorf("fileLabel(/etc) = %q, want etc/", got)
+	}
+	if got := cl.fileLabel("/app.jar"); got != "app.jar" {
+		t.Errorf("fileLabel(/app.jar) = %q, want app.jar", got)
+	}
+	if got := cl.fileSize("/app.jar"); got != 1024 {
+		t.Errorf("fileSize(/app.jar) = %d, want 1024", got)
+	}
+	if !cl.fileLoaded("/") {
+		t.Error("/ should be loaded")
+	}
+	if cl.fileLoaded("/etc") {
+		t.Error("/etc should not be loaded yet")
+	}
+}
+
+func TestDockerTTY(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker not available")
+	}
+	rows, err := listContainers()
+	if err != nil {
+		t.Skipf("list containers: %v", err)
+	}
+	var id string
+	for _, c := range rows {
+		if c.State == "running" {
+			id = c.ID
+			break
+		}
+	}
+	if id == "" {
+		t.Skip("no running container")
+	}
+	tm, err := openDockerTerminal(id, "", func() {})
+	if err != nil {
+		t.Fatalf("openDockerTerminal: %v", err)
+	}
+	defer tm.Close()
+	time.Sleep(500 * time.Millisecond)
+	tm.Send([]byte("echo TTY_MARKER_\x24\x24\r"))
+	deadline := time.Now().Add(6 * time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(200 * time.Millisecond)
+		if strings.Contains(tm.Text(), "TTY_MARKER_") {
+			return
+		}
+	}
+	t.Fatalf("marker not seen; screen: %q", tm.Text())
 }

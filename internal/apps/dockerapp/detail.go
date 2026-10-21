@@ -5,6 +5,7 @@ import (
 
 	mcode "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
@@ -24,14 +25,15 @@ func (cl *Client) openDetail(id string, tab int) {
 	cl.stopFollowLocked()
 	cl.st.inspectText = ""
 	cl.st.inspecting = false
-	cl.st.termInput = ""
 	cl.st.termErr = ""
 	if cl.st.term != nil {
 		cl.st.term.Close()
 		cl.st.term = nil
 	}
-	cl.st.filesPath = ""
-	cl.st.files = nil
+	cl.st.files = map[string][]fileEntry{}
+	cl.st.filesLoaded = map[string]bool{}
+	cl.st.filesDir = map[string]bool{}
+	cl.st.filesTree = data.TreeState[string]{}
 	cl.st.fileContent = ""
 	cl.st.fileViewPath = ""
 	cl.mu.Unlock()
@@ -128,7 +130,9 @@ func (cl *Client) closeDetail() {
 	}
 	cl.st.detail = ""
 	cl.st.logLines = nil
-	cl.st.files = nil
+	cl.st.files = map[string][]fileEntry{}
+	cl.st.filesLoaded = map[string]bool{}
+	cl.st.filesDir = map[string]bool{}
 	cl.st.fileContent = ""
 	cl.mu.Unlock()
 	cl.host.Invalidate()

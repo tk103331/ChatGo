@@ -11,9 +11,12 @@ import (
 
 	mcode "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
 	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
+
+	term "github.com/egoist/mygo/plugins/terminal"
 )
 
 // System is the app's chat system prompt.
@@ -66,19 +69,22 @@ type state struct {
 	logStop     func()
 
 	// terminal tab
-	term     *termConn
+	term     *term.Terminal
 	termBusy bool
 	termErr  string
-	termInput string
 
 	// files tab
-	filesPath     string
-	files         []fileEntry
-	filesLoading  bool
-	fileContent   string
-	fileViewPath  string
+	files        map[string][]fileEntry
+	filesLoaded  map[string]bool
+	filesDir     map[string]bool
+	filesTree    data.TreeState[string]
+	fileContent  string
+	fileViewPath string
+	filesLoading bool
+	filesErr     string
 
 	splitDetailW float32
+	splitFilesH  float32
 }
 
 // Client is one Docker manager bound to a Host.
@@ -93,7 +99,14 @@ type Host = appkit.Host
 
 // New returns a Docker manager driving the given host.
 func New(h Host) *Client {
-	return &Client{host: h, st: &state{splitDetailW: 300, logTailText: fmt.Sprintf("%d", logTailDefault)}}
+	return &Client{host: h, st: &state{
+		splitDetailW: 300,
+		splitFilesH:  280,
+		logTailText:  fmt.Sprintf("%d", logTailDefault),
+		files:        map[string][]fileEntry{},
+		filesLoaded:  map[string]bool{},
+		filesDir:     map[string]bool{},
+	}}
 }
 
 // View renders the Docker manager: page tabs above a content area.

@@ -12,7 +12,6 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/docker/docker/api/types"
@@ -657,97 +656,6 @@ func inspectText(id string) (string, error) {
 		}
 	}
 	return strings.TrimRight(b.String(), "\n"), nil
-}
-
-// openTerminal execs an interactive shell in a container and returns the
-// hijacked connection plus a read loop feeding output lines.
-func openTerminal(id, shell string) (*termConn, error) {
-	cli, err := newClient()
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	if shell == "" {
-		shell = "/bin/sh"
-	}
-	created, err := cli.ContainerExecCreate(ctx, id, types.ExecConfig{
-		Cmd: []string{shell}, Tty: true,
-		AttachStdin: true, AttachStdout: true, AttachStderr: true,
-	})
-	if err != nil {
-		cancel()
-		cli.Close()
-		return nil, err
-	}
-	attach, err := cli.ContainerExecAttach(ctx, created.ID, types.ExecStartCheck{})
-	if err != nil {
-		cancel()
-		cli.Close()
-		return nil, err
-	}
-	tc := &termConn{
-		cli: cli, conn: attach.Conn, reader: attach.Reader,
-		done: make(chan struct{}),
-	}
-	go tc.readLoop(cancel)
-	return tc, nil
-}
-
-// termConn is an attached interactive terminal to a container.
-type termConn struct {
-	cli    *client.Client
-	conn   interface {
-		Write([]byte) (int, error)
-		Close() error
-	}
-	reader interface {
-		Read([]byte) (int, error)
-	}
-	done  chan struct{}
-	lines []string
-	mu    sync.Mutex
-}
-
-// readLoop reads the terminal output into lines until the stream closes.
-func (t *termConn) readLoop(cancel context.CancelFunc) {
-	defer close(t.done)
-	defer cancel()
-	scanner := bufio.NewScanner(t.reader)
-	scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimRight(scanner.Text(), "\r")
-		t.mu.Lock()
-		t.lines = append(t.lines, line)
-		if len(t.lines) > 5000 {
-			t.lines = t.lines[len(t.lines)-5000:]
-		}
-		t.mu.Unlock()
-	}
-}
-
-// Lines returns a copy of the collected output lines.
-func (t *termConn) Lines() []string {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	out := make([]string, len(t.lines))
-	copy(out, t.lines)
-	return out
-}
-
-// Send writes a command line to the terminal.
-func (t *termConn) Send(line string) error {
-	_, err := t.conn.Write([]byte(line + "\n"))
-	return err
-}
-
-// Close tears down the terminal session.
-func (t *termConn) Close() {
-	t.conn.Close()
-	select {
-	case <-t.done:
-	case <-time.After(2 * time.Second):
-	}
-	t.cli.Close()
 }
 
 // fileEntry is one line of a container directory listing.
