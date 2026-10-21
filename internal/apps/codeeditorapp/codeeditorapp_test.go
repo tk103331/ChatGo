@@ -229,3 +229,49 @@ func TestTreeLoadAndLabel(t *testing.T) {
 		t.Errorf("treeLabel dir = %q, want pkg/", got)
 	}
 }
+
+func TestOpenAndRegisterMirrorsTab(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cl := New(&host{dir: dir})
+	var mirrored []string
+	cl.SetOpenHandler(func(p string) { mirrored = append(mirrored, p) })
+	cl.NewTab()
+	cl.openAndRegister("main.go")
+	if len(mirrored) != 1 || mirrored[0] != "main.go" {
+		t.Fatalf("open handler = %v, want [main.go]", mirrored)
+	}
+	if cl.Tabs().Active != "main.go" {
+		t.Fatalf("active = %q, want main.go", cl.Tabs().Active)
+	}
+	f := cl.file("main.go")
+	if f == nil || f.buf.String() != "package main\n" {
+		t.Fatalf("file content not loaded: %+v", f)
+	}
+}
+
+func TestOpenTreeItemOpensFileAndSkipsDir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "build.sh"), []byte("#!/bin/sh\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cl := New(&host{dir: dir})
+	var mirrored []string
+	cl.SetOpenHandler(func(p string) { mirrored = append(mirrored, p) })
+	cl.openTreeItem("pkg")
+	if len(mirrored) != 0 {
+		t.Fatalf("folder should not open a tab: %v", mirrored)
+	}
+	cl.openTreeItem("build.sh")
+	if len(mirrored) != 1 || mirrored[0] != "build.sh" {
+		t.Fatalf("file open = %v, want [build.sh]", mirrored)
+	}
+	if f := cl.file("build.sh"); f == nil || f.buf.String() != "#!/bin/sh\n" {
+		t.Fatalf("file not loaded: %+v", f)
+	}
+}

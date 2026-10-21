@@ -52,12 +52,20 @@ func (cl *Client) treePanel(c *mgo.Context, k mtheme.Tokens, u, caption float32)
 		})
 		v.Element.Grow(1).MinHeight(0).MinWidth(0)
 		if v.Changed() || v.Submitted() {
-			if sel, ok := cl.tree.Selected(); ok && !cl.treeIsDir[sel] {
-				cl.Open(sel)
-				cl.host.Invalidate()
+			if sel, ok := cl.tree.Selected(); ok {
+				cl.openTreeItem(sel)
 			}
 		}
 	})
+}
+
+// openTreeItem opens a file tree item, ignoring folders.
+func (cl *Client) openTreeItem(key string) {
+	if cl.treeIsDir[key] {
+		return
+	}
+	cl.openAndRegister(key)
+	cl.host.Invalidate()
 }
 
 // treeEntries returns a loaded directory's children, loading the root on
