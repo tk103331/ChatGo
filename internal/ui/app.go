@@ -18,6 +18,7 @@ import (
 	"chatgo/internal/apps/browserapp"
 	"chatgo/internal/apps/codeeditorapp"
 	"chatgo/internal/apps/gitapp"
+	"chatgo/internal/apps/logapp"
 	"chatgo/internal/apps/markdownapp"
 	"chatgo/internal/apps/terminalapp"
 	"chatgo/internal/apps/webapp"
@@ -93,6 +94,7 @@ type ChatWindow struct {
 	mdApp        *markdownapp.Client
 	codeApp      *codeeditorapp.Client
 	browserApp   *browserapp.Client
+	logApp       *logapp.Client
 	webApps      map[string]*webapp.Client
 	webAppList   []webapp.App
 	preAppConvID string

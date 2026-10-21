@@ -71,6 +71,7 @@ func apps() []appDef {
 		codeEditorApp(),
 		browserApp(),
 		gitApp(),
+		logApp(),
 	}
 	return append(base, webApps()...)
 }

@@ -6,6 +6,7 @@ import (
 
 	"chatgo/internal/apps/browserapp"
 	"chatgo/internal/apps/codeeditorapp"
+	"chatgo/internal/apps/logapp"
 	"chatgo/internal/apps/markdownapp"
 	"chatgo/internal/apps/terminalapp"
 	"chatgo/internal/apps/webapp"
@@ -175,6 +176,53 @@ func (cw *ChatWindow) browserClient() *browserapp.Client {
 		cw.browserApp = browserapp.New(appHost{cw: cw})
 	}
 	return cw.browserApp
+}
+
+// logClient returns the log viewer bound to this window.
+func (cw *ChatWindow) logClient() *logapp.Client {
+	if cw.logApp == nil {
+		cw.logApp = logapp.New(appHost{cw: cw})
+		cw.logApp.SetOpenHandler(func(path string) { cw.openAppPath("logs", path) })
+	}
+	return cw.logApp
+}
+
+// logApp is the Apps menu entry for the log viewer.
+func logApp() appDef {
+	return appDef{
+		ID:     "logs",
+		Title:  "日志查看器",
+		Desc:   "打开日志文件，支持完整加载、Tail 末尾 N 行、跟踪新增内容、按级别过滤",
+		Icon:   "list",
+		System: logapp.System,
+		Tools: func(cw *ChatWindow) []appTool {
+			return wrapLogTools(cw.logClient().Tools())
+		},
+		NewTab: func(cw *ChatWindow) string { return cw.logClient().NewTab() },
+		TabLabel: func(cw *ChatWindow, tab string) string {
+			return cw.logClient().Title(tab)
+		},
+		Body: func(cw *ChatWindow, c *mgo.Context, tab string) {
+			cw.logClient().Tabs().Active = tab
+			cw.logClient().View(c)
+		},
+	}
+}
+
+// wrapLogTools adapts the log viewer's tools.
+func wrapLogTools(tools []logapp.Tool) []appTool {
+	out := make([]appTool, 0, len(tools))
+	for _, t := range tools {
+		t := t
+		params := make(map[string]appParam, len(t.Params))
+		for name, p := range t.Params {
+			params[name] = appParam{Desc: p.Desc, Required: p.Required}
+		}
+		out = append(out, appTool{Name: t.Name, Desc: t.Desc, Params: params, Run: func(_ *ChatWindow, args map[string]any) (string, error) {
+			return t.Run(args)
+		}})
+	}
+	return out
 }
 
 // codeEditorApp is the Apps menu entry for the code editor.
