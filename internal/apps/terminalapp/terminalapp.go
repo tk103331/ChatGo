@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -72,20 +73,24 @@ func (cl *Client) SetContext(all bool, ids []string) {
 	cl.ctxTabs = ids
 }
 
-// Title labels the active tab for a tab bar.
+// Title returns a tab's short title: the working directory's name.
 func (cl *Client) Title(id string) string {
 	tb := cl.byID[id]
 	if tb == nil {
 		return "Shell"
 	}
-	switch {
-	case tb.title != "":
-		return tb.title
-	case tb.err != "":
-		return "错误"
-	default:
-		return "Shell"
+	if tb.term != nil {
+		if dir := tb.term.Dir(); dir != "" {
+			base := filepath.Base(dir)
+			if base != "" && base != "/" && base != "." && base != "~" {
+				return base
+			}
+		}
 	}
+	if tb.err != "" {
+		return "错误"
+	}
+	return "Shell"
 }
 
 // NewTab starts a shell and returns its id.

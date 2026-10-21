@@ -138,7 +138,7 @@ func TestListTabs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, "- a: zsh（启动中）[上下文]") {
+	if !strings.Contains(out, "- a: Shell（启动中）[上下文]") {
 		t.Fatalf("list_tabs: %q", out)
 	}
 }
