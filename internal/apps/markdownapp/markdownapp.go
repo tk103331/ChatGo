@@ -35,6 +35,7 @@ type doc struct {
 	loaded      bool
 	mode        int
 	splitP      float32
+	outlineW    float32
 	jumpStart   int
 	jumpEnd     int
 	jumpSel     bool
@@ -213,9 +214,13 @@ func (cl *Client) View(c *mgo.Context) {
 		if d.err != "" {
 			mgo.Text(c, d.err).FontSize(caption).TextColor(k.Danger)
 		}
-		mgo.Row(c).Grow(1).MinWidth(0).MinHeight(0).AlignItems(mgo.Stretch).Children(func() {
+		if d.outlineW == 0 {
+			d.outlineW = 150
+		}
+		mgo.Split(c, &d.outlineW, func() {
 			cl.outlinePanel(c, d, k, u, caption)
-			mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Background(k.Surface).
+		}, func() {
+			mgo.Box(c).Fill().MinWidth(0).MinHeight(0).Background(k.Surface).
 				Border(mtheme.BorderWidth, k.Border).Radius(mtheme.ControlRadius).Clip().Children(func() {
 				switch d.mode {
 				case modePreview:
@@ -227,7 +232,7 @@ func (cl *Client) View(c *mgo.Context) {
 					cl.sourceArea(c, d, u)
 				}
 			})
-		})
+		}).Grow(1).MinWidth(0).MinHeight(0)
 		lines := 0
 		if d.content != "" {
 			lines = strings.Count(d.content, "\n") + 1
@@ -287,7 +292,7 @@ func (cl *Client) previewArea(c *mgo.Context, d *doc) {
 // line in the source (switching to split when only previewing).
 func (cl *Client) outlinePanel(c *mgo.Context, d *doc, k mtheme.Tokens, u, caption float32) {
 	hs := parseHeadings(d.content)
-	mgo.Column(c).Width(150).Shrink(0).FillHeight().
+	mgo.Column(c).Fill().MinWidth(0).
 		BorderWidth(0, mtheme.BorderWidth, 0, 0).BorderColor(k.Border).Children(func() {
 		mgo.Text(c, "大纲").FontSize(caption).TextColor(k.TextMuted).Padding(u*2, u*2, u, u*2)
 		if len(hs) == 0 {
