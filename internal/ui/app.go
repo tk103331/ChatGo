@@ -288,6 +288,8 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		autotasks:   autotaskpkg.State{Running: map[string]bool{}},
 		avatarPNG:   map[string]*mgo.Bitmap{},
 		iconCache:   map[string]iconImage{},
+
+		appChatHidden: true,
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd
