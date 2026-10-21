@@ -38,7 +38,7 @@ func Run(win Window, rt *Standalone) {
 			MinHeight:     480,
 			TitleBarStyle: mygo.TitleBarHiddenInset,
 			Content: mgo.View(func(c *mgo.Context) {
-				mcore.Use(c, mcore.Settings{Mode: mcore.System})
+				mcore.Use(c, mcore.Settings{Mode: mcore.System, Density: mtheme.Compact})
 				Column(c, w, win, rt)
 			}),
 		})
