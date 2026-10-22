@@ -73,6 +73,8 @@ func (cl *Client) View(c *mgo.Context) {
 				}
 			} else {
 				mgo.Text(c, "未配置账户").FontSize(caption).TextColor(k.TextMuted)
+				mgo.Text(c, "支持 "+providerNames()).FontSize(caption).TextColor(k.TextMuted).
+					Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 			}
 			if hasAcc {
 				minput.TextInput(c, &cl.st.mailbox, minput.TextInputOptions{Placeholder: "文件夹"}).Element.Width(110).Shrink(0)
@@ -371,29 +373,52 @@ func (cl *Client) send() {
 	}()
 }
 
-// promptAddAccount asks for the account fields and saves it.
+// promptAddAccount asks for an address and fills the service preset.
 func (cl *Client) promptAddAccount() {
-	cl.host.Prompt("添加账户", "邮箱地址", "", func(email string) {
+	cl.host.Prompt("添加账户", "邮箱地址（支持 163/126/QQ/Gmail/Outlook 等）", "", func(email string) {
 		email = strings.TrimSpace(email)
 		if email == "" {
 			return
 		}
-		domain := ""
-		if i := strings.Index(email, "@"); i >= 0 {
-			domain = email[i+1:]
+		if p, ok := providerFor(email); ok {
+			cl.promptPresetAccount(email, p)
+			return
 		}
-		cl.host.Prompt("添加账户", "IMAP 服务器 (host:port)", "imap."+domain+":993", func(imapHost string) {
-			cl.host.Prompt("添加账户", "SMTP 服务器 (host:port)", "smtp."+domain+":465", func(smtpHost string) {
-				cl.host.Prompt("添加账户", "用户名", email, func(user string) {
-					cl.host.Prompt("添加账户", "密码/授权码", "", func(pass string) {
-						acc := Account{
-							Name: email, Email: email,
-							IMAPHost: hostOf(imapHost, "imap."+domain), IMAPPort: portOf(imapHost, 993),
-							SMTPHost: hostOf(smtpHost, "smtp."+domain), SMTPPort: portOf(smtpHost, 465),
-							Username: strings.TrimSpace(user), Password: pass,
-						}
-						cl.saveAccount(acc)
-					})
+		cl.promptCustomAccount(email)
+	})
+}
+
+// promptPresetAccount finishes a preset account with user name and secret.
+func (cl *Client) promptPresetAccount(email string, p Provider) {
+	cl.host.Prompt("添加账户", p.Name+" 用户名", email, func(user string) {
+		cl.host.Prompt("添加账户", p.Name+" 密码（"+p.PasswordHint+"）", "", func(pass string) {
+			cl.saveAccount(Account{
+				Name: email, Email: email,
+				IMAPHost: p.IMAPHost, IMAPPort: p.IMAPPort,
+				SMTPHost: p.SMTPHost, SMTPPort: p.SMTPPort,
+				Username: strings.TrimSpace(user), Password: pass,
+			})
+		})
+	})
+}
+
+// promptCustomAccount asks for servers when no preset matches.
+func (cl *Client) promptCustomAccount(email string) {
+	domain := ""
+	if i := strings.Index(email, "@"); i >= 0 {
+		domain = email[i+1:]
+	}
+	cl.host.Prompt("添加账户", "IMAP 服务器 (host:port)", "imap."+domain+":993", func(imapHost string) {
+		cl.host.Prompt("添加账户", "SMTP 服务器 (host:port)", "smtp."+domain+":465", func(smtpHost string) {
+			cl.host.Prompt("添加账户", "用户名", email, func(user string) {
+				cl.host.Prompt("添加账户", "密码/授权码", "", func(pass string) {
+					acc := Account{
+						Name: email, Email: email,
+						IMAPHost: hostOf(imapHost, "imap."+domain), IMAPPort: portOf(imapHost, 993),
+						SMTPHost: hostOf(smtpHost, "smtp."+domain), SMTPPort: portOf(smtpHost, 465),
+						Username: strings.TrimSpace(user), Password: pass,
+					}
+					cl.saveAccount(acc)
 				})
 			})
 		})

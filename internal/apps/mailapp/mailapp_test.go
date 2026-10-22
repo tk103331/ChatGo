@@ -92,3 +92,47 @@ func TestFormatDate(t *testing.T) {
 		t.Errorf("zero format = %q", got)
 	}
 }
+
+func TestProviderFor(t *testing.T) {
+	cases := []struct {
+		email    string
+		wantName string
+		imap     string
+		smtp     string
+		smtpPort int
+	}{
+		{"me@163.com", "网易163", "imap.163.com", "smtp.163.com", 465},
+		{"me@126.com", "网易126", "imap.126.com", "smtp.126.com", 465},
+		{"me@qq.com", "腾讯QQ邮箱", "imap.qq.com", "smtp.qq.com", 465},
+		{"me@foxmail.com", "腾讯QQ邮箱", "imap.qq.com", "smtp.qq.com", 465},
+		{"me@gmail.com", "Gmail", "imap.gmail.com", "smtp.gmail.com", 465},
+		{"me@outlook.com", "Outlook", "outlook.office365.com", "smtp.office365.com", 587},
+		{"me@hotmail.com", "Outlook", "outlook.office365.com", "smtp.office365.com", 587},
+		{"me@icloud.com", "iCloud", "imap.mail.me.com", "smtp.mail.me.com", 587},
+	}
+	for _, tc := range cases {
+		p, ok := providerFor(tc.email)
+		if !ok {
+			t.Errorf("providerFor(%q) not found", tc.email)
+			continue
+		}
+		if p.Name != tc.wantName || p.IMAPHost != tc.imap || p.SMTPHost != tc.smtp || p.SMTPPort != tc.smtpPort {
+			t.Errorf("providerFor(%q) = %+v", tc.email, p)
+		}
+	}
+	if _, ok := providerFor("me@unknown-domain.test"); ok {
+		t.Error("unknown domain should not match")
+	}
+	if _, ok := providerFor("no-at-sign"); ok {
+		t.Error("address without @ should not match")
+	}
+}
+
+func TestProviderPasswordHints(t *testing.T) {
+	for _, email := range []string{"a@163.com", "a@qq.com", "a@gmail.com", "a@outlook.com"} {
+		p, ok := providerFor(email)
+		if !ok || p.PasswordHint == "" {
+			t.Errorf("%s should have a password hint", email)
+		}
+	}
+}
