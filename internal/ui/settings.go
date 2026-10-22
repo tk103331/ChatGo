@@ -161,7 +161,7 @@ func (cw *ChatWindow) appVersion() string {
 
 func (cw *ChatWindow) saveSystemSettings() {
 	if cw.cfg.RunInBackground {
-		cw.cfg.ShowTrayIcon = true
+		cw.cfg.ShowTrayIcon = config.BoolPtr(true)
 	}
 	_ = config.SaveConfig(cw.cfg)
 	cw.syncTray()

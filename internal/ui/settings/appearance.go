@@ -123,7 +123,12 @@ func systemTab(c *mgo.Context, state *State, opts Options) {
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
 		mgo.Text(c, "系统").Font(mtheme.SerifFont).FontWeight(600)
-		if minput.Switch(c, &opts.Config().ShowTrayIcon, "显示托盘图标", minput.SwitchOptions{}).Changed() {
+		cfg := opts.Config()
+		if cfg.ShowTrayIcon == nil {
+			on := true
+			cfg.ShowTrayIcon = &on
+		}
+		if minput.Switch(c, cfg.ShowTrayIcon, "显示托盘图标", minput.SwitchOptions{}).Changed() {
 			opts.SaveSystemSettings()
 		}
 		mgo.Text(c, "在系统托盘 / 菜单栏显示 ChatGo 图标。点击图标打开程序，右键菜单可快速新建会话并进入最近会话。").

@@ -13,7 +13,10 @@ import (
 const trayRecentMax = 5
 
 func (cw *ChatWindow) shouldShowTray() bool {
-	return cw.cfg.ShowTrayIcon || cw.cfg.RunInBackground
+	if cw.cfg.RunInBackground {
+		return true
+	}
+	return cw.cfg.ShowTrayIcon == nil || *cw.cfg.ShowTrayIcon
 }
 
 func (cw *ChatWindow) syncTray() {

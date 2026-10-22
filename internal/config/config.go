@@ -23,7 +23,7 @@ type Config struct {
 	Density           string          `yaml:"density,omitempty"`
 	Locale            string          `yaml:"locale,omitempty"`
 	QuickChatShortcut string          `yaml:"quick_chat_shortcut,omitempty"`
-	ShowTrayIcon      bool            `yaml:"show_tray_icon"`
+	ShowTrayIcon      *bool           `yaml:"show_tray_icon"`
 	RunInBackground   bool            `yaml:"run_in_background"`
 	Agents            []AgentDef      `yaml:"agents,omitempty"`
 	ACPAgents         []ACPConnection `yaml:"acp_agents,omitempty"`
@@ -381,6 +381,7 @@ func LoadConfig() (*Config, error) {
 			CurrentProvider:   "",
 			UseReactAgent:     false,
 			ReactAgentMaxStep: 40,
+			ShowTrayIcon:      BoolPtr(true),
 			ThemeMode:         "system",
 			Density:           "compact",
 			Locale:            "zh-CN",
@@ -444,9 +445,15 @@ func loadFile(path string) (*Config, error) {
 			}
 		}
 	}
+	if config.ShowTrayIcon == nil {
+		config.ShowTrayIcon = BoolPtr(true)
+	}
 
 	return &config, nil
 }
+
+// BoolPtr returns a pointer to b, for optional booleans.
+func BoolPtr(b bool) *bool { return &b }
 
 // firstModel returns the first model of the named provider.
 func firstModel(providers []Provider, name string) string {
