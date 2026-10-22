@@ -158,7 +158,7 @@ func CapabilityCards(c *mgo.Context, cards []CapabilityCard, opts CapabilityCard
 			box.Children(func() {
 				mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
 					if card.Icon != nil {
-						mgo.Icon(c, card.Icon).Size(20, 20).TextColor(k.AccentText)
+						mgo.Icon(c, card.Icon).Size(20, 20).TextColor(k.Accent)
 					}
 					mgo.Text(c, card.Title).
 						FontSize(uikit.FontSize(c, theme.H3Size)).TextColor(k.Text)
@@ -365,7 +365,7 @@ func ConversationItem(c *mgo.Context, conv *ChatConversation, opts ConversationI
 			main.Children(func() {
 				t := mgo.Text(c, title).SingleLine().Grow(1).MinWidth(0)
 				if opts.Selected {
-					t.TextColor(k.AccentText)
+					t.TextColor(k.Accent)
 				}
 				mgo.Text(c, DateSeparatorWhen(conv.Updated, today)).
 					FontSize(uikit.FontSize(c, theme.CaptionSize)).
@@ -395,7 +395,7 @@ func conversationItemEditor(c *mgo.Context, k *mgo.Theme, conv *ChatConversation
 	d := uikit.Density(c)
 	in := mgo.TextInputBase(c, &st.draft).Grow(1).MinHeight(d.ControlHeight()-4).
 		Padding(0, d.Unit()*2).Radius(theme.ControlRadius).Background(k.Surface).
-		Border(theme.BorderWidth, k.AccentText).Label("重命名会话")
+		Border(theme.BorderWidth, k.Accent).Label("重命名会话")
 	uikit.Ring(in, k.Focus, theme.ControlRadius)
 	switch {
 	case st.fresh:

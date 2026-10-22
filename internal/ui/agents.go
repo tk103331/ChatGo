@@ -129,7 +129,7 @@ func (cw *ChatWindow) agentCard(c *mgo.Context, i int) {
 func agentTag(c *mgo.Context, label string) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.AccentText).
+	mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.Accent).
 		Padding(0, u*1.5).Radius(mtheme.ControlRadius).Border(mtheme.BorderWidth, k.Border).SingleLine()
 }
 

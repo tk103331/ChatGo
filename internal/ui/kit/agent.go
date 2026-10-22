@@ -56,7 +56,7 @@ func agentWord(s AgentState) string {
 func agentTone(k *mgo.Theme, s AgentState) (mgo.Color, *mgo.SVG) {
 	switch s {
 	case AgentRunning:
-		return k.AccentText, icons.Must("loader-circle")
+		return k.Accent, icons.Must("loader-circle")
 	case AgentDone:
 		return k.Success, icons.Must("circle-check")
 	case AgentFailed:

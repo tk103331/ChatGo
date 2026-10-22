@@ -463,7 +463,7 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 	b.Children(func() {
 		mgo.Icon(c, icons.Must("brain")).Size(16, 16)
 		if count > 0 {
-			mgo.Text(c, strconv.Itoa(count)).FontWeight(600).TextColor(k.AccentText).SingleLine()
+			mgo.Text(c, strconv.Itoa(count)).FontWeight(600).TextColor(k.Accent).SingleLine()
 		}
 	})
 	changed := false

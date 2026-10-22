@@ -282,7 +282,7 @@ func (cw *ChatWindow) acpFormPreviewIcon(c *mgo.Context, f *acpForm, size float3
 	if acpIcon(c, f.name, size, size) {
 		return
 	}
-	mgo.Icon(c, icons.Must(chatAgentIcon)).Size(size, size).Shrink(0).TextColor(mcore.Tokens(c).AccentText)
+	mgo.Icon(c, icons.Must(chatAgentIcon)).Size(size, size).Shrink(0).TextColor(mcore.Tokens(c).Accent)
 }
 
 // pickIconFile opens a native image chooser and hands the path to cb.

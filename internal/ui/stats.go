@@ -284,7 +284,7 @@ func (cw *ChatWindow) statsModelChart(c *mgo.Context, sum statsSummary) {
 			mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
 				mgo.Text(c, m.name).FontSize(caption).Width(140).SingleLine()
 				mgo.Row(c).Grow(1).Height(8).Radius(4).Background(k.SurfaceHover).Children(func() {
-					mgo.Row(c).FillHeight().WidthPercent(frac).Background(k.AccentText).Radius(4)
+					mgo.Row(c).FillHeight().WidthPercent(frac).Background(k.Accent).Radius(4)
 				})
 				mgo.Text(c, formatCount(m.value)).FontSize(caption).TextColor(k.TextMuted).
 					Width(64).TextAlign(mgo.End).SingleLine()

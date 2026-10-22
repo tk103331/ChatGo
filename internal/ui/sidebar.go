@@ -211,7 +211,7 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 		if mcore.IconAction(c, icons.Must(chev), "折叠/展开工作区").Clicked() {
 			cw.wsCollapsed[ws] = !cw.wsCollapsed[ws]
 		}
-		mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.AccentText).Shrink(0)
+		mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.Accent).Shrink(0)
 		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(700).TextColor(k.Text).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(ws)
 		plus := mcore.IconAction(c, icons.Must("plus"), "新建会话")
@@ -324,7 +324,7 @@ func menuItem(c *mgo.Context, leading func(), label string, action func()) {
 
 func iconLeading(c *mgo.Context, name string) func() {
 	return func() {
-		mgo.Icon(c, icons.Must(name)).Size(16, 16).TextColor(mcore.Tokens(c).AccentText)
+		mgo.Icon(c, icons.Must(name)).Size(16, 16).TextColor(mcore.Tokens(c).Accent)
 	}
 }
 
@@ -345,6 +345,6 @@ func (cw *ChatWindow) convLeading(c *mgo.Context, conv models.Conversation, size
 		name := strings.TrimPrefix(conv.Agent, "agent:")
 		mgo.Row(c).Margin(0, 0, 0, u).Children(func() { cw.agentMarkByName(c, name, size) })
 	default:
-		mgo.Icon(c, icons.Must(chatAgentIcon)).Size(size, size).TextColor(mcore.Tokens(c).AccentText).Margin(0, 0, 0, u)
+		mgo.Icon(c, icons.Must(chatAgentIcon)).Size(size, size).TextColor(mcore.Tokens(c).Accent).Margin(0, 0, 0, u)
 	}
 }

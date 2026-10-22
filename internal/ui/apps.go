@@ -107,7 +107,7 @@ func (cw *ChatWindow) appCard(c *mgo.Context, a appDef) {
 		b.Background(k.SurfaceHover)
 	}
 	b.Children(func() {
-		mgo.Icon(c, icons.Must(a.Icon)).Size(24, 24).TextColor(k.AccentText)
+		mgo.Icon(c, icons.Must(a.Icon)).Size(24, 24).TextColor(k.Accent)
 		mgo.Text(c, a.Title).
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600)
 		if a.Desc != "" {
@@ -165,7 +165,7 @@ func (cw *ChatWindow) appHeader(c *mgo.Context, a appDef) {
 		if mcore.IconAction(c, icons.Must("chevron-left"), "返回应用列表").Clicked() {
 			cw.appActive = ""
 		}
-		mgo.Icon(c, icons.Must(a.Icon)).Size(18, 18).TextColor(k.AccentText)
+		mgo.Icon(c, icons.Must(a.Icon)).Size(18, 18).TextColor(k.Accent)
 		mgo.Text(c, a.Title).
 			FontSize(mcore.FontSize(c, mtheme.BodySize)).FontWeight(600)
 	})

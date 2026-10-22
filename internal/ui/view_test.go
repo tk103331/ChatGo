@@ -1,7 +1,10 @@
 package ui
 
 import (
+	"math"
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -437,4 +440,68 @@ func TestStatsCountsModelsPerTurn(t *testing.T) {
 			t.Fatalf("model %s = %d, want %d", m.name, m.value, want)
 		}
 	}
+}
+
+// TestAccentTextOnlyOnAccent guards a regression where AccentText — the
+// color of text on the accent fill, white in both themes — was used for icons
+// and labels on ordinary surfaces, which made them invisible in the light
+// theme. Only a background of Accent or Danger may carry it.
+func TestAccentTextOnlyOnAccent(t *testing.T) {
+	files, err := filepath.Glob("kit/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The files at the root of internal/ui draw too.
+	root, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range append(files, root...) {
+		if strings.HasSuffix(f, "_test.go") {
+			continue
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i, line := range strings.Split(string(src), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if !strings.Contains(line, "AccentText") || strings.HasPrefix(trimmed, "//") {
+				continue
+			}
+			// A fill of the accent or the danger color is the one use that
+			// makes the text readable; anything else is a mistake.
+			// PrimaryButton fills itself with the accent, so its text
+			// color is AccentText without saying so here.
+			if strings.Contains(line, "Background(k.Accent)") ||
+				strings.Contains(line, "k.Accent,") ||
+				strings.Contains(line, "k.Danger") ||
+				strings.Contains(line, "return k.AccentText") ||
+				strings.Contains(line, "fg, bg := k.Accent") {
+				continue
+			}
+			t.Errorf("%s:%d uses AccentText without an accent fill: %s",
+				f, i+1, strings.TrimSpace(line))
+		}
+	}
+}
+
+// contrast returns the WCAG relative luminance ratio of two opaque colors.
+func contrast(a, b mgo.Color) float64 {
+	la, lb := luminance(a), luminance(b)
+	if la < lb {
+		la, lb = lb, la
+	}
+	return (la + 0.05) / (lb + 0.05)
+}
+
+func luminance(c mgo.Color) float64 {
+	ch := func(v uint8) float64 {
+		s := float64(v) / 255
+		if s <= 0.03928 {
+			return s / 12.92
+		}
+		return math.Pow((s+0.055)/1.055, 2.4)
+	}
+	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
 }

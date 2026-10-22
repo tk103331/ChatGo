@@ -330,7 +330,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 			mgo.Icon(c, icons.Must(icon)).Size(16, 16)
 		}
 		if on > 0 {
-			mgo.Text(c, strconv.Itoa(on)).FontWeight(600).TextColor(k.AccentText).SingleLine()
+			mgo.Text(c, strconv.Itoa(on)).FontWeight(600).TextColor(k.Accent).SingleLine()
 		}
 	})
 	query := &cw.toolQuery

@@ -421,7 +421,7 @@ func renderDiff(c *mgo.Context, body string) {
 		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
 			fg = k.TextMuted
 		case strings.HasPrefix(line, "@@"):
-			fg = k.AccentText
+			fg = k.Accent
 		case strings.HasPrefix(line, "+"):
 			fg, bg = k.Success, k.Success.Alpha(0.12)
 		case strings.HasPrefix(line, "-"):

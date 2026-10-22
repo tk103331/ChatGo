@@ -396,7 +396,7 @@ func BranchSelector(c *mgo.Context, current *string, branches []Branch, opts Bra
 					}
 					if b.Current {
 						mgo.Icon(c, icons.Must("check")).Size(14, 14).
-							TextColor(uikit.Tokens(c).AccentText).Shrink(0)
+							TextColor(uikit.Tokens(c).Accent).Shrink(0)
 					}
 				})
 			}
@@ -558,7 +558,7 @@ func CommitGraph(c *mgo.Context, s *CommitGraphState, commits []Commit, opts Com
 		row.Children(func() {
 			// The graph rail: a dot per commit, joined by a line.
 			rail := mgo.Box(c).Size(10, 18).Shrink(0)
-			dot, line := k.AccentText, k.Border
+			dot, line := k.Accent, k.Border
 			first, last := i == 0, i == len(commits)-1
 			rail.Draw(func(p *mgo.Painter, b mgo.Rect) {
 				cx, cy := b.X+b.W/2, b.Y+b.H/2
@@ -575,7 +575,7 @@ func CommitGraph(c *mgo.Context, s *CommitGraphState, commits []Commit, opts Com
 					mgo.Text(c, commit.Subject).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
 					for _, ref := range commit.Refs {
 						mgo.Text(c, ref).FontSize(uikit.FontSize(c, theme.CaptionSize-1)).
-							TextColor(k.AccentText).Padding(0, u/2).Radius(theme.ControlRadius).
+							TextColor(k.Accent).Padding(0, u/2).Radius(theme.ControlRadius).
 							Border(theme.BorderWidth, k.Border).SingleLine().Shrink(0)
 					}
 				})
@@ -645,7 +645,7 @@ func BlameView(c *mgo.Context, s *BlameViewState, lines []BlameLine, opts BlameV
 				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 					mgo.Text(c, shortHash(l.Hash)).Font(theme.MonoFont).
 						FontSize(uikit.FontSize(c, theme.CaptionSize)).
-						TextColor(k.AccentText).SingleLine().Shrink(0).
+						TextColor(k.Accent).SingleLine().Shrink(0).
 						Tooltip(l.Summary)
 					gitCaption(c, l.Author).Shrink(1).MinWidth(0).Ellipsis("…")
 				})

@@ -53,7 +53,7 @@ func (cw *ChatWindow) acpLeading(c *mgo.Context, name string, size float32) {
 	if acpIcon(c, name, size, size) {
 		return
 	}
-	mgo.Icon(c, icons.Must(chatAgentIcon)).Size(size, size).TextColor(mcore.Tokens(c).AccentText)
+	mgo.Icon(c, icons.Must(chatAgentIcon)).Size(size, size).TextColor(mcore.Tokens(c).Accent)
 }
 
 // acpConnByName finds a configured connection by its display name.

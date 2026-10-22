@@ -66,7 +66,7 @@ func (m *PopupMenu) row(it mgo.Element, disabled bool) mgo.Element {
 	}
 	*was = hovered
 	if hovered || it.FocusVisible() {
-		accent := k.AccentText
+		accent := k.Accent
 		it.Background(k.Selection).Draw(func(p *mgo.Painter, r mgo.Rect) {
 			p.Fill(mgo.Rect{X: r.X, Y: r.Y + 4, W: 2, H: r.H - 8}, accent, 1)
 		})

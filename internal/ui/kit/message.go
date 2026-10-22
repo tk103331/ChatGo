@@ -147,7 +147,7 @@ func ScrollToBottomButton(c *mgo.Context, away bool, unread int) mgo.Element {
 			mgo.Icon(c, icons.Must("arrow-down")).Size(16, 16)
 			if unread > 0 {
 				mgo.Text(c, fmt.Sprint(unread)).FontFeatures("tnum").
-					FontWeight(600).TextColor(k.AccentText).SingleLine()
+					FontWeight(600).TextColor(k.Accent).SingleLine()
 			}
 		})
 	})

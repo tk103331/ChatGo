@@ -276,7 +276,7 @@ func terminalTab(c *mgo.Context, tab mgo.Element, t TerminalTab, on bool, st *te
 	// FocusVisible is read in the build pass; the paint callback runs later,
 	// when this element handle is no longer valid.
 	ringVisible := tab.FocusVisible()
-	accent, focus := k.AccentText, k.Focus
+	accent, focus := k.Accent, k.Focus
 	tab.FocusRing(false).DrawOver(func(p *mgo.Painter, r mgo.Rect) {
 		if on {
 			p.Fill(mgo.Rect{X: r.X, Y: r.Y + r.H - 2, W: r.W, H: 2}, accent, 0)
@@ -308,7 +308,7 @@ func terminalTab(c *mgo.Context, tab mgo.Element, t TerminalTab, on bool, st *te
 		}
 		mgo.Text(c, t.Title).SingleLine()
 		if t.Busy {
-			mgo.Box(c).Size(6, 6).Shrink(0).Role(mgo.RoleNone).Background(k.AccentText).Radius(3)
+			mgo.Box(c).Size(6, 6).Shrink(0).Role(mgo.RoleNone).Background(k.Accent).Radius(3)
 		}
 		if uikit.IconAction(c, icons.Must("x"), "关闭 "+t.Title).Clicked() && !disabled {
 			askClose(t)

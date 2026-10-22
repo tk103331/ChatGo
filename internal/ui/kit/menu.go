@@ -366,7 +366,7 @@ func slashMenuPanel(c *mgo.Context, a mgo.Rect, st *slashMenuState, rows []slash
 					}
 					pressed = pressed || row.Pressed()
 					if i == st.hi {
-						accent := k.AccentText
+						accent := k.Accent
 						row.Background(k.Selection).Draw(func(p *mgo.Painter, b mgo.Rect) {
 							p.Fill(mgo.Rect{X: b.X, Y: b.Y + 4, W: 2, H: b.H - 8}, accent, 1)
 						})
