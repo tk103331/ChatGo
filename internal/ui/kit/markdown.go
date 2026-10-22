@@ -7,7 +7,6 @@ import (
 	"github.com/egoist/mygo/ui/markdown"
 
 	"chatgo/internal/ui/theme"
-	"chatgo/internal/ui/uikit"
 )
 
 // markdownOptions is the window's Markdown look and link handling.
@@ -19,19 +18,10 @@ func markdownOptions(c *mgo.Context) *markdown.Options {
 	o := *mgo.Local(c.Root(), "chatgo.markdown", func() *markdown.Options {
 		return &markdown.Options{}
 	})
-	k := uikit.Tokens(c)
+	// DefaultTheme derives every color from the window theme, so the view
+	// follows ui.LightTheme and ui.DarkTheme with nothing set here.
 	th := markdown.DefaultTheme(c.Theme())
 	th.CodeFont = theme.MonoFont
-	th.Link = k.AccentText
-	th.QuoteBar = k.Ornament
-	th.QuoteText = k.TextMuted
-	th.Rule = k.Border
-	th.CodeBlockBorder = k.Border
-	th.TableBorder = k.Border
-	th.TableHeader = k.SurfaceHover
-	for i := range th.Headings {
-		th.Headings[i].Color = k.Text
-	}
 	o.Theme = th
 	o.OnLink = func(url string) { c.OpenURL(url) }
 	return o

@@ -18,7 +18,7 @@ func (cw *ChatWindow) builtinTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
-			mgo.Text(c, "工具").Font(mtheme.SerifFont).
+			mgo.Text(c, "工具").
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 			if len(cw.cfg.BuiltinTools) == 0 {
 				mgo.Text(c, "暂无工具").TextColor(k.TextMuted).
@@ -46,12 +46,12 @@ func (cw *ChatWindow) builtinCard(c *mgo.Context, i int) {
 		mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				mgo.Icon(c, icons.Must("settings")).Size(18, 18).TextColor(k.Text).Shrink(0)
-				mgo.Text(c, config.GetBuiltinToolDisplayName(t.Type)).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+				mgo.Text(c, config.GetBuiltinToolDisplayName(t.Type)).FontWeight(600).Shrink(0)
 				mgo.Text(c, t.Type).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := t.Enabled
-				if kit.Switch(c, &en, "", kit.SwitchOptions{}).Changed() {
+				if mgo.Switch(c, &en).Changed() {
 					cw.cfg.BuiltinTools[i].Enabled = en
 					cw.settings.builtin.enabled = en
 					_ = config.SaveConfig(cw.cfg)

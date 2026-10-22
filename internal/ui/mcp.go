@@ -67,7 +67,7 @@ type mcpMarketServer struct {
 func (cw *ChatWindow) mcpPage(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
-		mgo.Text(c, "MCP").Font(mtheme.SerifFont).
+		mgo.Text(c, "MCP").
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
 		kit.SegmentedControl(c, &cw.mcp.tabSel, []kit.Segment{
 			{Label: "我的服务"}, {Label: "市场"},

@@ -86,11 +86,11 @@ func Toaster(c *mgo.Context) {
 }
 
 // toastCard builds the toast and reports a close.
-func toastCard(c *mgo.Context, k theme.Tokens, u, width float32, m ToastMessage) bool {
+func toastCard(c *mgo.Context, k *mgo.Theme, u, width float32, m ToastMessage) bool {
 	tone, icon := uikit.SeverityLook(k, m.Severity)
 	card := mgo.Row(c).Width(width).AlignItems(mgo.Center).Gap(u*3).
 		Padding(u*2, u*2, u*2, u*4).Radius(theme.PopupRadius).
-		Background(k.Surface).Border(theme.BorderWidth, k.ControlBorder).
+		Background(k.Surface).Border(theme.BorderWidth, k.Border).
 		Role(mgo.RoleStatus).Label(m.Message)
 	card.Shadow(0, 4, 12, 0, mgo.RGBA(0, 0, 0, 0.14))
 	card.Transition(mgo.ElementTransition{
@@ -171,7 +171,7 @@ func StatusIndicator(c *mgo.Context, status Status, opts StatusIndicatorOptions)
 	case StatusOffline:
 		tone, icon = k.TextMuted, icons.Must("wifi-off")
 	case StatusBusy:
-		tone = k.Info
+		tone = k.Accent
 	}
 	row := mgo.Row(c).AlignItems(mgo.Center).Gap(u * 1.5).Role(mgo.RoleStatus).Label(label)
 	row.Children(func() {

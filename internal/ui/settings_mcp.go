@@ -58,7 +58,7 @@ func (cw *ChatWindow) mcpEmptyState(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u * 2).Children(func() {
 		mgo.Icon(c, icons.Must("layout-grid")).Size(48, 48).TextColor(k.TextMuted)
-		mgo.Text(c, "还没有配置 MCP 服务").Font(mtheme.SerifFont).
+		mgo.Text(c, "还没有配置 MCP 服务").
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
 		mgo.Text(c, "从市场安装，或手动添加一个服务器").TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
@@ -112,7 +112,7 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 				if svg := assets.MCPLogo(); svg != nil {
 					mgo.Icon(c, svg).Size(18, 18).TextColor(k.Text)
 				}
-				mgo.Text(c, s.Name).Font(mtheme.SerifFont).
+				mgo.Text(c, s.Name).
 					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
 				status, note := mcpStatus(cw, s.Name)
 				kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{})
@@ -289,7 +289,7 @@ func (cw *ChatWindow) mcpFormFields(c *mgo.Context) {
 			{Label: "STDIO"}, {Label: "SSE"}, {Label: "HTTP"},
 		}, kit.SegmentedControlOptions{Label: "类型", Equal: true})
 		f.typ = mcpTypes[typ]
-		if kit.Switch(c, &f.enabled, "启用", kit.SwitchOptions{}).Changed() {
+		if mgo.Switch(c, &f.enabled).Label("启用").Changed() {
 			cw.saveMCP()
 		}
 		if f.typ == "stdio" {

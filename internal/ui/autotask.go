@@ -45,7 +45,7 @@ func (cw *ChatWindow) autoTasksPage(c *mgo.Context) {
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
 			mgo.Column(c).Grow(1).Gap(u / 2).Children(func() {
-				mgo.Text(c, "自动任务").Font(mtheme.SerifFont).
+				mgo.Text(c, "自动任务").
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Text(c, "按计划自动运行 Agent，支持每天 / 每周 / 每月").TextColor(k.TextMuted).FontSize(caption)
 			})
@@ -78,7 +78,7 @@ func (cw *ChatWindow) autoTaskEmptyState(c *mgo.Context) {
 	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u*2).
 		Padding(u*8, 0).Children(func() {
 		mgo.Icon(c, icons.Must("clock")).Size(48, 48).TextColor(k.TextMuted)
-		mgo.Text(c, "还没有自动任务").Font(mtheme.SerifFont).
+		mgo.Text(c, "还没有自动任务").
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
 		mgo.Text(c, "创建任务后，Agent 会按计划自动执行").TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
@@ -119,7 +119,7 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 			mgo.Icon(c, icons.Must(dotIcon)).Size(16, 16).TextColor(dotCol).Shrink(0)
 			mgo.Text(c, t.Name).FontWeight(600).Grow(1).SingleLine().MinWidth(0).Ellipsis("…")
 			enabled := t.Enabled
-			if kit.Switch(c, &enabled, "", kit.SwitchOptions{}).Changed() {
+			if mgo.Switch(c, &enabled).Changed() {
 				cw.cfg.AutoTasks[i].Enabled = enabled
 				_ = config.SaveConfig(cw.cfg)
 			}
@@ -247,7 +247,7 @@ func (cw *ChatWindow) autoTaskEditor(c *mgo.Context) {
 			if kit.Button(c, "返回", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("chevron-left")}).Clicked() {
 				cw.autoTaskEditorOpen = false
 			}
-			mgo.Text(c, title).Font(mtheme.SerifFont).
+			mgo.Text(c, title).
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
 			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				if cw.saveAutoTask() {
@@ -273,8 +273,8 @@ func (cw *ChatWindow) autoTaskEditor(c *mgo.Context) {
 						}
 					})
 					cw.autoScheduleForm(c, f)
-					kit.Switch(c, &f.reuse, "复用会话（否则每次新建）", kit.SwitchOptions{})
-					kit.Switch(c, &f.enabled, "启用", kit.SwitchOptions{})
+					mgo.Switch(c, &f.reuse).Label("复用会话（否则每次新建）")
+					mgo.Switch(c, &f.enabled).Label("启用")
 				})
 			})
 		})

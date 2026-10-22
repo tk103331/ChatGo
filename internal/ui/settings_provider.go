@@ -20,7 +20,7 @@ func (cw *ChatWindow) providersTab(c *mgo.Context) {
 	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
 			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
-				mgo.Text(c, "模型").Font(mtheme.SerifFont).
+				mgo.Text(c, "模型").
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				if kit.Button(c, "新增", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("plus")}).Clicked() {
 					cw.addNewProvider()
@@ -44,7 +44,7 @@ func (cw *ChatWindow) providerEmptyState(c *mgo.Context) {
 	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u*2).
 		Padding(u*8, 0).Children(func() {
 		mgo.Icon(c, icons.Must("brain")).Size(48, 48).TextColor(k.TextMuted)
-		mgo.Text(c, "还没有模型").Font(mtheme.SerifFont).
+		mgo.Text(c, "还没有模型").
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
 		mgo.Text(c, "添加 OpenAI、Anthropic、Ollama 等模型提供商").TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
@@ -81,12 +81,12 @@ func (cw *ChatWindow) providerCard(c *mgo.Context, i int) {
 				} else {
 					mgo.Icon(c, icons.Must("sliders-horizontal")).Size(18, 18).TextColor(k.TextMuted).Shrink(0)
 				}
-				mgo.Text(c, p.Name).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+				mgo.Text(c, p.Name).FontWeight(600).Shrink(0)
 				mgo.Text(c, p.Type).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := p.Enabled
-				if kit.Switch(c, &en, "", kit.SwitchOptions{}).Changed() {
+				if mgo.Switch(c, &en).Changed() {
 					cw.cfg.Providers[i].Enabled = en
 					cw.settings.prov.enabled = en
 					_ = config.SaveConfig(cw.cfg)

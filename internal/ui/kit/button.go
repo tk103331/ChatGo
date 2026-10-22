@@ -34,30 +34,25 @@ type ButtonOptions struct {
 // loading.
 const buttonIconSize float32 = 16
 
-// Button is a push button. Loading keeps its size and blocks clicks.
+// Button is MyGo's button, with a leading icon and the emphasis ChatGo asks
+// for. Loading keeps its size and blocks clicks.
 func Button(c *mgo.Context, label string, opts ButtonOptions) mgo.Element {
 	if label == "" && opts.Label == "" {
 		panic("kit: Button without a label needs Label to name it")
 	}
 	k := uikit.Tokens(c)
-	d := uikit.Density(c)
-	pad, gap := d.Unit()*4, d.Unit()*2
-	if opts.Loading && opts.Icon == nil && label != "" {
-		// The spinner slot comes out of the padding, so the width holds.
-		pad -= (buttonIconSize + gap) / 2
+	// The label is built here, so the icon and the spinner share its row.
+	var b mgo.Element
+	if opts.Variant == Primary {
+		b = mgo.PrimaryButton(c, "")
+	} else {
+		b = mgo.Button(c, "")
 	}
-	b := mgo.ButtonBase(c).MinHeight(d.ControlHeight()).MinWidth(theme.MinHitSize).
-		Padding(0, pad).Gap(gap).Radius(theme.ControlRadius).
-		Disabled(opts.Disabled || opts.Loading)
-	uikit.Ring(b, k.Focus, theme.ControlRadius)
+	b.Disabled(opts.Disabled || opts.Loading)
 	if opts.Label != "" {
 		b.Label(opts.Label)
 	}
-	bg, fg, border := ButtonColors(k, opts.Variant, b.Hovered() && !opts.Disabled, b.Pressed())
-	b.Background(bg).TextColor(fg)
-	if border.A > 0 {
-		b.Border(theme.BorderWidth, border)
-	}
+	fg := variantLook(b, k, opts.Variant, opts.Disabled)
 	b.Children(func() {
 		if opts.Loading {
 			uikit.Spinner(c, uikit.SpinnerOptions{Size: buttonIconSize, Color: fg})
@@ -71,39 +66,48 @@ func Button(c *mgo.Context, label string, opts ButtonOptions) mgo.Element {
 	return b
 }
 
-// ButtonColors returns the fill, text and border color of variant v in state
-// hover / pressed.
-func ButtonColors(k theme.Tokens, v ButtonVariant, hover, pressed bool) (bg, fg, border mgo.Color) {
+// variantLook recolors a native button for the variants MyGo has no look
+// for, and returns the text color so the spinner matches.
+//
+// Primary and Secondary keep MyGo's own look, whose hover and pressed states
+// the button tracks itself; the others set every state here.
+func variantLook(b mgo.Element, k *mgo.Theme, v ButtonVariant, disabled bool) mgo.Color {
+	hover := b.Hovered() && !disabled
 	switch v {
+	case Primary:
+		return k.AccentText
 	case Secondary:
-		bg, fg, border = k.Surface, k.Text, k.ControlBorder
+		return k.Text
 	case Outline:
-		bg, fg, border = mgo.Transparent, k.AccentText, k.AccentText
+		fg := k.Accent
+		b.Background(mgo.Transparent).Border(theme.BorderWidth, k.Accent).TextColor(fg)
+		if b.Pressed() {
+			b.Background(k.Selection)
+		} else if hover {
+			b.Background(k.SurfaceHover)
+		}
+		return fg
 	case Ghost:
-		bg, fg = mgo.Transparent, k.AccentText
+		fg := k.Accent
+		b.Background(mgo.Transparent).BorderWidth(0, 0, 0, 0).TextColor(fg)
+		if b.Pressed() {
+			b.Background(k.Selection)
+		} else if hover {
+			b.Background(k.SurfaceHover)
+		}
+		return fg
 	case Danger:
-		bg, fg = k.DangerFill, k.OnDanger
-		if pressed {
-			bg = k.DangerFill.Mix(mgo.RGB(0, 0, 0), 0.25)
-		} else if hover {
-			bg = k.DangerFill.Mix(mgo.RGB(0, 0, 0), 0.12)
+		fg, bg := k.AccentText, k.Danger
+		switch {
+		case b.Pressed():
+			bg = k.Danger.Mix(mgo.RGB(0, 0, 0), 0.25)
+		case hover:
+			bg = k.Danger.Mix(mgo.RGB(0, 0, 0), 0.12)
 		}
-		return
-	default:
-		bg, fg = k.Accent, k.OnAccent
-		if pressed {
-			bg = k.AccentPressed
-		} else if hover {
-			bg = k.AccentHover
-		}
-		return
+		b.Background(bg).BorderWidth(0, 0, 0, 0).TextColor(fg)
+		return fg
 	}
-	if pressed {
-		bg = k.Selection
-	} else if hover {
-		bg = k.SurfaceHover
-	}
-	return
+	return k.Text
 }
 
 // IconButtonOptions configure an IconButton.
@@ -119,19 +123,12 @@ func IconButton(c *mgo.Context, icon *mgo.SVG, label string, opts IconButtonOpti
 	if label == "" {
 		panic("kit: IconButton needs a label to name it")
 	}
-	k := uikit.Tokens(c)
 	size := opts.Size
 	if size == 0 {
 		size = uikit.Density(c).ControlHeight()
 	}
-	b := mgo.ButtonBase(c).Size(size, size).Radius(theme.ControlRadius).
-		Label(label).Disabled(opts.Disabled)
-	uikit.Ring(b, k.Focus, theme.ControlRadius)
-	bg, fg, border := ButtonColors(k, opts.Variant, b.Hovered() && !opts.Disabled, b.Pressed())
-	b.Background(bg).TextColor(fg)
-	if border.A > 0 {
-		b.Border(theme.BorderWidth, border)
-	}
-	b.Children(func() { mgo.Icon(c, icon).Size(buttonIconSize, buttonIconSize) })
-	return b
+	b := Button(c, "", ButtonOptions{
+		Variant: opts.Variant, Icon: icon, Disabled: opts.Disabled, Label: label,
+	})
+	return b.Size(size, size).Padding(0)
 }

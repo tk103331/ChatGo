@@ -35,7 +35,7 @@ func (s Severity) String() string {
 }
 
 // SeverityLook returns the color and icon that, with text, mark s.
-func SeverityLook(k theme.Tokens, s Severity) (mgo.Color, *mgo.SVG) {
+func SeverityLook(k *mgo.Theme, s Severity) (mgo.Color, *mgo.SVG) {
 	switch s {
 	case SeveritySuccess:
 		return k.Success, icons.Must("circle-check")
@@ -44,7 +44,7 @@ func SeverityLook(k theme.Tokens, s Severity) (mgo.Color, *mgo.SVG) {
 	case SeverityError:
 		return k.Danger, icons.Must("circle-x")
 	case SeverityInfo:
-		return k.Info, icons.Must("info")
+		return k.Accent, icons.Must("info")
 	}
 	panic(fmt.Sprintf("uikit: unknown Severity %d", int(s)))
 }
@@ -84,26 +84,6 @@ func Diamond(cx, cy, s float32) *mgo.Path {
 func Snap(p *mgo.Painter, v float32) float32 {
 	g := 4 * p.Scale()
 	return float32(math.Round(float64(v*g))) / g
-}
-
-// ruleY rounds y to a device pixel so a hairline rule stays crisp: at odd
-// scales it lands on a half pixel, at even ones on a whole one.
-func ruleY(p *mgo.Painter, y float32) float32 {
-	s := float64(p.Scale())
-	px := math.Floor(float64(y) * s)
-	if int(math.Round(s))%2 == 1 {
-		px += 0.5
-	}
-	return float32(px / s)
-}
-
-// RuleDiamond draws a rule across r broken by a diamond of size in the
-// middle, gap DIPs clear of the lines.
-func RuleDiamond(p *mgo.Painter, r mgo.Rect, gap, size float32, col mgo.Color) {
-	cx, cy := r.X+r.W/2, ruleY(p, r.Y+r.H/2)
-	p.Line(r.X, cy, cx-gap, cy, 1, col)
-	p.Line(cx+gap, cy, r.X+r.W, cy, 1, col)
-	p.FillPath(Diamond(Snap(p, cx), Snap(p, cy), size), col)
 }
 
 // IconAction is a square, borderless button showing icon, named label.
@@ -153,7 +133,7 @@ func Spinner(c *mgo.Context, opts SpinnerOptions) mgo.Element {
 	}
 	color := opts.Color
 	if color.A == 0 {
-		color = k.AccentText
+		color = k.Accent
 	}
 	still := c.Preferences().ReduceMotion
 	row := mgo.Row(c).Gap(Unit(c) * 2).AlignItems(mgo.Center)

@@ -93,7 +93,7 @@ func dialogHeader(c *mgo.Context, title string, closable bool) bool {
 	clicked := false
 	mgo.Column(c).Gap(u).Shrink(0).Children(func() {
 		mgo.Row(c).Gap(u * 3).AlignItems(mgo.Start).Children(func() {
-			mgo.Text(c, title).Font(theme.SerifFont).
+			mgo.Text(c, title).
 				FontSize(uikit.FontSize(c, theme.H3Size)).FontWeight(600).Grow(1)
 			if closable {
 				clicked = uikit.IconAction(c, icons.Must("x"), "关闭").
@@ -150,7 +150,7 @@ func AlertDialog(c *mgo.Context, open *bool, opts AlertDialogOptions) AlertDialo
 		mgo.Row(c).Gap(u * 3).AlignItems(mgo.Start).Shrink(0).Children(func() {
 			mgo.Icon(c, icons.Must("triangle-alert")).Size(22, 22).
 				TextColor(k.Danger).Shrink(0).Margin(1, 0, 0, 0)
-			mgo.Text(c, opts.Title).Font(theme.SerifFont).
+			mgo.Text(c, opts.Title).
 				FontSize(uikit.FontSize(c, theme.H3Size)).FontWeight(600).Grow(1)
 		})
 		if opts.Description != "" {
@@ -221,7 +221,7 @@ func Popover(c *mgo.Context, anchor mgo.Element, open *bool, opts PopoverOptions
 			panel.MaxWidth(popoverWide(c, 360))
 		}
 		if opts.Title != "" {
-			mgo.Text(c, opts.Title).Font(theme.SerifFont).
+			mgo.Text(c, opts.Title).
 				FontSize(uikit.FontSize(c, theme.BodySize+2)).FontWeight(600).Shrink(0)
 		}
 		mgo.Scroll(c).Shrink(1).Children(content)

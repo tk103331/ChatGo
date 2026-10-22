@@ -160,7 +160,7 @@ func (cw *ChatWindow) statsPage(c *mgo.Context) {
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
 			mgo.Column(c).Grow(1).Gap(u / 2).Children(func() {
-				mgo.Text(c, "统计").Font(mtheme.SerifFont).
+				mgo.Text(c, "统计").
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Text(c, fmt.Sprintf("近 %d 天的使用概览", statsRange)).TextColor(k.TextMuted).FontSize(caption)
 			})
@@ -212,7 +212,7 @@ func (cw *ChatWindow) statsCard(c *mgo.Context, label, value, hint string) {
 	mgo.Column(c).Grow(1).MinWidth(0).Background(k.Surface).Radius(mtheme.ControlRadius).
 		BorderWidth(mtheme.BorderWidth).BorderColor(k.Border).Padding(u * 2).Gap(u / 2).Children(func() {
 		mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted).SingleLine()
-		mgo.Text(c, value).Font(mtheme.SerifFont).FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).SingleLine()
+		mgo.Text(c, value).FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).SingleLine()
 		mgo.Text(c, hint).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted).SingleLine()
 	})
 }

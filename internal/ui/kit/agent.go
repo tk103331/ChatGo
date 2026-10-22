@@ -53,7 +53,7 @@ func agentWord(s AgentState) string {
 }
 
 // agentTone returns the color and icon marking s.
-func agentTone(k theme.Tokens, s AgentState) (mgo.Color, *mgo.SVG) {
+func agentTone(k *mgo.Theme, s AgentState) (mgo.Color, *mgo.SVG) {
 	switch s {
 	case AgentRunning:
 		return k.AccentText, icons.Must("loader-circle")

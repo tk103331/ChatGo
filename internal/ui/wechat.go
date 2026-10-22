@@ -231,7 +231,7 @@ func (cw *ChatWindow) wechatStatusLine(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
 	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-		mgo.Text(c, "微信").Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+		mgo.Text(c, "微信").FontWeight(600).Shrink(0)
 		kit.StatusIndicator(c, st, kit.StatusIndicatorOptions{})
 		mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 	})

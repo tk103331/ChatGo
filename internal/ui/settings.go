@@ -90,7 +90,7 @@ var mcpTypes = []string{"stdio", "sse", "streamable_http"}
 func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
-		mgo.Text(c, "设置").Font(mtheme.SerifFont).
+		mgo.Text(c, "设置").
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
 		if cw.status != "" {
 			mgo.Text(c, cw.status).TextColor(mcore.Tokens(c).Danger).

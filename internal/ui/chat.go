@@ -248,7 +248,7 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 			case opt.Boolean != nil:
 				b := opt.Boolean
 				val := b.CurrentValue
-				if kit.Switch(c, &val, b.Name, kit.SwitchOptions{}).Changed() {
+				if mgo.Switch(c, &val).Label(b.Name).Changed() {
 					b.CurrentValue = val
 					cw.acpSetConfigBool(rt, b.Id, val)
 				}
@@ -345,7 +345,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 				mt := mt
 				v := cw.toolEnabled(mt.ID)
 				mgo.Column(c).Gap(0).Children(func() {
-					if kit.Switch(c, &v, mt.Label, kit.SwitchOptions{}).Changed() {
+					if mgo.Switch(c, &v).Label(mt.Label).Changed() {
 						cw.toolOn[mt.ID] = v
 						changed = true
 					}

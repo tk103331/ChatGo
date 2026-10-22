@@ -83,7 +83,7 @@ func (cw *ChatWindow) appsPage(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
-		mgo.Text(c, "Apps").Font(mtheme.SerifFont).
+		mgo.Text(c, "Apps").
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
 		mgo.Text(c, "基于 Agent 的应用：左侧操作、右侧对话，操作能力向 Agent 开放").
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted).Shrink(0)
@@ -108,7 +108,7 @@ func (cw *ChatWindow) appCard(c *mgo.Context, a appDef) {
 	}
 	b.Children(func() {
 		mgo.Icon(c, icons.Must(a.Icon)).Size(24, 24).TextColor(k.AccentText)
-		mgo.Text(c, a.Title).Font(mtheme.SerifFont).
+		mgo.Text(c, a.Title).
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600)
 		if a.Desc != "" {
 			mgo.Text(c, a.Desc).FontSize(caption).TextColor(k.TextMuted).MaxLines(2)
@@ -166,7 +166,7 @@ func (cw *ChatWindow) appHeader(c *mgo.Context, a appDef) {
 			cw.appActive = ""
 		}
 		mgo.Icon(c, icons.Must(a.Icon)).Size(18, 18).TextColor(k.AccentText)
-		mgo.Text(c, a.Title).Font(mtheme.SerifFont).
+		mgo.Text(c, a.Title).
 			FontSize(mcore.FontSize(c, mtheme.BodySize)).FontWeight(600)
 	})
 }

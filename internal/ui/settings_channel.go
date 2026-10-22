@@ -18,7 +18,7 @@ func (cw *ChatWindow) channelTab(c *mgo.Context) {
 	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
 			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
-				mgo.Text(c, "渠道").Font(mtheme.SerifFont).FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
+				mgo.Text(c, "渠道").FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 			})
 			mgo.Text(c, "配置 IM 渠道后，可通过即时消息触发 Agent 对话。点击卡片展开配置。").
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
@@ -46,7 +46,7 @@ func (cw *ChatWindow) channelCard(c *mgo.Context, i int) {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				icon := "message-square"
 				mgo.Icon(c, icons.Must(icon)).Size(18, 18).TextColor(k.Text).Shrink(0)
-				mgo.Text(c, ch.Name).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+				mgo.Text(c, ch.Name).FontWeight(600).Shrink(0)
 				if ch.Type == "feishu" {
 					state, note := cw.feishuStatus()
 					st, label := feishuStatusView(state, note)
@@ -61,7 +61,7 @@ func (cw *ChatWindow) channelCard(c *mgo.Context, i int) {
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := ch.Enabled
-				if kit.Switch(c, &en, "", kit.SwitchOptions{}).Changed() {
+				if mgo.Switch(c, &en).Changed() {
 					cw.cfg.Channels[i].Enabled = en
 					cw.settings.channel.enabled = en
 					_ = config.SaveConfig(cw.cfg)
@@ -246,7 +246,7 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
 			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
-				mgo.Text(c, "ACP").Font(mtheme.SerifFont).
+				mgo.Text(c, "ACP").
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Row(c).Gap(u).Children(func() {
 					if kit.Button(c, "从目录添加", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {

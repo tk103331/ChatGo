@@ -46,7 +46,7 @@ func (cw *ChatWindow) agentsPage(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, "Agent 管理").Font(mtheme.SerifFont).
+			mgo.Text(c, "Agent 管理").
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
 			if kit.Button(c, "新建 Agent", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearAgentForm()
@@ -74,7 +74,7 @@ func (cw *ChatWindow) agentEmptyState(c *mgo.Context) {
 	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u*2).
 		Padding(u*8, 0).Children(func() {
 		mgo.Icon(c, icons.Must("bot")).Size(48, 48).TextColor(k.TextMuted)
-		mgo.Text(c, "还没有 Agent").Font(mtheme.SerifFont).
+		mgo.Text(c, "还没有 Agent").
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
 		mgo.Text(c, "创建自定义 Agent，配置模型、工具和技能").TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
@@ -94,7 +94,7 @@ func (cw *ChatWindow) agentCard(c *mgo.Context, i int) {
 		Children(func() {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				cw.agentMark(c, a, 20)
-				mgo.Text(c, a.Name).Font(mtheme.SerifFont).
+				mgo.Text(c, a.Name).
 					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
 			})
 			if a.Description != "" {
@@ -156,7 +156,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 			if kit.Button(c, "返回", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("chevron-left")}).Clicked() {
 				cw.agentEditorOpen = false
 			}
-			mgo.Text(c, title).Font(mtheme.SerifFont).
+			mgo.Text(c, title).
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
 			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				if cw.saveAgent() {
@@ -219,7 +219,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 						for _, ref := range models {
 							ref := ref
 							on := containsStr(f.models, ref)
-							kit.Checkbox(c, &on, modelLabel(ref), kit.CheckboxOptions{})
+							mgo.Checkbox(c, &on, modelLabel(ref))
 							f.models = setTool(f.models, ref, on)
 						}
 					})
@@ -234,7 +234,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 							t := t
 							mgo.Column(c).Gap(0).MinWidth(0).Children(func() {
 								on := containsStr(f.builtinTools, t)
-								kit.Checkbox(c, &on, t, kit.CheckboxOptions{})
+								mgo.Checkbox(c, &on, t)
 								f.builtinTools = setTool(f.builtinTools, t, on)
 								mgo.Text(c, config.GetBuiltinToolDescription(t)).FontSize(small).TextColor(k.TextMuted).
 									MaxLines(1).Ellipsis("…")
@@ -253,7 +253,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 					mgo.Grid(c).Columns(2).Gap(u).Children(func() {
 						for _, s := range filterStrings(servers, f.mcpQuery) {
 							on := containsStr(f.mcpServers, s)
-							kit.Checkbox(c, &on, s, kit.CheckboxOptions{})
+							mgo.Checkbox(c, &on, s)
 							f.mcpServers = setTool(f.mcpServers, s, on)
 						}
 					})
@@ -271,7 +271,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 							s := s
 							on := containsStr(f.skills, s.Name)
 							mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-								kit.Checkbox(c, &on, "", kit.CheckboxOptions{})
+								mgo.Checkbox(c, &on, "")
 								body := mgo.ButtonBase(c).Grow(1).MinWidth(0).Justify(mgo.Start).Children(func() {
 									mgo.Column(c).Grow(1).MinWidth(0).Children(func() {
 										mgo.Text(c, s.Name).SingleLine()

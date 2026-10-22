@@ -2,12 +2,12 @@ package kit
 
 import (
 	"fmt"
+	"math"
 	"slices"
 
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
-	"chatgo/internal/ui/theme"
 	"chatgo/internal/ui/uikit"
 )
 
@@ -20,15 +20,14 @@ type CollapsibleOptions struct {
 	Disabled bool
 }
 
-// Collapsible shows content below a trigger while *open; closed content is
-// not built.
+// Collapsible shows content below a trigger while *open, looking as MyGo's
+// own Collapsible does; Trigger allows richer trigger content than a title.
 func Collapsible(c *mgo.Context, open *bool, opts CollapsibleOptions, content func()) ChoiceResult {
 	if opts.Title == "" && opts.Trigger == nil {
 		panic("kit: Collapsible needs Title or Trigger")
 	}
 	k := uikit.Tokens(c)
-	d := uikit.Density(c)
-	u := d.Unit()
+	u := uikit.Unit(c)
 	var v ChoiceResult
 	v.Element = mgo.Column(c).Shrink(0)
 	v.Element.Children(func() {
@@ -39,56 +38,50 @@ func Collapsible(c *mgo.Context, open *bool, opts CollapsibleOptions, content fu
 			*open = was
 		}
 		v = ChoiceResult{Element: v.Element, changed: *open != was}
-		tr.Disabled(opts.Disabled).AlignSelf(mgo.Start).AlignItems(mgo.Center).Gap(u*2).
-			MinHeight(d.ControlHeight()).Padding(0, u*3, 0, u*2).Radius(theme.ControlRadius)
+		tr.Disabled(opts.Disabled).AlignSelf(mgo.Start).AlignItems(mgo.Center).
+			Gap(u).Padding(u, 0).PaddingStart(u * 0.5).PaddingEnd(u * 2).
+			Radius(k.Radius)
 		if opts.Title != "" {
 			tr.Label(opts.Title)
 		}
-		uikit.Ring(tr, k.Focus, theme.ControlRadius)
 		if tr.Hovered() && !opts.Disabled {
 			tr.Background(k.SurfaceHover)
 		}
-		prog := tr.Animate("chatgo.open", collapsibleTarget(*open), uikit.Motion(c, theme.StateDuration))
 		tr.Children(func() {
-			mgo.Icon(c, icons.Must("chevron-right")).Size(16, 16).
-				Rotate(90 * prog).TextColor(k.TextMuted)
+			disclosureArrow(c, k, 90*p.Progress())
 			if opts.Trigger != nil {
 				opts.Trigger()
 			} else {
-				mgo.Text(c, opts.Title).FontWeight(600).SingleLine()
+				mgo.Text(c, opts.Title).SingleLine()
 			}
 		})
-		if panel := collapsiblePanel(c, *open, prog, content); panel.Valid() {
-			panel.Padding(u*2, u*2, u*2, u*8).Gap(u * 2)
+		if panel := p.Panel(content); panel.Valid() {
+			// Below the label, as MyGo lays its own out.
+			panel.Padding(u, 0).PaddingStart(u * 5.5).Gap(u * 2)
 		}
 	})
 	return v
 }
 
-func collapsibleTarget(open bool) float32 {
-	if open {
-		return 1
-	}
-	return 0
-}
-
-// collapsiblePanel builds fn while open or animating, clipped to its progress.
-func collapsiblePanel(c *mgo.Context, open bool, prog float32, fn func()) mgo.Element {
-	if !open && prog == 0 {
-		return mgo.Element{}
-	}
-	// Closing content takes no input or focus while it shrinks away.
-	clip := mgo.Column(c).Shrink(0).Disabled(!open)
-	var inner mgo.Element
-	clip.Children(func() {
-		inner = mgo.Column(c).Shrink(0)
-		inner.Children(fn)
+// disclosureArrow draws the arrow of a disclosure: pointing right, turned by
+// deg degrees clockwise, as MyGo draws its own.
+func disclosureArrow(c *mgo.Context, k *mgo.Theme, deg float32) mgo.Element {
+	u := uikit.Unit(c)
+	color := k.TextMuted
+	return mgo.Box(c).Size(u*4, u*4).Shrink(0).Draw(func(p *mgo.Painter, r mgo.Rect) {
+		cx, cy, d := r.X+r.W/2, r.Y+r.H/2, r.W/8
+		rad := float64(deg) * math.Pi / 180
+		cos, sin := float32(math.Cos(rad)), float32(math.Sin(rad))
+		turn := func(x, y float32) (float32, float32) {
+			return cx + x*cos - y*sin, cy + x*sin + y*cos
+		}
+		var path mgo.Path
+		x0, y0 := turn(-d, -2*d)
+		x1, y1 := turn(d, 0)
+		x2, y2 := turn(-d, 2*d)
+		path.MoveTo(x0, y0).LineTo(x1, y1).LineTo(x2, y2)
+		p.StrokePath(&path, 1.5, color)
 	})
-	if prog < 1 {
-		// The content's height from the last frame, grown by progress.
-		clip.ClipY().Height(prog * inner.Bounds().H)
-	}
-	return inner
 }
 
 // KeyValue holds an editable pair and enable flag.
@@ -143,7 +136,7 @@ func KeyValueInput(c *mgo.Context, rows *[]KeyValue, opts KeyValueInputOptions) 
 			mgo.Row(c.Key(i)).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
 				name := fmt.Sprintf("第 %d 行", i+1)
 				on := kv.Enabled
-				box := Checkbox(c, &on, "", CheckboxOptions{Disabled: locked, Label: name})
+				box := mgo.Checkbox(c, &on, "").Disabled(locked).Label(name)
 				if box.Changed() && !locked {
 					kv.Enabled = on
 					r.changed = true

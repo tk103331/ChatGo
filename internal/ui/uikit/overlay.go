@@ -55,7 +55,7 @@ func OverlayAnchored(c *mgo.Context, panel mgo.Element, b mgo.Rect) float32 {
 }
 
 // OverlayScrim is the wash over the window behind a modal layer.
-func OverlayScrim(k theme.Tokens) mgo.Color {
+func OverlayScrim(k *mgo.Theme) mgo.Color {
 	if k.Dark {
 		return mgo.RGBA(0, 0, 0, 0.6)
 	}

@@ -175,11 +175,11 @@ func (cw *ChatWindow) acpCard(c *mgo.Context, i int) {
 		mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				cw.acpLeading(c, a.Name, 18)
-				mgo.Text(c, a.Name).Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
+				mgo.Text(c, a.Name).FontWeight(600).Shrink(0)
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := !a.Disabled
-				if kit.Switch(c, &en, "", kit.SwitchOptions{}).Changed() {
+				if mgo.Switch(c, &en).Changed() {
 					cw.cfg.ACPAgents[i].Disabled = !en
 					cw.acpForm.disabled = !en
 					_ = config.SaveConfig(cw.cfg)

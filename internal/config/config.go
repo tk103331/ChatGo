@@ -19,7 +19,6 @@ type Config struct {
 	UseReactAgent     bool            `yaml:"use_react_agent"`
 	ReactAgentMaxStep int             `yaml:"react_agent_max_step"`
 	ThemeMode         string          `yaml:"theme_mode,omitempty"`
-	ColorTheme        string          `yaml:"color_theme,omitempty"`
 	Density           string          `yaml:"density,omitempty"`
 	Locale            string          `yaml:"locale,omitempty"`
 	QuickChatShortcut string          `yaml:"quick_chat_shortcut,omitempty"`

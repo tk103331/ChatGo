@@ -125,7 +125,7 @@ func (cw *ChatWindow) skillsPage(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, "Skill").Font(mtheme.SerifFont).
+			mgo.Text(c, "Skill").
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
 			mgo.Text(c, "共 "+strconv.Itoa(len(cw.skills.list))+" 个").TextColor(k.TextMuted).
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize))
@@ -149,7 +149,7 @@ func (cw *ChatWindow) skillsEmptyState(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u * 2).Children(func() {
 		mgo.Icon(c, icons.Must("brain")).Size(48, 48).TextColor(k.TextMuted)
-		mgo.Text(c, "未发现 Skill").Font(mtheme.SerifFont).
+		mgo.Text(c, "未发现 Skill").
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
 		mgo.Text(c, "将 SKILL.md 放入以下任意目录后重新扫描").TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
@@ -240,10 +240,10 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 			return
 		}
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			mgo.Text(c, s.Name).Font(mtheme.SerifFont).
+			mgo.Text(c, s.Name).
 				FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
 			on := cw.skillEnabled(s.ID)
-			if kit.Switch(c, &on, "启用", kit.SwitchOptions{}).Changed() {
+			if mgo.Switch(c, &on).Label("启用").Changed() {
 				cw.setSkillEnabled(s.ID, on)
 			}
 		})
@@ -481,7 +481,7 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 				}
 				v := cw.skillRuntime(id)
 				mgo.Column(c).Gap(0).Children(func() {
-					if kit.Switch(c, &v, s.Name, kit.SwitchOptions{}).Changed() {
+					if mgo.Switch(c, &v).Label(s.Name).Changed() {
 						cw.skillOn[id] = v
 						changed = true
 					}

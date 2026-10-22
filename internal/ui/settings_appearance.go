@@ -19,7 +19,7 @@ func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
-		mgo.Text(c, "快捷键").Font(mtheme.SerifFont).FontWeight(600)
+		mgo.Text(c, "快捷键").FontWeight(600)
 		if cw.status != "" {
 			mgo.Text(c, cw.status).TextColor(k.Danger).FontSize(small).
 				Font(mtheme.MonoFont)
@@ -54,7 +54,7 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
-		mgo.Text(c, "外观").Font(mtheme.SerifFont).FontWeight(600)
+		mgo.Text(c, "外观").FontWeight(600)
 		mgo.Text(c, "主题模式").FontSize(small).TextColor(k.TextMuted)
 		mode := int(cw.themeMode)
 		kit.SegmentedControl(c, &mode, []kit.Segment{
@@ -64,58 +64,8 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 			cw.themeMode = mcore.Mode(mode)
 			cw.saveAppearance()
 		}
-		mgo.Text(c, "颜色主题").FontSize(small).TextColor(k.TextMuted)
-		mgo.Row(c).Gap(u * 2).Wrap().Children(func() {
-			for i := range mtheme.Themes {
-				cw.colorThemeSwatch(c, mtheme.Themes[i])
-			}
-		})
-		mgo.Text(c, "每种颜色主题都提供浅色与深色两套配色，随「主题模式」自动切换。").
+		mgo.Text(c, "配色使用 MyGo 原生的浅色与深色主题，随「主题模式」自动切换。").
 			FontSize(small).TextColor(k.TextMuted)
-	})
-}
-
-// colorThemeSwatch renders one palette as a selectable card showing its light
-// and dark accent over their backgrounds.
-
-func (cw *ChatWindow) colorThemeSwatch(c *mgo.Context, t mtheme.Theme) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	selected := cw.colorTheme.Name == t.Name
-	b := mgo.ButtonBase(c).Width(160).Padding(u*2).Gap(u).Radius(mtheme.CardRadius).
-		AlignItems(mgo.Center).Background(k.Surface).Border(mtheme.BorderWidth, k.Border)
-	if selected {
-		b.BorderColor(k.Accent)
-	}
-	if b.Hovered() && !selected {
-		b.Background(k.SurfaceHover)
-	}
-	b.Children(func() {
-		mgo.Column(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			mgo.Row(c).Gap(u).Shrink(0).Children(func() {
-				lb, la := t.SampleLight()
-				db, da := t.SampleDark()
-				colorThemeBlock(c, lb, la)
-				colorThemeBlock(c, db, da)
-			})
-			mgo.Text(c, t.Label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
-				TextColor(k.Text).SingleLine()
-		})
-	})
-	if b.Clicked() {
-		cw.colorTheme = t
-		cw.saveAppearance()
-	}
-}
-
-// colorThemeBlock draws one appearance sample: an accent bar over a background.
-
-func colorThemeBlock(c *mgo.Context, bg, accent mgo.Color) {
-	mgo.Box(c).Width(46).Height(34).Radius(mtheme.ControlRadius).Background(bg).
-		Border(mtheme.BorderWidth, accent).Children(func() {
-		mgo.Row(c).Fill().AlignItems(mgo.Center).Justify(mgo.Center).Children(func() {
-			mgo.Box(c).Width(24).Height(9).Radius(mtheme.ControlRadius).Background(accent)
-		})
 	})
 }
 
@@ -124,18 +74,18 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
-		mgo.Text(c, "系统").Font(mtheme.SerifFont).FontWeight(600)
-		if kit.Switch(c, &cw.cfg.ShowTrayIcon, "显示托盘图标", kit.SwitchOptions{}).Changed() {
+		mgo.Text(c, "系统").FontWeight(600)
+		if mgo.Switch(c, &cw.cfg.ShowTrayIcon).Label("显示托盘图标").Changed() {
 			cw.saveSystemSettings()
 		}
 		mgo.Text(c, "在系统托盘 / 菜单栏显示 ChatGo 图标。点击图标打开程序，右键菜单可快速新建会话并进入最近会话。").
 			FontSize(small).TextColor(k.TextMuted)
-		if kit.Switch(c, &cw.cfg.RunInBackground, "允许后台运行（关闭窗口时最小化到托盘）", kit.SwitchOptions{}).Changed() {
+		if mgo.Switch(c, &cw.cfg.RunInBackground).Label("允许后台运行（关闭窗口时最小化到托盘）").Changed() {
 			cw.saveSystemSettings()
 		}
 		mgo.Text(c, "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行（自动启用托盘图标）。").
 			FontSize(small).TextColor(k.TextMuted)
-		mgo.Text(c, "更新").Font(mtheme.SerifFont).FontWeight(600)
+		mgo.Text(c, "更新").FontWeight(600)
 		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if kit.Button(c, "检查更新", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 				updater.CheckForUpdates()
@@ -143,7 +93,7 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 			mgo.Text(c, "通过 MyGo Updater 从官方发布自动更新，仅在打包安装后的应用中可用。").
 				FontSize(small).TextColor(k.TextMuted)
 		})
-		mgo.Text(c, "关于").Font(mtheme.SerifFont).FontWeight(600)
+		mgo.Text(c, "关于").FontWeight(600)
 		mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
 			mgo.Image(c, assets.BrandBitmap()).Size(48, 48)
 			mgo.Column(c).Gap(u / 2).Children(func() {

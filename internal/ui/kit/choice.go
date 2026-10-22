@@ -3,7 +3,6 @@ package kit
 import (
 	mgo "github.com/egoist/mygo/ui"
 
-	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/theme"
 	"chatgo/internal/ui/uikit"
 )
@@ -35,14 +34,27 @@ type SelectResult struct {
 // Changed reports that the user chose another option this frame.
 func (r SelectResult) Changed() bool { return r.changed }
 
-// Select chooses one of opts into *value, showing the chosen option's label.
+// selectChevron draws the arrow of a select, as MyGo draws its own.
+func selectChevron(c *mgo.Context, k *mgo.Theme) {
+	u := uikit.Unit(c)
+	color := k.TextMuted
+	mgo.Box(c).Size(u*2.5, u*2.5).Shrink(0).Draw(func(p *mgo.Painter, r mgo.Rect) {
+		var path mgo.Path
+		path.MoveTo(r.X+r.W*0.1, r.Y+r.H*0.3).
+			LineTo(r.X+r.W*0.5, r.Y+r.H*0.7).
+			LineTo(r.X+r.W*0.9, r.Y+r.H*0.3)
+		p.StrokePath(&path, 1.5, color)
+	})
+}
+
+// Select chooses one of opts into *value, looking as MyGo's own Select does.
+// MyGo's Select takes strings only, so this carries the value's type.
 func Select[T comparable](c *mgo.Context, value *T, opts []SelectOption[T], o SelectOptions) SelectResult {
 	if value == nil {
 		panic("kit: Select needs a value")
 	}
 	k := uikit.Tokens(c)
-	d := uikit.Density(c)
-	u := d.Unit()
+	u := uikit.Unit(c)
 
 	label := o.Placeholder
 	if label == "" {
@@ -57,195 +69,47 @@ func Select[T comparable](c *mgo.Context, value *T, opts []SelectOption[T], o Se
 	}
 
 	sel := mgo.SelectBase(c, value)
-	trigger := sel.Trigger.MinHeight(d.ControlHeight()).Padding(0, u*3).Gap(u * 2).
-		Radius(theme.ControlRadius).AlignItems(mgo.Center).Disabled(o.Disabled)
+	trigger := sel.Trigger.Justify(mgo.SpaceBetween).MinWidth(u*35).
+		Padding(u*1.5, u*3.5).Gap(u * 1.5).Radius(k.Radius).
+		Background(k.Surface).TextColor(k.Text).Disabled(o.Disabled)
 	if o.Label != "" {
 		trigger.Label(o.Label)
 	}
-	uikit.Ring(trigger, k.Focus, theme.ControlRadius)
-	border := k.ControlBorder
-	switch {
-	case trigger.Hovered() && !o.Disabled:
-		border = k.ControlBorder.Mix(k.Text, 0.35)
-	case sel.Open():
-		border = k.Focus
+	if trigger.Hovered() && !o.Disabled {
+		trigger.Background(k.SurfaceHover)
 	}
-	trigger.Background(k.Surface).Border(theme.BorderWidth, border).Transition(uikit.ColorFade)
 	trigger.Children(func() {
-		text := mgo.Text(c, label).SingleLine().Grow(1)
+		text := mgo.Text(c, label).SingleLine()
 		if !chosen {
 			text.TextColor(k.TextMuted)
 		}
-		mgo.Icon(c, icons.Must("chevron-down")).Size(16, 16).TextColor(k.TextMuted).Shrink(0)
+		selectChevron(c, k)
 	})
 
 	sel.Popup(func(panel mgo.Element) {
-		panel.Padding(u).Gap(1).Radius(theme.PopupRadius).
-			Background(k.Surface).Border(theme.BorderWidth, k.Border)
+		panel.Margin(u, 0, 0, 0).Padding(u).Radius(k.Radius+2).
+			Background(k.Background).Border(theme.BorderWidth, k.Border).
+			Shadow(0, 6, 20, 0, mgo.RGBA(0, 0, 0, 0.18))
 		if len(opts) == 0 {
 			empty := o.Empty
 			if empty == "" {
 				empty = "无选项"
 			}
-			mgo.Text(c, empty).Padding(u*2, u*3).
+			mgo.Text(c, empty).Padding(u*1.5, u*2.5).
 				FontSize(uikit.FontSize(c, theme.CaptionSize)).TextColor(k.TextMuted)
 			return
 		}
 		for _, opt := range opts {
-			item := sel.Item(opt.Value).MinHeight(d.ControlHeight()).
-				Padding(0, u*3).Gap(u * 2).Radius(theme.ControlRadius).
-				AlignItems(mgo.Center).Disabled(opt.Disabled)
+			item := sel.Item(opt.Value).Padding(u*1.5, u*2.5).Radius(k.Radius).
+				Disabled(opt.Disabled)
 			switch {
-			case opt.Disabled:
-				item.TextColor(k.TextMuted)
 			case item.Highlighted():
-				item.Background(k.SurfaceHover).TextColor(k.Text)
+				item.Background(k.Accent).TextColor(k.AccentText)
+			case opt.Value == *value:
+				item.Background(k.Surface)
 			}
-			current := opt.Value == *value
-			item.Children(func() {
-				mgo.Text(c, opt.Label).SingleLine().Grow(1)
-				if current {
-					mgo.Icon(c, icons.Must("check")).Size(14, 14).
-						TextColor(k.AccentText).Shrink(0)
-				}
-			})
+			item.Children(func() { mgo.Text(c, opt.Label).SingleLine() })
 		}
 	})
 	return SelectResult{Element: trigger, changed: trigger.Changed()}
-}
-
-// SwitchOptions configure a Switch.
-type SwitchOptions struct {
-	Disabled bool
-	// Loading shows a pending result: the switch keeps its place and takes
-	// no input.
-	Loading bool
-	// Description is read out after the label.
-	Description string
-}
-
-const (
-	switchW float32 = 36
-	switchH float32 = 20
-	switchK float32 = 14
-)
-
-// Switch turns *on over by click or Space; Changed reports it, the caller
-// applies it.
-func Switch(c *mgo.Context, on *bool, label string, opts SwitchOptions) mgo.Element {
-	if on == nil {
-		panic("kit: Switch needs a value")
-	}
-	k := uikit.Tokens(c)
-	d := uikit.Density(c)
-	blocked := opts.Disabled || opts.Loading
-	var sw mgo.Element
-	// Disabled on a wrapper blocks the base before it takes input.
-	mgo.Row(c).Shrink(0).Disabled(blocked).Children(func() {
-		sw = mgo.SwitchBase(c, on).Gap(d.Unit() * 2).AlignItems(mgo.Center).
-			MinHeight(d.ControlHeight()).FocusRing(false)
-	})
-	if opts.Description != "" {
-		sw.Description(opts.Description)
-	}
-	hover := sw.Hovered()
-	// FocusVisible is read in the build pass; the paint callback runs later,
-	// when this element handle is no longer valid.
-	ringVisible := sw.FocusVisible()
-	pos := sw.Animate("on", switchFloat(*on), uikit.Motion(c, theme.StateDuration))
-	checked := *on
-	sw.Children(func() {
-		track := mgo.Box(c).Size(switchW, switchH).Shrink(0).Radius(theme.CardRadius)
-		bg, border := k.Surface, k.ControlBorder
-		thumb := k.ControlBorder
-		if checked {
-			bg, border, thumb = k.Accent, k.Accent, k.OnAccent
-			if hover {
-				bg, border = k.AccentHover, k.AccentHover
-			}
-		} else if hover {
-			bg, border, thumb = k.SurfaceHover, k.Text, k.Text
-		}
-		track.Background(bg).Border(theme.BorderWidth, border)
-		onAccent, focus := k.OnAccent, k.Focus
-		track.Draw(func(p *mgo.Painter, r mgo.Rect) {
-			if checked {
-				// A short upright bar marks "on" without relying on color.
-				p.Fill(mgo.Rect{X: r.X + 9, Y: r.Y + 6, W: 1.5, H: r.H - 12}, onAccent, 0)
-			}
-		})
-		track.DrawOver(func(p *mgo.Painter, r mgo.Rect) {
-			if ringVisible {
-				uikit.FocusRing(p, r, theme.CardRadius, focus)
-			}
-		})
-		inset := (switchH - switchK) / 2
-		x := inset + pos*(switchW-switchK-2*inset)
-		track.Children(func() {
-			t := mgo.Box(c).Absolute().Left(x).Top(inset).Size(switchK, switchK).
-				Radius(theme.ControlRadius).Background(thumb).Center()
-			if opts.Loading {
-				t.Children(func() { uikit.Spinner(c, uikit.SpinnerOptions{Size: 10, Color: bg}) })
-			}
-		})
-		if label != "" {
-			mgo.Text(c, label).SingleLine()
-		}
-	})
-	return sw
-}
-
-func switchFloat(b bool) float32 {
-	if b {
-		return 1
-	}
-	return 0
-}
-
-// CheckboxOptions configure a Checkbox.
-type CheckboxOptions struct {
-	Disabled bool
-	// Label names a box whose text lives elsewhere, for assistive technology.
-	Label string
-}
-
-// Checkbox toggles *checked, with text beside the box when label is set.
-func Checkbox(c *mgo.Context, checked *bool, label string, opts CheckboxOptions) mgo.Element {
-	if checked == nil {
-		panic("kit: Checkbox needs a value")
-	}
-	k := uikit.Tokens(c)
-	u := uikit.Unit(c)
-	side := u * 4
-
-	b := mgo.CheckboxBase(c, checked).Gap(u * 2).AlignItems(mgo.Center).
-		MinHeight(theme.MinHitSize).Disabled(opts.Disabled)
-	if opts.Label != "" {
-		b.Label(opts.Label)
-	}
-	uikit.Ring(b, k.Focus, theme.ControlRadius)
-	on := *checked
-	box, mark := k.Surface, k.OnAccent
-	border := k.ControlBorder
-	if on {
-		box, border = k.Accent, k.Accent
-		if b.Hovered() && !opts.Disabled {
-			box, border = k.AccentHover, k.AccentHover
-		}
-	} else if b.Hovered() && !opts.Disabled {
-		border = k.ControlBorder.Mix(k.Text, 0.35)
-	}
-	b.Children(func() {
-		mgo.Box(c).Size(side, side).Shrink(0).Center().Radius(theme.ControlRadius).
-			Background(box).Border(theme.BorderWidth, border).Transition(uikit.ColorFade).
-			Children(func() {
-				if on {
-					mgo.Icon(c, icons.Must("check")).Size(side-u, side-u).TextColor(mark)
-				}
-			})
-		if label != "" {
-			mgo.Text(c, label).SingleLine()
-		}
-	})
-	return b
 }

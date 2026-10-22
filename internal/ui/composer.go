@@ -45,10 +45,10 @@ func composer(c *mgo.Context, value *string, opts composerOptions) kit.InputResu
 		r.Input.Focus()
 	}
 	k := mcore.Tokens(c)
-	bg, border := k.Surface, k.ControlBorder
+	bg, border := k.Surface, k.Border
 	switch {
 	case frame.Hovered():
-		border = k.ControlBorder.Mix(k.Text, 0.35)
+		border = k.Border.Mix(k.Text, 0.35)
 	case r.Input.Focused():
 		border = k.Focus
 	}

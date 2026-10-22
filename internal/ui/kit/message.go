@@ -135,7 +135,7 @@ func ScrollToBottomButton(c *mgo.Context, away bool, unread int) mgo.Element {
 	wrap.Children(func() {
 		b = mgo.ButtonBase(c).MinHeight(theme.MinHitSize).MinWidth(theme.MinHitSize).
 			Padding(0, u*3).Gap(u*2).Radius(theme.MinHitSize/2).Label(label).
-			Background(k.Surface).Border(theme.BorderWidth, k.ControlBorder).
+			Background(k.Surface).Border(theme.BorderWidth, k.Border).
 			TextColor(k.Text).Shadow(0, 2, 8, 0, mgo.RGBA(0, 0, 0, 0.14)).
 			Transition(uikit.ColorFade)
 		b.Opacity(uikit.OverlayEnter(c, b))

@@ -35,8 +35,8 @@ type BarChartOptions struct {
 
 // chartSeriesColors returns the colors of n series, derived from the theme so
 // they follow the window's palette.
-func chartSeriesColors(k theme.Tokens, n int) []mgo.Color {
-	base := []mgo.Color{k.Accent, k.Info, k.Success, k.Warning, k.Ornament}
+func chartSeriesColors(k *mgo.Theme, n int) []mgo.Color {
+	base := []mgo.Color{k.Accent, k.Accent, k.Success, k.Warning, k.Border}
 	out := make([]mgo.Color, n)
 	for i := range out {
 		c := base[i%len(base)]

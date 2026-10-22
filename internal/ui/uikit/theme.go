@@ -1,9 +1,8 @@
 // Package uikit holds ChatGo's window theme runtime and the types and
 // helpers the hand-drawn UI shares.
 //
-// Use installs the window's appearance once per frame; Tokens, Density and
-// FontSize read it back. Everything here is drawn with MyGo's native ui
-// package — there is no external component library.
+// Colors are MyGo's own: Use installs ui.LightTheme or ui.DarkTheme on the
+// window, and Tokens reads it back for the parts ChatGo draws itself.
 package uikit
 
 import (
@@ -42,17 +41,14 @@ const (
 	ZhCN Locale = "zh-CN"
 )
 
-// Settings are a window's theme. Nil token sets use ChatGo's defaults.
+// Settings are a window's theme.
 type Settings struct {
 	Mode    Mode
 	Density theme.Density
-	Light   *theme.Tokens
-	Dark    *theme.Tokens
 	Locale  Locale
 }
 
 type windowTheme struct {
-	tokens  theme.Tokens
 	density theme.Density
 	locale  Locale
 	set     bool
@@ -78,44 +74,15 @@ func Use(c *mgo.Context, s Settings) {
 	case Dark:
 		dark = true
 	}
-	k := theme.Light()
-	if s.Light != nil {
-		k = *s.Light
-	}
+	t := mgo.LightTheme()
 	if dark {
-		k = theme.Dark()
-		if s.Dark != nil {
-			k = *s.Dark
-		}
+		t = mgo.DarkTheme()
 	}
-	if c.Preferences().HighContrast {
-		k = k.HighContrast()
-	}
-	c.SetTheme(&mgo.Theme{
-		Dark:           k.Dark,
-		Background:     k.Background,
-		Surface:        k.Surface,
-		SurfaceHover:   k.SurfaceHover,
-		SurfacePressed: k.Selection,
-		Border:         k.ControlBorder,
-		Text:           k.Text,
-		TextMuted:      k.TextMuted,
-		Accent:         k.Accent,
-		AccentHover:    k.AccentHover,
-		AccentPressed:  k.AccentPressed,
-		AccentText:     k.OnAccent,
-		Danger:         k.Danger,
-		Warning:        k.Warning,
-		Success:        k.Success,
-		Selection:      k.Selection,
-		Focus:          k.Focus,
-		Scrollbar:      k.TextMuted.Alpha(0.5),
-		Radius:         theme.ControlRadius,
-		Spacing:        s.Density.Unit(),
-		FontSize:       FontSize(c, theme.BodySize),
-	})
+	t.Spacing = s.Density.Unit()
+	t.FontSize = FontSize(c, t.FontSize)
+	c.SetTheme(t)
 	c.Root().LineHeight(theme.LineHeight)
-	*mgo.Local(c.Root(), themeKey{}, func() windowTheme { return windowTheme{} }) = windowTheme{k, s.Density, s.Locale, true}
+	*mgo.Local(c.Root(), themeKey{}, func() windowTheme { return windowTheme{} }) = windowTheme{s.Density, s.Locale, true}
 }
 
 func current(c *mgo.Context) windowTheme {
@@ -126,8 +93,8 @@ func current(c *mgo.Context) windowTheme {
 	return w
 }
 
-// Tokens returns the window's colors.
-func Tokens(c *mgo.Context) theme.Tokens { return current(c).tokens }
+// Tokens returns the window's colors and metrics, MyGo's own theme.
+func Tokens(c *mgo.Context) *mgo.Theme { return c.Theme() }
 
 // Density returns the window's density.
 func Density(c *mgo.Context) theme.Density { return current(c).density }

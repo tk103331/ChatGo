@@ -38,14 +38,14 @@ func (s GitStatus) word() string {
 }
 
 // tone returns the color marking s.
-func (s GitStatus) tone(k theme.Tokens) mgo.Color {
+func (s GitStatus) tone(k *mgo.Theme) mgo.Color {
 	switch s {
 	case GitAdded, GitUntracked:
 		return k.Success
 	case GitDeleted:
 		return k.Danger
 	case GitRenamed, GitCopied:
-		return k.Info
+		return k.Accent
 	}
 	return k.Warning
 }

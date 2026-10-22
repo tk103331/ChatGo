@@ -90,11 +90,11 @@ func SendButton(c *mgo.Context, opts SendButtonOptions) SendResult {
 		b = mgo.ButtonBase(c).Size(h, h).Radius(h / 2).Label(label).
 			Tooltip(tip).Transition(uikit.ColorFade)
 		uikit.Ring(b, k.Focus, h/2)
-		bg, fg := k.Accent, k.OnAccent
+		bg, fg := k.Accent, k.AccentText
 		switch {
 		case opts.Streaming:
 			bg, fg = k.Surface, k.Text
-			b.Border(theme.BorderWidth, k.ControlBorder)
+			b.Border(theme.BorderWidth, k.Border)
 			if b.Hovered() {
 				bg = k.SurfaceHover
 			}
@@ -160,7 +160,7 @@ func CapabilityCards(c *mgo.Context, cards []CapabilityCard, opts CapabilityCard
 					if card.Icon != nil {
 						mgo.Icon(c, card.Icon).Size(20, 20).TextColor(k.AccentText)
 					}
-					mgo.Text(c, card.Title).Font(theme.SerifFont).
+					mgo.Text(c, card.Title).
 						FontSize(uikit.FontSize(c, theme.H3Size)).TextColor(k.Text)
 				})
 				if card.Description != "" {
@@ -180,7 +180,7 @@ func CapabilityCards(c *mgo.Context, cards []CapabilityCard, opts CapabilityCard
 }
 
 // capabilityExample is a quoted example button reporting a click.
-func capabilityExample(c *mgo.Context, k theme.Tokens, text string) bool {
+func capabilityExample(c *mgo.Context, k *mgo.Theme, text string) bool {
 	d := uikit.Density(c)
 	b := mgo.ButtonBase(c).MinHeight(d.ControlHeight()).Padding(d.Unit(), d.Unit()*3).
 		Justify(mgo.Start).Radius(theme.ControlRadius).Background(k.Background).
@@ -190,7 +190,7 @@ func capabilityExample(c *mgo.Context, k theme.Tokens, text string) bool {
 	case b.Pressed():
 		b.Background(k.Selection)
 	case b.Hovered():
-		b.Background(k.SurfaceHover).Border(theme.BorderWidth, k.ControlBorder)
+		b.Background(k.SurfaceHover).Border(theme.BorderWidth, k.Border)
 	}
 	b.Transition(uikit.ColorFade)
 	b.Children(func() { mgo.Text(c, "“"+text+"”").TextColor(k.Text) })
@@ -218,13 +218,10 @@ func WelcomeScreen(c *mgo.Context, opts WelcomeScreenOptions) CapabilityCardsVie
 	col := mgo.Column(c).FillWidth().MaxWidth(880).AlignSelf(mgo.Center).
 		AlignItems(mgo.Center).Gap(u*4).Padding(u*8, u*4).Disabled(opts.Disabled)
 	col.Children(func() {
-		mgo.Text(c, opts.Greeting).Font(theme.SerifFont).
+		mgo.Text(c, opts.Greeting).
 			FontSize(uikit.FontSize(c, theme.H1Size)).TextColor(k.Text).
 			TextAlign(mgo.Center).Role(mgo.RoleText)
-		ornament := k.Ornament
-		mgo.Box(c).Width(220).Height(9).Draw(func(p *mgo.Painter, r mgo.Rect) {
-			uikit.RuleDiamond(p, r, 8, 6, ornament)
-		})
+		mgo.Divider(c).Width(220)
 		if opts.Subtitle != "" {
 			mgo.Text(c, opts.Subtitle).TextColor(k.TextMuted).TextAlign(mgo.Center)
 		}
@@ -394,7 +391,7 @@ func ConversationItem(c *mgo.Context, conv *ChatConversation, opts ConversationI
 }
 
 // conversationItemEditor edits the title in place; Escape cancels.
-func conversationItemEditor(c *mgo.Context, k theme.Tokens, conv *ChatConversation, st *conversationItemState, v *ConversationItemView) {
+func conversationItemEditor(c *mgo.Context, k *mgo.Theme, conv *ChatConversation, st *conversationItemState, v *ConversationItemView) {
 	d := uikit.Density(c)
 	in := mgo.TextInputBase(c, &st.draft).Grow(1).MinHeight(d.ControlHeight()-4).
 		Padding(0, d.Unit()*2).Radius(theme.ControlRadius).Background(k.Surface).

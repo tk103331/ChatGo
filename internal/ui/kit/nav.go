@@ -52,8 +52,8 @@ type SegmentedControlOptions struct {
 	Disabled bool
 }
 
-// SegmentedControl chooses one of segments into *selected; Changed reports a
-// new choice.
+// SegmentedControl chooses one of segments into *selected, looking as MyGo's
+// own Segmented does; segments may carry an icon.
 func SegmentedControl(c *mgo.Context, selected *int, segments []Segment, opts SegmentedControlOptions) mgo.Element {
 	if len(segments) == 0 {
 		panic("kit: SegmentedControl needs at least one segment")
@@ -62,13 +62,12 @@ func SegmentedControl(c *mgo.Context, selected *int, segments []Segment, opts Se
 		panic("kit: SegmentedControl selected index out of range")
 	}
 	k := uikit.Tokens(c)
-	d := uikit.Density(c)
-	u := d.Unit()
-	const inset float32 = 2
+	u := uikit.Unit(c)
+	// segmentButtons is MyGo's own look for a segment; the base carries it.
 	parts := mgo.SegmentedBase(c, selected, len(segments))
-	track := parts.Track.Padding(inset).Gap(inset).Radius(theme.ControlRadius+inset).
-		Background(k.Background).Border(theme.BorderWidth, k.ControlBorder).
-		AlignItems(mgo.Stretch).MinHeight(d.ControlHeight()).Disabled(opts.Disabled)
+	track := parts.Track.AlignItems(mgo.Stretch).Padding(u*0.5).Gap(u*0.5).
+		Radius(k.Radius).Background(k.Surface).Border(theme.BorderWidth, k.Border).
+		Disabled(opts.Disabled)
 	if opts.Equal {
 		track.Grid().Columns(len(segments))
 	}
@@ -83,25 +82,19 @@ func SegmentedControl(c *mgo.Context, selected *int, segments []Segment, opts Se
 			if s.HideLabel && s.Icon == nil {
 				panic("kit: Segment with HideLabel needs an Icon")
 			}
-			seg := parts.Segment(i).Padding(0, u*3).Gap(u * 1.5).
-				Radius(theme.ControlRadius).MinWidth(theme.MinHitSize).Label(s.Label)
+			on := i == *selected
+			seg := parts.Segment(i).Padding(u, u*3).Gap(u * 1.5).
+				Radius(max(k.Radius-u*0.5, 0)).Label(s.Label)
 			if !opts.Disabled {
 				seg.Cursor(mgo.CursorPointer)
 			}
-			fg := k.TextMuted
-			switch {
-			case i == *selected:
-				seg.Background(k.Accent).FontWeight(600)
-				fg = k.OnAccent
-			case seg.Pressed():
-				seg.Background(k.Selection)
-				fg = k.Text
-			case seg.Hovered():
-				seg.Background(k.SurfaceHover)
-				fg = k.Text
+			seg.Background(mgo.Transparent).TextColor(k.TextMuted)
+			if on {
+				seg.Background(k.SurfacePressed).TextColor(k.Text).FontWeight(600).
+					Shadow(0, 1, 2, 0, mgo.RGBA(0, 0, 0, 0.12))
+			} else if seg.Hovered() && !opts.Disabled {
+				seg.TextColor(k.Text)
 			}
-			ease(seg, uikit.Motion(c, theme.StateDuration), fg)
-			uikit.Ring(seg, k.Focus, theme.ControlRadius)
 			if s.HideLabel {
 				seg.Tooltip(s.Label)
 			}
@@ -229,50 +222,34 @@ func Tabs(c *mgo.Context, selected *int, tabs []Tab, opts TabsOptions) ChoiceRes
 	return res
 }
 
+// tabStyle gives a tab MyGo's own look: muted text, and an accent underline
+// while it is chosen.
 func tabStyle(c *mgo.Context, tab mgo.Element, t Tab, on, vertical bool) {
 	if t.Label == "" {
 		panic("kit: Tab needs a Label")
 	}
 	k := uikit.Tokens(c)
-	d := uikit.Density(c)
-	u := d.Unit()
-	tab.MinHeight(d.ControlHeight()).Padding(0, u*4).Gap(u * 2).
-		AlignItems(mgo.Center).Cursor(mgo.CursorPointer)
-	if vertical {
-		tab.Radius(theme.ControlRadius, 0, 0, theme.ControlRadius)
-	} else {
-		tab.Radius(theme.ControlRadius, theme.ControlRadius, 0, 0)
-	}
+	u := uikit.Unit(c)
+	tab.Padding(u*2, u*3).Gap(u * 1.5).AlignItems(mgo.Center).FocusRing(false)
 	if t.Disabled {
 		tab.Cursor(mgo.CursorNotAllowed)
 	}
-	fg := k.TextMuted
-	switch {
-	case on:
-		tab.Background(k.Selection).FontWeight(600)
-		fg = k.Text
-	case !t.Disabled && tab.Pressed():
-		tab.Background(k.Selection)
-		fg = k.Text
-	case !t.Disabled && tab.Hovered():
-		tab.Background(k.SurfaceHover)
-		fg = k.Text
+	tab.TextColor(k.TextMuted)
+	if on {
+		tab.TextColor(k.Text).FontWeight(600)
+	} else if tab.Hovered() && !t.Disabled {
+		tab.TextColor(k.Text)
 	}
-	ease(tab, uikit.Motion(c, theme.StateDuration), fg)
-	// FocusVisible is read in the build pass; the paint callback runs later,
-	// when this element handle is no longer valid.
-	ringVisible := tab.FocusVisible()
-	accent, focus := k.AccentText, k.Focus
-	tab.FocusRing(false).DrawOver(func(p *mgo.Painter, r mgo.Rect) {
-		if on {
-			if vertical {
-				p.Fill(mgo.Rect{X: r.X + r.W - 2, Y: r.Y, W: 2, H: r.H}, accent, 0)
-			} else {
-				p.Fill(mgo.Rect{X: r.X, Y: r.Y + r.H - 2, W: r.W, H: 2}, accent, 0)
-			}
+	accent := k.Accent
+	tab.DrawOver(func(p *mgo.Painter, r mgo.Rect) {
+		if !on {
+			return
 		}
-		if ringVisible {
-			uikit.FocusRing(p, r, theme.ControlRadius, focus)
+		if vertical {
+			p.Fill(mgo.Rect{X: r.X + r.W - u*0.5, Y: r.Y, W: u * 0.5, H: r.H}, accent, u*0.25)
+		} else {
+			in, h := u*1.5, u*0.5
+			p.Fill(mgo.Rect{X: r.X + in, Y: r.Y + r.H - h, W: r.W - 2*in, H: h}, accent, h/2)
 		}
 	})
 	tab.Children(func() {
