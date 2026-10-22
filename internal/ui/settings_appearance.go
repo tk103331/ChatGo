@@ -9,9 +9,9 @@ import (
 	"github.com/egoist/mygo/plugins/updater"
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
 )
 
@@ -27,18 +27,18 @@ func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
 		}
 		mgo.Text(c, "快捷对话").FontSize(small).TextColor(k.TextMuted)
 		f := &cw.settings.shortcut
-		minput.TextInput(c, &f.value, minput.TextInputOptions{
+		kit.TextInput(c, &f.value, kit.TextInputOptions{
 			Label: "快捷对话快捷键", Placeholder: defaultQuickShortcut,
 		})
 		mgo.Text(c, "示例：CmdOrCtrl+Shift+Space、Alt+Space、CmdOrCtrl+Shift+K").
 			FontSize(small).TextColor(k.TextMuted)
 		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.cfg.QuickChatShortcut = strings.TrimSpace(f.value)
 				cw.saveQuickShortcut()
 				cw.toast("快捷键已更新", mcore.SeveritySuccess)
 			}
-			if minput.Button(c, "恢复默认", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+			if kit.Button(c, "恢复默认", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 				f.value = defaultQuickShortcut
 				cw.cfg.QuickChatShortcut = defaultQuickShortcut
 				cw.saveQuickShortcut()
@@ -126,19 +126,19 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
 		mgo.Text(c, "系统").Font(mtheme.SerifFont).FontWeight(600)
-		if minput.Switch(c, &cw.cfg.ShowTrayIcon, "显示托盘图标", minput.SwitchOptions{}).Changed() {
+		if kit.Switch(c, &cw.cfg.ShowTrayIcon, "显示托盘图标", kit.SwitchOptions{}).Changed() {
 			cw.saveSystemSettings()
 		}
 		mgo.Text(c, "在系统托盘 / 菜单栏显示 ChatGo 图标。点击图标打开程序，右键菜单可快速新建会话并进入最近会话。").
 			FontSize(small).TextColor(k.TextMuted)
-		if minput.Switch(c, &cw.cfg.RunInBackground, "允许后台运行（关闭窗口时最小化到托盘）", minput.SwitchOptions{}).Changed() {
+		if kit.Switch(c, &cw.cfg.RunInBackground, "允许后台运行（关闭窗口时最小化到托盘）", kit.SwitchOptions{}).Changed() {
 			cw.saveSystemSettings()
 		}
 		mgo.Text(c, "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行（自动启用托盘图标）。").
 			FontSize(small).TextColor(k.TextMuted)
 		mgo.Text(c, "更新").Font(mtheme.SerifFont).FontWeight(600)
 		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "检查更新", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if kit.Button(c, "检查更新", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 				updater.CheckForUpdates()
 			}
 			mgo.Text(c, "通过 MyGo Updater 从官方发布自动更新，仅在打包安装后的应用中可用。").

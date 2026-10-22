@@ -7,10 +7,9 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 func (cw *ChatWindow) channelTab(c *mgo.Context) {
@@ -51,18 +50,18 @@ func (cw *ChatWindow) channelCard(c *mgo.Context, i int) {
 				if ch.Type == "feishu" {
 					state, note := cw.feishuStatus()
 					st, label := feishuStatusView(state, note)
-					mfeedback.StatusIndicator(c, st, mfeedback.StatusIndicatorOptions{})
+					kit.StatusIndicator(c, st, kit.StatusIndicatorOptions{})
 					mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 				} else if ch.Type == "wechat" {
 					state, note := cw.wechatStatus()
 					st, label := wechatStatusView(state, note)
-					mfeedback.StatusIndicator(c, st, mfeedback.StatusIndicatorOptions{})
+					kit.StatusIndicator(c, st, kit.StatusIndicatorOptions{})
 					mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 				}
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := ch.Enabled
-				if minput.Switch(c, &en, "", minput.SwitchOptions{}).Changed() {
+				if kit.Switch(c, &en, "", kit.SwitchOptions{}).Changed() {
 					cw.cfg.Channels[i].Enabled = en
 					cw.settings.channel.enabled = en
 					_ = config.SaveConfig(cw.cfg)
@@ -84,18 +83,18 @@ func (cw *ChatWindow) channelCard(c *mgo.Context, i int) {
 	})
 }
 
-func feishuStatusView(state feishuConnState, note string) (mfeedback.Status, string) {
+func feishuStatusView(state feishuConnState, note string) (kit.Status, string) {
 	switch state {
 	case feishuConnected:
-		return mfeedback.StatusSuccess, "已连接 · " + note
+		return kit.StatusSuccess, "已连接 · " + note
 	case feishuConnecting:
-		return mfeedback.StatusBusy, "正在连接…"
+		return kit.StatusBusy, "正在连接…"
 	case feishuReconnecting:
-		return mfeedback.StatusBusy, "重连中…"
+		return kit.StatusBusy, "重连中…"
 	case feishuError:
-		return mfeedback.StatusError, "连接失败：" + note
+		return kit.StatusError, "连接失败：" + note
 	default:
-		return mfeedback.StatusOffline, "未连接"
+		return kit.StatusOffline, "未连接"
 	}
 }
 
@@ -103,10 +102,10 @@ func (cw *ChatWindow) channelFormFields(c *mgo.Context) {
 	f := &cw.settings.channel
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
-		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "渠道名称", ReadOnly: true})
+		kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "渠道名称", ReadOnly: true})
 		if f.typ == "wechat" {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				if minput.Button(c, "扫码登录微信", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
+				if kit.Button(c, "扫码登录微信", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
 					cw.startWechatLogin()
 				}
 				if f.scanning {
@@ -114,18 +113,18 @@ func (cw *ChatWindow) channelFormFields(c *mgo.Context) {
 				}
 			})
 			if f.appID != "" {
-				minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "Bot ID", Placeholder: "iLink Bot ID（扫码后自动填入）"})
+				kit.TextInput(c, &f.appID, kit.TextInputOptions{Label: "Bot ID", Placeholder: "iLink Bot ID（扫码后自动填入）"})
 			}
 			if f.appSecret != "" {
-				minput.PasswordInput(c, &f.appSecret, minput.PasswordInputOptions{Label: "Bot Token", Placeholder: "iLink Bot Token（扫码后自动填入）"})
+				kit.PasswordInput(c, &f.appSecret, kit.PasswordInputOptions{Label: "Bot Token", Placeholder: "iLink Bot Token（扫码后自动填入）"})
 			}
 			mgo.Text(c, "提示：点击「扫码登录微信」，用微信扫码授权后凭证自动填入。").
 				TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		} else {
-			minput.TextInput(c, &f.appID, minput.TextInputOptions{Label: "AppID", Placeholder: "飞书应用 App ID"})
-			minput.PasswordInput(c, &f.appSecret, minput.PasswordInputOptions{Label: "AppSecret", Placeholder: "飞书应用 App Secret"})
+			kit.TextInput(c, &f.appID, kit.TextInputOptions{Label: "AppID", Placeholder: "飞书应用 App ID"})
+			kit.PasswordInput(c, &f.appSecret, kit.PasswordInputOptions{Label: "AppSecret", Placeholder: "飞书应用 App Secret"})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				if minput.Button(c, "扫码创建应用", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
+				if kit.Button(c, "扫码创建应用", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
 					cw.startFeishuRegister()
 				}
 				if f.scanning {
@@ -141,26 +140,26 @@ func (cw *ChatWindow) channelFormFields(c *mgo.Context) {
 		if f.qrTip != "" {
 			mgo.Text(c, f.qrTip).TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		}
-		agentOpts := []minput.SelectOption[string]{{Value: "", Label: chatAgentName}}
+		agentOpts := []kit.SelectOption[string]{{Value: "", Label: chatAgentName}}
 		for _, a := range cw.cfg.Agents {
-			agentOpts = append(agentOpts, minput.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
+			agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
 		}
 		for _, a := range cw.cfg.ACPAgents {
 			if a.Disabled {
 				continue
 			}
-			agentOpts = append(agentOpts, minput.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
+			agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
 		}
-		minput.Select(c, &f.agent, agentOpts, minput.SelectOptions{Label: "触发 Agent"})
+		kit.Select(c, &f.agent, agentOpts, kit.SelectOptions{Label: "触发 Agent"})
 		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-			in := minput.TextInput(c, &f.workspace, minput.TextInputOptions{Label: "默认工作区", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})
+			in := kit.TextInput(c, &f.workspace, kit.TextInputOptions{Label: "默认工作区", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})
 			in.Element.Grow(1)
-			if minput.Button(c, "选择", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if kit.Button(c, "选择", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 				cw.pickDirectory("选择默认工作区", func(path string) { f.workspace = path })
 			}
 		})
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.saveChannel()
 			}
 		})
@@ -250,10 +249,10 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 				mgo.Text(c, "ACP").Font(mtheme.SerifFont).
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Row(c).Gap(u).Children(func() {
-					if minput.Button(c, "从目录添加", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
+					if kit.Button(c, "从目录添加", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
 						cw.acpCatalogOpen = true
 					}
-					if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
+					if kit.Button(c, "新增", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("plus")}).Clicked() {
 						cw.addNewACP()
 					}
 				})

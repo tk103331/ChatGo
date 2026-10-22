@@ -12,8 +12,8 @@ import (
 
 	"chatgo/pkg/models"
 
+	"chatgo/internal/ui/kit"
 	mcore "chatgo/internal/ui/uikit"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
@@ -347,13 +347,13 @@ func (cw *ChatWindow) acpPermissionDialog(c *mgo.Context) {
 		Actions: func() {
 			for _, opt := range req.Options {
 				id := opt.OptionId
-				if minput.Button(c, opt.Name, minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				if kit.Button(c, opt.Name, kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 					cw.resolvePermission(acp.RequestPermissionResponse{
 						Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: id}},
 					})
 				}
 			}
-			if minput.Button(c, "拒绝", minput.ButtonOptions{Variant: minput.Danger}).Clicked() {
+			if kit.Button(c, "拒绝", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
 				cw.resolvePermission(acpCancelled())
 			}
 		},

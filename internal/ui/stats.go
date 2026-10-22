@@ -10,10 +10,10 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chart"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 // statsRange is the number of days shown by the daily charts.
@@ -165,7 +165,7 @@ func (cw *ChatWindow) statsPage(c *mgo.Context) {
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Text(c, fmt.Sprintf("近 %d 天的使用概览", statsRange)).TextColor(k.TextMuted).FontSize(caption)
 			})
-			if minput.Button(c, "刷新", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("refresh-cw")}).Clicked() {
+			if kit.Button(c, "刷新", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("refresh-cw")}).Clicked() {
 				cw.statsCache = statsCache{}
 				cw.invalidate()
 			}

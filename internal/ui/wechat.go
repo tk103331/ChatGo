@@ -9,9 +9,9 @@ import (
 	"chatgo/internal/channel"
 	"chatgo/internal/config"
 
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
 	mgo "github.com/egoist/mygo/ui"
 )
 
@@ -232,22 +232,22 @@ func (cw *ChatWindow) wechatStatusLine(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 		mgo.Text(c, "微信").Font(mtheme.SerifFont).FontWeight(600).Shrink(0)
-		mfeedback.StatusIndicator(c, st, mfeedback.StatusIndicatorOptions{})
+		kit.StatusIndicator(c, st, kit.StatusIndicatorOptions{})
 		mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 	})
 }
 
-func wechatStatusView(state feishuConnState, note string) (mfeedback.Status, string) {
+func wechatStatusView(state feishuConnState, note string) (kit.Status, string) {
 	switch state {
 	case feishuConnected:
-		return mfeedback.StatusSuccess, "已连接 · " + note
+		return kit.StatusSuccess, "已连接 · " + note
 	case feishuConnecting:
-		return mfeedback.StatusBusy, "正在连接…"
+		return kit.StatusBusy, "正在连接…"
 	case feishuReconnecting:
-		return mfeedback.StatusBusy, "重连中…"
+		return kit.StatusBusy, "重连中…"
 	case feishuError:
-		return mfeedback.StatusError, "连接失败：" + note
+		return kit.StatusError, "连接失败：" + note
 	default:
-		return mfeedback.StatusOffline, "未连接"
+		return kit.StatusOffline, "未连接"
 	}
 }

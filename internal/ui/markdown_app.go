@@ -9,9 +9,9 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 // appFile is one open document of the markdown app: a workspace-relative path
@@ -119,14 +119,14 @@ func (cw *ChatWindow) appFileBody(c *mgo.Context, tab string) {
 	f := cw.appFiles[tab]
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(u * 2).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-			in := minput.TextInput(c, &f.path, minput.TextInputOptions{
+			in := kit.TextInput(c, &f.path, kit.TextInputOptions{
 				Label: "路径", Placeholder: "相对工作目录，如 README.md",
 			})
 			in.Element.Grow(1)
-			if minput.Button(c, "打开", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if kit.Button(c, "打开", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 				cw.loadAppFile(f)
 			}
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.saveAppFile(f)
 			}
 		})

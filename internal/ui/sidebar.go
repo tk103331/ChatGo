@@ -10,10 +10,10 @@ import (
 	"chatgo/pkg/models"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
@@ -22,7 +22,7 @@ func (cw *ChatWindow) sidebar(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Fill().Children(func() {
 		mgo.Row(c).Padding(u*2, u).Gap(u).AlignItems(mgo.Center).Children(func() {
-			w := minput.Button(c, "新增工作区", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("folder")})
+			w := kit.Button(c, "新增工作区", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("folder")})
 			w.Grow(1)
 			if w.Clicked() {
 				cw.pickWorkspace()

@@ -11,10 +11,10 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mdata "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 const chatAgentName = "Chat"
@@ -49,7 +49,7 @@ func (cw *ChatWindow) agentsPage(c *mgo.Context) {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
 			mgo.Text(c, "Agent 管理").Font(mtheme.SerifFont).
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
-			if minput.Button(c, "新建 Agent", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
+			if kit.Button(c, "新建 Agent", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearAgentForm()
 				cw.agentEditorOpen = true
 			}
@@ -79,7 +79,7 @@ func (cw *ChatWindow) agentEmptyState(c *mgo.Context) {
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
 		mgo.Text(c, "创建自定义 Agent，配置模型、工具和技能").TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		if minput.Button(c, "新建 Agent", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
+		if kit.Button(c, "新建 Agent", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 			cw.clearAgentForm()
 			cw.agentEditorOpen = true
 		}
@@ -116,11 +116,11 @@ func (cw *ChatWindow) agentCard(c *mgo.Context, i int) {
 				}
 			})
 			mgo.Row(c).Gap(u).Children(func() {
-				if minput.Button(c, "编辑", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				if kit.Button(c, "编辑", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 					cw.loadAgentForm(i)
 					cw.agentEditorOpen = true
 				}
-				if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger}).Clicked() {
+				if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
 					cw.deleteAgentAt(i)
 				}
 			})
@@ -154,17 +154,17 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 	}
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			if minput.Button(c, "返回", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("chevron-left")}).Clicked() {
+			if kit.Button(c, "返回", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("chevron-left")}).Clicked() {
 				cw.agentEditorOpen = false
 			}
 			mgo.Text(c, title).Font(mtheme.SerifFont).
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				if cw.saveAgent() {
 					cw.agentEditorOpen = false
 				}
 			}
-			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
+			if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger, Disabled: f.editing < 0}).Clicked() {
 				cw.deleteAgent()
 			}
 		})
@@ -198,17 +198,17 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 						})
 					})
 					mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
-						minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Agent 名称"})
-						minput.TextInput(c, &f.description, minput.TextInputOptions{Label: "描述", Placeholder: "一句话说明"})
+						kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "Agent 名称"})
+						kit.TextInput(c, &f.description, kit.TextInputOptions{Label: "描述", Placeholder: "一句话说明"})
 					})
 				})
-				minput.TextArea(c, &f.systemPrompt, minput.TextAreaOptions{
+				kit.TextArea(c, &f.systemPrompt, kit.TextAreaOptions{
 					Label: "系统提示词", Placeholder: "设定该 Agent 的角色与行为", MinHeight: 96,
 				})
 				mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-					in := minput.TextInput(c, &f.workspace, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前项目"})
+					in := kit.TextInput(c, &f.workspace, kit.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前项目"})
 					in.Element.Grow(1)
-					if minput.Button(c, "选择", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+					if kit.Button(c, "选择", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 						cw.pickDirectory("选择工作目录", func(path string) { f.workspace = path })
 					}
 				})
@@ -220,7 +220,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 						for _, ref := range models {
 							ref := ref
 							on := containsStr(f.models, ref)
-							minput.Checkbox(c, &on, modelLabel(ref), minput.CheckboxOptions{})
+							kit.Checkbox(c, &on, modelLabel(ref), kit.CheckboxOptions{})
 							f.models = setTool(f.models, ref, on)
 						}
 					})
@@ -235,7 +235,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 							t := t
 							mgo.Column(c).Gap(0).MinWidth(0).Children(func() {
 								on := containsStr(f.builtinTools, t)
-								minput.Checkbox(c, &on, t, minput.CheckboxOptions{})
+								kit.Checkbox(c, &on, t, kit.CheckboxOptions{})
 								f.builtinTools = setTool(f.builtinTools, t, on)
 								mgo.Text(c, config.GetBuiltinToolDescription(t)).FontSize(small).TextColor(k.TextMuted).
 									MaxLines(1).Ellipsis("…")
@@ -254,7 +254,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 					mgo.Grid(c).Columns(2).Gap(u).Children(func() {
 						for _, s := range filterStrings(servers, f.mcpQuery) {
 							on := containsStr(f.mcpServers, s)
-							minput.Checkbox(c, &on, s, minput.CheckboxOptions{})
+							kit.Checkbox(c, &on, s, kit.CheckboxOptions{})
 							f.mcpServers = setTool(f.mcpServers, s, on)
 						}
 					})
@@ -272,7 +272,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 							s := s
 							on := containsStr(f.skills, s.Name)
 							mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-								minput.Checkbox(c, &on, "", minput.CheckboxOptions{})
+								kit.Checkbox(c, &on, "", kit.CheckboxOptions{})
 								body := mgo.ButtonBase(c).Grow(1).MinWidth(0).Justify(mgo.Start).Children(func() {
 									mgo.Column(c).Grow(1).MinWidth(0).Children(func() {
 										mgo.Text(c, s.Name).SingleLine()
@@ -311,11 +311,11 @@ func agentAction(c *mgo.Context, on, total int, toggle func(all bool), configure
 		if total > 0 && on == total {
 			label = "清空"
 		}
-		if minput.Button(c, label, minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
+		if kit.Button(c, label, kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 			toggle(on != total)
 		}
 		if configure != nil {
-			if minput.Button(c, "去配置", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("sliders-horizontal")}).Clicked() {
+			if kit.Button(c, "去配置", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("sliders-horizontal")}).Clicked() {
 				configure()
 			}
 		}
@@ -392,7 +392,7 @@ func countSelected(have, want []string) int {
 
 // agentSearch renders a compact search field filtering a list.
 func agentSearch(c *mgo.Context, query *string, placeholder string) mgo.Element {
-	in := minput.SearchInput(c, query, minput.SearchInputOptions{Placeholder: placeholder, Label: placeholder})
+	in := kit.SearchInput(c, query, kit.SearchInputOptions{Placeholder: placeholder, Label: placeholder})
 	return in.Element.FillWidth()
 }
 
@@ -559,12 +559,12 @@ func (cw *ChatWindow) agentSelector(c *mgo.Context) {
 	if len(cw.cfg.Agents) == 0 {
 		return
 	}
-	opts := make([]minput.SelectOption[string], 0, len(cw.cfg.Agents)+1)
-	opts = append(opts, minput.SelectOption[string]{Value: "", Label: chatAgentName})
+	opts := make([]kit.SelectOption[string], 0, len(cw.cfg.Agents)+1)
+	opts = append(opts, kit.SelectOption[string]{Value: "", Label: chatAgentName})
 	for _, a := range cw.cfg.Agents {
-		opts = append(opts, minput.SelectOption[string]{Value: a.Name, Label: a.Name})
+		opts = append(opts, kit.SelectOption[string]{Value: a.Name, Label: a.Name})
 	}
-	r := minput.Select(c, &cw.currentAgent, opts, minput.SelectOptions{Label: "Agent"})
+	r := kit.Select(c, &cw.currentAgent, opts, kit.SelectOptions{Label: "Agent"})
 	if r.Changed() {
 		cw.applyAgent(cw.currentAgent)
 		if cw.cur != nil {

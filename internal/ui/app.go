@@ -25,11 +25,11 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcode "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
-	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
 	mgit "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/git"
 )
 
@@ -125,7 +125,7 @@ type ChatWindow struct {
 
 	draft        string
 	mentionRoot  string
-	mentionFiles []mchat.ContextItem
+	mentionFiles []kit.ContextItem
 	provider     string
 	model        string
 	agentMode    bool
@@ -382,7 +382,7 @@ func (cw *ChatWindow) view(c *mgo.Context) {
 	cw.inputDialog(c)
 	cw.acpPermissionDialog(c)
 	cw.flushToast(c)
-	mfeedback.Toaster(c)
+	kit.Toaster(c)
 }
 
 // quickView is the focused chat: only the message area and composer, with a

@@ -9,8 +9,8 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/kit"
 	mcore "chatgo/internal/ui/uikit"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
@@ -38,15 +38,15 @@ func (cw *ChatWindow) inputDialog(c *mgo.Context) {
 		Title: cw.input.title,
 		Width: 440,
 		Actions: func() {
-			if minput.Button(c, "取消", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
+			if kit.Button(c, "取消", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 				cancel = true
 			}
-			if minput.Button(c, "确定", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "确定", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				submit = true
 			}
 		},
 	}, func() {
-		in := minput.TextInput(c, &cw.input.value, minput.TextInputOptions{Label: cw.input.label, Placeholder: cw.input.label})
+		in := kit.TextInput(c, &cw.input.value, kit.TextInputOptions{Label: cw.input.label, Placeholder: cw.input.label})
 		in.Input.AutoFocus()
 		if in.Submitted() {
 			submit = true

@@ -13,11 +13,10 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/devtools"
-	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
@@ -27,9 +26,9 @@ func (cw *ChatWindow) mcpTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Grow(1).MinWidth(0).MinHeight(0).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u * 2).Children(func() {
-			in := minput.SearchInput(c, &cw.mcp.myQuery, minput.SearchInputOptions{Placeholder: "搜索服务", Label: "搜索服务"})
+			in := kit.SearchInput(c, &cw.mcp.myQuery, kit.SearchInputOptions{Placeholder: "搜索服务", Label: "搜索服务"})
 			in.Element.Grow(1)
-			if minput.Button(c, "新增服务", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
+			if kit.Button(c, "新增服务", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearMCPForm()
 				cw.mcp.editorOpen = true
 			}
@@ -67,10 +66,10 @@ func (cw *ChatWindow) mcpEmptyState(c *mgo.Context) {
 		mgo.Text(c, "从市场安装，或手动添加一个服务器").TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		mgo.Row(c).Gap(u * 2).Children(func() {
-			if minput.Button(c, "浏览市场", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "浏览市场", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.mcp.tabSel = 1
 			}
-			if minput.Button(c, "手动添加", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+			if kit.Button(c, "手动添加", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 				cw.clearMCPForm()
 				cw.mcp.editorOpen = true
 			}
@@ -119,7 +118,7 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 				mgo.Text(c, s.Name).Font(mtheme.SerifFont).
 					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
 				status, note := mcpStatus(cw, s.Name)
-				mfeedback.StatusIndicator(c, status, mfeedback.StatusIndicatorOptions{})
+				kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{})
 				if note != "" && note != "未初始化" {
 					mgo.Text(c, note).FontSize(caption).TextColor(k.TextMuted).SingleLine().Ellipsis("…")
 				}
@@ -141,22 +140,22 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 			}
 			mgo.Row(c).Gap(u).Wrap().Children(func() {
 				if st, ok := cw.mcpManager.GetServerStatus(s.Name); ok && st.Status == "initialized" && len(st.Tools) > 0 {
-					if minput.Button(c, "工具 ("+strconv.Itoa(len(st.Tools))+")", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+					if kit.Button(c, "工具 ("+strconv.Itoa(len(st.Tools))+")", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 						cw.openMCPTools(s.Name)
 					}
 				}
-				if minput.Button(c, "编辑", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+				if kit.Button(c, "编辑", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 					cw.loadMCPForm(i)
 					cw.mcp.editorOpen = true
 				}
-				if minput.Button(c, "初始化", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+				if kit.Button(c, "初始化", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 					cw.initMCPServer(s.Name)
 				}
-				if minput.Button(c, "断开", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+				if kit.Button(c, "断开", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 					_ = cw.mcpManager.manager.DisconnectServer(s.Name)
 					cw.toast("已断开 "+s.Name, mcore.SeverityInfo)
 				}
-				if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger}).Clicked() {
+				if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
 					cw.deleteMCPServer(s.Name)
 				}
 			})
@@ -261,12 +260,12 @@ func (cw *ChatWindow) mcpEditor(c *mgo.Context) {
 		Title: "MCP 服务配置",
 		Width: 560,
 		Actions: func() {
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				if cw.saveMCP() {
 					cw.mcp.editorOpen = false
 				}
 			}
-			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger, Disabled: f.editing < 0}).Clicked() {
+			if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger, Disabled: f.editing < 0}).Clicked() {
 				cw.deleteMCP()
 			}
 		},
@@ -282,7 +281,7 @@ func (cw *ChatWindow) mcpFormFields(c *mgo.Context) {
 			mgo.Text(c, f.hint).TextColor(k.TextMuted).
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Font(mtheme.MonoFont)
 		}
-		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "服务器名称"})
+		kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "服务器名称"})
 		typ := 0
 		for i, t := range mcpTypes {
 			if t == f.typ {
@@ -293,24 +292,24 @@ func (cw *ChatWindow) mcpFormFields(c *mgo.Context) {
 			{Label: "STDIO"}, {Label: "SSE"}, {Label: "HTTP"},
 		}, mnavigation.SegmentedControlOptions{Label: "类型", Equal: true})
 		f.typ = mcpTypes[typ]
-		if minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{}).Changed() {
+		if kit.Switch(c, &f.enabled, "启用", kit.SwitchOptions{}).Changed() {
 			cw.saveMCP()
 		}
 		if f.typ == "stdio" {
-			minput.TextInput(c, &f.command, minput.TextInputOptions{Label: "命令", Placeholder: "如 npx"})
-			minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 72})
+			kit.TextInput(c, &f.command, kit.TextInputOptions{Label: "命令", Placeholder: "如 npx"})
+			kit.TextArea(c, &f.args, kit.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 72})
 			mgo.Text(c, "环境变量").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 			devtools.KeyValueInput(c, &f.env, devtools.KeyValueInputOptions{Label: "环境变量", KeyPlaceholder: "KEY", ValuePlaceholder: "VALUE"})
 		} else {
-			minput.TextInput(c, &f.url, minput.TextInputOptions{Label: "URL", Placeholder: "https://..."})
+			kit.TextInput(c, &f.url, kit.TextInputOptions{Label: "URL", Placeholder: "https://..."})
 			mgo.Text(c, "请求头").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 			devtools.KeyValueInput(c, &f.headers, devtools.KeyValueInputOptions{Label: "请求头", KeyPlaceholder: "Header", ValuePlaceholder: "Value"})
-			minput.TextInput(c, &f.timeout, minput.TextInputOptions{Label: "超时（秒）", Placeholder: "30"})
+			kit.TextInput(c, &f.timeout, kit.TextInputOptions{Label: "超时（秒）", Placeholder: "30"})
 		}
 		if f.editing >= 0 && f.editing < len(cw.cfg.MCPServers) {
 			status, note := mcpStatus(cw, cw.cfg.MCPServers[f.editing].Name)
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				mfeedback.StatusIndicator(c, status, mfeedback.StatusIndicatorOptions{})
+				kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{})
 				if note != "" {
 					mgo.Text(c, note).TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 				}
@@ -481,22 +480,22 @@ func joinKV(m map[string]string) string {
 
 // builtinTab lists the built-in tools and edits the selected one.
 
-func mcpStatus(cw *ChatWindow, name string) (mfeedback.Status, string) {
+func mcpStatus(cw *ChatWindow, name string) (kit.Status, string) {
 	st, ok := cw.mcpManager.GetServerStatus(name)
 	if !ok {
-		return mfeedback.StatusOffline, "未初始化"
+		return kit.StatusOffline, "未初始化"
 	}
 	switch st.Status {
 	case "initialized":
-		return mfeedback.StatusSuccess, fmt.Sprintf("%d 个工具", len(st.Tools))
+		return kit.StatusSuccess, fmt.Sprintf("%d 个工具", len(st.Tools))
 	case "error":
 		note := "初始化失败"
 		if st.Error != nil {
 			note = st.Error.Error()
 		}
-		return mfeedback.StatusError, note
+		return kit.StatusError, note
 	default:
-		return mfeedback.StatusBusy, st.Status
+		return kit.StatusBusy, st.Status
 	}
 }
 

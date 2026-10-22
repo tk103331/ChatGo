@@ -13,11 +13,11 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 
 	"gopkg.in/yaml.v3"
@@ -132,7 +132,7 @@ func (cw *ChatWindow) skillsPage(c *mgo.Context) {
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
 			mgo.Text(c, "共 "+strconv.Itoa(len(cw.skills.list))+" 个").TextColor(k.TextMuted).
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-			if minput.Button(c, "重新扫描", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("refresh-cw")}).Clicked() {
+			if kit.Button(c, "重新扫描", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("refresh-cw")}).Clicked() {
 				cw.loadSkills()
 			}
 		})
@@ -162,7 +162,7 @@ func (cw *ChatWindow) skillsEmptyState(c *mgo.Context) {
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 			}
 		})
-		if minput.Button(c, "重新扫描", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+		if kit.Button(c, "重新扫描", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 			cw.loadSkills()
 		}
 	})
@@ -172,7 +172,7 @@ func (cw *ChatWindow) skillsList(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Width(340).Shrink(0).Gap(u * 2).Children(func() {
-		in := minput.TextInput(c, &cw.skills.query, minput.TextInputOptions{Label: "搜索", Placeholder: "搜索 Skill"})
+		in := kit.TextInput(c, &cw.skills.query, kit.TextInputOptions{Label: "搜索", Placeholder: "搜索 Skill"})
 		in.Element.FillWidth()
 		items := cw.filteredSkills()
 		if len(items) == 0 {
@@ -246,7 +246,7 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 			mgo.Text(c, s.Name).Font(mtheme.SerifFont).
 				FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
 			on := cw.skillEnabled(s.ID)
-			if minput.Switch(c, &on, "启用", minput.SwitchOptions{}).Changed() {
+			if kit.Switch(c, &on, "启用", kit.SwitchOptions{}).Changed() {
 				cw.setSkillEnabled(s.ID, on)
 			}
 		})
@@ -438,7 +438,7 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 	ids := cw.visibleSkillIDs()
 	if len(ids) == 0 || cw.cur == nil {
 		if cw.cur != nil {
-			if minput.Button(c, "配置 Skill", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+			if kit.Button(c, "配置 Skill", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 				cw.goConfigure(sectionSkill)
 			}
 		}
@@ -484,7 +484,7 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 				}
 				v := cw.skillRuntime(id)
 				mgo.Column(c).Gap(0).Children(func() {
-					if minput.Switch(c, &v, s.Name, minput.SwitchOptions{}).Changed() {
+					if kit.Switch(c, &v, s.Name, kit.SwitchOptions{}).Changed() {
 						cw.skillOn[id] = v
 						changed = true
 					}

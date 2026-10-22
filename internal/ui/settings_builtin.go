@@ -8,9 +8,9 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 func (cw *ChatWindow) builtinTab(c *mgo.Context) {
@@ -51,7 +51,7 @@ func (cw *ChatWindow) builtinCard(c *mgo.Context, i int) {
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := t.Enabled
-				if minput.Switch(c, &en, "", minput.SwitchOptions{}).Changed() {
+				if kit.Switch(c, &en, "", kit.SwitchOptions{}).Changed() {
 					cw.cfg.BuiltinTools[i].Enabled = en
 					cw.settings.builtin.enabled = en
 					_ = config.SaveConfig(cw.cfg)
@@ -93,10 +93,10 @@ func (cw *ChatWindow) builtinFormFields(c *mgo.Context) {
 				}
 			}
 			v := f.config[field]
-			minput.TextInput(c, &v, minput.TextInputOptions{Label: label, Placeholder: field})
+			kit.TextInput(c, &v, kit.TextInputOptions{Label: label, Placeholder: field})
 			f.config[field] = v
 		}
-		if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+		if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 			cw.saveBuiltin()
 		}
 	})

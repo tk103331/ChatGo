@@ -13,10 +13,10 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mdatetime "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/datetime"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
@@ -51,7 +51,7 @@ func (cw *ChatWindow) autoTasksPage(c *mgo.Context) {
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Text(c, "按计划自动运行 Agent，支持每天 / 每周 / 每月").TextColor(k.TextMuted).FontSize(caption)
 			})
-			if minput.Button(c, "新建任务", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
+			if kit.Button(c, "新建任务", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearAutoForm()
 				cw.autoTaskEditorOpen = true
 			}
@@ -84,7 +84,7 @@ func (cw *ChatWindow) autoTaskEmptyState(c *mgo.Context) {
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
 		mgo.Text(c, "创建任务后，Agent 会按计划自动执行").TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		if minput.Button(c, "新建任务", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
+		if kit.Button(c, "新建任务", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 			cw.clearAutoForm()
 			cw.autoTaskEditorOpen = true
 		}
@@ -121,7 +121,7 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 			mgo.Icon(c, icons.Must(dotIcon)).Size(16, 16).TextColor(dotCol).Shrink(0)
 			mgo.Text(c, t.Name).FontWeight(600).Grow(1).SingleLine().MinWidth(0).Ellipsis("…")
 			enabled := t.Enabled
-			if minput.Switch(c, &enabled, "", minput.SwitchOptions{}).Changed() {
+			if kit.Switch(c, &enabled, "", kit.SwitchOptions{}).Changed() {
 				cw.cfg.AutoTasks[i].Enabled = enabled
 				_ = config.SaveConfig(cw.cfg)
 			}
@@ -162,17 +162,17 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 		}
 
 		mgo.Row(c).Gap(u).Children(func() {
-			if minput.Button(c, "运行", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("play")}).Clicked() {
+			if kit.Button(c, "运行", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("play")}).Clicked() {
 				cw.startAutoTask(i)
 			}
-			if minput.Button(c, "会话", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("message-square")}).Clicked() {
+			if kit.Button(c, "会话", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("message-square")}).Clicked() {
 				cw.openAutoTaskConvs(t.ID)
 			}
-			if minput.Button(c, "编辑", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if kit.Button(c, "编辑", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 				cw.loadAutoForm(i)
 				cw.autoTaskEditorOpen = true
 			}
-			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger}).Clicked() {
+			if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
 				cw.deleteAutoTask(i)
 			}
 		})
@@ -246,12 +246,12 @@ func (cw *ChatWindow) autoTaskEditor(c *mgo.Context) {
 	}
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			if minput.Button(c, "返回", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("chevron-left")}).Clicked() {
+			if kit.Button(c, "返回", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("chevron-left")}).Clicked() {
 				cw.autoTaskEditorOpen = false
 			}
 			mgo.Text(c, title).Font(mtheme.SerifFont).
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				if cw.saveAutoTask() {
 					cw.autoTaskEditorOpen = false
 				}
@@ -260,23 +260,23 @@ func (cw *ChatWindow) autoTaskEditor(c *mgo.Context) {
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			mgo.Column(c).FillWidth().AlignItems(mgo.Center).Children(func() {
 				mgo.Column(c).FillWidth().MaxWidth(760).Gap(u * 2).Children(func() {
-					minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "任务名称"})
-					agentOpts := []minput.SelectOption[string]{{Value: "", Label: chatAgentName}}
+					kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "任务名称"})
+					agentOpts := []kit.SelectOption[string]{{Value: "", Label: chatAgentName}}
 					for _, a := range cw.cfg.Agents {
-						agentOpts = append(agentOpts, minput.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
+						agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
 					}
-					minput.Select(c, &f.agent, agentOpts, minput.SelectOptions{Label: "Agent"})
-					minput.TextArea(c, &f.prompt, minput.TextAreaOptions{Label: "提示词", Placeholder: "每次运行发送给 Agent 的内容", MinHeight: 120})
+					kit.Select(c, &f.agent, agentOpts, kit.SelectOptions{Label: "Agent"})
+					kit.TextArea(c, &f.prompt, kit.TextAreaOptions{Label: "提示词", Placeholder: "每次运行发送给 Agent 的内容", MinHeight: 120})
 					mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-						in := minput.TextInput(c, &f.workspace, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})
+						in := kit.TextInput(c, &f.workspace, kit.TextInputOptions{Label: "工作目录", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})
 						in.Element.Grow(1)
-						if minput.Button(c, "选择", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+						if kit.Button(c, "选择", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 							cw.pickDirectory("选择工作目录", func(path string) { f.workspace = path })
 						}
 					})
 					cw.autoScheduleForm(c, f)
-					minput.Switch(c, &f.reuse, "复用会话（否则每次新建）", minput.SwitchOptions{})
-					minput.Switch(c, &f.enabled, "启用", minput.SwitchOptions{})
+					kit.Switch(c, &f.reuse, "复用会话（否则每次新建）", kit.SwitchOptions{})
+					kit.Switch(c, &f.enabled, "启用", kit.SwitchOptions{})
 				})
 			})
 		})
@@ -286,23 +286,23 @@ func (cw *ChatWindow) autoTaskEditor(c *mgo.Context) {
 // autoScheduleForm edits the schedule fields on one row.
 func (cw *ChatWindow) autoScheduleForm(c *mgo.Context, f *autoForm) {
 	u := mcore.Density(c).Unit()
-	kinds := []minput.SelectOption[string]{{Value: "daily", Label: "每天"}, {Value: "weekly", Label: "每周"}, {Value: "monthly", Label: "每月"}}
+	kinds := []kit.SelectOption[string]{{Value: "daily", Label: "每天"}, {Value: "weekly", Label: "每周"}, {Value: "monthly", Label: "每月"}}
 	mgo.Row(c).Gap(u).AlignItems(mgo.End).Wrap().Children(func() {
-		minput.Select(c, &f.kind, kinds, minput.SelectOptions{Label: "频率"}).Element.Width(120)
+		kit.Select(c, &f.kind, kinds, kit.SelectOptions{Label: "频率"}).Element.Width(120)
 		mdatetime.TimePicker(c, &f.tod, mdatetime.TimePickerOptions{}).Element.Width(170)
 		switch f.kind {
 		case "weekly":
-			opts := []minput.SelectOption[int]{
+			opts := []kit.SelectOption[int]{
 				{Value: 1, Label: "周一"}, {Value: 2, Label: "周二"}, {Value: 3, Label: "周三"}, {Value: 4, Label: "周四"},
 				{Value: 5, Label: "周五"}, {Value: 6, Label: "周六"}, {Value: 0, Label: "周日"},
 			}
-			minput.Select(c, &f.weekday, opts, minput.SelectOptions{Label: "星期"}).Element.Width(120)
+			kit.Select(c, &f.weekday, opts, kit.SelectOptions{Label: "星期"}).Element.Width(120)
 		case "monthly":
-			opts := make([]minput.SelectOption[int], 0, 31)
+			opts := make([]kit.SelectOption[int], 0, 31)
 			for d := 1; d <= 31; d++ {
-				opts = append(opts, minput.SelectOption[int]{Value: d, Label: fmt.Sprintf("%d 日", d)})
+				opts = append(opts, kit.SelectOption[int]{Value: d, Label: fmt.Sprintf("%d 日", d)})
 			}
-			minput.Select(c, &f.day, opts, minput.SelectOptions{Label: "日期"}).Element.Width(120)
+			kit.Select(c, &f.day, opts, kit.SelectOptions{Label: "日期"}).Element.Width(120)
 		}
 	})
 }

@@ -10,9 +10,9 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 func (cw *ChatWindow) providersTab(c *mgo.Context) {
@@ -22,7 +22,7 @@ func (cw *ChatWindow) providersTab(c *mgo.Context) {
 			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
 				mgo.Text(c, "模型").Font(mtheme.SerifFont).
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
-				if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
+				if kit.Button(c, "新增", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("plus")}).Clicked() {
 					cw.addNewProvider()
 				}
 			})
@@ -48,7 +48,7 @@ func (cw *ChatWindow) providerEmptyState(c *mgo.Context) {
 			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
 		mgo.Text(c, "添加 OpenAI、Anthropic、Ollama 等模型提供商").TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		if minput.Button(c, "新增模型", minput.ButtonOptions{Variant: minput.Primary, Icon: icons.Must("plus")}).Clicked() {
+		if kit.Button(c, "新增模型", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 			cw.addNewProvider()
 		}
 	})
@@ -86,7 +86,7 @@ func (cw *ChatWindow) providerCard(c *mgo.Context, i int) {
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := p.Enabled
-				if minput.Switch(c, &en, "", minput.SwitchOptions{}).Changed() {
+				if kit.Switch(c, &en, "", kit.SwitchOptions{}).Changed() {
 					cw.cfg.Providers[i].Enabled = en
 					cw.settings.prov.enabled = en
 					_ = config.SaveConfig(cw.cfg)
@@ -115,20 +115,20 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	changed := false
 	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
-		if r := minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "Provider 名称", ReadOnly: f.preset}); r.Changed() {
+		if r := kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "Provider 名称", ReadOnly: f.preset}); r.Changed() {
 			changed = true
 		}
-		opts := make([]minput.SelectOption[string], 0, len(providerTypes))
+		opts := make([]kit.SelectOption[string], 0, len(providerTypes))
 		for _, t := range providerTypes {
-			opts = append(opts, minput.SelectOption[string]{Value: t, Label: t})
+			opts = append(opts, kit.SelectOption[string]{Value: t, Label: t})
 		}
-		if r := minput.Select(c, &f.typ, opts, minput.SelectOptions{Placeholder: "类型", Label: "类型", Disabled: f.preset}); r.Changed() {
+		if r := kit.Select(c, &f.typ, opts, kit.SelectOptions{Placeholder: "类型", Label: "类型", Disabled: f.preset}); r.Changed() {
 			changed = true
 		}
-		if r := minput.PasswordInput(c, &f.apiKey, minput.PasswordInputOptions{Label: "API Key", Placeholder: "API Key"}); r.Changed() {
+		if r := kit.PasswordInput(c, &f.apiKey, kit.PasswordInputOptions{Label: "API Key", Placeholder: "API Key"}); r.Changed() {
 			changed = true
 		}
-		if r := minput.TextInput(c, &f.baseURL, minput.TextInputOptions{Label: "Base URL", Placeholder: "Base URL"}); r.Changed() {
+		if r := kit.TextInput(c, &f.baseURL, kit.TextInputOptions{Label: "Base URL", Placeholder: "Base URL"}); r.Changed() {
 			changed = true
 		}
 		mgo.Text(c, "模型").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
@@ -143,9 +143,9 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 			})
 		}
 		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-			in := minput.TextInput(c, &f.newModel, minput.TextInputOptions{Placeholder: "添加模型名"})
+			in := kit.TextInput(c, &f.newModel, kit.TextInputOptions{Placeholder: "添加模型名"})
 			in.Element.Grow(1)
-			if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 				if name := strings.TrimSpace(f.newModel); name != "" {
 					if !containsStr(f.models, name) {
 						f.models = append(f.models, name)
@@ -156,10 +156,10 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 			}
 		})
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.saveProvider()
 			}
-			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger}).Clicked() {
+			if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
 				cw.deleteProvider()
 			}
 		})

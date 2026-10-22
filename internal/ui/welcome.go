@@ -10,10 +10,10 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 // homeView is the welcome page: capability cards, the composer and recent chats.
@@ -70,36 +70,36 @@ func (cw *ChatWindow) homeSelectors(c *mgo.Context) {
 			TextColor(mcore.Tokens(c).TextMuted).Shrink(0)
 	}
 	mgo.Row(c).Gap(u * 3).AlignItems(mgo.Center).Children(func() {
-		wsOpts := make([]minput.SelectOption[string], 0, len(cw.workspaces()))
+		wsOpts := make([]kit.SelectOption[string], 0, len(cw.workspaces()))
 		for _, ws := range cw.workspaces() {
 			name := filepath.Base(ws)
 			if name == "" || name == "." || name == string(filepath.Separator) {
 				name = ws
 			}
-			wsOpts = append(wsOpts, minput.SelectOption[string]{Value: ws, Label: name})
+			wsOpts = append(wsOpts, kit.SelectOption[string]{Value: ws, Label: name})
 		}
 		label("项目")
 		if len(wsOpts) > 0 {
-			if minput.Select(c, &cw.workspace, wsOpts, minput.SelectOptions{Label: "项目", Placeholder: "选择项目"}).Changed() && cw.currentAgent == "" {
+			if kit.Select(c, &cw.workspace, wsOpts, kit.SelectOptions{Label: "项目", Placeholder: "选择项目"}).Changed() && cw.currentAgent == "" {
 				cw.saveChatSelection()
 			}
 		}
 		if mcore.IconAction(c, icons.Must("plus"), "新建项目").Tooltip("新建项目").Clicked() {
 			cw.pickWorkspace()
 		}
-		agOpts := make([]minput.SelectOption[string], 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+1)
-		agOpts = append(agOpts, minput.SelectOption[string]{Value: "", Label: chatAgentName})
+		agOpts := make([]kit.SelectOption[string], 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+1)
+		agOpts = append(agOpts, kit.SelectOption[string]{Value: "", Label: chatAgentName})
 		for _, a := range cw.cfg.Agents {
-			agOpts = append(agOpts, minput.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
+			agOpts = append(agOpts, kit.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
 		}
 		for _, a := range cw.cfg.ACPAgents {
 			if a.Disabled {
 				continue
 			}
-			agOpts = append(agOpts, minput.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
+			agOpts = append(agOpts, kit.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
 		}
 		label("Agent")
-		minput.Select(c, &cw.homeAgent, agOpts, minput.SelectOptions{Label: "Agent", Placeholder: "选择 Agent"})
+		kit.Select(c, &cw.homeAgent, agOpts, kit.SelectOptions{Label: "Agent", Placeholder: "选择 Agent"})
 	})
 }
 
@@ -153,7 +153,7 @@ func (cw *ChatWindow) recentConversationRow(c *mgo.Context, conv models.Conversa
 			mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
 				mgo.Text(c, conv.Title).FontSize(mcore.FontSize(c, mtheme.BodySize)).FontWeight(500).
 					SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
-				mgo.Text(c, mchat.DateSeparatorWhen(c, convLast(conv), mcore.DateOf(c.Now()))).
+				mgo.Text(c, kit.DateSeparatorWhen(convLast(conv), mcore.DateOf(c.Now()))).
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted).Shrink(0)
 			})
 			if conv.Workspace != "" {

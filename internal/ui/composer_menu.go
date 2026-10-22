@@ -7,33 +7,32 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/kit"
 	mcore "chatgo/internal/ui/uikit"
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	acp "github.com/coder/acp-go-sdk"
 )
 
-func (cw *ChatWindow) chatMenus(c *mgo.Context, in minput.InputResult) {
+func (cw *ChatWindow) chatMenus(c *mgo.Context, in kit.InputResult) {
 	if cw.isACP() {
-		if _, ok := mchat.SlashCommandMenu(c, in, &cw.draft, cw.acpCommands()).Chosen(); ok {
+		if _, ok := kit.SlashCommandMenu(c, in, &cw.draft, cw.acpCommands()).Chosen(); ok {
 			in.Input.Focus()
 			cw.invalidate()
 		}
 	} else {
 		cmds, tokens := cw.slashSkills()
-		if cmd, ok := mchat.SlashCommandMenu(c, in, &cw.draft, cmds).Chosen(); ok {
+		if cmd, ok := kit.SlashCommandMenu(c, in, &cw.draft, cmds).Chosen(); ok {
 			cw.selectSkill(tokens[cmd.Name])
 			in.Input.Focus()
 			return
 		}
 	}
-	if it, ok := mchat.ContextMentionMenu(c, in, &cw.draft, cw.contextItems(), mchat.ContextMentionOptions{}).Chosen(); ok {
+	if it, ok := kit.ContextMentionMenu(c, in, &cw.draft, cw.contextItems(), kit.ContextMentionOptions{}).Chosen(); ok {
 		cw.insertContextMention(it)
 		in.Input.Focus()
 	}
 }
 
-func (cw *ChatWindow) acpCommands() []mchat.SlashCommand {
+func (cw *ChatWindow) acpCommands() []kit.SlashCommand {
 	if cw.cur == nil {
 		return nil
 	}
@@ -44,7 +43,7 @@ func (cw *ChatWindow) acpCommands() []mchat.SlashCommand {
 		cmds = rt.commands
 	}
 	cw.acp.mu.Unlock()
-	out := make([]mchat.SlashCommand, 0, len(cmds))
+	out := make([]kit.SlashCommand, 0, len(cmds))
 	for _, c := range cmds {
 		if c.Name == "" || strings.ContainsAny(c.Name, " \t\n") {
 			continue
@@ -52,17 +51,17 @@ func (cw *ChatWindow) acpCommands() []mchat.SlashCommand {
 		if strings.HasPrefix(strings.ToLower(c.Name), "skill:") {
 			continue
 		}
-		out = append(out, mchat.SlashCommand{Name: c.Name, Description: c.Description})
+		out = append(out, kit.SlashCommand{Name: c.Name, Description: c.Description})
 	}
 	return out
 }
 
-func (cw *ChatWindow) slashSkills() ([]mchat.SlashCommand, map[string]string) {
+func (cw *ChatWindow) slashSkills() ([]kit.SlashCommand, map[string]string) {
 	if cw.cur == nil {
 		return nil, nil
 	}
 	ids := cw.slashSkillIDs()
-	cmds := make([]mchat.SlashCommand, 0, len(ids))
+	cmds := make([]kit.SlashCommand, 0, len(ids))
 	tokens := make(map[string]string, len(ids))
 	for _, id := range ids {
 		s := cw.skillByID(id)
@@ -77,7 +76,7 @@ func (cw *ChatWindow) slashSkills() ([]mchat.SlashCommand, map[string]string) {
 			continue
 		}
 		tokens[token] = id
-		cmds = append(cmds, mchat.SlashCommand{Name: token, Description: s.Description})
+		cmds = append(cmds, kit.SlashCommand{Name: token, Description: s.Description})
 	}
 	return cmds, tokens
 }
@@ -133,7 +132,7 @@ func (cw *ChatWindow) selectSkill(id string) {
 	cw.invalidate()
 }
 
-func (cw *ChatWindow) contextItems() []mchat.ContextItem {
+func (cw *ChatWindow) contextItems() []kit.ContextItem {
 	root := cw.fileRoot()
 	if cw.mentionRoot != root {
 		cw.mentionRoot = root
@@ -143,7 +142,7 @@ func (cw *ChatWindow) contextItems() []mchat.ContextItem {
 	if q == "" {
 		return cw.mentionFiles
 	}
-	out := make([]mchat.ContextItem, 0, len(cw.mentionFiles))
+	out := make([]kit.ContextItem, 0, len(cw.mentionFiles))
 	for _, it := range cw.mentionFiles {
 		if strings.Contains(strings.ToLower(it.Label), q) {
 			out = append(out, it)
@@ -152,7 +151,7 @@ func (cw *ChatWindow) contextItems() []mchat.ContextItem {
 	return out
 }
 
-func (cw *ChatWindow) insertContextMention(it mchat.ContextItem) {
+func (cw *ChatWindow) insertContextMention(it kit.ContextItem) {
 	if cw.draft != "" && !strings.HasSuffix(cw.draft, " ") {
 		cw.draft += " "
 	}
@@ -175,8 +174,8 @@ func mentionQuery(s string) string {
 	return q
 }
 
-func listWorkspaceFiles(root string) []mchat.ContextItem {
-	var out []mchat.ContextItem
+func listWorkspaceFiles(root string) []kit.ContextItem {
+	var out []kit.ContextItem
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -195,7 +194,7 @@ func listWorkspaceFiles(root string) []mchat.ContextItem {
 		if err != nil {
 			return nil
 		}
-		out = append(out, mchat.ContextItem{ID: rel, Label: rel, Kind: mchat.ContextFile})
+		out = append(out, kit.ContextItem{ID: rel, Label: rel, Kind: kit.ContextFile})
 		if len(out) >= 300 {
 			return filepath.SkipAll
 		}

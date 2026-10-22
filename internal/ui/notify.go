@@ -7,8 +7,8 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/kit"
 	mcore "chatgo/internal/ui/uikit"
-	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
 )
 
 func (cw *ChatWindow) toast(msg string, sev mcore.Severity) {
@@ -21,7 +21,7 @@ func (cw *ChatWindow) flushToast(c *mgo.Context) {
 	if cw.toastText == "" {
 		return
 	}
-	mfeedback.ShowToast(c, mfeedback.ToastMessage{Message: cw.toastText, Severity: cw.toastSeverity})
+	kit.ShowToast(c, kit.ToastMessage{Message: cw.toastText, Severity: cw.toastSeverity})
 	cw.toastText = ""
 }
 

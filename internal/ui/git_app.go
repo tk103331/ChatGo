@@ -7,9 +7,9 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 // gitApp is the App menu's Git client. Each tab is one changed file.
@@ -113,7 +113,7 @@ func (cw *ChatWindow) appGitBody(c *mgo.Context, tab string) {
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(u * 2).Gap(u * 2).Children(func() {
 		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 			mgo.Text(c, "分支："+branch).FontWeight(600).Grow(1).SingleLine()
-			if minput.Button(c, "刷新", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
+			if kit.Button(c, "刷新", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 				cw.invalidate()
 			}
 		})
@@ -153,15 +153,15 @@ func (cw *ChatWindow) appGitBody(c *mgo.Context, tab string) {
 		})
 		commitMsg := cw.gitCommitMsg
 		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-			in := minput.TextInput(c, &commitMsg, minput.TextInputOptions{Label: "提交信息", Placeholder: "提交信息"})
+			in := kit.TextInput(c, &commitMsg, kit.TextInputOptions{Label: "提交信息", Placeholder: "提交信息"})
 			in.Element.Grow(1)
 			cw.gitCommitMsg = commitMsg
-			if minput.Button(c, "暂存", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+			if kit.Button(c, "暂存", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 				if _, err := cw.appGitAdd(tab); err != nil {
 					cw.toast(err.Error(), mcore.SeverityError)
 				}
 			}
-			if minput.Button(c, "提交", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "提交", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				if _, err := cw.appGitCommit(commitMsg); err != nil {
 					cw.toast(err.Error(), mcore.SeverityError)
 				} else {

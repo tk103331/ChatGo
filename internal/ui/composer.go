@@ -3,10 +3,9 @@ package ui
 import (
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 // composerOptions configure the in-box prompt composer.
@@ -22,7 +21,7 @@ type composerOptions struct {
 }
 
 // composer edits a message with its model and send controls inside the box.
-func composer(c *mgo.Context, value *string, opts composerOptions) minput.InputResult {
+func composer(c *mgo.Context, value *string, opts composerOptions) kit.InputResult {
 	if value == nil {
 		panic("chatgo: composer needs a value")
 	}
@@ -32,7 +31,7 @@ func composer(c *mgo.Context, value *string, opts composerOptions) minput.InputR
 	if maxH == 0 {
 		maxH = 200
 	}
-	r := mchat.PromptComposer(c, value, mchat.PromptComposerOptions{
+	r := kit.PromptComposer(c, value, kit.PromptComposerOptions{
 		Placeholder: opts.Placeholder,
 		MaxHeight:   maxH,
 		Tools:       opts.Tools,

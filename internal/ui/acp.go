@@ -14,9 +14,9 @@ import (
 	"chatgo/internal/shellenv"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
@@ -110,7 +110,7 @@ func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {
 		Width: 560,
 	}, func() {
 		mgo.Column(c).Gap(u * 2).Children(func() {
-			in := minput.SearchInput(c, &cw.acpCatalogQuery, minput.SearchInputOptions{Placeholder: "搜索 Agent", Label: "搜索"})
+			in := kit.SearchInput(c, &cw.acpCatalogQuery, kit.SearchInputOptions{Placeholder: "搜索 Agent", Label: "搜索"})
 			in.Element.FillWidth()
 			q := strings.ToLower(strings.TrimSpace(cw.acpCatalogQuery))
 			var items []acpCatalogEntry
@@ -142,7 +142,7 @@ func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {
 								})
 								if cw.hasACPConn(e.Name) {
 									mgo.Text(c, "已添加").FontSize(caption).TextColor(k.Success).Shrink(0)
-								} else if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+								} else if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 									cw.addACPFromCatalog(e)
 								}
 							})
@@ -180,7 +180,7 @@ func (cw *ChatWindow) acpCard(c *mgo.Context, i int) {
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := !a.Disabled
-				if minput.Switch(c, &en, "", minput.SwitchOptions{}).Changed() {
+				if kit.Switch(c, &en, "", kit.SwitchOptions{}).Changed() {
 					cw.cfg.ACPAgents[i].Disabled = !en
 					cw.acpForm.disabled = !en
 					_ = config.SaveConfig(cw.cfg)
@@ -205,24 +205,24 @@ func (cw *ChatWindow) acpFormFields(c *mgo.Context) {
 	f := &cw.acpForm
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
-		minput.TextInput(c, &f.name, minput.TextInputOptions{Label: "名称", Placeholder: "连接名称"})
+		kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "连接名称"})
 		cw.acpFormIconRow(c)
-		cmd := minput.InputGroup(c, &f.command, minput.InputGroupOptions{
+		cmd := kit.InputGroup(c, &f.command, kit.InputGroupOptions{
 			Label:       "命令",
 			Placeholder: "如 claude-code-acp 或 gemini",
-			Buttons:     []minput.InputGroupButton{{Label: "查找", Icon: icons.Must("search")}},
+			Buttons:     []kit.InputGroupButton{{Label: "查找", Icon: icons.Must("search")}},
 		})
 		if cmd.Clicked == 0 {
 			cw.locateACPCommand()
 		}
-		minput.TextArea(c, &f.args, minput.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
-		minput.TextArea(c, &f.env, minput.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
-		minput.TextInput(c, &f.cwd, minput.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前目录"})
+		kit.TextArea(c, &f.args, kit.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
+		kit.TextArea(c, &f.env, kit.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
+		kit.TextInput(c, &f.cwd, kit.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前目录"})
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if minput.Button(c, "保存", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.saveACP()
 			}
-			if minput.Button(c, "删除", minput.ButtonOptions{Variant: minput.Danger}).Clicked() {
+			if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
 				cw.deleteACP()
 			}
 		})

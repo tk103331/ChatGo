@@ -10,10 +10,10 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/devtools"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
@@ -105,7 +105,7 @@ func (cw *ChatWindow) mcpDetailDialog(c *mgo.Context) {
 		Width: 640,
 		Actions: func() {
 			if !cw.hasMCPServer(d.Name) {
-				if minput.Button(c, "添加到我的服务", minput.ButtonOptions{Variant: minput.Primary}).Clicked() {
+				if kit.Button(c, "添加到我的服务", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 					cw.editMarketServer(d)
 				}
 			}
@@ -113,7 +113,7 @@ func (cw *ChatWindow) mcpDetailDialog(c *mgo.Context) {
 			if link == "" {
 				link = d.Repository
 			}
-			if link != "" && minput.Button(c, "打开主页", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+			if link != "" && kit.Button(c, "打开主页", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 				c.OpenURL(link)
 			}
 		},
@@ -164,13 +164,13 @@ func (cw *ChatWindow) mcpMarketTab(c *mgo.Context) {
 	}
 	mgo.Column(c).Grow(1).MinWidth(0).MinHeight(0).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-			in := minput.TextInput(c, &cw.mcp.marketQuery, minput.TextInputOptions{Label: "搜索", Placeholder: "搜索 MCP 服务器"})
+			in := kit.TextInput(c, &cw.mcp.marketQuery, kit.TextInputOptions{Label: "搜索", Placeholder: "搜索 MCP 服务器"})
 			in.Element.Grow(1)
-			opts := []minput.SelectOption[string]{{Value: "", Label: "全部分类"}}
+			opts := []kit.SelectOption[string]{{Value: "", Label: "全部分类"}}
 			for _, cat := range cw.mcpCategories() {
-				opts = append(opts, minput.SelectOption[string]{Value: cat, Label: cat})
+				opts = append(opts, kit.SelectOption[string]{Value: cat, Label: cat})
 			}
-			minput.Select(c, &cw.mcp.marketCategory, opts, minput.SelectOptions{Label: "分类"})
+			kit.Select(c, &cw.mcp.marketCategory, opts, kit.SelectOptions{Label: "分类"})
 		})
 		switch {
 		case cw.mcp.marketLoading:
@@ -231,7 +231,7 @@ func (cw *ChatWindow) mcpMarketRow(c *mgo.Context, s mcpMarketServer) {
 			cw.mcp.detail = s
 			cw.mcp.detailOpen = true
 		}
-		if minput.Button(c, "详情", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+		if kit.Button(c, "详情", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 			cw.mcp.detail = s
 			cw.mcp.detailOpen = true
 		}
@@ -239,7 +239,7 @@ func (cw *ChatWindow) mcpMarketRow(c *mgo.Context, s mcpMarketServer) {
 			mgo.Text(c, "已添加").TextColor(k.Success).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Shrink(0)
 			return
 		}
-		if minput.Button(c, "添加", minput.ButtonOptions{Variant: minput.Secondary}).Clicked() {
+		if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 			cw.editMarketServer(s)
 		}
 	})

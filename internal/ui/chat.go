@@ -12,10 +12,10 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 	acp "github.com/coder/acp-go-sdk"
 )
@@ -180,7 +180,7 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 		models = append(models, mchat.ModelOption{ID: ref, Name: modelLabel(ref), Capabilities: capsOf(cw.providerForRef(ref))})
 	}
 	if len(models) == 0 {
-		if minput.Button(c, "配置模型", minput.ButtonOptions{Variant: minput.Outline}).Clicked() {
+		if kit.Button(c, "配置模型", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 			cw.settings.tab = 0
 			cw.goConfigure(sectionSettings)
 		}
@@ -225,12 +225,12 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 	skipModes := acpConfigCoversModes(rt.configs)
 	mgo.Row(c).Gap(u * 2).Wrap().AlignItems(mgo.End).Children(func() {
 		if len(rt.modes) > 0 && !skipModes {
-			opts := make([]minput.SelectOption[string], 0, len(rt.modes))
+			opts := make([]kit.SelectOption[string], 0, len(rt.modes))
 			for _, m := range rt.modes {
-				opts = append(opts, minput.SelectOption[string]{Value: string(m.Id), Label: m.Name})
+				opts = append(opts, kit.SelectOption[string]{Value: string(m.Id), Label: m.Name})
 			}
 			sel := string(rt.modeID)
-			r := minput.Select(c, &sel, opts, minput.SelectOptions{})
+			r := kit.Select(c, &sel, opts, kit.SelectOptions{})
 			r.Element.Width(110)
 			if r.Changed() {
 				cw.acpSetMode(rt, acp.SessionModeId(sel))
@@ -241,7 +241,7 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 			case opt.Select != nil:
 				s := opt.Select
 				sel := string(s.CurrentValue)
-				r := minput.Select(c, &sel, acpSelectOptions(s.Options), minput.SelectOptions{})
+				r := kit.Select(c, &sel, acpSelectOptions(s.Options), kit.SelectOptions{})
 				r.Element.Width(140)
 				if r.Changed() {
 					s.CurrentValue = acp.SessionConfigValueId(sel)
@@ -250,7 +250,7 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 			case opt.Boolean != nil:
 				b := opt.Boolean
 				val := b.CurrentValue
-				if minput.Switch(c, &val, b.Name, minput.SwitchOptions{}).Changed() {
+				if kit.Switch(c, &val, b.Name, kit.SwitchOptions{}).Changed() {
 					b.CurrentValue = val
 					cw.acpSetConfigBool(rt, b.Id, val)
 				}
@@ -292,7 +292,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 				btnIcon = svg
 			}
 		}
-		if minput.Button(c, "配置"+buttonLabel, minput.ButtonOptions{Variant: minput.Ghost, Icon: btnIcon}).Clicked() {
+		if kit.Button(c, "配置"+buttonLabel, kit.ButtonOptions{Variant: kit.Ghost, Icon: btnIcon}).Clicked() {
 			if prefix == "mcp:" {
 				cw.goConfigure(sectionMCP)
 			} else {
@@ -347,7 +347,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 				mt := mt
 				v := cw.toolEnabled(mt.ID)
 				mgo.Column(c).Gap(0).Children(func() {
-					if minput.Switch(c, &v, mt.Label, minput.SwitchOptions{}).Changed() {
+					if kit.Switch(c, &v, mt.Label, kit.SwitchOptions{}).Changed() {
 						cw.toolOn[mt.ID] = v
 						changed = true
 					}

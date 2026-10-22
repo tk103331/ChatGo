@@ -13,13 +13,13 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	mgit "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/git"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
 )
 
@@ -85,12 +85,12 @@ func (cw *ChatWindow) previewPanel(c *mgo.Context) {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
 			mgo.Text(c, "预览").FontWeight(600).Grow(1)
 			if t := cw.activePreviewTab(); t != nil && t.Kind == "text" {
-				if minput.Button(c, "追溯", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("history")}).Clicked() {
+				if kit.Button(c, "追溯", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("history")}).Clicked() {
 					cw.openBlame(t.Path)
 				}
 			}
 			if len(cw.previewTabs) > 1 {
-				if minput.Button(c, "全部关闭", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
+				if kit.Button(c, "全部关闭", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 					cw.previewTabs = nil
 					cw.previewSel = -1
 				}
@@ -183,7 +183,7 @@ func (cw *ChatWindow) fsFileRow(c *mgo.Context, path string, open func()) {
 // addWorkspaceContext turns a workspace path into a composer mention.
 func (cw *ChatWindow) addWorkspaceContext(path string) {
 	rel := cw.workspaceRel(path)
-	cw.insertContextMention(mchat.ContextItem{ID: rel, Label: rel, Kind: mchat.ContextFile})
+	cw.insertContextMention(kit.ContextItem{ID: rel, Label: rel, Kind: kit.ContextFile})
 }
 
 func (cw *ChatWindow) gitPanel(c *mgo.Context) {
@@ -210,7 +210,7 @@ func (cw *ChatWindow) gitPanel(c *mgo.Context) {
 				cw.createBranch(name)
 			}
 			mgo.Spacer(c)
-			if minput.Button(c, "刷新", minput.ButtonOptions{Variant: minput.Ghost}).Clicked() {
+			if kit.Button(c, "刷新", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 				cw.loadGit(cw.workspace)
 			}
 		})

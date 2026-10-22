@@ -15,7 +15,7 @@ import (
 	"chatgo/internal/config"
 	"chatgo/pkg/models"
 
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
+	"chatgo/internal/ui/kit"
 )
 
 // acpState holds every piece of ACP runtime state, guarded by mu.
@@ -157,11 +157,11 @@ func (cw *ChatWindow) acpSetConfigState(sess acp.SessionId, opts []acp.SessionCo
 	}
 }
 
-func acpSelectOptions(o acp.SessionConfigSelectOptions) []minput.SelectOption[string] {
-	var out []minput.SelectOption[string]
+func acpSelectOptions(o acp.SessionConfigSelectOptions) []kit.SelectOption[string] {
+	var out []kit.SelectOption[string]
 	add := func(list []acp.SessionConfigSelectOption) {
 		for _, it := range list {
-			out = append(out, minput.SelectOption[string]{Value: string(it.Value), Label: it.Name})
+			out = append(out, kit.SelectOption[string]{Value: string(it.Value), Label: it.Name})
 		}
 	}
 	if o.Ungrouped != nil {

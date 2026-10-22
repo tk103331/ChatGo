@@ -14,9 +14,9 @@ import (
 	"github.com/cloudwego/eino/schema"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 )
 
 // appDef describes one Agent-driven application in the Apps menu: a set of
@@ -260,12 +260,12 @@ func (cw *ChatWindow) appLeft(c *mgo.Context, a appDef) {
 			closing := -1
 			for i, tab := range tabs {
 				i, tab := i, tab
-				variant := minput.Ghost
+				variant := kit.Ghost
 				if tab == active {
-					variant = minput.Secondary
+					variant = kit.Secondary
 				}
 				label := cw.appTabLabel(a.ID, tab)
-				if minput.Button(c, label, minput.ButtonOptions{Variant: variant, Label: label}).Clicked() {
+				if kit.Button(c, label, kit.ButtonOptions{Variant: variant, Label: label}).Clicked() {
 					cw.appTab[a.ID] = tab
 				}
 				if mcore.IconAction(c, icons.Must("x"), "关闭标签").Clicked() {
@@ -273,7 +273,7 @@ func (cw *ChatWindow) appLeft(c *mgo.Context, a appDef) {
 				}
 			}
 			mgo.Box(c).Grow(1)
-			if minput.Button(c, "新建", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("plus")}).Clicked() {
+			if kit.Button(c, "新建", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("plus")}).Clicked() {
 				cw.addAppTab(a.ID)
 			}
 			if closing >= 0 {
