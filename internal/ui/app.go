@@ -28,9 +28,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	mcode "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
-	mgit "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/git"
 )
 
 const defaultTitle = "新会话"
@@ -80,7 +77,7 @@ type ChatWindow struct {
 
 	termOpen     bool
 	terms        []*termTab
-	termTabs     []mcode.TerminalTab
+	termTabs     []kit.TerminalTab
 	termActiveID string
 	termSeq      int
 	termH        float32
@@ -97,12 +94,12 @@ type ChatWindow struct {
 
 	gitRepo        bool
 	gitBranch      string
-	gitBranches    []mgit.Branch
-	gitChanges     []mgit.ChangedFile
-	gitCommits     []mgit.Commit
-	gitChangesList mgit.ChangesListState
-	gitGraph       mgit.CommitGraphState
-	gitCommit      mgit.CommitMessage
+	gitBranches    []kit.Branch
+	gitChanges     []kit.ChangedFile
+	gitCommits     []kit.Commit
+	gitChangesList kit.ChangesListState
+	gitGraph       kit.CommitGraphState
+	gitCommit      kit.CommitMessage
 	gitCommitBusy  bool
 	gitSplitH      float32
 	gitStat        [2]int
@@ -121,7 +118,7 @@ type ChatWindow struct {
 
 	homeList mgo.ListState
 	convList mgo.ListState
-	msgList  mchat.MessageListState
+	msgList  kit.MessageListState
 
 	draft        string
 	mentionRoot  string

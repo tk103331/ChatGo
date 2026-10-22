@@ -12,9 +12,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/agent"
 
 	"chatgo/pkg/models"
 )
@@ -27,16 +24,16 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 	}
 	streaming := cw.streaming && cw.cur != nil && i == len(cw.cur.Messages)-1 && msg.Role == "assistant"
 	role := roleOf(msg)
-	opts := mchat.MessageBubbleOptions{MaxWidth: 900}
-	if role == mchat.MessageAssistant {
+	opts := kit.MessageBubbleOptions{MaxWidth: 900}
+	if role == kit.MessageAssistant {
 		opts.Avatar = cw.agentAvatar(c)
 	}
-	mchat.MessageBubble(c, role, opts, func() {
+	kit.MessageBubble(c, role, opts, func() {
 		model := ""
 		if msg.Role == "assistant" {
 			model = cw.turnModelLabel(msg)
 		}
-		mchat.MessageHeader(c, mchat.MessageHeaderOptions{Model: model, Time: msg.Timestamp})
+		kit.MessageHeader(c, kit.MessageHeaderOptions{Model: model, Time: msg.Timestamp})
 		if len(msg.Segments) > 0 {
 			cw.messageSegments(c, msg, streaming)
 		} else {
@@ -70,10 +67,7 @@ func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, stream
 			toolIdx++
 		case "text":
 			if strings.TrimSpace(seg.Text) != "" {
-				r := mchat.MarkdownView(c, seg.Text)
-				if url, ok := r.Link(); ok {
-					c.OpenURL(url)
-				}
+				kit.MarkdownView(c, seg.Text)
 			}
 			i++
 		default:
@@ -81,7 +75,7 @@ func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, stream
 		}
 	}
 	if cw.emptySegments(msg) && streaming {
-		mchat.TypingIndicator(c, "Assistant")
+		kit.TypingIndicator(c, "Assistant")
 	}
 }
 
@@ -96,12 +90,9 @@ func (cw *ChatWindow) messageLegacy(c *mgo.Context, msg models.Message, streamin
 	}
 	switch {
 	case strings.TrimSpace(msg.Content) != "":
-		r := mchat.MarkdownView(c, msg.Content)
-		if url, ok := r.Link(); ok {
-			c.OpenURL(url)
-		}
+		kit.MarkdownView(c, msg.Content)
 	case streaming:
-		mchat.TypingIndicator(c, "Assistant")
+		kit.TypingIndicator(c, "Assistant")
 	}
 }
 
@@ -181,14 +172,14 @@ func tokenLabel(t models.Turn) string {
 	return fmt.Sprintf("↑%s ↓%s = %s tokens", formatCount(t.Input), formatCount(t.Output), formatCount(t.Total))
 }
 
-func roleOf(msg models.Message) mchat.MessageRole {
+func roleOf(msg models.Message) kit.MessageRole {
 	switch msg.Role {
 	case "user":
-		return mchat.MessageUser
+		return kit.MessageUser
 	case "system":
-		return mchat.MessageSystem
+		return kit.MessageSystem
 	default:
-		return mchat.MessageAssistant
+		return kit.MessageAssistant
 	}
 }
 
@@ -198,12 +189,12 @@ func (cw *ChatWindow) toolCallsGroup(c *mgo.Context, msg models.Message, calls [
 		return
 	}
 	open := mgo.Local(c.Root(), fmt.Sprintf("toolgroup:%s:%d", msg.ID, groupIdx), func() bool { return false })
-	agent.ToolCallGroup(c, open, items, agent.ToolCallGroupOptions{})
+	kit.ToolCallGroup(c, open, items, kit.ToolCallGroupOptions{})
 }
 
-func toolCallsForGroup(msg models.Message, calls []models.ToolCall, groupIdx int) []agent.ToolCall {
+func toolCallsForGroup(msg models.Message, calls []models.ToolCall, groupIdx int) []kit.ToolCall {
 	used := make(map[string]bool, len(calls))
-	out := make([]agent.ToolCall, 0, len(calls))
+	out := make([]kit.ToolCall, 0, len(calls))
 	for i, tc := range calls {
 		if tc.Name == "" {
 			continue
@@ -213,14 +204,14 @@ func toolCallsForGroup(msg models.Message, calls []models.ToolCall, groupIdx int
 			id = fmt.Sprintf("%s-%d-%d", msg.ID, groupIdx, i)
 		}
 		used[id] = true
-		state := agent.AgentRunning
+		state := kit.AgentRunning
 		switch {
 		case tc.Error != "" || tc.Status == "failed":
-			state = agent.AgentFailed
+			state = kit.AgentFailed
 		case tc.Status == "completed" || tc.Status == "" && tc.Result != "":
-			state = agent.AgentDone
+			state = kit.AgentDone
 		}
-		out = append(out, agent.ToolCall{
+		out = append(out, kit.ToolCall{
 			ID: id, Name: tc.Name, Args: tc.Arguments, Result: tc.Result, Error: tc.Error,
 			State: state, Duration: time.Duration(tc.DurationMs) * time.Millisecond,
 		})
@@ -238,7 +229,7 @@ func truncate(s string, n int) string {
 
 // editMessage edits a sent user message in place.
 func (cw *ChatWindow) editMessage(c *mgo.Context, i int, msg models.Message) {
-	r := mchat.MessageEditor(c, &cw.editDraft, mchat.MessageEditorOptions{Original: msg.Content})
+	r := kit.MessageEditor(c, &cw.editDraft, kit.MessageEditorOptions{Original: msg.Content})
 	switch {
 	case r.Saved():
 		cw.applyEdit(i)

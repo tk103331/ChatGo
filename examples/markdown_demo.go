@@ -1,4 +1,4 @@
-// markdown_demo renders a sample document with MyGo and MujicaUI.
+// markdown_demo renders a sample document with MyGo's native UI.
 //
 //	go run ./examples/markdown_demo.go
 package main
@@ -9,14 +9,13 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-
+	"chatgo/internal/ui/kit"
 	mcore "chatgo/internal/ui/uikit"
 )
 
 const markdownContent = `# Welcome to ChatGo
 
-This is a **demo** of markdown rendering with MujicaUI's MarkdownView.
+This is a **demo** of markdown rendering with ChatGo's MarkdownView.
 
 ## Features
 
@@ -53,7 +52,7 @@ type demo struct{}
 func (demo) view(c *mgo.Context) {
 	mcore.Use(c, mcore.Settings{Locale: mcore.ZhCN})
 	mgo.Scroll(c).Fill().Padding(24).Children(func() {
-		mchat.MarkdownView(c, markdownContent)
+		kit.MarkdownView(c, markdownContent)
 	})
 }
 

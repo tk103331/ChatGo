@@ -86,6 +86,26 @@ func Snap(p *mgo.Painter, v float32) float32 {
 	return float32(math.Round(float64(v*g))) / g
 }
 
+// ruleY rounds y to a device pixel so a hairline rule stays crisp: at odd
+// scales it lands on a half pixel, at even ones on a whole one.
+func ruleY(p *mgo.Painter, y float32) float32 {
+	s := float64(p.Scale())
+	px := math.Floor(float64(y) * s)
+	if int(math.Round(s))%2 == 1 {
+		px += 0.5
+	}
+	return float32(px / s)
+}
+
+// RuleDiamond draws a rule across r broken by a diamond of size in the
+// middle, gap DIPs clear of the lines.
+func RuleDiamond(p *mgo.Painter, r mgo.Rect, gap, size float32, col mgo.Color) {
+	cx, cy := r.X+r.W/2, ruleY(p, r.Y+r.H/2)
+	p.Line(r.X, cy, cx-gap, cy, 1, col)
+	p.Line(cx+gap, cy, r.X+r.W, cy, 1, col)
+	p.FillPath(Diamond(Snap(p, cx), Snap(p, cy), size), col)
+}
+
 // IconAction is a square, borderless button showing icon, named label.
 func IconAction(c *mgo.Context, icon *mgo.SVG, label string) mgo.Element {
 	k := Tokens(c)

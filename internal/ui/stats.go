@@ -13,7 +13,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chart"
 )
 
 // statsRange is the number of days shown by the daily charts.
@@ -233,11 +232,11 @@ func (cw *ChatWindow) statsTokenChart(c *mgo.Context, sum statsSummary) {
 	mgo.Column(c).FillWidth().Background(k.Surface).Radius(mtheme.ControlRadius).
 		BorderWidth(mtheme.BorderWidth).BorderColor(k.Border).Padding(u * 2).Gap(u).Children(func() {
 		cw.statsSectionTitle(c, "每日 Token 消耗", "输入 / 输出堆叠")
-		chart.BarChart(c, labels, []chart.ChartSeries{
+		kit.BarChart(c, labels, []kit.ChartSeries{
 			{Name: "输入", Values: in},
 			{Name: "输出", Values: out},
-		}, chart.BarChartOptions{
-			Frame:   chart.ChartFrame{Label: "每日 Token 消耗", Height: 220},
+		}, kit.BarChartOptions{
+			Frame:   kit.ChartFrame{Label: "每日 Token 消耗", Height: 220},
 			Stacked: true,
 			Format:  func(v float64) string { return formatCount(int(v)) },
 		})
@@ -257,8 +256,8 @@ func (cw *ChatWindow) statsSessionChart(c *mgo.Context, sum statsSummary) {
 	mgo.Column(c).Grow(1).MinWidth(0).Background(k.Surface).Radius(mtheme.ControlRadius).
 		BorderWidth(mtheme.BorderWidth).BorderColor(k.Border).Padding(u * 2).Gap(u).Children(func() {
 		cw.statsSectionTitle(c, "每日会话数", "按最后活动日统计")
-		chart.BarChart(c, labels, []chart.ChartSeries{{Name: "会话", Values: vals}}, chart.BarChartOptions{
-			Frame:  chart.ChartFrame{Label: "每日会话数", Height: 180},
+		kit.BarChart(c, labels, []kit.ChartSeries{{Name: "会话", Values: vals}}, kit.BarChartOptions{
+			Frame:  kit.ChartFrame{Label: "每日会话数", Height: 180},
 			Format: func(v float64) string { return fmt.Sprintf("%.0f", v) },
 		})
 	})

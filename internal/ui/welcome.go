@@ -13,13 +13,12 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 )
 
 // homeView is the welcome page: capability cards, the composer and recent chats.
 func (cw *ChatWindow) homeView(c *mgo.Context) {
 	k := mcore.Tokens(c)
-	var view mchat.CapabilityCardsView
+	var view kit.CapabilityCardsView
 	mgo.Column(c).Fill().Justify(mgo.Center).AlignItems(mgo.Center).Gap(mcore.Density(c).Unit() * 3).Children(func() {
 		mgo.Image(c, assets.BrandBitmap()).Size(72, 72)
 		view = cw.welcome(c)
@@ -32,11 +31,11 @@ func (cw *ChatWindow) homeView(c *mgo.Context) {
 	}
 }
 
-func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
-	return mchat.WelcomeScreen(c, mchat.WelcomeScreenOptions{
+func (cw *ChatWindow) welcome(c *mgo.Context) kit.CapabilityCardsView {
+	return kit.WelcomeScreen(c, kit.WelcomeScreenOptions{
 		Greeting: "ChatGo",
-		Subtitle: "基于 MyGo 与 MujicaUI 的 AI 对话客户端",
-		Cards: []mchat.CapabilityCard{
+		Subtitle: "基于 MyGo 原生 UI 的 AI 对话客户端",
+		Cards: []kit.CapabilityCard{
 			{Title: "多模型", Description: "OpenAI、Claude、Gemini 等主流模型", Icon: icons.Must("bot"), Examples: []string{"用一句话介绍你自己"}},
 			{Title: "Agents 工具", Description: "内置工具与 MCP 服务器，按需自动调用", Icon: icons.Must("terminal"), Examples: []string{"帮我看看这个项目有哪些文件"}},
 			{Title: "多会话", Description: "会话自动保存，支持搜索、重命名与导出", Icon: icons.Must("message-square"), Examples: []string{"写一个 Go 的快速排序"}},
@@ -47,7 +46,7 @@ func (cw *ChatWindow) welcome(c *mgo.Context) mchat.CapabilityCardsView {
 				MaxHeight:   160,
 				Tools:       func() { cw.homeSelectors(c) },
 				Actions: func() {
-					r := mchat.SendButton(c, mchat.SendButtonOptions{Disabled: strings.TrimSpace(cw.draft) == ""})
+					r := kit.SendButton(c, kit.SendButtonOptions{Disabled: strings.TrimSpace(cw.draft) == ""})
 					if r.Sent() {
 						cw.startFromHome()
 					}

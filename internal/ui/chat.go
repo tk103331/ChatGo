@@ -15,7 +15,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	acp "github.com/coder/acp-go-sdk"
 )
 
@@ -98,7 +97,7 @@ func (cw *ChatWindow) messageArea(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	row := func(i int) { cw.messageRow(c, i, msgs[i]) }
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(k.Background).Children(func() {
-		res := mchat.MessageList(c, &cw.msgList, len(msgs), mchat.MessageListOptions{
+		res := kit.MessageList(c, &cw.msgList, len(msgs), kit.MessageListOptions{
 			ID:    func(i int) string { return msgs[i].ID },
 			Date:  func(i int) time.Time { return msgs[i].Timestamp },
 			Label: func(i int) string { return msgs[i].Role },
@@ -147,7 +146,7 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 						FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
 				})
 			}
-			r := mchat.SendButton(c, mchat.SendButtonOptions{
+			r := kit.SendButton(c, kit.SendButtonOptions{
 				Streaming: cw.streaming,
 				Disabled:  initializing || strings.TrimSpace(cw.draft) == "",
 			})
@@ -174,9 +173,9 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 // modelSelector chooses among the models the active agent may use.
 func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	refs := cw.agentModelRefs()
-	var models []mchat.ModelOption
+	var models []kit.ModelOption
 	for _, ref := range refs {
-		models = append(models, mchat.ModelOption{ID: ref, Name: modelLabel(ref), Capabilities: capsOf(cw.providerForRef(ref))})
+		models = append(models, kit.ModelOption{ID: ref, Name: modelLabel(ref), Capabilities: capsOf(cw.providerForRef(ref))})
 	}
 	if len(models) == 0 {
 		if kit.Button(c, "配置模型", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
@@ -189,7 +188,7 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	if !containsStr(refs, cur) {
 		cur = refs[0]
 	}
-	r := mchat.ModelSelector(c, &cur, models, mchat.ModelSelectorOptions{Label: "模型"})
+	r := kit.ModelSelector(c, &cur, models, kit.ModelSelectorOptions{Label: "模型"})
 	if r.Changed() {
 		cw.setModelRef(cur)
 		if cw.currentAgent == "" {

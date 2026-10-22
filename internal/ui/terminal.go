@@ -8,9 +8,9 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mcode "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
 )
 
 // termTab is one terminal tab, its shell and its last reported state.
@@ -148,14 +148,14 @@ func (cw *ChatWindow) syncTermTabs() {
 		tb := cw.terms[i]
 		j := termTabsIndex(cw.termTabs, tb.id)
 		if j < 0 {
-			cw.termTabs = append(cw.termTabs, mcode.TerminalTab{ID: tb.id, Title: tb.label(i)})
+			cw.termTabs = append(cw.termTabs, kit.TerminalTab{ID: tb.id, Title: tb.label(i)})
 			continue
 		}
 		cw.termTabs[j].Title = tb.label(i)
 	}
 }
 
-func termTabsIndex(tabs []mcode.TerminalTab, id string) int {
+func termTabsIndex(tabs []kit.TerminalTab, id string) int {
 	for i, t := range tabs {
 		if t.ID == id {
 			return i
@@ -171,7 +171,7 @@ func (cw *ChatWindow) terminalPanel(c *mgo.Context) {
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	cw.syncTermTabs()
 	mgo.Row(c).Fill().Background(k.Surface).Gap(u).Children(func() {
-		res := mcode.TerminalTabs(c, &cw.termTabs, &cw.termActiveID, mcode.TerminalTabsOptions{
+		res := kit.TerminalTabs(c, &cw.termTabs, &cw.termActiveID, kit.TerminalTabsOptions{
 			Actions: func() {
 				if mcore.IconAction(c, icons.Must("plus"), "新建终端").Clicked() {
 					cw.addTerm()

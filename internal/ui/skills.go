@@ -16,7 +16,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 
 	"gopkg.in/yaml.v3"
 )
@@ -282,7 +281,7 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 		}
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			if strings.HasSuffix(strings.ToLower(cw.skills.fileSel), ".md") {
-				mchat.MarkdownView(c, cw.skills.fileBody)
+				kit.MarkdownView(c, cw.skills.fileBody)
 			} else {
 				mgo.Text(c, cw.skills.fileBody).Font(mtheme.MonoFont).FontSize(caption)
 			}

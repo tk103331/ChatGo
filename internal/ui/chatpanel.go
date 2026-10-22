@@ -16,9 +16,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
-	mgit "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/git"
 )
 
 // previewTab is one open file or diff in the preview area.
@@ -32,10 +29,10 @@ type previewTab struct {
 	Lang  string
 	Bmp   *mgo.Bitmap
 	Svg   *mgo.SVG
-	blame []mgit.BlameLine
-	view  code.CodeViewerState
-	dview mgit.DiffViewerState
-	bview mgit.BlameViewState
+	blame []kit.BlameLine
+	view  kit.CodeViewerState
+	dview kit.DiffViewerState
+	bview kit.BlameViewState
 }
 
 // sourcePanel shows the workspace file tree or the Git changes, in its own column.
@@ -200,7 +197,7 @@ func (cw *ChatWindow) gitPanel(c *mgo.Context) {
 			return
 		}
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			sel := mgit.BranchSelector(c, &cw.gitBranch, cw.gitBranches, mgit.BranchSelectorOptions{AllowCreate: true})
+			sel := kit.BranchSelector(c, &cw.gitBranch, cw.gitBranches, kit.BranchSelectorOptions{AllowCreate: true})
 			if sel.Changed() {
 				cw.checkoutBranch(cw.gitBranch)
 			}
@@ -216,9 +213,9 @@ func (cw *ChatWindow) gitPanel(c *mgo.Context) {
 			mgo.Column(c).Fill().MinHeight(0).Gap(u).Children(func() {
 				mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
 					mgo.Text(c, "变更").FontWeight(600).Grow(1)
-					mgit.DiffStat(c, cw.gitStat[0], cw.gitStat[1], mgit.DiffStatOptions{})
+					kit.DiffStat(c, cw.gitStat[0], cw.gitStat[1], kit.DiffStatOptions{})
 				})
-				changes := mgit.ChangesList(c, &cw.gitChangesList, cw.gitChanges, mgit.ChangesListOptions{})
+				changes := kit.ChangesList(c, &cw.gitChangesList, cw.gitChanges, kit.ChangesListOptions{})
 				changes.Element.Grow(1).MinHeight(0)
 				if action, item, ok := changes.Action(); ok {
 					cw.gitChangesAction(action, item)
@@ -231,16 +228,16 @@ func (cw *ChatWindow) gitPanel(c *mgo.Context) {
 			})
 		}, func() {
 			mgo.Column(c).Fill().MinHeight(0).Gap(u).Children(func() {
-				input := mgit.CommitInput(c, &cw.gitCommit, mgit.CommitInputOptions{Busy: cw.gitCommitBusy})
+				input := kit.CommitInput(c, &cw.gitCommit, kit.CommitInputOptions{Busy: cw.gitCommitBusy})
 				committed, amended := input.Committed(), input.Amended()
 				if committed || amended {
-					cw.commitPanel(mgit.CommitMessage{Title: cw.gitCommit.Title, Body: cw.gitCommit.Body}, amended)
+					cw.commitPanel(kit.CommitMessage{Title: cw.gitCommit.Title, Body: cw.gitCommit.Body}, amended)
 					cw.gitCommitBusy = true
 				} else if cw.gitCommitBusy {
 					cw.gitCommitBusy = false
 				}
 				mgo.Text(c, "最近提交").FontWeight(600).Shrink(0)
-				graph := mgit.CommitGraph(c, &cw.gitGraph, cw.gitCommits, mgit.CommitGraphOptions{})
+				graph := kit.CommitGraph(c, &cw.gitGraph, cw.gitCommits, kit.CommitGraphOptions{})
 				graph.Element.Grow(1).MinHeight(0)
 				if graph.Submitted() {
 					if hash, ok := cw.gitGraph.List.Selected(); ok && hash != "" {
@@ -274,7 +271,7 @@ func (cw *ChatWindow) gitChangesAction(action, item string) {
 }
 
 // commitPanel commits the staged changes, optionally amending the last commit.
-func (cw *ChatWindow) commitPanel(message mgit.CommitMessage, amend bool) {
+func (cw *ChatWindow) commitPanel(message kit.CommitMessage, amend bool) {
 	title := strings.TrimSpace(message.Title)
 	if title == "" {
 		cw.toast("提交信息不能为空", mcore.SeverityError)
@@ -291,7 +288,7 @@ func (cw *ChatWindow) commitPanel(message mgit.CommitMessage, amend bool) {
 		cw.toast(out, mcore.SeverityError)
 		return
 	}
-	cw.gitCommit = mgit.CommitMessage{}
+	cw.gitCommit = kit.CommitMessage{}
 	cw.loadGit(cw.workspace)
 }
 
@@ -345,17 +342,17 @@ func (cw *ChatWindow) previewView(c *mgo.Context) {
 	}
 	tab := &cw.previewTabs[cw.previewSel]
 	if tab.Kind == "text" && tab.Bmp == nil && tab.Svg == nil && !strings.HasSuffix(strings.ToLower(tab.Path), ".md") {
-		code.CodeViewer(c, splitRaw(tab.Body), &tab.view, code.CodeViewerOptions{Language: tab.Lang}).
-			Element.Grow(1).MinHeight(0)
+		kit.CodeViewer(c, tab.Body, &tab.view, kit.CodeViewerOptions{Language: tab.Lang, Path: tab.Path}).
+			Grow(1).MinHeight(0)
 		return
 	}
 	if tab.Kind == "fdiff" {
-		mgit.DiffViewer(c, &tab.dview, tab.From, tab.To, mgit.DiffViewerOptions{Language: tab.Lang}).
+		kit.DiffViewer(c, &tab.dview, tab.From, tab.To, kit.DiffViewerOptions{Language: tab.Lang}).
 			Grow(1).MinHeight(0)
 		return
 	}
 	if tab.Kind == "blame" {
-		mgit.BlameView(c, &tab.bview, tab.blame, mgit.BlameViewOptions{Language: tab.Lang}).
+		kit.BlameView(c, &tab.bview, tab.blame, kit.BlameViewOptions{Language: tab.Lang}).
 			Grow(1).MinHeight(0)
 		return
 	}
@@ -401,9 +398,9 @@ func (cw *ChatWindow) previewContent(c *mgo.Context, tab previewTab) {
 		renderDiff(c, tab.Body)
 	default:
 		if strings.HasSuffix(strings.ToLower(tab.Path), ".md") {
-			mchat.MarkdownView(c, tab.Body)
+			kit.MarkdownView(c, tab.Body)
 		} else {
-			mchat.CodeBlock(c, tab.Body, mchat.CodeBlockOptions{Language: tab.Lang, LineNumbers: true})
+			kit.CodeBlock(c, tab.Body, kit.CodeBlockOptions{Language: tab.Lang})
 		}
 		_ = caption
 	}
@@ -555,15 +552,15 @@ func (cw *ChatWindow) openBlame(rel string) {
 }
 
 // gitBlameLines parses git blame --line-porcelain into per-line commits.
-func gitBlameLines(dir, rel string) []mgit.BlameLine {
+func gitBlameLines(dir, rel string) []kit.BlameLine {
 	out := gitOut(dir, "blame", "--line-porcelain", "--", rel)
-	var lines []mgit.BlameLine
-	var cur mgit.BlameLine
+	var lines []kit.BlameLine
+	var cur kit.BlameLine
 	flush := func() {
 		if cur.Hash != "" {
 			lines = append(lines, cur)
 		}
-		cur = mgit.BlameLine{}
+		cur = kit.BlameLine{}
 	}
 	for _, line := range strings.Split(out, "\n") {
 		switch {
@@ -681,9 +678,9 @@ func (cw *ChatWindow) loadGit(dir string) {
 		repo := gitOut(dir, "rev-parse", "--is-inside-work-tree") == "true"
 		var (
 			branch   string
-			branches []mgit.Branch
-			changes  []mgit.ChangedFile
-			commits  []mgit.Commit
+			branches []kit.Branch
+			changes  []kit.ChangedFile
+			commits  []kit.Commit
 			stat     [2]int
 		)
 		if repo {
@@ -701,11 +698,11 @@ func (cw *ChatWindow) loadGit(dir string) {
 	}()
 }
 
-func gitLocalBranches(dir, current string) []mgit.Branch {
-	var branches []mgit.Branch
+func gitLocalBranches(dir, current string) []kit.Branch {
+	var branches []kit.Branch
 	for _, line := range splitRaw(gitOut(dir, "for-each-ref", "--format=%(refname:short)%09%(upstream:short)", "refs/heads")) {
 		parts := strings.SplitN(line, "\t", 2)
-		b := mgit.Branch{Name: parts[0], Current: parts[0] == current}
+		b := kit.Branch{Name: parts[0], Current: parts[0] == current}
 		if len(parts) > 1 {
 			b.Upstream = parts[1]
 		}
@@ -715,8 +712,8 @@ func gitLocalBranches(dir, current string) []mgit.Branch {
 }
 
 // gitChangedFiles parses git status --porcelain into changed files.
-func gitChangedFiles(dir string) []mgit.ChangedFile {
-	var files []mgit.ChangedFile
+func gitChangedFiles(dir string) []kit.ChangedFile {
+	var files []kit.ChangedFile
 	for _, line := range splitRaw(gitOut(dir, "status", "--porcelain")) {
 		if len(line) < 3 {
 			continue
@@ -731,14 +728,14 @@ func gitChangedFiles(dir string) []mgit.ChangedFile {
 			continue
 		}
 		status, staged := gitPorcelainStatus(x, y)
-		files = append(files, mgit.ChangedFile{Path: p, Status: status, Staged: staged})
+		files = append(files, kit.ChangedFile{Path: p, Status: status, Staged: staged})
 	}
 	return files
 }
 
-func gitPorcelainStatus(x, y byte) (mgit.GitStatus, bool) {
+func gitPorcelainStatus(x, y byte) (kit.GitStatus, bool) {
 	if x == '?' {
-		return mgit.GitUntracked, false
+		return kit.GitUntracked, false
 	}
 	staged := x != ' '
 	code := y
@@ -748,27 +745,27 @@ func gitPorcelainStatus(x, y byte) (mgit.GitStatus, bool) {
 	return gitStatusCode(code), staged
 }
 
-func gitStatusCode(code byte) mgit.GitStatus {
+func gitStatusCode(code byte) kit.GitStatus {
 	switch code {
 	case 'A':
-		return mgit.GitAdded
+		return kit.GitAdded
 	case 'D':
-		return mgit.GitDeleted
+		return kit.GitDeleted
 	case 'R':
-		return mgit.GitRenamed
+		return kit.GitRenamed
 	case 'C':
-		return mgit.GitCopied
+		return kit.GitCopied
 	case '?':
-		return mgit.GitUntracked
+		return kit.GitUntracked
 	default:
-		return mgit.GitModified
+		return kit.GitModified
 	}
 }
 
 // gitCommitHistory reads the last n commits, newest first.
-func gitCommitHistory(dir string, n int) []mgit.Commit {
+func gitCommitHistory(dir string, n int) []kit.Commit {
 	out := gitOut(dir, "log", "--pretty=format:%H%x09%P%x09%an%x09%at%x09%s", "-n", strconv.Itoa(n))
-	var commits []mgit.Commit
+	var commits []kit.Commit
 	for _, line := range splitRaw(out) {
 		parts := strings.SplitN(line, "\t", 5)
 		if len(parts) < 5 {
@@ -779,7 +776,7 @@ func gitCommitHistory(dir string, n int) []mgit.Commit {
 		if parts[1] != "" {
 			parents = strings.Fields(parts[1])
 		}
-		commits = append(commits, mgit.Commit{
+		commits = append(commits, kit.Commit{
 			Hash: parts[0], Parents: parents, Author: parts[2], When: time.Unix(sec, 0), Subject: parts[4],
 		})
 	}

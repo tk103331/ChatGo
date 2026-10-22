@@ -13,7 +13,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 )
 
 // sidebar builds the brand row, new-chat action, search and conversation list.
@@ -80,7 +79,7 @@ func (cw *ChatWindow) pickDirectory(title string, cb func(string)) {
 func (cw *ChatWindow) sidebarSearch(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Padding(u, u*2).Children(func() {
-		v := mchat.ConversationSearch(c, &cw.searchQuery, cw.searchHits(), mchat.ConversationSearchOptions{
+		v := kit.ConversationSearch(c, &cw.searchQuery, cw.searchHits(), kit.ConversationSearchOptions{
 			Placeholder: "搜索会话",
 			Label:       "搜索会话",
 		})
@@ -97,20 +96,20 @@ func (cw *ChatWindow) sidebarSearch(c *mgo.Context) {
 }
 
 // searchHits matches the query against titles and message text.
-func (cw *ChatWindow) searchHits() []mchat.ConversationSearchHit {
+func (cw *ChatWindow) searchHits() []kit.ConversationSearchHit {
 	q := strings.ToLower(strings.TrimSpace(cw.searchQuery))
 	if q == "" {
 		return nil
 	}
-	var hits []mchat.ConversationSearchHit
+	var hits []kit.ConversationSearchHit
 	for _, conv := range cw.convs {
 		if strings.Contains(strings.ToLower(conv.Title), q) {
-			hits = append(hits, mchat.ConversationSearchHit{ID: conv.ID, Title: conv.Title})
+			hits = append(hits, kit.ConversationSearchHit{ID: conv.ID, Title: conv.Title})
 			continue
 		}
 		for _, m := range conv.Messages {
 			if strings.Contains(strings.ToLower(m.Content), q) {
-				hits = append(hits, mchat.ConversationSearchHit{ID: conv.ID, Title: conv.Title, Snippet: snippet(m.Content, q)})
+				hits = append(hits, kit.ConversationSearchHit{ID: conv.ID, Title: conv.Title, Snippet: snippet(m.Content, q)})
 				break
 			}
 		}
@@ -259,13 +258,13 @@ func workspaceTitle(ws string) string {
 // convRow renders one conversation with open, rename, export and delete actions.
 func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	conv := cw.convs[i]
-	mc := mchat.ChatConversation{ID: conv.ID, Title: conv.Title, Updated: convLast(conv)}
+	mc := kit.ChatConversation{ID: conv.ID, Title: conv.Title, Updated: convLast(conv)}
 	selected := cw.cur != nil && cw.cur.ID == conv.ID
-	var v mchat.ConversationItemView
+	var v kit.ConversationItemView
 	mgo.Row(c).FillWidth().Margin(0, 0, 0, mcore.Density(c).Unit()*3).AlignItems(mgo.Center).Children(func() {
 		cw.convLeading(c, conv, 16)
 		mgo.Box(c).Grow(1).MinWidth(0).Children(func() {
-			v = mchat.ConversationItem(c, &mc, mchat.ConversationItemOptions{Selected: selected})
+			v = kit.ConversationItem(c, &mc, kit.ConversationItemOptions{Selected: selected})
 		})
 	})
 	switch {
@@ -288,18 +287,18 @@ func (cw *ChatWindow) exportConversation(c *mgo.Context, id string) {
 		cw.toast("导出失败："+err.Error(), mcore.SeverityError)
 		return
 	}
-	msgs := make([]mchat.SessionMessage, 0, len(conv.Messages))
+	msgs := make([]kit.SessionMessage, 0, len(conv.Messages))
 	for _, m := range conv.Messages {
-		role := mchat.SessionUser
+		role := kit.SessionUser
 		switch m.Role {
 		case "assistant":
-			role = mchat.SessionAssistant
+			role = kit.SessionAssistant
 		case "system":
-			role = mchat.SessionSystem
+			role = kit.SessionSystem
 		}
-		msgs = append(msgs, mchat.SessionMessage{Role: role, Text: m.Content, Time: m.Timestamp})
+		msgs = append(msgs, kit.SessionMessage{Role: role, Text: m.Content, Time: m.Timestamp})
 	}
-	c.WriteClipboard(mchat.ExportConversation(conv.Title, msgs, mchat.ExportMarkdown))
+	c.WriteClipboard(kit.ExportConversation(conv.Title, msgs, kit.ExportMarkdown))
 	cw.toast("已复制「"+conv.Title+"」的 Markdown", mcore.SeveritySuccess)
 }
 
