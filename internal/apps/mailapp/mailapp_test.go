@@ -4,6 +4,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	mygo "github.com/egoist/mygo"
+	mgo "github.com/egoist/mygo/ui"
+
+	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 )
 
 func TestHostPortParsing(t *testing.T) {
@@ -199,5 +204,50 @@ func TestDocumentSafety(t *testing.T) {
 	}
 	if htmlAvailable(MessageBody{Text: "x"}) {
 		t.Error("htmlAvailable should be false for text-only")
+	}
+}
+
+type fakeHost struct{}
+
+func (fakeHost) Root() string                            { return "" }
+func (fakeHost) Workspace() string                       { return "" }
+func (fakeHost) Post(fn func())                          { fn() }
+func (fakeHost) Invalidate()                             {}
+func (fakeHost) Toast(string, mcore.Severity)            {}
+func (fakeHost) Confirm(_, _ string, a func())           { if a != nil { a() } }
+func (fakeHost) Prompt(_, _, _ string, a func(string))   { if a != nil { a("") } }
+func (fakeHost) OpenFile(string)                         {}
+func (fakeHost) OpenFileDialog(string) string            { return "" }
+func (fakeHost) SaveFileDialog(string) string            { return "" }
+func (fakeHost) Language(ext string) string              { return "" }
+func (fakeHost) NewID() string                           { return "" }
+func (fakeHost) NativeWindow() *mygo.Window              { return nil }
+
+func TestAccountFormRenders(t *testing.T) {
+	cl := New(fakeHost{})
+	cl.st.adding = true
+	cl.st.formProvider = 0
+	cl.st.formEmail = "me@163.com"
+	img := mgo.Render(func(c *mgo.Context) {
+		mcore.Use(c, mcore.Settings{Mode: mcore.System})
+		cl.View(c)
+	}, 900, 700, 1)
+	if img == nil {
+		t.Fatal("account form render returned nil")
+	}
+}
+
+func TestApplyProviderFillsForm(t *testing.T) {
+	cl := New(fakeHost{})
+	cl.st.formEmail = "someone@163.com"
+	cl.applyProvider(3)
+	if cl.st.formIMAP != "imap.qq.com:993" || cl.st.formSMTP != "smtp.qq.com:465" {
+		t.Fatalf("form = %q %q", cl.st.formIMAP, cl.st.formSMTP)
+	}
+	if cl.st.formEmail != "someone@qq.com" {
+		t.Fatalf("email = %q, want someone@qq.com", cl.st.formEmail)
+	}
+	if cl.st.formProvider != 3 {
+		t.Fatalf("provider = %d", cl.st.formProvider)
 	}
 }

@@ -37,6 +37,14 @@ type state struct {
 	subject   string
 	text      string
 
+	adding       bool
+	formProvider int
+	formEmail    string
+	formPass     string
+	formUser     string
+	formIMAP     string
+	formSMTP     string
+
 	splitW float32
 }
 
@@ -92,7 +100,7 @@ func (cl *Client) View(c *mgo.Context) {
 			}
 			mgo.Box(c).Grow(1)
 			if minput.Button(c, "", minput.ButtonOptions{Variant: minput.Ghost, Icon: icons.Must("plus"), Label: "添加账户"}).Clicked() {
-				cl.promptAddAccount()
+				cl.openAccountForm()
 			}
 		})
 		if st.err != "" {
@@ -105,6 +113,10 @@ func (cl *Client) View(c *mgo.Context) {
 				mcore.Spinner(c, mcore.SpinnerOptions{Size: 12})
 				mgo.Text(c, "加载中…").FontSize(caption).TextColor(k.TextMuted)
 			})
+		}
+		if st.adding {
+			cl.accountForm(c, st, k, u, caption)
+			return
 		}
 		if st.composing {
 			cl.composePane(c, st, k, u, caption)
@@ -391,56 +403,84 @@ func (cl *Client) send() {
 	}()
 }
 
-// promptAddAccount asks for an address and fills the service preset.
-func (cl *Client) promptAddAccount() {
-	cl.host.Prompt("添加账户", "邮箱地址（支持 163/126/QQ/Gmail/Outlook 等）", "", func(email string) {
-		email = strings.TrimSpace(email)
-		if email == "" {
-			return
-		}
-		if p, ok := providerFor(email); ok {
-			cl.promptPresetAccount(email, p)
-			return
-		}
-		cl.promptCustomAccount(email)
-	})
+// openAccountForm shows the add-account form.
+func (cl *Client) openAccountForm() {
+	cl.mu.Lock()
+	cl.st.adding = true
+	cl.st.formProvider = -1
+	cl.st.formEmail = ""
+	cl.st.formPass = ""
+	cl.st.formUser = ""
+	cl.st.formIMAP = ""
+	cl.st.formSMTP = ""
+	cl.mu.Unlock()
+	cl.host.Invalidate()
 }
 
-// promptPresetAccount finishes a preset account with user name and secret.
-func (cl *Client) promptPresetAccount(email string, p Provider) {
-	cl.host.Prompt("添加账户", p.Name+" 用户名", email, func(user string) {
-		cl.host.Prompt("添加账户", p.Name+" 密码（"+p.PasswordHint+"）", "", func(pass string) {
-			cl.saveAccount(Account{
-				Name: email, Email: email,
-				IMAPHost: p.IMAPHost, IMAPPort: p.IMAPPort,
-				SMTPHost: p.SMTPHost, SMTPPort: p.SMTPPort,
-				Username: strings.TrimSpace(user), Password: pass,
-			})
-		})
-	})
+// closeAccountForm hides the add-account form.
+func (cl *Client) closeAccountForm() {
+	cl.mu.Lock()
+	cl.st.adding = false
+	cl.mu.Unlock()
+	cl.host.Invalidate()
 }
 
-// promptCustomAccount asks for servers when no preset matches.
-func (cl *Client) promptCustomAccount(email string) {
-	domain := ""
-	if i := strings.Index(email, "@"); i >= 0 {
-		domain = email[i+1:]
+// applyProvider fills the form from a service preset.
+func (cl *Client) applyProvider(idx int) {
+	cl.mu.Lock()
+	cl.st.formProvider = idx
+	if idx >= 0 && idx < len(providers) {
+		p := providers[idx]
+		cl.st.formIMAP = fmt.Sprintf("%s:%d", p.IMAPHost, p.IMAPPort)
+		cl.st.formSMTP = fmt.Sprintf("%s:%d", p.SMTPHost, p.SMTPPort)
+		if at := strings.Index(cl.st.formEmail, "@"); at >= 0 {
+			cl.st.formEmail = cl.st.formEmail[:at] + "@" + p.Domains[0]
+		} else if cl.st.formEmail == "" {
+			cl.st.formEmail = "@" + p.Domains[0]
+		}
 	}
-	cl.host.Prompt("添加账户", "IMAP 服务器 (host:port)", "imap."+domain+":993", func(imapHost string) {
-		cl.host.Prompt("添加账户", "SMTP 服务器 (host:port)", "smtp."+domain+":465", func(smtpHost string) {
-			cl.host.Prompt("添加账户", "用户名", email, func(user string) {
-				cl.host.Prompt("添加账户", "密码/授权码", "", func(pass string) {
-					acc := Account{
-						Name: email, Email: email,
-						IMAPHost: hostOf(imapHost, "imap."+domain), IMAPPort: portOf(imapHost, 993),
-						SMTPHost: hostOf(smtpHost, "smtp."+domain), SMTPPort: portOf(smtpHost, 465),
-						Username: strings.TrimSpace(user), Password: pass,
-					}
-					cl.saveAccount(acc)
-				})
-			})
-		})
-	})
+	cl.mu.Unlock()
+	cl.host.Invalidate()
+}
+
+// saveAccountForm saves the form's account when it is complete.
+func (cl *Client) saveAccountForm() {
+	cl.mu.Lock()
+	email := strings.TrimSpace(cl.st.formEmail)
+	pass := cl.st.formPass
+	user := strings.TrimSpace(cl.st.formUser)
+	imapAddr := strings.TrimSpace(cl.st.formIMAP)
+	smtpAddr := strings.TrimSpace(cl.st.formSMTP)
+	providerIdx := cl.st.formProvider
+	cl.mu.Unlock()
+	if email == "" {
+		cl.setErr(fmt.Errorf("请填写邮箱地址"))
+		return
+	}
+	if user == "" {
+		user = email
+	}
+	if imapAddr == "" || smtpAddr == "" {
+		if providerIdx >= 0 && providerIdx < len(providers) {
+			p := providers[providerIdx]
+			imapAddr = fmt.Sprintf("%s:%d", p.IMAPHost, p.IMAPPort)
+			smtpAddr = fmt.Sprintf("%s:%d", p.SMTPHost, p.SMTPPort)
+		}
+	}
+	if imapAddr == "" || smtpAddr == "" {
+		cl.setErr(fmt.Errorf("请填写 IMAP 与 SMTP 服务器"))
+		return
+	}
+	acc := Account{
+		Name: email, Email: email,
+		IMAPHost: hostOf(imapAddr, "imap.example.com"), IMAPPort: portOf(imapAddr, 993),
+		SMTPHost: hostOf(smtpAddr, "smtp.example.com"), SMTPPort: portOf(smtpAddr, 465),
+		Username: user, Password: pass,
+	}
+	cl.mu.Lock()
+	cl.st.adding = false
+	cl.mu.Unlock()
+	cl.saveAccount(acc)
 }
 
 // saveAccount persists an account and refreshes.
