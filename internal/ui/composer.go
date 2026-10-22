@@ -3,10 +3,10 @@ package ui
 import (
 	mgo "github.com/egoist/mygo/ui"
 
+	mtheme "chatgo/internal/ui/theme"
+	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // composerOptions configure the in-box prompt composer.

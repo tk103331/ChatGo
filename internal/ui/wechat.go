@@ -9,9 +9,9 @@ import (
 	"chatgo/internal/channel"
 	"chatgo/internal/config"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mtheme "chatgo/internal/ui/theme"
+	mcore "chatgo/internal/ui/uikit"
 	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 	mgo "github.com/egoist/mygo/ui"
 )
 

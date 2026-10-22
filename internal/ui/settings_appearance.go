@@ -3,17 +3,16 @@ package ui
 import (
 	"chatgo/internal/config"
 	"chatgo/internal/ui/assets"
-	"chatgo/internal/ui/theme"
 	"strings"
 
 	"github.com/egoist/mygo"
 	"github.com/egoist/mygo/plugins/updater"
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mtheme "chatgo/internal/ui/theme"
+	mcore "chatgo/internal/ui/uikit"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
@@ -68,8 +67,8 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 		}
 		mgo.Text(c, "颜色主题").FontSize(small).TextColor(k.TextMuted)
 		mgo.Row(c).Gap(u * 2).Wrap().Children(func() {
-			for i := range theme.Themes {
-				cw.colorThemeSwatch(c, theme.Themes[i])
+			for i := range mtheme.Themes {
+				cw.colorThemeSwatch(c, mtheme.Themes[i])
 			}
 		})
 		mgo.Text(c, "每种颜色主题都提供浅色与深色两套配色，随「主题模式」自动切换。").
@@ -80,7 +79,7 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 // colorThemeSwatch renders one palette as a selectable card showing its light
 // and dark accent over their backgrounds.
 
-func (cw *ChatWindow) colorThemeSwatch(c *mgo.Context, t theme.Theme) {
+func (cw *ChatWindow) colorThemeSwatch(c *mgo.Context, t mtheme.Theme) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	selected := cw.colorTheme.Name == t.Name

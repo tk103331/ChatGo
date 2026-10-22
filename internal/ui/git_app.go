@@ -7,9 +7,9 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mtheme "chatgo/internal/ui/theme"
+	mcore "chatgo/internal/ui/uikit"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // gitApp is the App menu's Git client. Each tab is one changed file.

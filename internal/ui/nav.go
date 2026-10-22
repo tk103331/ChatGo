@@ -5,9 +5,9 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
+	"chatgo/internal/ui/icons"
+	mtheme "chatgo/internal/ui/theme"
+	mcore "chatgo/internal/ui/uikit"
 )
 
 const navItemSize float32 = 44

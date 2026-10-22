@@ -9,32 +9,32 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	"chatgo/internal/ui/icons"
+	mtheme "chatgo/internal/ui/theme"
+	mcore "chatgo/internal/ui/uikit"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 func (cw *ChatWindow) providersTab(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
-				mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
-					mgo.Text(c, "模型").Font(mtheme.SerifFont).
-						FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
-					if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
-						cw.addNewProvider()
-					}
-				})
-				if len(cw.cfg.Providers) == 0 {
-					cw.providerEmptyState(c)
-				} else {
-					for i := range cw.cfg.Providers {
-						cw.providerCard(c, i)
-					}
+		mgo.Column(c).FillWidth().Shrink(0).Gap(u * 2).Padding(u).MaxWidth(640).Children(func() {
+			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+				mgo.Text(c, "模型").Font(mtheme.SerifFont).
+					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
+				if minput.Button(c, "新增", minput.ButtonOptions{Variant: minput.Secondary, Icon: icons.Must("plus")}).Clicked() {
+					cw.addNewProvider()
 				}
 			})
+			if len(cw.cfg.Providers) == 0 {
+				cw.providerEmptyState(c)
+			} else {
+				for i := range cw.cfg.Providers {
+					cw.providerCard(c, i)
+				}
+			}
 		})
+	})
 }
 
 // providerEmptyState shows a centered placeholder when no providers exist.

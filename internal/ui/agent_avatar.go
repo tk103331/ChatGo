@@ -5,8 +5,8 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	"chatgo/internal/ui/icons"
+	mcore "chatgo/internal/ui/uikit"
 )
 
 // agentAvatar builds the current conversation agent's avatar for bubbles.

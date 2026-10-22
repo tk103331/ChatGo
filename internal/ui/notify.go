@@ -7,7 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mcore "chatgo/internal/ui/uikit"
 	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
 )
 

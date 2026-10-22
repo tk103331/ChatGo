@@ -10,8 +10,8 @@ import (
 	"chatgo/internal/config"
 	"chatgo/internal/ui/assets"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
+	"chatgo/internal/ui/icons"
+	mcore "chatgo/internal/ui/uikit"
 )
 
 // iconImage is a decoded custom icon: an SVG or a bitmap, at most one set.

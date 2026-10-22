@@ -1,8 +1,8 @@
-// Package ui renders ChatGo with MyGo's native UI toolkit and the MujicaUI
-// component library. The window's state lives in ChatWindow; its view method
-// builds the interface from that state on every frame. Cohesive state clusters
-// (ACP runtime, skills browser, MCP page) live in their own structs embedded in
-// ChatWindow and are defined alongside the code that drives them.
+// Package ui renders ChatGo with MyGo's native UI toolkit. The window's state
+// lives in ChatWindow; its view method builds the interface from that state on
+// every frame. Cohesive state clusters (ACP runtime, skills browser, MCP page)
+// live in their own structs embedded in ChatWindow and are defined alongside
+// the code that drives them.
 package ui
 
 import (
@@ -18,20 +18,19 @@ import (
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
 	"chatgo/internal/ui/assets"
-	"chatgo/internal/ui/theme"
 	"chatgo/pkg/models"
 
 	"github.com/cloudwego/eino/components/tool"
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/icons"
+	mtheme "chatgo/internal/ui/theme"
+	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	mcode "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	mfeedback "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/feedback"
 	mgit "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/git"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 const defaultTitle = "新会话"
@@ -149,7 +148,7 @@ type ChatWindow struct {
 	toastSeverity mcore.Severity
 
 	themeMode  mcore.Mode
-	colorTheme theme.Theme
+	colorTheme mtheme.Theme
 	density    mtheme.Density
 	locale     mcore.Locale
 
@@ -256,10 +255,10 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		mcp:            mcpState{},
 		rightPanel:     false,
 		wsCollapsed:    map[string]bool{},
-		themeMode:      theme.ParseMode(cfg.ThemeMode),
-		colorTheme:     theme.ByName(cfg.ColorTheme),
+		themeMode:      mcore.ParseMode(cfg.ThemeMode),
+		colorTheme:     mtheme.ByName(cfg.ColorTheme),
 		density:        mtheme.Compact,
-		locale:         theme.ParseLocale(cfg.Locale),
+		locale:         mcore.ParseLocale(cfg.Locale),
 		editingIdx:     -1,
 		agentSecModels: true,
 		agentSecTools:  true,

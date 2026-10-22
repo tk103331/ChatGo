@@ -7,10 +7,10 @@ import (
 	term "github.com/egoist/mygo/plugins/terminal"
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/icons"
+	mtheme "chatgo/internal/ui/theme"
+	mcore "chatgo/internal/ui/uikit"
 	mcode "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/icons"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // termTab is one terminal tab, its shell and its last reported state.

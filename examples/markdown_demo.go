@@ -10,7 +10,8 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+
+	mcore "chatgo/internal/ui/uikit"
 )
 
 const markdownContent = `# Welcome to ChatGo

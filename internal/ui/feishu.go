@@ -13,7 +13,7 @@ import (
 	"chatgo/internal/llm"
 	"chatgo/pkg/models"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
+	mcore "chatgo/internal/ui/uikit"
 	acp "github.com/coder/acp-go-sdk"
 	mgo "github.com/egoist/mygo/ui"
 	lark "github.com/larksuite/oapi-sdk-go/v3"

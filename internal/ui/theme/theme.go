@@ -1,76 +1,21 @@
-// Package theme defines ChatGo's color themes and appearance-preset parsing.
+// Package theme defines ChatGo's design tokens and its color themes.
 package theme
 
 import (
 	mgo "github.com/egoist/mygo/ui"
-
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
 // Theme is a named palette that supplies a light and a dark token set.
 type Theme struct {
 	Name  string
 	Label string
-	Light *mtheme.Tokens
-	Dark  *mtheme.Tokens
-}
-
-// ParseMode converts a stored mode string to a MujicaUI mode.
-func ParseMode(s string) mcore.Mode {
-	switch s {
-	case "light":
-		return mcore.Light
-	case "dark":
-		return mcore.Dark
-	default:
-		return mcore.System
-	}
-}
-
-// ModeName converts a MujicaUI mode back to its storage string.
-func ModeName(m mcore.Mode) string {
-	switch m {
-	case mcore.Light:
-		return "light"
-	case mcore.Dark:
-		return "dark"
-	default:
-		return "system"
-	}
-}
-
-// DensityName converts a MujicaUI density to its storage string.
-func DensityName(d mtheme.Density) string {
-	switch d {
-	case mtheme.Compact:
-		return "compact"
-	case mtheme.Comfortable:
-		return "comfortable"
-	default:
-		return "default"
-	}
-}
-
-// ParseLocale converts a stored locale string to a MujicaUI locale.
-func ParseLocale(s string) mcore.Locale {
-	if s == "en-US" {
-		return mcore.EnUS
-	}
-	return mcore.ZhCN
-}
-
-// LocaleName converts a MujicaUI locale back to its storage string.
-func LocaleName(l mcore.Locale) string {
-	if l == mcore.EnUS {
-		return "en-US"
-	}
-	return "zh-CN"
+	Light *Tokens
+	Dark  *Tokens
 }
 
 // Palette holds the colors a preset overrides; every empty field keeps the
-// library default. Accent drives the primary color, and AccentText is derived
-// from it unless set.
+// default. Accent drives the primary color, and AccentText is derived from it
+// unless set.
 type Palette struct {
 	Bg, Surface, SurfaceHover, Text, TextMuted, Border, ControlBorder string
 	Accent, AccentHover, AccentPressed, OnAccent, Selection, Focus    string
@@ -79,7 +24,7 @@ type Palette struct {
 }
 
 // Apply copies the palette's non-empty colors onto t.
-func (p Palette) Apply(t mtheme.Tokens) mtheme.Tokens {
+func (p Palette) Apply(t Tokens) Tokens {
 	set := func(dst *mgo.Color, hex string) {
 		if hex != "" {
 			*dst = mgo.Hex(hex)
@@ -109,8 +54,8 @@ func (p Palette) Apply(t mtheme.Tokens) mtheme.Tokens {
 	return t
 }
 
-// Themes lists every built-in palette. The first entry keeps the
-// library defaults (MujicaUI's ivory / charcoal + wine red).
+// Themes lists every built-in palette. The first entry keeps the defaults
+// (ivory / charcoal with a wine-red accent).
 var Themes = []Theme{
 	{Name: "mujica", Label: "象牙·酒红"},
 	{Name: "ocean", Label: "海洋", Light: mkLight(oceanLight), Dark: mkDark(oceanDark)},
@@ -126,18 +71,18 @@ var Themes = []Theme{
 }
 
 // mkLight and mkDark adapt a palette to a base token set.
-func mkLight(p Palette) *mtheme.Tokens {
-	t := p.Apply(mtheme.Light())
+func mkLight(p Palette) *Tokens {
+	t := p.Apply(Light())
 	return &t
 }
 
-func mkDark(p Palette) *mtheme.Tokens {
-	t := p.Apply(mtheme.Dark())
+func mkDark(p Palette) *Tokens {
+	t := p.Apply(Dark())
 	return &t
 }
 
-// ByName resolves a stored name to a palette, falling back to the
-// library default when it is unknown.
+// ByName resolves a stored name to a palette, falling back to the default
+// when it is unknown.
 func ByName(name string) Theme {
 	for _, t := range Themes {
 		if t.Name == name {
@@ -147,8 +92,8 @@ func ByName(name string) Theme {
 	return Themes[0]
 }
 
-// Tokens returns the light and dark overrides to hand to mcore.Use.
-func (t Theme) Tokens() (light, dark *mtheme.Tokens) {
+// Tokens returns the light and dark overrides to hand to uikit.Use.
+func (t Theme) Tokens() (light, dark *Tokens) {
 	return t.Light, t.Dark
 }
 
@@ -158,7 +103,7 @@ func (t Theme) SampleLight() (bg, accent mgo.Color) {
 	if t.Light != nil {
 		return t.Light.Background, t.Light.Accent
 	}
-	d := mtheme.Light()
+	d := Light()
 	return d.Background, d.Accent
 }
 
@@ -166,6 +111,6 @@ func (t Theme) SampleDark() (bg, accent mgo.Color) {
 	if t.Dark != nil {
 		return t.Dark.Background, t.Dark.Accent
 	}
-	d := mtheme.Dark()
+	d := Dark()
 	return d.Background, d.Accent
 }

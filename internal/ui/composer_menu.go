@@ -7,8 +7,8 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
+	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
 	minput "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/input"
 	acp "github.com/coder/acp-go-sdk"
 )

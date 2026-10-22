@@ -11,8 +11,8 @@ import (
 	term "github.com/egoist/mygo/plugins/terminal"
 	mgo "github.com/egoist/mygo/ui"
 
-	mcore "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/core"
-	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
+	mtheme "chatgo/internal/ui/theme"
+	mcore "chatgo/internal/ui/uikit"
 )
 
 // appTermTab is one shell tab of the terminal app.
