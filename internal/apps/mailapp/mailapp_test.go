@@ -274,3 +274,15 @@ func TestAccountFormStepsRender(t *testing.T) {
 		}
 	}
 }
+
+func TestProviderLogosEmbedded(t *testing.T) {
+	for _, p := range providers {
+		if p.Logo == "" {
+			t.Errorf("%s has no logo key", p.Name)
+			continue
+		}
+		if bmp := logoBitmap(p.Logo); bmp == nil {
+			t.Errorf("%s logo %q failed to decode", p.Name, p.Logo)
+		}
+	}
+}

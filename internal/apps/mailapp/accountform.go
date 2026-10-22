@@ -9,8 +9,12 @@ import (
 	mtheme "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/theme"
 )
 
-// providerLogo draws a service's brand tile.
+// providerLogo draws a service's logo, falling back to a colored tile.
 func providerLogo(c *mgo.Context, p Provider, size float32) {
+	if bmp := logoBitmap(p.Logo); bmp != nil {
+		mgo.Image(c, bmp).Size(size, size).Shrink(0)
+		return
+	}
 	mgo.Box(c).Width(size).Height(size).Shrink(0).Radius(size / 5).
 		Background(mgo.Hex(p.Color)).Center().Children(func() {
 		mgo.Text(c, p.Short).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
