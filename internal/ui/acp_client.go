@@ -14,7 +14,6 @@ import (
 
 	"chatgo/internal/ui/kit"
 	mcore "chatgo/internal/ui/uikit"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
 type acpClient struct{ cw *ChatWindow }
@@ -341,7 +340,7 @@ func (cw *ChatWindow) acpPermissionDialog(c *mgo.Context) {
 	if req.ToolCall.Title != nil {
 		title = *req.ToolCall.Title
 	}
-	moverlay.Dialog(c, &cw.acp.permissionShow, moverlay.DialogOptions{
+	kit.Dialog(c, &cw.acp.permissionShow, kit.DialogOptions{
 		Title:       "Agent 请求权限",
 		Description: title,
 		Actions: func() {

@@ -17,8 +17,6 @@ import (
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 
 	"gopkg.in/yaml.v3"
 )
@@ -324,7 +322,7 @@ func skillTreeInto(c *mgo.Context, dir, prefix string, files []string, sel strin
 	for _, name := range names {
 		n := name
 		open := mgo.Local(c.Root(), "skilldir:"+dir+"/"+prefix+n, func() bool { return true })
-		data.Collapsible(c, open, data.CollapsibleOptions{Title: n}, func() {
+		kit.Collapsible(c, open, kit.CollapsibleOptions{Title: n}, func() {
 			mgo.Column(c).Margin(0, 0, 0, u*3).Children(func() {
 				skillTreeInto(c, dir, prefix+n+"/", sub[n], sel, onSelect)
 			})
@@ -470,7 +468,7 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 		}
 	})
 	changed := false
-	moverlay.Popover(c, b, open, moverlay.PopoverOptions{Title: "Skills", Width: 320}, func() {
+	kit.Popover(c, b, open, kit.PopoverOptions{Title: "Skills", Width: 320}, func() {
 		mgo.Column(c).Gap(mcore.Density(c).Unit() * 2).Children(func() {
 			agentSearch(c, &cw.skills.menuQuery, "搜索 Skill").Height(mcore.Density(c).ControlHeight() - 6)
 			q := strings.ToLower(strings.TrimSpace(cw.skills.menuQuery))

@@ -14,7 +14,6 @@ import (
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
 // sidebar builds the brand row, new-chat action, search and conversation list.
@@ -225,7 +224,7 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 			*open = false
 			cw.newConversationIn(ws, agent)
 		}
-		moverlay.Popover(c, plus, open, moverlay.PopoverOptions{Title: "新建会话", Width: 240}, func() {
+		kit.Popover(c, plus, open, kit.PopoverOptions{Title: "新建会话", Width: 240}, func() {
 			menuItem(c, iconLeading(c, chatAgentIcon), chatAgentName, func() { pick("") })
 			for _, a := range cw.cfg.Agents {
 				name := a.Name

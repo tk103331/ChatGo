@@ -18,9 +18,7 @@ import (
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/code"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 	mgit "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/git"
-	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
 )
 
 // previewTab is one open file or diff in the preview area.
@@ -52,9 +50,9 @@ func (cw *ChatWindow) sourcePanel(c *mgo.Context) {
 	if cw.treeW == 0 {
 		cw.treeW = 300
 	}
-	segs := []mnavigation.Segment{{Label: "文件"}}
+	segs := []kit.Segment{{Label: "文件"}}
 	if cw.gitRepo {
-		segs = append(segs, mnavigation.Segment{Label: "Git"})
+		segs = append(segs, kit.Segment{Label: "Git"})
 	}
 	if cw.rightTab >= len(segs) {
 		cw.rightTab = 0
@@ -62,8 +60,8 @@ func (cw *ChatWindow) sourcePanel(c *mgo.Context) {
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).AlignItems(mgo.Stretch).Background(k.Surface).
 		BorderWidth(0, 0, 0, mtheme.BorderWidth).BorderColor(k.Border).Padding(u * 2).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			seg := mnavigation.SegmentedControl(c, &cw.rightTab, segs,
-				mnavigation.SegmentedControlOptions{Label: "面板", Equal: true})
+			seg := kit.SegmentedControl(c, &cw.rightTab, segs,
+				kit.SegmentedControlOptions{Label: "面板", Equal: true})
 			seg.Grow(1)
 			if mcore.IconAction(c, icons.Must("x"), "关闭面板").Clicked() {
 				cw.rightPanel = false
@@ -149,7 +147,7 @@ func (cw *ChatWindow) fsTree(c *mgo.Context, dir string) {
 				continue
 			}
 			open := mgo.Local(c.Root(), "fs:"+path, func() bool { return false })
-			cr := data.Collapsible(c, open, data.CollapsibleOptions{Title: name}, func() {
+			cr := kit.Collapsible(c, open, kit.CollapsibleOptions{Title: name}, func() {
 				mgo.Column(c).Margin(0, 0, 0, u*2).Children(func() {
 					cw.fsTree(c, path)
 				})

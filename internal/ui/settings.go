@@ -3,11 +3,9 @@ package ui
 import (
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/devtools"
-	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
 type settingsState struct {
@@ -60,9 +58,9 @@ type mcpForm struct {
 	enabled bool
 	command string
 	args    string
-	env     []devtools.KeyValue
+	env     []kit.KeyValue
 	url     string
-	headers []devtools.KeyValue
+	headers []kit.KeyValue
 	timeout string
 	hint    string
 }
@@ -98,7 +96,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			mgo.Text(c, cw.status).TextColor(mcore.Tokens(c).Danger).
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Shrink(0)
 		}
-		res := mnavigation.Tabs(c, &cw.settings.tab, []mnavigation.Tab{
+		res := kit.Tabs(c, &cw.settings.tab, []kit.Tab{
 			{Label: "模型", Panel: func() { cw.providersTab(c) }},
 			{Label: "工具", Panel: func() { cw.builtinTab(c) }},
 			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
@@ -106,7 +104,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
 			{Label: "系统", Panel: func() { cw.systemTab(c) }},
-		}, mnavigation.TabsOptions{})
+		}, kit.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)
 	})
 }
@@ -118,7 +116,7 @@ func (cw *ChatWindow) confirmDialog(c *mgo.Context) {
 	if !cw.confirm.open && !cw.confirm.active {
 		return
 	}
-	res := moverlay.AlertDialog(c, &cw.confirm.open, moverlay.AlertDialogOptions{
+	res := kit.AlertDialog(c, &cw.confirm.open, kit.AlertDialogOptions{
 		Title:        cw.confirm.title,
 		Description:  cw.confirm.desc,
 		ConfirmLabel: "删除",

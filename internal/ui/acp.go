@@ -17,7 +17,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
 const acpHandshakeTimeout = 60 * time.Second
@@ -105,7 +104,7 @@ func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	moverlay.Dialog(c, &cw.acpCatalogOpen, moverlay.DialogOptions{
+	kit.Dialog(c, &cw.acpCatalogOpen, kit.DialogOptions{
 		Title: "从目录添加 Agent",
 		Width: 560,
 	}, func() {

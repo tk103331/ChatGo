@@ -14,7 +14,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mdata "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 )
 
 const chatAgentName = "Chat"
@@ -297,7 +296,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 
 // agentGroup renders a collapsible capability section.
 func (cw *ChatWindow) agentGroup(c *mgo.Context, open *bool, title string, body func()) {
-	mdata.Collapsible(c, open, mdata.CollapsibleOptions{Title: title}, body)
+	kit.Collapsible(c, open, kit.CollapsibleOptions{Title: title}, body)
 }
 
 // agentAction shows a group's count with a select-all/clear button and an

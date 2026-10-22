@@ -12,7 +12,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
 )
 
 func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
@@ -58,9 +57,9 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 		mgo.Text(c, "外观").Font(mtheme.SerifFont).FontWeight(600)
 		mgo.Text(c, "主题模式").FontSize(small).TextColor(k.TextMuted)
 		mode := int(cw.themeMode)
-		mnavigation.SegmentedControl(c, &mode, []mnavigation.Segment{
+		kit.SegmentedControl(c, &mode, []kit.Segment{
 			{Label: "跟随系统"}, {Label: "浅色"}, {Label: "深色"},
-		}, mnavigation.SegmentedControlOptions{Label: "主题模式", Equal: true})
+		}, kit.SegmentedControlOptions{Label: "主题模式", Equal: true})
 		if mcore.Mode(mode) != cw.themeMode {
 			cw.themeMode = mcore.Mode(mode)
 			cw.saveAppearance()

@@ -16,8 +16,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	mdatetime "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/datetime"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
 // autoForm is the auto-task editor's working copy.
@@ -28,7 +26,7 @@ type autoForm struct {
 	prompt    string
 	workspace string
 	kind      string
-	tod       mdatetime.TimeOfDay
+	tod       kit.TimeOfDay
 	weekday   int
 	day       int
 	reuse     bool
@@ -204,7 +202,7 @@ func (cw *ChatWindow) autoTaskConvsDialog(c *mgo.Context) {
 	if name := taskNameOf(cw, cw.autoConvsTaskID); name != "" {
 		title = name + " · 会话"
 	}
-	moverlay.Dialog(c, &cw.autoConvsOpen, moverlay.DialogOptions{
+	kit.Dialog(c, &cw.autoConvsOpen, kit.DialogOptions{
 		Title: title,
 		Width: 520,
 	}, func() {
@@ -289,7 +287,7 @@ func (cw *ChatWindow) autoScheduleForm(c *mgo.Context, f *autoForm) {
 	kinds := []kit.SelectOption[string]{{Value: "daily", Label: "每天"}, {Value: "weekly", Label: "每周"}, {Value: "monthly", Label: "每月"}}
 	mgo.Row(c).Gap(u).AlignItems(mgo.End).Wrap().Children(func() {
 		kit.Select(c, &f.kind, kinds, kit.SelectOptions{Label: "频率"}).Element.Width(120)
-		mdatetime.TimePicker(c, &f.tod, mdatetime.TimePickerOptions{}).Element.Width(170)
+		kit.TimePicker(c, &f.tod, kit.TimePickerOptions{}).Element.Width(170)
 		switch f.kind {
 		case "weekly":
 			opts := []kit.SelectOption[int]{
@@ -308,7 +306,7 @@ func (cw *ChatWindow) autoScheduleForm(c *mgo.Context, f *autoForm) {
 }
 
 func (cw *ChatWindow) clearAutoForm() {
-	cw.autoForm = autoForm{editing: -1, kind: "daily", tod: mdatetime.TimeOfDay{Hour: 9}, day: 1, enabled: true}
+	cw.autoForm = autoForm{editing: -1, kind: "daily", tod: kit.TimeOfDay{Hour: 9}, day: 1, enabled: true}
 }
 
 func (cw *ChatWindow) loadAutoForm(i int) {
@@ -319,7 +317,7 @@ func (cw *ChatWindow) loadAutoForm(i int) {
 	}
 	cw.autoForm = autoForm{
 		editing: i, name: t.Name, agent: t.Agent, prompt: t.Prompt, workspace: t.Workspace,
-		kind: t.Schedule.Kind, tod: mdatetime.TimeOfDay{Hour: t.Schedule.Hour, Minute: t.Schedule.Minute},
+		kind: t.Schedule.Kind, tod: kit.TimeOfDay{Hour: t.Schedule.Hour, Minute: t.Schedule.Minute},
 		weekday: t.Schedule.Weekday, day: d, reuse: t.Reuse, enabled: t.Enabled,
 	}
 }

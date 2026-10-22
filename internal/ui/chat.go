@@ -16,7 +16,6 @@ import (
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 	acp "github.com/coder/acp-go-sdk"
 )
 
@@ -340,7 +339,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 		query = &cw.mcpQuery
 	}
 	changed := false
-	moverlay.Popover(c, b, open, moverlay.PopoverOptions{Title: title, Width: 340}, func() {
+	kit.Popover(c, b, open, kit.PopoverOptions{Title: title, Width: 340}, func() {
 		mgo.Column(c).Gap(u * 2).Children(func() {
 			agentSearch(c, query, "搜索"+buttonLabel).Height(mcore.Density(c).ControlHeight() - 6)
 			for _, mt := range filterMetas(list, *query) {

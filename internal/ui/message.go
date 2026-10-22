@@ -9,10 +9,10 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 	mchat "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/chat"
-	mdata "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/data"
 
 	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/agent"
 
@@ -121,7 +121,7 @@ func (cw *ChatWindow) emptySegments(msg models.Message) bool {
 
 // reasoningBlock shows the model's thinking process as a collapsed block.
 func (cw *ChatWindow) reasoningBlock(c *mgo.Context, open *bool, reasoning string) {
-	mdata.Collapsible(c, open, mdata.CollapsibleOptions{Title: "思考过程"}, func() {
+	kit.Collapsible(c, open, kit.CollapsibleOptions{Title: "思考过程"}, func() {
 		mgo.Text(c, reasoning).TextColor(mcore.Tokens(c).TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 	})

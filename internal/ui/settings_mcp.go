@@ -16,9 +16,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/devtools"
-	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
 func (cw *ChatWindow) mcpTab(c *mgo.Context) {
@@ -183,7 +180,7 @@ func (cw *ChatWindow) mcpToolsDialog(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	moverlay.Dialog(c, &cw.mcp.toolsOpen, moverlay.DialogOptions{
+	kit.Dialog(c, &cw.mcp.toolsOpen, kit.DialogOptions{
 		Title: cw.mcp.toolsServer + " · 工具 (" + strconv.Itoa(len(cw.mcp.tools)) + ")",
 		Width: 640,
 	}, func() {
@@ -256,7 +253,7 @@ func (cw *ChatWindow) deleteMCPServer(name string) {
 
 func (cw *ChatWindow) mcpEditor(c *mgo.Context) {
 	f := &cw.settings.mcp
-	moverlay.Dialog(c, &cw.mcp.editorOpen, moverlay.DialogOptions{
+	kit.Dialog(c, &cw.mcp.editorOpen, kit.DialogOptions{
 		Title: "MCP 服务配置",
 		Width: 560,
 		Actions: func() {
@@ -288,9 +285,9 @@ func (cw *ChatWindow) mcpFormFields(c *mgo.Context) {
 				typ = i
 			}
 		}
-		mnavigation.SegmentedControl(c, &typ, []mnavigation.Segment{
+		kit.SegmentedControl(c, &typ, []kit.Segment{
 			{Label: "STDIO"}, {Label: "SSE"}, {Label: "HTTP"},
-		}, mnavigation.SegmentedControlOptions{Label: "类型", Equal: true})
+		}, kit.SegmentedControlOptions{Label: "类型", Equal: true})
 		f.typ = mcpTypes[typ]
 		if kit.Switch(c, &f.enabled, "启用", kit.SwitchOptions{}).Changed() {
 			cw.saveMCP()
@@ -299,11 +296,11 @@ func (cw *ChatWindow) mcpFormFields(c *mgo.Context) {
 			kit.TextInput(c, &f.command, kit.TextInputOptions{Label: "命令", Placeholder: "如 npx"})
 			kit.TextArea(c, &f.args, kit.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 72})
 			mgo.Text(c, "环境变量").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
-			devtools.KeyValueInput(c, &f.env, devtools.KeyValueInputOptions{Label: "环境变量", KeyPlaceholder: "KEY", ValuePlaceholder: "VALUE"})
+			kit.KeyValueInput(c, &f.env, kit.KeyValueInputOptions{Label: "环境变量", KeyPlaceholder: "KEY", ValuePlaceholder: "VALUE"})
 		} else {
 			kit.TextInput(c, &f.url, kit.TextInputOptions{Label: "URL", Placeholder: "https://..."})
 			mgo.Text(c, "请求头").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
-			devtools.KeyValueInput(c, &f.headers, devtools.KeyValueInputOptions{Label: "请求头", KeyPlaceholder: "Header", ValuePlaceholder: "Value"})
+			kit.KeyValueInput(c, &f.headers, kit.KeyValueInputOptions{Label: "请求头", KeyPlaceholder: "Header", ValuePlaceholder: "Value"})
 			kit.TextInput(c, &f.timeout, kit.TextInputOptions{Label: "超时（秒）", Placeholder: "30"})
 		}
 		if f.editing >= 0 && f.editing < len(cw.cfg.MCPServers) {
@@ -423,7 +420,7 @@ func mcpTypeLabel(typ string) string {
 	}
 }
 
-func kvList(m map[string]string) []devtools.KeyValue {
+func kvList(m map[string]string) []kit.KeyValue {
 	if len(m) == 0 {
 		return nil
 	}
@@ -432,14 +429,14 @@ func kvList(m map[string]string) []devtools.KeyValue {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	out := make([]devtools.KeyValue, 0, len(keys))
+	out := make([]kit.KeyValue, 0, len(keys))
 	for _, k := range keys {
-		out = append(out, devtools.KeyValue{Key: k, Value: m[k], Enabled: true})
+		out = append(out, kit.KeyValue{Key: k, Value: m[k], Enabled: true})
 	}
 	return out
 }
 
-func kvMap(rows []devtools.KeyValue) map[string]string {
+func kvMap(rows []kit.KeyValue) map[string]string {
 	m := map[string]string{}
 	for _, r := range rows {
 		if r.Enabled && strings.TrimSpace(r.Key) != "" {

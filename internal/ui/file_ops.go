@@ -11,7 +11,6 @@ import (
 
 	"chatgo/internal/ui/kit"
 	mcore "chatgo/internal/ui/uikit"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
 // inputState is a reusable single-field prompt dialog.
@@ -34,7 +33,7 @@ func (cw *ChatWindow) inputDialog(c *mgo.Context) {
 		return
 	}
 	submit, cancel := false, false
-	moverlay.Dialog(c, &cw.input.open, moverlay.DialogOptions{
+	kit.Dialog(c, &cw.input.open, kit.DialogOptions{
 		Title: cw.input.title,
 		Width: 440,
 		Actions: func() {
@@ -70,44 +69,44 @@ func (cw *ChatWindow) treeContextMenu(c *mgo.Context, target mgo.Element, path s
 	if !target.Valid() {
 		return
 	}
-	moverlay.ContextMenu(c, target, moverlay.ContextMenuOptions{}, func(m *moverlay.PopupMenu) {
-		if !isDir && m.Item("打开预览", moverlay.PopupMenuItemOptions{}) {
+	kit.ContextMenu(c, target, kit.ContextMenuOptions{}, func(m *kit.PopupMenu) {
+		if !isDir && m.Item("打开预览", kit.PopupMenuItemOptions{}) {
 			cw.openPreview(path)
 		}
-		if m.Item("添加到输入框上下文", moverlay.PopupMenuItemOptions{}) {
+		if m.Item("添加到输入框上下文", kit.PopupMenuItemOptions{}) {
 			cw.addWorkspaceContext(path)
 		}
 		if isDir {
-			if m.Item("在此打开终端", moverlay.PopupMenuItemOptions{}) {
+			if m.Item("在此打开终端", kit.PopupMenuItemOptions{}) {
 				cw.addTermIn(path)
 			}
-			if m.Item("新建文件", moverlay.PopupMenuItemOptions{}) {
+			if m.Item("新建文件", kit.PopupMenuItemOptions{}) {
 				cw.newFileIn(path)
 			}
-			if m.Item("新建文件夹", moverlay.PopupMenuItemOptions{}) {
+			if m.Item("新建文件夹", kit.PopupMenuItemOptions{}) {
 				cw.newDirIn(path)
 			}
 		}
-		if m.Item("复制相对路径", moverlay.PopupMenuItemOptions{}) {
+		if m.Item("复制相对路径", kit.PopupMenuItemOptions{}) {
 			c.WriteClipboard(cw.workspaceRel(path))
 		}
-		if m.Item("复制绝对路径", moverlay.PopupMenuItemOptions{}) {
+		if m.Item("复制绝对路径", kit.PopupMenuItemOptions{}) {
 			abs := path
 			if v, err := filepath.Abs(path); err == nil {
 				abs = v
 			}
 			c.WriteClipboard(abs)
 		}
-		if m.Item("在文件管理器中显示", moverlay.PopupMenuItemOptions{}) {
+		if m.Item("在文件管理器中显示", kit.PopupMenuItemOptions{}) {
 			revealPath(path)
 		}
-		if !isDir && m.Item("用默认程序打开", moverlay.PopupMenuItemOptions{}) {
+		if !isDir && m.Item("用默认程序打开", kit.PopupMenuItemOptions{}) {
 			openPath(path)
 		}
-		if m.Item("重命名", moverlay.PopupMenuItemOptions{}) {
+		if m.Item("重命名", kit.PopupMenuItemOptions{}) {
 			cw.renamePath(path)
 		}
-		if m.Item("删除", moverlay.PopupMenuItemOptions{}) {
+		if m.Item("删除", kit.PopupMenuItemOptions{}) {
 			cw.deletePath(path)
 		}
 	})

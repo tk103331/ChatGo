@@ -13,9 +13,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	"git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/devtools"
-	mnavigation "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/navigation"
-	moverlay "git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI/overlay"
 )
 
 //go:embed mcp_servers.json
@@ -72,9 +69,9 @@ func (cw *ChatWindow) mcpPage(c *mgo.Context) {
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Text(c, "MCP").Font(mtheme.SerifFont).
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
-		mnavigation.SegmentedControl(c, &cw.mcp.tabSel, []mnavigation.Segment{
+		kit.SegmentedControl(c, &cw.mcp.tabSel, []kit.Segment{
 			{Label: "我的服务"}, {Label: "市场"},
-		}, mnavigation.SegmentedControlOptions{Label: "MCP", Equal: true})
+		}, kit.SegmentedControlOptions{Label: "MCP", Equal: true})
 		if cw.mcp.tabSel == 1 {
 			cw.mcpMarketTab(c)
 			return
@@ -100,7 +97,7 @@ func (cw *ChatWindow) mcpDetailDialog(c *mgo.Context) {
 			mgo.Text(c, label+val).FontSize(caption).TextColor(k.TextMuted)
 		}
 	}
-	moverlay.Dialog(c, &cw.mcp.detailOpen, moverlay.DialogOptions{
+	kit.Dialog(c, &cw.mcp.detailOpen, kit.DialogOptions{
 		Title: d.Name,
 		Width: 640,
 		Actions: func() {
@@ -311,7 +308,7 @@ func (cw *ChatWindow) editMarketServer(s mcpMarketServer) {
 }
 
 // marketKVRows merges install values with the arguments' examples, keyed and sorted.
-func marketKVRows(values map[string]string, args map[string]mcpMarketArg) []devtools.KeyValue {
+func marketKVRows(values map[string]string, args map[string]mcpMarketArg) []kit.KeyValue {
 	keys := map[string]bool{}
 	for k := range values {
 		keys[k] = true
@@ -327,13 +324,13 @@ func marketKVRows(values map[string]string, args map[string]mcpMarketArg) []devt
 		names = append(names, k)
 	}
 	sort.Strings(names)
-	out := make([]devtools.KeyValue, 0, len(names))
+	out := make([]kit.KeyValue, 0, len(names))
 	for _, k := range names {
 		v := values[k]
 		if v == "" {
 			v = args[k].Example
 		}
-		out = append(out, devtools.KeyValue{Key: k, Value: v, Enabled: true})
+		out = append(out, kit.KeyValue{Key: k, Value: v, Enabled: true})
 	}
 	return out
 }
