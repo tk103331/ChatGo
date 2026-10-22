@@ -46,6 +46,8 @@ type Settings struct {
 	Mode    Mode
 	Density theme.Density
 	Locale  Locale
+	// Theme recolors the accent family; the zero value keeps MyGo's blue.
+	Theme theme.Theme
 }
 
 type windowTheme struct {
@@ -77,6 +79,9 @@ func Use(c *mgo.Context, s Settings) {
 	t := mgo.LightTheme()
 	if dark {
 		t = mgo.DarkTheme()
+	}
+	if s.Theme.Name != "" {
+		s.Theme.Apply(t)
 	}
 	t.Spacing = s.Density.Unit()
 	t.FontSize = FontSize(c, t.FontSize)

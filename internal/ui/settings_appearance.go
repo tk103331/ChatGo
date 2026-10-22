@@ -64,9 +64,52 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 			cw.themeMode = mcore.Mode(mode)
 			cw.saveAppearance()
 		}
-		mgo.Text(c, "配色使用 MyGo 原生的浅色与深色主题，随「主题模式」自动切换。").
+		mgo.Text(c, "主题色").FontSize(small).TextColor(k.TextMuted)
+		mgo.Row(c).Gap(u * 2).Wrap().Children(func() {
+			for i := range mtheme.Themes {
+				cw.colorThemeSwatch(c, mtheme.Themes[i])
+			}
+		})
+		mgo.Text(c, "主题色只改强调色，底色与文字沿用 MyGo 原生的浅色/深色主题。").
 			FontSize(small).TextColor(k.TextMuted)
 	})
+}
+
+// colorThemeSwatch is one selectable accent, previewed in both appearances.
+func (cw *ChatWindow) colorThemeSwatch(c *mgo.Context, t mtheme.Theme) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	selected := cw.colorTheme.Name == t.Name
+	b := mgo.ButtonBase(c.Key("accent:"+t.Name)).Width(104).Padding(u*2).Gap(u).
+		AlignItems(mgo.Center).Radius(k.Radius).Background(k.Surface).
+		Border(mtheme.BorderWidth, k.Border).Label(t.Label).Selected(selected)
+	switch {
+	case selected:
+		b.BorderColor(k.Accent)
+	case b.Hovered():
+		b.Background(k.SurfaceHover)
+	}
+	light, dark := t.Sample()
+	b.Children(func() {
+		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			accentDot(c, light)
+			accentDot(c, dark)
+		})
+		label := mgo.Text(c, t.Label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).SingleLine()
+		if selected {
+			label.FontWeight(600).TextColor(k.Accent)
+		}
+	})
+	if b.Clicked() && !selected {
+		cw.colorTheme = t
+		cw.saveAppearance()
+	}
+}
+
+// accentDot previews one appearance's accent.
+func accentDot(c *mgo.Context, fill mgo.Color) {
+	mgo.Box(c).Size(18, 18).Radius(9).Background(fill).
+		Border(mtheme.BorderWidth, mcore.Tokens(c).Border)
 }
 
 func (cw *ChatWindow) systemTab(c *mgo.Context) {

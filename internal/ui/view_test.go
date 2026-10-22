@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 
 	"chatgo/internal/config"
+	mtheme "chatgo/internal/ui/theme"
 	"chatgo/pkg/models"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -486,22 +486,47 @@ func TestAccentTextOnlyOnAccent(t *testing.T) {
 	}
 }
 
-// contrast returns the WCAG relative luminance ratio of two opaque colors.
-func contrast(a, b mgo.Color) float64 {
-	la, lb := luminance(a), luminance(b)
-	if la < lb {
-		la, lb = lb, la
-	}
-	return (la + 0.05) / (lb + 0.05)
-}
+// TestColorThemesRecolorOnlyTheAccent checks that a theme changes the accent
+// family and nothing else: the neutral colors carry the contrast, so a theme
+// must not touch them.
+func TestColorThemesRecolorOnlyTheAccent(t *testing.T) {
+	for _, want := range mtheme.Themes {
+		for _, dark := range []bool{false, true} {
+			base := mgo.LightTheme()
+			if dark {
+				base = mgo.DarkTheme()
+			}
+			got := mgo.LightTheme()
+			if dark {
+				got = mgo.DarkTheme()
+			}
+			want.Apply(got)
 
-func luminance(c mgo.Color) float64 {
-	ch := func(v uint8) float64 {
-		s := float64(v) / 255
-		if s <= 0.03928 {
-			return s / 12.92
+			if got.Accent == base.Accent && want.Name != "blue" {
+				t.Errorf("%s (dark=%v): accent unchanged", want.Name, dark)
+			}
+			for _, c := range []struct {
+				name     string
+				got, was mgo.Color
+			}{
+				{"Background", got.Background, base.Background},
+				{"Surface", got.Surface, base.Surface},
+				{"Text", got.Text, base.Text},
+				{"TextMuted", got.TextMuted, base.TextMuted},
+				{"Border", got.Border, base.Border},
+				{"Danger", got.Danger, base.Danger},
+				{"Success", got.Success, base.Success},
+			} {
+				if c.got != c.was {
+					t.Errorf("%s (dark=%v): %s changed from %v to %v",
+						want.Name, dark, c.name, c.was, c.got)
+				}
+			}
+			// Text on the accent must stay readable, whatever the accent.
+			if r := mtheme.Contrast(got.AccentText, got.Accent); r < 3 {
+				t.Errorf("%s (dark=%v): AccentText on Accent contrast %.2f is too low",
+					want.Name, dark, r)
+			}
 		}
-		return math.Pow((s+0.055)/1.055, 2.4)
 	}
-	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
 }
