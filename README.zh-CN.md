@@ -10,7 +10,7 @@
 
 ## ✨ 特性
 
-- 🎨 **原生界面** - MyGo GPU 自绘 + 自建组件层（象牙白/炭黑酒红主题），自绘标题栏
+- 🎨 **原生界面** - MyGo GPU 自绘，沿用其原生浅色/深色主题，自绘标题栏
 - 🏠 **首页快速开始** - 居中输入框 + 能力卡片，并可选项目（工作区）与 Agent
 - 🤖 **多 Provider、多模型** - 支持 OpenAI、Anthropic、Claude、Ollama、Qwen、DeepSeek、Gemini 及任意 OpenAI 兼容接口；每个 Provider 可配置多个模型，每种类型自带一条默认不启用的示例配置与品牌 logo
 - 🧩 **Agent** - 内置 Chat、自定义 Agent（模型/内置工具/MCP/Skill 白名单）、ACP Agent（本地编码 CLI）
@@ -178,7 +178,7 @@ ChatGo/
 │       ├── theme.go         # 外观设置持久化
 │       ├── kit/             # 基于 MyGo 图元自绘的 ChatGo 组件
 │       ├── uikit/           # 窗口主题运行时与共享绘制
-│       ├── theme/           # 设计令牌与配色主题
+│       ├── theme/           # ChatGo 组件共享的尺寸度量
 │       ├── icons/           # 内嵌 Lucide 图标
 │       └── assets/          # 内嵌品牌标识、服务商与 Agent 图标
 ├── pkg/

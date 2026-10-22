@@ -10,7 +10,7 @@ A simple cross-platform AI chat client built with Go and [MyGo](https://github.c
 
 ## ✨ Features
 
-- 🎨 **Native UI** - MyGo GPU-drawn interface with ChatGo's own widget kit (ivory/charcoal and wine-red theme) and a self-drawn title bar
+- 🎨 **Native UI** - MyGo's GPU-drawn interface and its own light and dark themes, with a self-drawn title bar
 - 🏠 **Quick Start Home** - Centered composer with capability cards and project (workspace) / Agent selectors
 - 🤖 **Multi-Provider, Multi-Model** - OpenAI, Anthropic, Claude, Ollama, Qwen, DeepSeek, Gemini and any OpenAI-compatible API. Each provider holds a list of models; every type ships a disabled example config with its brand logo
 - 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills) and ACP Agents (local coding CLIs)
@@ -178,7 +178,7 @@ ChatGo/
 │       ├── theme.go         # Appearance persistence
 │       ├── kit/             # ChatGo's widgets, drawn on MyGo primitives
 │       ├── uikit/           # Window theme runtime and shared drawing
-│       ├── theme/           # Design tokens and color themes
+│       ├── theme/           # Metrics shared by ChatGo's widgets
 │       ├── icons/           # Embedded Lucide icons
 │       └── assets/          # Embedded brand marks, provider and agent icons
 ├── pkg/
