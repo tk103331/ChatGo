@@ -75,6 +75,9 @@ require (
 	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/eino-contrib/jsonschema v1.0.3 // indirect
 	github.com/eino-contrib/ollama v0.1.0 // indirect
+	github.com/emersion/go-imap v1.2.1 // indirect
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/evanphx/json-patch v0.5.2 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-json-experiment/json v0.0.0-20250223041408-d3c622f1b874 // indirect

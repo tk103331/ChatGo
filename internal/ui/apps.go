@@ -75,6 +75,7 @@ func apps() []appDef {
 		dockerApp(),
 		redisApp(),
 		fileManagerApp(),
+		mailApp(),
 	}
 	return append(base, webApps()...)
 }

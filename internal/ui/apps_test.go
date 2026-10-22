@@ -11,7 +11,7 @@ import (
 
 func TestAppsRegistered(t *testing.T) {
 	got := apps()
-	want := map[string]bool{"terminal": false, "markdown": false, "code": false, "browser": false, "git": false, "logs": false, "docker": false, "redis": false, "files": false}
+	want := map[string]bool{"terminal": false, "markdown": false, "code": false, "browser": false, "git": false, "logs": false, "docker": false, "redis": false, "files": false, "mail": false}
 	for _, a := range got {
 		if a.ID == "" || a.Title == "" || a.Icon == "" {
 			t.Fatalf("app %+v missing fields", a)
