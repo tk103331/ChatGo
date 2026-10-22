@@ -76,6 +76,7 @@ func apps() []appDef {
 		redisApp(),
 		fileManagerApp(),
 		mailApp(),
+		rssApp(),
 	}
 	return append(base, webApps()...)
 }

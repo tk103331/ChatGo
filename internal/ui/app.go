@@ -22,6 +22,7 @@ import (
 	"chatgo/internal/apps/filemanagerapp"
 	"chatgo/internal/apps/logapp"
 	"chatgo/internal/apps/mailapp"
+	"chatgo/internal/apps/rssapp"
 	"chatgo/internal/apps/redisapp"
 	"chatgo/internal/apps/markdownapp"
 	"chatgo/internal/apps/terminalapp"
@@ -103,6 +104,7 @@ type ChatWindow struct {
 	redisApp     *redisapp.Client
 	filesApp     *filemanagerapp.Client
 	mailApp      *mailapp.Client
+	rssApp       *rssapp.Client
 	webApps      map[string]*webapp.Client
 	webAppList   []webapp.App
 	preAppConvID string

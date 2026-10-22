@@ -9,6 +9,7 @@ import (
 	"chatgo/internal/apps/filemanagerapp"
 	"chatgo/internal/apps/logapp"
 	"chatgo/internal/apps/mailapp"
+	"chatgo/internal/apps/rssapp"
 	"chatgo/internal/apps/redisapp"
 	"chatgo/internal/apps/markdownapp"
 	"chatgo/internal/shellenv"
@@ -30,7 +31,7 @@ func main() {
 	shellenv.AugmentPath()
 	mygo.Use(native.Plugin)
 
-	app := flag.String("app", "", "独立打开一个应用窗口: git, terminal, markdown, code, browser, logs, docker, redis, files, mail, 或 webapp:<id>")
+	app := flag.String("app", "", "独立打开一个应用窗口: git, terminal, markdown, code, browser, logs, docker, redis, files, mail, rss, 或 webapp:<id>")
 	dir := flag.String("dir", "", "独立打开时的工作目录，默认为当前目录")
 	flag.Parse()
 	if *app != "" {
@@ -107,8 +108,10 @@ func runStandalone(id, dir string) {
 		filemanagerapp.Standalone(root)
 	case "mail":
 		mailapp.Standalone(root)
+	case "rss":
+		rssapp.Standalone(root)
 	default:
-		fmt.Printf("未知应用 %q，可选: git, terminal, markdown, code, browser, logs, docker, redis, files, mail, webapp:<id>\n", id)
+		fmt.Printf("未知应用 %q，可选: git, terminal, markdown, code, browser, logs, docker, redis, files, mail, rss, webapp:<id>\n", id)
 		os.Exit(1)
 	}
 }
