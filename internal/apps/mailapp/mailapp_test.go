@@ -250,4 +250,27 @@ func TestApplyProviderFillsForm(t *testing.T) {
 	if cl.st.formProvider != 3 {
 		t.Fatalf("provider = %d", cl.st.formProvider)
 	}
+	if cl.st.formStep != 1 {
+		t.Fatalf("step = %d, want 1 after picking a provider", cl.st.formStep)
+	}
+	cl.backToProviders()
+	if cl.st.formStep != 0 {
+		t.Fatalf("step = %d, want 0 after back", cl.st.formStep)
+	}
+}
+
+func TestAccountFormStepsRender(t *testing.T) {
+	for _, step := range []int{0, 1} {
+		cl := New(fakeHost{})
+		cl.st.adding = true
+		cl.st.formStep = step
+		cl.st.formProvider = 0
+		img := mgo.Render(func(c *mgo.Context) {
+			mcore.Use(c, mcore.Settings{Mode: mcore.System})
+			cl.View(c)
+		}, 900, 700, 1)
+		if img == nil {
+			t.Fatalf("step %d render returned nil", step)
+		}
+	}
 }

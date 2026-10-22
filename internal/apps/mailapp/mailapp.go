@@ -38,6 +38,7 @@ type state struct {
 	text      string
 
 	adding       bool
+	formStep     int
 	formProvider int
 	formEmail    string
 	formPass     string
@@ -404,6 +405,7 @@ func (cl *Client) send() {
 func (cl *Client) openAccountForm() {
 	cl.mu.Lock()
 	cl.st.adding = true
+	cl.st.formStep = 0
 	cl.st.formProvider = -1
 	cl.st.formEmail = ""
 	cl.st.formPass = ""
@@ -426,6 +428,7 @@ func (cl *Client) closeAccountForm() {
 func (cl *Client) applyProvider(idx int) {
 	cl.mu.Lock()
 	cl.st.formProvider = idx
+	cl.st.formStep = 1
 	if idx >= 0 && idx < len(providers) {
 		p := providers[idx]
 		cl.st.formIMAP = fmt.Sprintf("%s:%d", p.IMAPHost, p.IMAPPort)
@@ -615,4 +618,12 @@ func (cl *Client) Close() {
 		cl.view.Destroy()
 		cl.view = nil
 	}
+}
+
+// backToProviders returns the dialog to the service picker.
+func (cl *Client) backToProviders() {
+	cl.mu.Lock()
+	cl.st.formStep = 0
+	cl.mu.Unlock()
+	cl.host.Invalidate()
 }
