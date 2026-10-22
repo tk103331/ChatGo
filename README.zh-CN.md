@@ -2,7 +2,7 @@
 
 **一个简单的 AI 聊天客户端，仅用于学习目的。**
 
-一个简单的跨平台 AI 聊天客户端，使用 Go、[MyGo](https://github.com/egoist/mygo) 与 [MujicaUI](https://git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI) 构建，支持多模型、Agent、工具、MCP、ACP 以及内置终端。
+一个简单的跨平台 AI 聊天客户端，使用 Go 与 [MyGo](https://github.com/egoist/mygo) 构建，支持多模型、Agent、工具、MCP、ACP 以及内置终端。
 
 ![ChatGo](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -10,7 +10,7 @@
 
 ## ✨ 特性
 
-- 🎨 **原生界面** - MyGo GPU 自绘 + MujicaUI 组件库（象牙白/炭黑酒红主题），自绘标题栏
+- 🎨 **原生界面** - MyGo GPU 自绘 + 自建组件层（象牙白/炭黑酒红主题），自绘标题栏
 - 🏠 **首页快速开始** - 居中输入框 + 能力卡片，并可选项目（工作区）与 Agent
 - 🤖 **多 Provider、多模型** - 支持 OpenAI、Anthropic、Claude、Ollama、Qwen、DeepSeek、Gemini 及任意 OpenAI 兼容接口；每个 Provider 可配置多个模型，每种类型自带一条默认不启用的示例配置与品牌 logo
 - 🧩 **Agent** - 内置 Chat、自定义 Agent（模型/内置工具/MCP/Skill 白名单）、ACP Agent（本地编码 CLI）
@@ -47,12 +47,7 @@ go build -o chatgo .
 ./chatgo
 ```
 
-> **依赖提示**：MujicaUI 尚未发布到公共代理，首次拉取依赖请让 Go 直连 git.zacharyzhang.com：
-> ```bash
-> go env -w GOPROXY=https://goproxy.cn,direct
-> go env -w GOPRIVATE=git.zacharyzhang.com/*
-> ```
-> MyGo 为纯 Go 实现（无 cgo），可在任意平台交叉编译原生 UI。内置终端在运行时加载 Ghostty 的 `libghostty-vt`（首次下载到用户缓存，或用 `mygo build` 打包进应用）。
+> **依赖提示**：MyGo 为纯 Go 实现（无 cgo），可在任意平台交叉编译原生 UI。内置终端在运行时加载 Ghostty 的 `libghostty-vt`（首次下载到用户缓存，或用 `mygo build` 打包进应用）。
 
 #### 使用 Go 安装
 
@@ -146,7 +141,6 @@ current_provider: "OpenAI"
 
 - **Go 1.27.1+** - 主要编程语言
 - **[MyGo](https://github.com/egoist/mygo)** - 原生 UI 框架（GPU 自绘，无 webview、无 cgo）
-- **[MujicaUI](https://git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI)** - MyGo 桌面组件库
 - **Ghostty VT** - 通过 MyGo 终端插件提供终端模拟
 - **Cloudwego Eino** - LLM 抽象层与 React Agent 框架
 - **JSON 文件** - 对话历史存储（`~/.chatgo/conversations`）
@@ -161,7 +155,7 @@ ChatGo/
 │   ├── llm/                 # LLM 客户端与 React Agent
 │   ├── mcp/                 # MCP 服务器支持
 │   ├── jssandbox/           # 隔离的 JS/TS 沙箱运行时
-│   └── ui/                  # MyGo + MujicaUI 界面
+│   └── ui/                  # MyGo 原生界面
 │       ├── app.go           # 状态、视图入口、窗口与标题栏
 │       ├── provider_client.go # Provider/模型客户端、工具与 MCP 启动
 │       ├── conversation.go  # 会话、流式、标题与分段
@@ -181,8 +175,12 @@ ChatGo/
 │       ├── settings*.go     # 设置标签页（模型/MCP/工具/外观/渠道）
 │       ├── selection.go     # 可用性白名单
 │       ├── models.go        # 模型引用
-│       ├── theme.go         # 主题令牌与配色主题
-│       └── assets/          # 内嵌品牌图标、Provider 与 Agent 图标
+│       ├── theme.go         # 外观设置持久化
+│       ├── kit/             # 基于 MyGo 图元自绘的 ChatGo 组件
+│       ├── uikit/           # 窗口主题运行时与共享绘制
+│       ├── theme/           # 设计令牌与配色主题
+│       ├── icons/           # 内嵌 Lucide 图标
+│       └── assets/          # 内嵌品牌标识、服务商与 Agent 图标
 ├── pkg/
 │   └── models/              # 数据模型
 └── README.md
@@ -199,7 +197,6 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 ## 🙏 致谢
 
 - [MyGo](https://github.com/egoist/mygo) - 原生 UI 框架
-- [MujicaUI](https://git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI) - MyGo 桌面组件库
 - [Cloudwego Eino](https://github.com/cloudwego/eino) - 强大的 LLM 应用开发框架
 - [simple-icons](https://simpleicons.org) - Provider 品牌图标
 

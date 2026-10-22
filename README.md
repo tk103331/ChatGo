@@ -2,7 +2,7 @@
 
 **A simple AI chat client built for learning purposes.**
 
-A simple cross-platform AI chat client built with Go, [MyGo](https://github.com/egoist/mygo) and [MujicaUI](https://git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI), with multi-provider models, Agents, tools, MCP, ACP and a built-in terminal.
+A simple cross-platform AI chat client built with Go and [MyGo](https://github.com/egoist/mygo), with multi-provider models, Agents, tools, MCP, ACP and a built-in terminal.
 
 ![ChatGo](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)
 ![License](https://img.shields.io/badge/license-MIT-blue)
@@ -10,7 +10,7 @@ A simple cross-platform AI chat client built with Go, [MyGo](https://github.com/
 
 ## ✨ Features
 
-- 🎨 **Native UI** - MyGo GPU-drawn interface with the MujicaUI component library (ivory/charcoal and wine-red theme) and a self-drawn title bar
+- 🎨 **Native UI** - MyGo GPU-drawn interface with ChatGo's own widget kit (ivory/charcoal and wine-red theme) and a self-drawn title bar
 - 🏠 **Quick Start Home** - Centered composer with capability cards and project (workspace) / Agent selectors
 - 🤖 **Multi-Provider, Multi-Model** - OpenAI, Anthropic, Claude, Ollama, Qwen, DeepSeek, Gemini and any OpenAI-compatible API. Each provider holds a list of models; every type ships a disabled example config with its brand logo
 - 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills) and ACP Agents (local coding CLIs)
@@ -47,12 +47,7 @@ go build -o chatgo .
 ./chatgo
 ```
 
-> **Dependency note:** MujicaUI is not yet on the public proxy, so let Go reach git.zacharyzhang.com directly the first time:
-> ```bash
-> go env -w GOPROXY=https://goproxy.cn,direct
-> go env -w GOPRIVATE=git.zacharyzhang.com/*
-> ```
-> MyGo is pure Go (no cgo), so the native UI cross-compiles from any platform. The built-in terminal loads Ghostty's `libghostty-vt` at run time (downloaded once into the user cache, or bundled by `mygo build`).
+> **Dependency note:** MyGo is pure Go (no cgo), so the native UI cross-compiles from any platform. The built-in terminal loads Ghostty's `libghostty-vt` at run time (downloaded once into the user cache, or bundled by `mygo build`).
 
 #### Install with Go
 
@@ -146,7 +141,6 @@ The title bar toggles the session list, the file tree and the terminal. Double-c
 
 - **Go 1.27.1+** - Main programming language
 - **[MyGo](https://github.com/egoist/mygo)** - Native UI framework (GPU-drawn, no webview, no cgo)
-- **[MujicaUI](https://git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI)** - Desktop component library for MyGo
 - **Ghostty VT** - Terminal emulator via MyGo's terminal plugin
 - **Cloudwego Eino** - LLM abstraction layer and React Agent framework
 - **JSON files** - Chat history storage (`~/.chatgo/conversations`)
@@ -161,7 +155,7 @@ ChatGo/
 │   ├── llm/                 # LLM client and React Agent
 │   ├── mcp/                 # MCP server support
 │   ├── jssandbox/           # Isolated JS/TS sandbox runtime
-│   └── ui/                  # MyGo + MujicaUI interface
+│   └── ui/                  # MyGo native interface
 │       ├── app.go           # State, view entry, window and title bar
 │       ├── provider_client.go # Provider/model clients, tools and MCP boot
 │       ├── conversation.go  # Conversations, streaming, titles, segments
@@ -181,7 +175,11 @@ ChatGo/
 │       ├── settings*.go     # Settings tabs (providers, mcp, tools, appearance, channels)
 │       ├── selection.go     # Availability whitelists
 │       ├── models.go        # Model references
-│       ├── theme.go         # Theme tokens and color themes
+│       ├── theme.go         # Appearance persistence
+│       ├── kit/             # ChatGo's widgets, drawn on MyGo primitives
+│       ├── uikit/           # Window theme runtime and shared drawing
+│       ├── theme/           # Design tokens and color themes
+│       ├── icons/           # Embedded Lucide icons
 │       └── assets/          # Embedded brand marks, provider and agent icons
 ├── pkg/
 │   └── models/              # Data models
@@ -199,7 +197,6 @@ MIT License - See [LICENSE](LICENSE) file for details
 ## 🙏 Acknowledgments
 
 - [MyGo](https://github.com/egoist/mygo) - Native UI framework
-- [MujicaUI](https://git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI) - Desktop component library for MyGo
 - [Cloudwego Eino](https://github.com/cloudwego/eino) - Powerful LLM application development framework
 - [simple-icons](https://simpleicons.org) - Provider brand marks
 

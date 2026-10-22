@@ -3,7 +3,6 @@ module chatgo
 go 1.27.1
 
 require (
-	git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI v0.0.0-20261011191201-bc716d27becc
 	github.com/Calcium-Ion/moejs v0.1.0-alpha.6
 	github.com/cloudwego/eino v0.7.21
 	github.com/cloudwego/eino-ext/components/model/claude v0.1.13
@@ -131,5 +130,3 @@ require (
 )
 
 replace github.com/cloudwego/eino/tool => github.com/cloudwego/eino v0.7.21
-
-replace git.zacharyzhang.com/ZacharyZhang-NY/MujicaUI => ./third_party/MujicaUI
