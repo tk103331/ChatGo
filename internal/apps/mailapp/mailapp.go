@@ -114,10 +114,6 @@ func (cl *Client) View(c *mgo.Context) {
 				mgo.Text(c, "加载中…").FontSize(caption).TextColor(k.TextMuted)
 			})
 		}
-		if st.adding {
-			cl.accountForm(c, st, k, u, caption)
-			return
-		}
 		if st.composing {
 			cl.composePane(c, st, k, u, caption)
 			return
@@ -134,6 +130,7 @@ func (cl *Client) View(c *mgo.Context) {
 			cl.detailPane(c, st, k, u, caption)
 		}).Grow(1).MinHeight(0)
 	})
+	cl.accountForm(c, st, k, u, caption)
 }
 
 // snapshot returns a copy of the state for rendering.
