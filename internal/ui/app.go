@@ -405,7 +405,7 @@ func (cw *ChatWindow) quickBar(c *mgo.Context) {
 		Padding(0, bar.Right+u*2, 0, bar.Left+u*2).DragWindow().
 		AlignItems(mgo.Center).Gap(u).Background(k.Background).
 		BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
-		mgo.Image(c, assets.BrandBitmap()).Size(16, 16)
+		mgo.Icon(c, assets.BrandMark()).Size(16, 16).TextColor(k.Accent)
 		mgo.Text(c, cw.windowTitle()).FontSize(mcore.FontSize(c, mtheme.BodySize)).FontWeight(600).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if mcore.IconAction(c, icons.Must("maximize"), "切换到常规界面").Clicked() {
@@ -491,7 +491,7 @@ func (cw *ChatWindow) titleBar(c *mgo.Context) {
 		Padding(0, bar.Right+u*2, 0, bar.Left+u*2).DragWindow().
 		AlignItems(mgo.Center).Gap(u).Background(k.Background).
 		BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
-		mgo.Image(c, assets.BrandBitmap()).Size(16, 16)
+		mgo.Icon(c, assets.BrandMark()).Size(16, 16).TextColor(k.Accent)
 		mgo.Text(c, cw.windowTitle()).FontSize(mcore.FontSize(c, mtheme.BodySize)).FontWeight(600).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if cw.section == sectionChat {

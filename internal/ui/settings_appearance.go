@@ -95,7 +95,7 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 		})
 		mgo.Text(c, "关于").FontWeight(600)
 		mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-			mgo.Image(c, assets.BrandBitmap()).Size(48, 48)
+			mgo.Icon(c, assets.BrandMark()).Size(48, 48).TextColor(k.Accent)
 			mgo.Column(c).Gap(u / 2).Children(func() {
 				mgo.Text(c, "ChatGo").FontWeight(600)
 				mgo.Text(c, "版本 "+cw.appVersion()).FontSize(small).TextColor(k.TextMuted)

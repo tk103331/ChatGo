@@ -12,6 +12,9 @@ import (
 //go:embed logo.png
 var logoPNG []byte
 
+//go:embed brand.svg
+var brandSVG []byte
+
 //go:embed panel-right.svg
 var panelRightSVG []byte
 
@@ -22,8 +25,8 @@ var mcpSVG []byte
 var trayPNG []byte
 
 var (
-	brandOnce sync.Once
-	brandBmp  *mgo.Bitmap
+	markOnce sync.Once
+	markIcon *mgo.SVG
 )
 
 // LogoPNG is the application icon, for the dock and the window.
@@ -32,10 +35,12 @@ func LogoPNG() []byte { return logoPNG }
 // TrayPNG is the menu-bar / system-tray icon.
 func TrayPNG() []byte { return trayPNG }
 
-// BrandBitmap decodes and caches the app logo.
-func BrandBitmap() *mgo.Bitmap {
-	brandOnce.Do(func() { brandBmp, _ = mgo.DecodeBitmap(logoPNG) })
-	return brandBmp
+// BrandMark is the app's mark as a single-color icon, tinted by TextColor so
+// it follows the window theme. The interface draws this; the window, dock and
+// tray icons stay bitmaps, which their platforms require.
+func BrandMark() *mgo.SVG {
+	markOnce.Do(func() { markIcon, _ = mgo.ParseSVG(brandSVG) })
+	return markIcon
 }
 
 var (

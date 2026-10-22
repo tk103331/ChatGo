@@ -20,8 +20,10 @@ func (cw *ChatWindow) syncTray() {
 	if cw.shouldShowTray() {
 		if cw.tray == nil {
 			tray, err := mygo.NewTray(mygo.TrayOptions{
-				Icon:           assets.TrayPNG(),
-				IconIsTemplate: false,
+				Icon: assets.TrayPNG(),
+				// The icon is black on transparent, so macOS tints it to
+				// match a light or dark menu bar.
+				IconIsTemplate: true,
 				ToolTip:        "ChatGo",
 			})
 			if err != nil {

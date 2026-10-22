@@ -20,7 +20,7 @@ func (cw *ChatWindow) homeView(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	var view kit.CapabilityCardsView
 	mgo.Column(c).Fill().Justify(mgo.Center).AlignItems(mgo.Center).Gap(mcore.Density(c).Unit() * 3).Children(func() {
-		mgo.Image(c, assets.BrandBitmap()).Size(72, 72)
+		mgo.Icon(c, assets.BrandMark()).Size(72, 72).TextColor(k.Accent)
 		view = cw.welcome(c)
 	})
 	if view.Example != "" {
