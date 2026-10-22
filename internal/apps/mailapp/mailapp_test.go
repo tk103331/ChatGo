@@ -136,3 +136,68 @@ func TestProviderPasswordHints(t *testing.T) {
 		}
 	}
 }
+
+func TestExtractBodiesMultipartAlternative(t *testing.T) {
+	raw := "Content-Type: multipart/alternative; boundary=BB\r\n\r\n" +
+		"--BB\r\nContent-Type: text/plain\r\n\r\nplain version\r\n" +
+		"--BB\r\nContent-Type: text/html\r\n\r\n<p>html <b>version</b></p>\r\n" +
+		"--BB--\r\n"
+	text, htmlBody := extractBodies(strings.NewReader(raw))
+	if !strings.Contains(text, "plain version") {
+		t.Errorf("text = %q", text)
+	}
+	if !strings.Contains(htmlBody, "<b>version</b>") {
+		t.Errorf("html = %q", htmlBody)
+	}
+}
+
+func TestExtractBodiesNested(t *testing.T) {
+	raw := "Content-Type: multipart/mixed; boundary=OUT\r\n\r\n" +
+		"--OUT\r\nContent-Type: multipart/alternative; boundary=IN\r\n\r\n" +
+		"--IN\r\nContent-Type: text/plain\r\n\r\nnested plain\r\n" +
+		"--IN\r\nContent-Type: text/html\r\n\r\n<div>nested html</div>\r\n" +
+		"--IN--\r\n" +
+		"--OUT\r\nContent-Type: application/pdf\r\nContent-Disposition: attachment; filename=a.pdf\r\n\r\nPDF\r\n" +
+		"--OUT--\r\n"
+	text, htmlBody := extractBodies(strings.NewReader(raw))
+	if !strings.Contains(text, "nested plain") {
+		t.Errorf("text = %q", text)
+	}
+	if !strings.Contains(htmlBody, "nested html") {
+		t.Errorf("html = %q", htmlBody)
+	}
+}
+
+func TestExtractBodiesHTMLOnly(t *testing.T) {
+	raw := "Content-Type: text/html; charset=utf-8\r\n\r\n<h1>only html</h1>"
+	text, htmlBody := extractBodies(strings.NewReader(raw))
+	if text != "" {
+		t.Errorf("text = %q, want empty", text)
+	}
+	if !strings.Contains(htmlBody, "only html") {
+		t.Errorf("html = %q", htmlBody)
+	}
+}
+
+func TestDocumentSafety(t *testing.T) {
+	doc := document("<p>hi</p>")
+	if !strings.Contains(doc, `default-src 'none'`) {
+		t.Error("document missing CSP")
+	}
+	if !strings.Contains(doc, "<p>hi</p>") {
+		t.Error("document missing body")
+	}
+	plain := plainDocument("<script>x</script>")
+	if strings.Contains(plain, "<script>") {
+		t.Error("plain text must be escaped")
+	}
+	if !strings.Contains(plain, "&lt;script&gt;") {
+		t.Error("plain text not escaped")
+	}
+	if !htmlAvailable(MessageBody{HTML: "<p>x</p>"}) {
+		t.Error("htmlAvailable should be true")
+	}
+	if htmlAvailable(MessageBody{Text: "x"}) {
+		t.Error("htmlAvailable should be false for text-only")
+	}
+}

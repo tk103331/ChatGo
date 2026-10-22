@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	mygo "github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/apps/appkit"
@@ -44,6 +45,10 @@ type Client struct {
 	host Host
 	mu   sync.Mutex
 	st   *state
+
+	view    *mygo.WebView
+	viewUID uint32
+	viewErr string
 }
 
 // Host is the capability set the app needs from its shell.
@@ -185,8 +190,18 @@ func (cl *Client) detailPane(c *mgo.Context, st *state, k mtheme.Tokens, u, capt
 					mgo.Text(c, "时间: "+st.body.Date.Format("2006-01-02 15:04")).FontSize(caption).TextColor(k.TextMuted)
 				}
 				mgo.Box(c).FillWidth().Height(mtheme.BorderWidth).Background(k.Border)
-				if strings.TrimSpace(st.body.Text) == "" {
+				if strings.TrimSpace(st.body.Text) == "" && !htmlAvailable(st.body) {
 					mgo.Text(c, "(无正文)").FontSize(caption).TextColor(k.TextMuted)
+					return
+				}
+				if cl.canRender() {
+					mgo.Box(c).FillWidth().Height(600).Children(func() {
+						mgo.WebView(c, cl.view).Fill()
+					})
+					return
+				}
+				if strings.TrimSpace(st.body.Text) == "" {
+					mgo.Text(c, "(该邮件为 HTML，WebView 不可用)").FontSize(caption).TextColor(k.TextMuted)
 					return
 				}
 				mgo.Text(c, st.body.Text).FontSize(caption).TextColor(k.Text)
@@ -295,7 +310,10 @@ func (cl *Client) openMessage(uid uint32) {
 			cl.st.body = body
 		}
 		cl.mu.Unlock()
-		cl.host.Post(func() { cl.host.Invalidate() })
+		cl.host.Post(func() {
+			cl.renderBody(uid, body)
+			cl.host.Invalidate()
+		})
 	}()
 }
 
@@ -502,4 +520,62 @@ func formatDate(t time.Time) string {
 		return t.Format("01-02")
 	}
 	return t.Format("2006-01-02")
+}
+
+// canRender reports whether the mail body WebView is available.
+func (cl *Client) canRender() bool {
+	return cl.view != nil && !cl.view.IsDestroyed()
+}
+
+// ensureView creates the body WebView once the window exists.
+func (cl *Client) ensureView() {
+	if cl.canRender() {
+		return
+	}
+	w := cl.host.NativeWindow()
+	if w == nil {
+		return
+	}
+	v, err := w.NewWebView(mygo.WebViewOptions{BackgroundColor: "transparent", Transparent: true})
+	if err != nil {
+		cl.viewErr = err.Error()
+		return
+	}
+	cl.view = v
+	v.Page().OnWillNavigate(func(e *mygo.NavigateEvent) {
+		if e.UserInitiated && e.URL != "" && !strings.HasPrefix(e.URL, "about:") {
+			e.PreventDefault()
+			cl.host.OpenFile(e.URL)
+		}
+	})
+}
+
+// renderBody loads a message's HTML into the body WebView.
+func (cl *Client) renderBody(uid uint32, body MessageBody) {
+	cl.ensureView()
+	if !cl.canRender() {
+		return
+	}
+	if cl.viewUID == uid && cl.viewUID != 0 {
+		return
+	}
+	doc := ""
+	if htmlAvailable(body) {
+		doc = document(body.HTML)
+	} else if strings.TrimSpace(body.Text) != "" {
+		doc = plainDocument(body.Text)
+	}
+	if doc == "" {
+		return
+	}
+	cl.viewUID = uid
+	cl.view.Page().LoadHTML(doc, "")
+}
+
+// Close releases the body WebView.
+func (cl *Client) Close() {
+	if cl.view != nil && !cl.view.IsDestroyed() {
+		cl.view.Destroy()
+		cl.view = nil
+	}
 }

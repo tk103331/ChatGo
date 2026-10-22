@@ -34,6 +34,7 @@ type MessageBody struct {
 	To   string
 	CC   string
 	Text string
+	HTML string
 }
 
 // dial opens an IMAP connection over TLS.
@@ -169,7 +170,7 @@ func readMessage(acc Account, mailbox string, uid uint32) (MessageBody, error) {
 		return MessageBody{}, err
 	}
 	if raw != nil {
-		body.Text = extractText(raw)
+		body.Text, body.HTML = extractBodies(raw)
 	}
 	return body, nil
 }
@@ -183,40 +184,66 @@ func formatAddressList(list []*imap.Address) string {
 	return strings.Join(parts, ", ")
 }
 
-// extractText decodes a MIME message's plain-text body.
+// extractText returns the message's plain-text body.
 func extractText(r io.Reader) string {
+	text, _ := extractBodies(r)
+	return text
+}
+
+// extractBodies returns a message's plain-text and HTML bodies.
+func extractBodies(r io.Reader) (text, html string) {
 	msg, err := mail.ReadMessage(r)
 	if err != nil {
 		data, _ := io.ReadAll(r)
-		return string(data)
+		return string(data), ""
 	}
 	ctype := msg.Header.Get("Content-Type")
 	mediaType, params, _ := mime.ParseMediaType(ctype)
 	if strings.HasPrefix(mediaType, "multipart/") {
-		return textFromMultipart(msg.Body, params["boundary"])
+		return bodiesFromMultipart(msg.Body, params["boundary"], 0)
 	}
 	data, _ := io.ReadAll(io.LimitReader(msg.Body, 4<<20))
-	return decodeBody(msg.Header.Get("Content-Transfer-Encoding"), string(data))
+	decoded := decodeBody(msg.Header.Get("Content-Transfer-Encoding"), string(data))
+	if mediaType == "text/html" {
+		return "", decoded
+	}
+	return decoded, ""
 }
 
-// textFromMultipart walks a multipart body for the text part.
-func textFromMultipart(r io.Reader, boundary string) string {
-	if boundary == "" {
-		return ""
+// bodiesFromMultipart walks a multipart body collecting text/plain and
+// text/html parts, recursing into nested multiparts.
+func bodiesFromMultipart(r io.Reader, boundary string, depth int) (text, html string) {
+	if boundary == "" || depth > 4 {
+		return "", ""
 	}
 	mr := multipart.NewReader(r, boundary)
 	for {
 		p, err := mr.NextPart()
 		if err != nil {
-			return ""
+			return text, html
 		}
-		mediaType, _, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
+		mediaType, params, _ := mime.ParseMediaType(p.Header.Get("Content-Type"))
 		if strings.HasPrefix(mediaType, "multipart/") {
+			t, h := bodiesFromMultipart(p, params["boundary"], depth+1)
+			if text == "" {
+				text = t
+			}
+			if html == "" {
+				html = h
+			}
 			continue
 		}
-		if mediaType == "text/plain" || mediaType == "" {
-			data, _ := io.ReadAll(io.LimitReader(p, 4<<20))
-			return decodeBody(p.Header.Get("Content-Transfer-Encoding"), string(data))
+		switch mediaType {
+		case "text/plain":
+			if text == "" {
+				data, _ := io.ReadAll(io.LimitReader(p, 4<<20))
+				text = decodeBody(p.Header.Get("Content-Transfer-Encoding"), string(data))
+			}
+		case "text/html":
+			if html == "" {
+				data, _ := io.ReadAll(io.LimitReader(p, 4<<20))
+				html = decodeBody(p.Header.Get("Content-Transfer-Encoding"), string(data))
+			}
 		}
 	}
 }
