@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -87,7 +88,7 @@ func (cw *ChatWindow) startFeishuChannel() {
 		}
 		cw.notifyChannelMessage(channelID, text)
 		feishuReaction(client, msg.MessageID, "Typing")
-		cw.runChannelAgent(channelID, text, func(reply string) {
+		cw.runChannelAgent(channelID, text, &channelMsgContext{ChatID: msg.ChatID}, func(reply string) {
 			_, _ = ch.Send(context.Background(), &types.SendInput{
 				ChatID:         msg.ChatID,
 				Markdown:       reply,
@@ -137,7 +138,7 @@ func (cw *ChatWindow) stopFeishuChannel() {
 	cw.setChannelState(feishuStopped, "未连接")
 }
 
-func (cw *ChatWindow) runChannelAgent(channelID, text string, done func(string)) {
+func (cw *ChatWindow) runChannelAgent(channelID, text string, msgCtx *channelMsgContext, done func(string)) {
 	if reply, handled := cw.channelCommand(channelID, text); handled {
 		done(reply)
 		return
@@ -156,12 +157,13 @@ func (cw *ChatWindow) runChannelAgent(channelID, text string, done func(string))
 		cw.runChannelACPAgent(conv, connName, spec.workspace, text, done)
 		return
 	}
-	cw.runChannelLLMAgent(conv, spec.agent, spec.workspace, text, done)
+	cw.runChannelLLMAgent(conv, spec.agent, spec.workspace, spec.channel, msgCtx, text, done)
 }
 
 type channelSpec struct {
 	agent     string
 	workspace string
+	channel   *config.Channel
 }
 
 func (cw *ChatWindow) channelSpec(channelID string) *channelSpec {
@@ -170,21 +172,22 @@ func (cw *ChatWindow) channelSpec(channelID string) *channelSpec {
 		if c == nil {
 			return nil
 		}
-		return &channelSpec{agent: c.Agent, workspace: c.Workspace}
+		return &channelSpec{agent: c.Agent, workspace: c.Workspace, channel: c}
 	})
 }
 
-func (cw *ChatWindow) runChannelLLMAgent(conv *models.Conversation, agent, workspace, text string, done func(string)) {
+func (cw *ChatWindow) runChannelLLMAgent(conv *models.Conversation, agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext, text string, done func(string)) {
 	conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "user", Content: text, Timestamp: time.Now()})
 	msgs := buildMessages(conv, len(conv.Messages))
 	if sys := cw.taskSystemPrompt(agent); sys != "" {
 		msgs = append([]llm.ChatMessage{{Role: "system", Content: sys}}, msgs...)
 	}
-	client, react, err := cw.taskClient(agent, workspace)
+	client, react, err := cw.taskClientWithChannel(agent, workspace, ch, msgCtx)
 	if err != nil {
 		done("⚠️ " + err.Error())
 		return
 	}
+	log.Printf("[channel-agent] agent=%q react=%v client=%v", agent, react != nil, client != nil)
 	go func() {
 		ctx := context.Background()
 		reply := ""

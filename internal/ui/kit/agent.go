@@ -189,7 +189,7 @@ func ToolCallCard(c *mgo.Context, call ToolCall, opts ToolCallCardOptions) Choic
 	k := uikit.Tokens(c)
 	u := uikit.Unit(c)
 	var r ChoiceResult
-	r.Element = mgo.Column(c).Shrink(0).Padding(u*3).Gap(u*2).Radius(theme.CardRadius).
+	r.Element = mgo.Column(c).Shrink(0).Padding(u*2).Gap(u).Radius(theme.CardRadius).
 		Background(k.Surface).Border(theme.BorderWidth, k.Border).
 		Role(mgo.RoleGroup).Label(call.Name + ", " + agentWord(call.State))
 	st := mgo.Local(r.Element, "chatgo.toolcall", func() toolCallCardState {
@@ -205,15 +205,18 @@ func ToolCallCard(c *mgo.Context, call ToolCall, opts ToolCallCardOptions) Choic
 				agentCaption(c, AgentDuration(call.Duration))
 			}
 		})
+		body, title := call.Result, "结果"
+		if call.Error != "" {
+			body, title = call.Error, "错误"
+		}
+		if call.Args == "" && body == "" {
+			return
+		}
 		if call.Args != "" {
 			changed := Collapsible(c, &st.args, CollapsibleOptions{Title: "参数"}, func() {
 				CodeBlock(c, agentPrettyJSON(call.Args), CodeBlockOptions{Language: "json"})
 			}).Changed()
 			r.changed = r.changed || changed
-		}
-		body, title := call.Result, "结果"
-		if call.Error != "" {
-			body, title = call.Error, "错误"
 		}
 		if body != "" {
 			changed := Collapsible(c, &st.result, CollapsibleOptions{Title: title}, func() {

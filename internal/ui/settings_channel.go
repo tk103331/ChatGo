@@ -101,6 +101,7 @@ func feishuStatusView(state feishuConnState, note string) (kit.Status, string) {
 func (cw *ChatWindow) channelFormFields(c *mgo.Context) {
 	f := &cw.settings.channel
 	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
 	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
 		kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "渠道名称", ReadOnly: true})
 		if f.typ == "wechat" {
@@ -158,6 +159,34 @@ func (cw *ChatWindow) channelFormFields(c *mgo.Context) {
 				cw.pickDirectory("选择默认工作区", func(path string) { f.workspace = path })
 			}
 		})
+		if len(f.tools) > 0 {
+			mgo.Box(c).FillWidth().Height(1).Background(k.Border)
+			mgo.Text(c, "渠道工具").FontWeight(600)
+			mgo.Text(c, "以下工具仅在来源于本渠道的消息中加载，使用本渠道的凭证执行。").
+				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+			for ti := range f.tools {
+				ct := &f.tools[ti]
+				mgo.Column(c).FillWidth().Gap(u).Padding(u * 2).Background(k.Surface).
+					Radius(mtheme.ControlRadius).Children(func() {
+					mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
+						mgo.Column(c).Gap(2).Grow(1).MinWidth(0).Children(func() {
+							mgo.Text(c, config.GetChannelToolDisplayName(ct.Type)).FontWeight(600)
+							mgo.Text(c, config.GetChannelToolDescription(ct.Type)).
+								FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+						})
+						mgo.Switch(c, &ct.Enable)
+					})
+					for _, field := range config.GetChannelToolConfigFields(ct.Type) {
+						v := ct.Config[field]
+						kit.TextInput(c, &v, kit.TextInputOptions{Label: field, Placeholder: field})
+						if ct.Config == nil {
+							ct.Config = map[string]string{}
+						}
+						ct.Config[field] = v
+					}
+				})
+			}
+		}
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.saveChannel()
@@ -172,9 +201,17 @@ func (cw *ChatWindow) clearChannelForm() {
 
 func (cw *ChatWindow) loadChannelForm(i int) {
 	ch := cw.cfg.Channels[i]
+	tools := make([]config.ChannelTool, len(ch.Tools))
+	for j, t := range ch.Tools {
+		tools[j] = config.ChannelTool{Type: t.Type, Enable: t.Enable, Config: map[string]string{}}
+		for k, v := range t.Config {
+			tools[j].Config[k] = v
+		}
+	}
 	cw.settings.channel = channelForm{
 		editing: i, name: ch.Name, typ: ch.Type, agent: ch.Agent, workspace: ch.Workspace,
 		appID: ch.AppID, appSecret: ch.AppSecret, baseURL: ch.BaseURL, enabled: ch.Enabled,
+		tools: tools,
 	}
 }
 
@@ -195,9 +232,11 @@ func (cw *ChatWindow) saveChannel() {
 		ch.ConvID = old.ConvID
 		ch.ConvIDs = old.ConvIDs
 		ch.ActiveConv = old.ActiveConv
+		ch.Tools = f.tools
 		cw.cfg.Channels[f.editing] = ch
 	} else {
 		ch.ID = cw.newID()
+		config.EnsureChannelTools(&ch)
 		cw.cfg.Channels = append(cw.cfg.Channels, ch)
 		f.editing = len(cw.cfg.Channels) - 1
 	}

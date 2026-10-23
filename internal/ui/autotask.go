@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -572,6 +573,10 @@ func (cw *ChatWindow) ensureTaskConv(task *config.AutoTask) (*models.Conversatio
 
 // taskClient builds a client for an agent without touching the active state.
 func (cw *ChatWindow) taskClient(agent, workspace string) (*llm.Client, *llm.ReactClient, error) {
+	return cw.taskClientWithChannel(agent, workspace, nil, nil)
+}
+
+func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext) (*llm.Client, *llm.ReactClient, error) {
 	provName, model, sys, ws, toolIDs := cw.taskAgentSpec(agent)
 	root := workspace
 	if root == "" {
@@ -593,8 +598,15 @@ func (cw *ChatWindow) taskClient(agent, workspace string) (*llm.Client, *llm.Rea
 		}
 	}
 	p.Model = model
-	if len(toolIDs) > 0 {
-		if rc, err := llm.NewReactClientWithEinoTools(p, cw.buildEinoTools(toolIDs, root), &llm.ReactAgentConfig{MaxStep: cw.cfg.ReactAgentMaxStep, SystemPrompt: sys}); err == nil {
+	einoTools := cw.buildEinoTools(toolIDs, root)
+	if ch != nil {
+		einoTools = combineTools(einoTools, cw.buildChannelTools(ch, msgCtx))
+	}
+	if len(einoTools) > 0 {
+		rc, err := llm.NewReactClientWithEinoTools(p, einoTools, &llm.ReactAgentConfig{MaxStep: cw.cfg.ReactAgentMaxStep, SystemPrompt: sys})
+		if err != nil {
+			log.Printf("[channel-agent] NewReactClientWithEinoTools failed: %v (tools=%d)", err, len(einoTools))
+		} else {
 			return nil, rc, nil
 		}
 	}

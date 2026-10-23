@@ -37,18 +37,26 @@ type Config struct {
 
 // Channel is an IM channel configuration that can trigger Agent execution.
 type Channel struct {
-	ID         string   `yaml:"id"`
-	Type       string   `yaml:"type"` // "feishu" or "wechat"
-	Name       string   `yaml:"name"`
-	Enabled    bool     `yaml:"enabled"`
-	Agent      string   `yaml:"agent,omitempty"`      // "agent:Name" / "acp:Name" / "" = built-in Chat
-	AppID      string   `yaml:"app_id,omitempty"`     // feishu: App ID; wechat: iLink Bot ID
-	AppSecret  string   `yaml:"app_secret,omitempty"` // feishu: App Secret; wechat: iLink Bot Token
-	BaseURL    string   `yaml:"base_url,omitempty"`   // wechat: iLink base URL (default https://ilinkai.weixin.qq.com)
-	Workspace  string   `yaml:"workspace,omitempty"`
-	ConvID     string   `yaml:"conversation_id,omitempty"`
-	ConvIDs    []string `yaml:"conversation_ids,omitempty"`
-	ActiveConv int      `yaml:"active_conv,omitempty"`
+	ID         string        `yaml:"id"`
+	Type       string        `yaml:"type"` // "feishu" or "wechat"
+	Name       string        `yaml:"name"`
+	Enabled    bool          `yaml:"enabled"`
+	Agent      string        `yaml:"agent,omitempty"`      // "agent:Name" / "acp:Name" / "" = built-in Chat
+	AppID      string        `yaml:"app_id,omitempty"`     // feishu: App ID; wechat: iLink Bot ID
+	AppSecret  string        `yaml:"app_secret,omitempty"` // feishu: App Secret; wechat: iLink Bot Token
+	BaseURL    string        `yaml:"base_url,omitempty"`   // wechat: iLink base URL (default https://ilinkai.weixin.qq.com)
+	Workspace  string        `yaml:"workspace,omitempty"`
+	ConvID     string        `yaml:"conversation_id,omitempty"`
+	ConvIDs    []string      `yaml:"conversation_ids,omitempty"`
+	ActiveConv int           `yaml:"active_conv,omitempty"`
+	Tools      []ChannelTool `yaml:"tools,omitempty"`
+}
+
+// ChannelTool is a tool available only to messages from a specific channel.
+type ChannelTool struct {
+	Type   string            `yaml:"type"`
+	Enable bool              `yaml:"enable"`
+	Config map[string]string `yaml:"config,omitempty"`
 }
 
 // Schedule is when an AutoTask runs: daily at Hour:Minute, weekly on Weekday,
@@ -185,6 +193,7 @@ func GetAvailableBuiltinTools() []string {
 		"filesystem",
 		"sequentialthinking",
 		"jssandbox",
+		"webview",
 	}
 }
 
@@ -201,6 +210,7 @@ func GetBuiltinToolDisplayName(toolType string) string {
 		"filesystem":         "文件系统",
 		"sequentialthinking": "链式思考",
 		"jssandbox":          "JS 沙箱",
+		"webview":            "WebView 浏览器",
 	}
 	if name, ok := names[toolType]; ok {
 		return name
@@ -221,6 +231,7 @@ func GetBuiltinToolDescription(toolType string) string {
 		"filesystem":         "Filesystem - Read, write or list files under the working directory",
 		"sequentialthinking": "Sequential Thinking - Chain of thought reasoning tool",
 		"jssandbox":          "JS Sandbox - Run JavaScript/TypeScript code in a secure sandbox (powered by moejs)",
+		"webview":            "WebView - Open a URL or local HTML in the app's web view, read the page, click and type in it",
 	}
 	if desc, ok := descriptions[toolType]; ok {
 		return desc
@@ -249,6 +260,8 @@ func GetBuiltinToolConfigFields(toolType string) []string {
 		return []string{"max_iterations"}
 	case "jssandbox":
 		return []string{"memory_limit_mb", "timeout_seconds", "typescript"}
+	case "webview":
+		return []string{"allow_remote"}
 	default:
 		return []string{}
 	}
@@ -275,6 +288,8 @@ func GetRequiredConfigFields(toolType string) []string {
 		return []string{} // max_iterations has default
 	case "jssandbox":
 		return []string{} // all fields have defaults
+	case "webview":
+		return []string{} // allow_remote has a default
 	default:
 		return []string{}
 	}
@@ -505,7 +520,69 @@ func ensureDefaultChannels(existing []Channel) []Channel {
 			out = append(out, d)
 		}
 	}
+	for i := range out {
+		EnsureChannelTools(&out[i])
+	}
 	return out
+}
+
+func EnsureChannelTools(ch *Channel) {
+	for _, t := range GetChannelToolTypes(ch.Type) {
+		found := false
+		for _, existing := range ch.Tools {
+			if existing.Type == t {
+				found = true
+				break
+			}
+		}
+		if !found {
+			ch.Tools = append(ch.Tools, ChannelTool{Type: t, Config: map[string]string{}})
+		}
+	}
+}
+
+func GetChannelToolTypes(channelType string) []string {
+	switch channelType {
+	case "feishu":
+		return []string{"feishu_send_message", "feishu_send_card"}
+	case "wechat":
+		return []string{"wechat_send_message"}
+	}
+	return nil
+}
+
+func GetChannelToolDisplayName(toolType string) string {
+	switch toolType {
+	case "feishu_send_message":
+		return "飞书发消息"
+	case "feishu_send_card":
+		return "飞书发卡片"
+	case "wechat_send_message":
+		return "微信发消息"
+	}
+	return toolType
+}
+
+func GetChannelToolDescription(toolType string) string {
+	switch toolType {
+	case "feishu_send_message":
+		return "向当前飞书会话发送文本消息（自动使用消息来源会话）。需要渠道配置的飞书应用具有 im:message:send_as_bot 权限。"
+	case "feishu_send_card":
+		return "向当前飞书会话发送交互卡片（JSON 格式，自动使用消息来源会话）。需要渠道配置的飞书应用具有 im:message:send_as_bot 权限。"
+	case "wechat_send_message":
+		return "向当前微信用户发送文本消息（自动使用消息来源用户）。使用渠道配置的 iLink Bot 凭证。"
+	}
+	return toolType
+}
+
+func GetChannelToolConfigFields(toolType string) []string {
+	switch toolType {
+	case "feishu_send_message", "feishu_send_card":
+		return []string{"default_chat_id"}
+	case "wechat_send_message":
+		return []string{"default_to_user"}
+	}
+	return nil
 }
 
 // defaultBuiltinTool is the shipped state of one built-in tool: httprequest and
@@ -521,6 +598,9 @@ func defaultBuiltinTool(toolType string) BuiltinTool {
 		t.Config = map[string]string{"allowed_commands": "ls, pwd, cat, echo, grep, find, head, tail, wc"}
 	case "filesystem":
 		t.Enabled = true
+	case "webview":
+		t.Enabled = true
+		t.Config = map[string]string{"allow_remote": "true"}
 	}
 	return t
 }

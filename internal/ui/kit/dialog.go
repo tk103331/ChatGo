@@ -193,6 +193,11 @@ type PopoverOptions struct {
 	Width float32
 	// Label names an untitled panel for assistive technology.
 	Label string
+	// MaxHeight caps the panel height; zero fits the room below or above
+	// the anchor. Long lists scroll inside the cap.
+	MaxHeight float32
+	// Up places the panel above the anchor even when there is room below.
+	Up bool
 }
 
 // Popover shows content below anchor, or above it, inside the window while
@@ -215,6 +220,12 @@ func Popover(c *mgo.Context, anchor mgo.Element, open *bool, opts PopoverOptions
 		uikit.OverlayStyle(c, panel, uikit.OverlayAnchored(c, panel, b))
 		panel.Margin(6, 0, 0, 0).Padding(u * 3).Gap(u * 2).
 			MinWidth(popoverWide(c, b.W)).MaxHeight(popoverRoom(c, b)).Label(label)
+		if opts.MaxHeight > 0 {
+			panel.MaxHeight(min(opts.MaxHeight, popoverRoom(c, b)))
+		}
+		if opts.Up {
+			panel.AttachTo(anchor, mgo.AnchorTopEnd, mgo.AnchorBottomStart)
+		}
 		if opts.Width > 0 {
 			panel.Width(popoverWide(c, opts.Width))
 		} else {

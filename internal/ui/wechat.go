@@ -127,7 +127,7 @@ func (cw *ChatWindow) wechatPollLoop(ctx context.Context, channelID, baseURL, bo
 			cw.notifyChannelMessage(channelID, text)
 			fromUser := msg.FromUserID
 			contextToken := msg.ContextToken
-			cw.runChannelAgent(channelID, text, func(reply string) {
+			cw.runChannelAgent(channelID, text, &channelMsgContext{FromUser: fromUser, ContextToken: contextToken}, func(reply string) {
 				_ = client.SendText(ctx, fromUser, reply, contextToken)
 			})
 		}

@@ -3,6 +3,7 @@ package ui
 import (
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/config"
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
@@ -33,6 +34,7 @@ type channelForm struct {
 	scanning  bool
 	qr        *mgo.Bitmap
 	qrTip     string
+	tools     []config.ChannelTool
 }
 
 type shortcutForm struct {

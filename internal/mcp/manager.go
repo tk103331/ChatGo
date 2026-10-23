@@ -4,6 +4,7 @@ package mcp
 import (
 	"chatgo/internal/config"
 	"context"
+	"encoding/json"
 	"fmt"
 	"sync"
 
@@ -26,6 +27,10 @@ type MCPTool struct {
 	Name        string
 	Description string
 	InputSchema map[string]interface{}
+	// OutputSchema is the tool's declared result schema, nil when it has none.
+	OutputSchema map[string]interface{}
+	// Annotations is the tool's declared hints, such as readOnlyHint.
+	Annotations map[string]interface{}
 }
 
 // Manager manages MCP client connections and tools
@@ -195,6 +200,18 @@ func (m *Manager) InitializeServer(cfg config.MCPServer) (*MCPServerStatus, erro
 			Name:        tool.Name,
 			Description: tool.Description,
 			InputSchema: map[string]interface{}{"inputSchema": tool.InputSchema},
+			Annotations: annotationMap(tool.Annotations),
+		}
+		if len(tool.RawOutputSchema) > 0 {
+			var out map[string]interface{}
+			if err := json.Unmarshal(tool.RawOutputSchema, &out); err == nil {
+				mcpTool.OutputSchema = out
+			}
+		} else if tool.OutputSchema.Type != "" {
+			mcpTool.OutputSchema = map[string]interface{}{
+				"type": tool.OutputSchema.Type, "properties": tool.OutputSchema.Properties,
+				"required": tool.OutputSchema.Required,
+			}
 		}
 		status.Tools = append(status.Tools, mcpTool)
 		fmt.Printf("[MCP]   - %s: %s\n", tool.Name, tool.Description)
@@ -341,4 +358,28 @@ func (m *Manager) ReinitializeServer(cfg config.MCPServer) (*MCPServerStatus, er
 
 	// Reinitialize
 	return m.InitializeServer(cfg)
+}
+
+// annotationMap renders tool annotations as a plain map for display.
+func annotationMap(a mcp.ToolAnnotation) map[string]interface{} {
+	out := map[string]interface{}{}
+	if a.Title != "" {
+		out["title"] = a.Title
+	}
+	if a.ReadOnlyHint != nil {
+		out["readOnlyHint"] = *a.ReadOnlyHint
+	}
+	if a.DestructiveHint != nil {
+		out["destructiveHint"] = *a.DestructiveHint
+	}
+	if a.IdempotentHint != nil {
+		out["idempotentHint"] = *a.IdempotentHint
+	}
+	if a.OpenWorldHint != nil {
+		out["openWorldHint"] = *a.OpenWorldHint
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

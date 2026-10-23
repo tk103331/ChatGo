@@ -306,7 +306,7 @@ func terminalTab(c *mgo.Context, tab mgo.Element, t TerminalTab, on bool, st *te
 			}
 			return
 		}
-		mgo.Text(c, t.Title).SingleLine()
+		mgo.Text(c, t.Title).SingleLine().MaxWidth(u * 24).Ellipsis("…")
 		if t.Busy {
 			mgo.Box(c).Size(6, 6).Shrink(0).Role(mgo.RoleNone).Background(k.Accent).Radius(3)
 		}

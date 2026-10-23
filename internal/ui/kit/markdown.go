@@ -23,8 +23,72 @@ func markdownOptions(c *mgo.Context) *markdown.Options {
 	th := markdown.DefaultTheme(c.Theme())
 	th.CodeFont = theme.MonoFont
 	o.Theme = th
-	o.OnLink = func(url string) { c.OpenURL(url) }
+	o.OnLink = func(url string) {
+		if h := linkOpener(c); h != nil {
+			h(url)
+			return
+		}
+		c.OpenURL(url)
+	}
 	return o
+}
+
+// previewMarkdownOptions is markdownOptions whose links go to the preview's
+// web view, so a document read in the panel does not leave the app.
+func previewMarkdownOptions(c *mgo.Context) *markdown.Options {
+	o := *markdownOptions(c)
+	o.OnLink = func(url string) {
+		if h := previewLinkOpener(c); h != nil {
+			h(url)
+			return
+		}
+		c.OpenURL(url)
+	}
+	return &o
+}
+
+// linkOpener returns the window's link handler, which shows a link in the
+// app's web view rather than the desktop browser; nil keeps the browser.
+func linkOpener(c *mgo.Context) func(string) {
+	v := mgo.Local(c.Root(), "chatgo.linkopener", func() func(string) { return nil })
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+// SetLinkOpener hands the window's Markdown views their link handler. Passing
+// nil restores the desktop browser.
+func SetLinkOpener(c *mgo.Context, fn func(string)) {
+	v := mgo.Local(c.Root(), "chatgo.linkopener", func() func(string) { return nil })
+	if v != nil {
+		*v = fn
+	}
+}
+
+// previewLinkOpener is the preview column's link handler, tried before the
+// window's own; nil falls back to it.
+func previewLinkOpener(c *mgo.Context) func(string) {
+	v := mgo.Local(c.Root(), "chatgo.previewlinkopener", func() func(string) { return nil })
+	if v == nil {
+		return nil
+	}
+	return *v
+}
+
+// SetPreviewLinkOpener hands the preview column's Markdown views their link
+// handler. Passing nil restores the window's own.
+func SetPreviewLinkOpener(c *mgo.Context, fn func(string)) {
+	v := mgo.Local(c.Root(), "chatgo.previewlinkopener", func() func(string) { return nil })
+	if v != nil {
+		*v = fn
+	}
+}
+
+// MarkdownPreview shows finished Markdown whose links open in the preview's
+// web view.
+func MarkdownPreview(c *mgo.Context, src string) mgo.Element {
+	return markdown.View(c, src, previewMarkdownOptions(c)).MinWidth(0)
 }
 
 // MarkdownView shows finished Markdown, following the window's theme. Links

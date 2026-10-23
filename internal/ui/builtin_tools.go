@@ -50,6 +50,8 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 			"input":    {Type: schema.String, Desc: "传入 run 函数的 JSON 输入，可选"},
 			"function": {Type: schema.String, Desc: "要调用的导出函数名，默认 run"},
 		}
+	case "webview":
+		return webviewParams()
 	}
 	return map[string]*schema.ParameterInfo{}
 }
@@ -179,6 +181,8 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) 
 			}
 			return jssandbox.Run(ctx, in.Code, in.Input, in.Function, scfg)
 		}
+	case "webview":
+		return cw.webviewTool
 	}
 	return func(context.Context, string) (string, error) {
 		return "工具 " + tool.Type + " 暂未实现", nil

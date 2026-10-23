@@ -467,7 +467,7 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 		}
 	})
 	changed := false
-	kit.Popover(c, b, open, kit.PopoverOptions{Title: "Skills", Width: 320}, func() {
+	kit.Popover(c, b, open, kit.PopoverOptions{Title: "Skills", Width: 320, MaxHeight: mcore.Density(c).Unit() * 88, Up: true}, func() {
 		mgo.Column(c).Gap(mcore.Density(c).Unit() * 2).Children(func() {
 			agentSearch(c, &cw.skills.menuQuery, "搜索 Skill").Height(mcore.Density(c).ControlHeight() - 6)
 			q := strings.ToLower(strings.TrimSpace(cw.skills.menuQuery))

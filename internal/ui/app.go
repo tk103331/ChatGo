@@ -91,6 +91,8 @@ type ChatWindow struct {
 
 	previewTabs []previewTab
 	previewSel  int
+	webMu       sync.Mutex
+	webSeq      int
 
 	gitRepo        bool
 	gitBranch      string
@@ -374,6 +376,16 @@ func (cw *ChatWindow) view(c *mgo.Context) {
 			})
 		})
 	}
+	openLink := func(url string) {
+		lower := strings.ToLower(url)
+		if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+			cw.openWebPreview(url)
+			return
+		}
+		c.OpenURL(url)
+	}
+	kit.SetLinkOpener(c, openLink)
+	kit.SetPreviewLinkOpener(c, openLink)
 	cw.confirmDialog(c)
 	cw.inputDialog(c)
 	cw.acpPermissionDialog(c)
@@ -502,6 +514,9 @@ func (cw *ChatWindow) titleBar(c *mgo.Context) {
 			}
 			if mcore.IconAction(c, icons.Must("terminal"), "终端").Clicked() {
 				cw.toggleTerminal()
+			}
+			if mcore.IconAction(c, icons.Must("globe"), "WebView 预览").Clicked() {
+				cw.toggleWebPreview()
 			}
 			if mcore.IconAction(c, assets.PanelRight(), "文件树").Clicked() {
 				cw.rightPanel = !cw.rightPanel

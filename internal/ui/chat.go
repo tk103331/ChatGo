@@ -175,7 +175,7 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	refs := cw.agentModelRefs()
 	var models []kit.ModelOption
 	for _, ref := range refs {
-		models = append(models, kit.ModelOption{ID: ref, Name: modelLabel(ref), Capabilities: capsOf(cw.providerForRef(ref))})
+		models = append(models, kit.ModelOption{ID: ref, Name: modelLabel(ref)})
 	}
 	if len(models) == 0 {
 		if kit.Button(c, "配置模型", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
@@ -257,13 +257,6 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 	})
 }
 
-func capsOf(p config.Provider) []string {
-	if p.Type == "" {
-		return nil
-	}
-	return []string{p.Type}
-}
-
 // toolMenu toggles the builtin tools in a popover.
 func (cw *ChatWindow) toolMenu(c *mgo.Context) {
 	cw.toolPopover(c, "tools", "工具", "sliders-horizontal", "工具", "builtin:")
@@ -338,7 +331,7 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 		query = &cw.mcpQuery
 	}
 	changed := false
-	kit.Popover(c, b, open, kit.PopoverOptions{Title: title, Width: 340}, func() {
+	kit.Popover(c, b, open, kit.PopoverOptions{Title: title, Width: 340, MaxHeight: u * 88, Up: true}, func() {
 		mgo.Column(c).Gap(u * 2).Children(func() {
 			agentSearch(c, query, "搜索"+buttonLabel).Height(mcore.Density(c).ControlHeight() - 6)
 			for _, mt := range filterMetas(list, *query) {

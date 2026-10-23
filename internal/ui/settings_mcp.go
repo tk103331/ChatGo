@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -192,14 +193,36 @@ func (cw *ChatWindow) mcpToolsDialog(c *mgo.Context) {
 				}
 				for _, tl := range cw.mcp.tools {
 					tl := tl
-					mgo.Column(c).Gap(u).Padding(u*2).FillWidth().
-						Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
-						Children(func() {
-							mgo.Text(c, tl.Name).FontWeight(600).Font(mtheme.MonoFont)
+					open := mgo.Local(c.Root(), "mcp.tool:"+cw.mcp.toolsServer+":"+tl.Name, func() bool { return false })
+					kit.Collapsible(c, open, kit.CollapsibleOptions{
+						Title: tl.Name,
+						Trigger: func() {
+							mgo.Text(c, tl.Name).FontWeight(600).Font(mtheme.MonoFont).SingleLine()
+						},
+					}, func() {
+						mgo.Column(c).Gap(u).Padding(u, 0).Children(func() {
 							if tl.Description != "" {
 								mgo.Text(c, tl.Description).TextColor(k.TextMuted).FontSize(caption)
 							}
+							if len(tl.Annotations) > 0 {
+								mgo.Text(c, "标注").FontWeight(600).FontSize(caption)
+								kit.CodeBlock(c, prettyJSON(tl.Annotations), kit.CodeBlockOptions{Language: "json"})
+							}
+							mgo.Text(c, "输入参数").FontWeight(600).FontSize(caption)
+							if schema := tl.InputSchema; len(schema) > 0 {
+								kit.CodeBlock(c, prettyJSON(schema), kit.CodeBlockOptions{Language: "json"})
+							} else {
+								mgo.Text(c, "（无）").TextColor(k.TextMuted).FontSize(caption)
+							}
+							mgo.Text(c, "输出参数").FontWeight(600).FontSize(caption)
+							if len(tl.OutputSchema) > 0 {
+								kit.CodeBlock(c, prettyJSON(tl.OutputSchema), kit.CodeBlockOptions{Language: "json"})
+							} else {
+								mgo.Text(c, "该工具未声明输出 schema，结果以内容块返回").
+									TextColor(k.TextMuted).FontSize(caption)
+							}
 						})
+					})
 				}
 			})
 		})
@@ -515,4 +538,13 @@ type mcpState struct {
 	toolsOpen      bool
 	toolsServer    string
 	tools          []mcp.MCPTool
+}
+
+// prettyJSON renders v as indented JSON for the tool details.
+func prettyJSON(v interface{}) string {
+	data, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return fmt.Sprint(v)
+	}
+	return string(data)
 }

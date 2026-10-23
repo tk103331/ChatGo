@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +34,30 @@ type previewTab struct {
 	view  kit.CodeViewerState
 	dview kit.DiffViewerState
 	bview kit.BlameViewState
+	// Rendered shows a Markdown file as rendered preview rather than source.
+	Rendered bool
+	// Web is the web view of a Kind "web" tab.
+	Web *webTab
+	// Commit is a commit diff tab's message, files own their diff views.
+	Commit *commitInfo
+}
+
+// commitInfo is what a commit diff tab shows above its files.
+type commitInfo struct {
+	Hash    string
+	Author  string
+	When    time.Time
+	Subject string
+	Body    string
+	Files   []commitFile
+}
+
+// commitFile is one changed file of a commit, with both sides to diff.
+type commitFile struct {
+	Path     string
+	Lang     string
+	From, To string
+	view     kit.DiffViewerState
 }
 
 // sourcePanel shows the workspace file tree or the Git changes, in its own column.
@@ -79,10 +104,22 @@ func (cw *ChatWindow) previewPanel(c *mgo.Context) {
 		BorderWidth(0, 0, 0, mtheme.BorderWidth).BorderColor(k.Border).Padding(u * 2).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
 			mgo.Text(c, "预览").FontWeight(600).Grow(1)
+			if t := cw.activePreviewTab(); t != nil && t.Kind == "text" && isMarkdownFile(t.Path) {
+				label := "预览"
+				if t.Rendered {
+					label = "源码"
+				}
+				if kit.Button(c, label, kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("eye")}).Clicked() {
+					t.Rendered = !t.Rendered
+				}
+			}
 			if t := cw.activePreviewTab(); t != nil && t.Kind == "text" {
 				if kit.Button(c, "追溯", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("history")}).Clicked() {
 					cw.openBlame(t.Path)
 				}
+			}
+			if mcore.IconAction(c, icons.Must("globe"), "新建 WebView 标签").Tooltip("新建 WebView 标签").Clicked() {
+				cw.newWebPreview("", "")
 			}
 			if len(cw.previewTabs) > 1 {
 				if kit.Button(c, "全部关闭", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
@@ -165,14 +202,40 @@ func (cw *ChatWindow) fsFileRow(c *mgo.Context, path string, open func()) {
 	if b.Hovered() {
 		b.Background(k.SurfaceHover)
 	}
+	isHTML := isHTMLFile(path)
 	b.Children(func() {
-		mgo.Icon(c, icons.Must("file-text")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
-		mgo.Text(c, filepath.Base(path)).SingleLine()
+		icon := "file-text"
+		if isHTML {
+			icon = "globe"
+		}
+		mgo.Icon(c, icons.Must(icon)).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
+		mgo.Text(c, filepath.Base(path)).SingleLine().Grow(1).MinWidth(0)
+		if isHTML && mcore.IconAction(c, icons.Must("eye"), "在 WebView 中预览").Tooltip("在 WebView 中预览").Clicked() {
+			cw.openWebPreview(path)
+		}
 	})
 	cw.treeContextMenu(c, b, path, false)
 	if b.DoubleClicked() {
 		open()
 	}
+}
+
+// isMarkdownFile reports whether path is a Markdown document.
+func isMarkdownFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".md", ".markdown":
+		return true
+	}
+	return false
+}
+
+// isHTMLFile reports whether path is a web page the preview can render.
+func isHTMLFile(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".html", ".htm", ".xhtml":
+		return true
+	}
+	return false
 }
 
 // addWorkspaceContext turns a workspace path into a composer mention.
@@ -341,14 +404,53 @@ func (cw *ChatWindow) previewView(c *mgo.Context) {
 		cw.previewSel = 0
 	}
 	tab := &cw.previewTabs[cw.previewSel]
-	if tab.Kind == "text" && tab.Bmp == nil && tab.Svg == nil && !strings.HasSuffix(strings.ToLower(tab.Path), ".md") {
+	if tab.Web != nil {
+		cw.webToolbar(c, tab.Web)
+		mgo.Box(c).Grow(1).MinHeight(0).Children(func() {
+			if tab.Web.URL == webLandingURL {
+				cw.webLanding(c, tab.Web)
+				return
+			}
+			mgo.WebView(c, tab.Web.view).Grow(1).MinHeight(0)
+		})
+		return
+	}
+	isMD := strings.HasSuffix(strings.ToLower(tab.Path), ".md")
+	if tab.Kind == "text" && tab.Bmp == nil && tab.Svg == nil && (!isMD || !tab.Rendered) {
 		kit.CodeViewer(c, tab.Body, &tab.view, kit.CodeViewerOptions{Language: tab.Lang, Path: tab.Path}).
 			Grow(1).MinHeight(0)
 		return
 	}
+	if tab.Kind == "commit" && tab.Commit != nil {
+		cw.commitDiffView(c, tab.Commit)
+		return
+	}
 	if tab.Kind == "fdiff" {
-		kit.DiffViewer(c, &tab.dview, tab.From, tab.To, kit.DiffViewerOptions{Language: tab.Lang}).
-			Grow(1).MinHeight(0)
+		k := mcore.Tokens(c)
+		u := mcore.Density(c).Unit()
+		caption := mcore.FontSize(c, mtheme.CaptionSize)
+		unified := mgo.Local(c.Root(), "fdiff-unified:"+tab.Path, func() bool { return false })
+		mgo.Column(c).FillWidth().Grow(1).MinHeight(0).Gap(u).Children(func() {
+			mgo.Row(c).FillWidth().Shrink(0).AlignItems(mgo.Center).Gap(u).Children(func() {
+				mgo.Icon(c, icons.Must("file-text")).Size(13, 13).
+					TextColor(k.TextMuted).Shrink(0)
+				rel := strings.TrimPrefix(tab.Path, "diff:")
+				mgo.Text(c, rel).Font(mtheme.MonoFont).FontSize(caption).
+					SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+				label := "Inline"
+				if *unified {
+					label = "Split"
+				}
+				if kit.Button(c, label, kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("columns-2")}).Clicked() {
+					*unified = !*unified
+				}
+			})
+			mgo.Box(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
+				kit.DiffViewer(c, &tab.dview, tab.From, tab.To, kit.DiffViewerOptions{
+					Language: tab.Lang, Unified: *unified,
+				}).Fill()
+			})
+		})
 		return
 	}
 	if tab.Kind == "blame" {
@@ -366,6 +468,10 @@ func (cw *ChatWindow) previewTab(c *mgo.Context, i int) bool {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	tab := cw.previewTabs[i]
+	if tab.Web != nil {
+		cw.previewTabs[i].Title = tab.Web.Title
+		tab = cw.previewTabs[i]
+	}
 	closing := false
 	b := mgo.ButtonBase(c).Row().Shrink(0).MinHeight(mcore.Density(c).ControlHeight()).
 		Padding(u, u*2).Gap(u).AlignItems(mgo.Center).Radius(mtheme.ControlRadius).Label(tab.Title)
@@ -373,6 +479,9 @@ func (cw *ChatWindow) previewTab(c *mgo.Context, i int) bool {
 		b.Background(k.Selection)
 	}
 	b.Children(func() {
+		if icon := previewTabIcon(tab); icon != "" {
+			mgo.Icon(c, icons.Must(icon)).Size(13, 13).TextColor(k.TextMuted).Shrink(0)
+		}
 		mgo.Text(c, tab.Title).SingleLine()
 		if mcore.IconAction(c, icons.Must("x"), "关闭预览").Clicked() {
 			closing = true
@@ -382,6 +491,25 @@ func (cw *ChatWindow) previewTab(c *mgo.Context, i int) bool {
 		cw.previewSel = i
 	}
 	return closing
+}
+
+func previewTabIcon(tab previewTab) string {
+	switch tab.Kind {
+	case "image":
+		return "image"
+	case "fdiff", "commit":
+		return "git-branch"
+	case "blame":
+		return "history"
+	case "web":
+		return "globe"
+	case "text":
+		if isMarkdownFile(tab.Path) {
+			return "eye"
+		}
+		return "file-text"
+	}
+	return ""
 }
 
 func (cw *ChatWindow) previewContent(c *mgo.Context, tab previewTab) {
@@ -397,8 +525,8 @@ func (cw *ChatWindow) previewContent(c *mgo.Context, tab previewTab) {
 	case "diff":
 		renderDiff(c, tab.Body)
 	default:
-		if strings.HasSuffix(strings.ToLower(tab.Path), ".md") {
-			kit.MarkdownView(c, tab.Body)
+		if isMarkdownFile(tab.Path) {
+			kit.MarkdownPreview(c, tab.Body)
 		} else {
 			kit.CodeBlock(c, tab.Body, kit.CodeBlockOptions{Language: tab.Lang})
 		}
@@ -440,6 +568,9 @@ func renderDiff(c *mgo.Context, body string) {
 func (cw *ChatWindow) closePreview(i int) {
 	if i < 0 || i >= len(cw.previewTabs) {
 		return
+	}
+	if tab := cw.previewTabs[i].Web; tab != nil && tab.view != nil {
+		tab.view.Destroy()
 	}
 	cw.previewTabs = append(cw.previewTabs[:i], cw.previewTabs[i+1:]...)
 	if cw.previewSel >= len(cw.previewTabs) {
@@ -512,7 +643,7 @@ func (cw *ChatWindow) openGitDiff(rel string) {
 				}
 			}
 			cw.previewTabs = append(cw.previewTabs, previewTab{
-				Path: path, Title: rel + " (diff)", Kind: "fdiff",
+				Path: path, Title: filepath.Base(rel) + " (diff)", Kind: "fdiff",
 				From: old, To: newContent, Lang: langOfExt(strings.ToLower(filepath.Ext(rel))),
 			})
 			cw.previewSel = len(cw.previewTabs) - 1
@@ -609,26 +740,75 @@ func (cw *ChatWindow) createBranch(name string) {
 	cw.loadGit(cw.workspace)
 }
 
-// openCommitDiff loads a commit's diff into the preview area.
+// openCommitDiff loads a commit's message and per-file diffs into the preview
+// area, titled by the short hash.
 func (cw *ChatWindow) openCommitDiff(hash string) {
 	ws := cw.workspace
 	path := "commit:" + hash
+	short := shortHash(hash)
 	go func() {
-		body := gitOut(ws, "show", "--no-color", hash)
+		info := loadCommit(ws, hash)
 		cw.postMain(func() {
 			for i := range cw.previewTabs {
 				if cw.previewTabs[i].Path == path {
-					cw.previewTabs[i].Body = body
+					cw.previewTabs[i].Commit = info
+					cw.previewTabs[i].Title = short + " (diff)"
 					cw.previewSel = i
 					return
 				}
 			}
 			cw.previewTabs = append(cw.previewTabs, previewTab{
-				Path: path, Title: hash + " (diff)", Kind: "diff", Body: body,
+				Path: path, Title: short + " (diff)", Kind: "commit", Commit: info,
 			})
 			cw.previewSel = len(cw.previewTabs) - 1
 		})
 	}()
+}
+
+// shortHash is the seven-character abbreviation a commit diff is titled by.
+func shortHash(hash string) string {
+	if len(hash) > 7 {
+		return hash[:7]
+	}
+	return hash
+}
+
+// loadCommit reads a commit's message and the both sides of every file it
+// changed: each file's parent version and its version at the commit.
+func loadCommit(dir, hash string) *commitInfo {
+	meta := gitOut(dir, "show", "-s", "--pretty=format:%H%x09%an%x09%at%x09%s%x09%b", hash)
+	info := &commitInfo{Hash: hash}
+	parts := strings.SplitN(meta, "\t", 5)
+	if len(parts) >= 4 {
+		info.Hash, info.Author, info.Subject = parts[0], parts[1], parts[3]
+		if sec, err := strconv.ParseInt(parts[2], 10, 64); err == nil {
+			info.When = time.Unix(sec, 0)
+		}
+		if len(parts) == 5 {
+			info.Body = strings.TrimSpace(parts[4])
+		}
+	}
+	parents := strings.Fields(gitOut(dir, "rev-list", "--parents", "-n", "1", hash))
+	parent := ""
+	if len(parents) > 1 {
+		parent = parents[1]
+	}
+	for _, line := range splitRaw(gitOut(dir, "show", "--name-status", "--pretty=format:", hash)) {
+		fields := strings.Split(line, "\t")
+		if len(fields) < 2 {
+			continue
+		}
+		status, rel := fields[0], fields[len(fields)-1]
+		file := commitFile{Path: rel, Lang: langOfExt(strings.ToLower(filepath.Ext(rel)))}
+		if !strings.HasPrefix(status, "A") && parent != "" {
+			file.From = gitOut(dir, "show", parent+":"+rel)
+		}
+		if !strings.HasPrefix(status, "D") {
+			file.To = gitOut(dir, "show", hash+":"+rel)
+		}
+		info.Files = append(info.Files, file)
+	}
+	return info
 }
 
 func langOfExt(ext string) string {
@@ -824,4 +1004,94 @@ func splitRaw(s string) []string {
 		return nil
 	}
 	return strings.Split(s, "\n")
+}
+
+// commitDiffView shows a commit's message, then every file it changed.
+func (cw *ChatWindow) commitDiffView(c *mgo.Context, info *commitInfo) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	sel := mgo.Local(c.Root(), "commit-sel:"+shortHash(info.Hash), func() int { return 0 })
+	if *sel < 0 || *sel >= len(info.Files) {
+		*sel = 0
+	}
+	unified := mgo.Local(c.Root(), "commit-unified:"+shortHash(info.Hash), func() bool { return false })
+	mgo.Column(c).FillWidth().Grow(1).MinHeight(0).Gap(u*2).Padding(0, u).Children(func() {
+		mgo.Column(c).FillWidth().Shrink(0).Gap(u).Padding(u*2).Background(k.Surface).
+			Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).Children(func() {
+			mgo.Text(c, info.Subject).FontWeight(600).Selectable()
+			if info.Body != "" {
+				mgo.Text(c, info.Body).TextColor(k.TextMuted).FontSize(caption).Selectable()
+			}
+			meta := shortHash(info.Hash) + " · " + info.Author
+			if !info.When.IsZero() {
+				meta += " · " + info.When.Format("2006-01-02 15:04")
+			}
+			mgo.Text(c, meta).TextColor(k.TextMuted).FontSize(caption).Font(mtheme.MonoFont)
+		})
+		if len(info.Files) == 0 {
+			mgo.Text(c, "该提交没有文件变更").TextColor(k.TextMuted).FontSize(caption)
+			return
+		}
+		mgo.Row(c).FillWidth().Shrink(0).AlignItems(mgo.Center).Gap(u).Children(func() {
+			mgo.Text(c, fmt.Sprintf("%d 个文件变更", len(info.Files))).
+				TextColor(k.TextMuted).FontSize(caption).Grow(1)
+			label := "Inline"
+			if *unified {
+				label = "Split"
+			}
+			if kit.Button(c, label, kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("columns-2")}).Clicked() {
+				*unified = !*unified
+			}
+		})
+		mgo.Scroll(c).FillWidth().Shrink(0).MaxHeight(220).Children(func() {
+			mgo.Column(c).FillWidth().Gap(2).Children(func() {
+				for i := range info.Files {
+					file := &info.Files[i]
+					b := mgo.ButtonBase(c).Row().FillWidth().Shrink(0).
+						Padding(u/2, u).Gap(u).AlignItems(mgo.Center).
+						Radius(mtheme.ControlRadius)
+					if i == *sel {
+						b.Background(k.Selection)
+					} else if b.Hovered() {
+						b.Background(k.SurfaceHover)
+					}
+					b.Children(func() {
+						mgo.Icon(c, icons.Must("file-text")).Size(13, 13).
+							TextColor(k.TextMuted).Shrink(0)
+						mgo.Text(c, file.Path).Font(mtheme.MonoFont).FontSize(caption).
+							SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+						mgo.Text(c, fileChangeLabel(file)).FontSize(caption).
+							TextColor(k.TextMuted).Shrink(0)
+					})
+					if b.Clicked() && i != *sel {
+						*sel = i
+					}
+				}
+			})
+		})
+		file := &info.Files[*sel]
+		mgo.Box(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
+			kit.DiffViewer(c, &file.view, file.From, file.To, kit.DiffViewerOptions{
+				Language: file.Lang, Path: file.Path, Unified: *unified,
+			}).Fill()
+		})
+	})
+}
+
+func fileChangeLabel(f *commitFile) string {
+	fromLines := strings.Count(f.From, "\n")
+	toLines := strings.Count(f.To, "\n")
+	switch {
+	case f.From == "" && f.To == "":
+		return "空变更"
+	case f.From == "":
+		return fmt.Sprintf("新增 %d 行", toLines)
+	case f.To == "":
+		return fmt.Sprintf("删除 %d 行", fromLines)
+	case fromLines == toLines:
+		return fmt.Sprintf("%d 行", fromLines)
+	default:
+		return fmt.Sprintf("%d → %d 行", fromLines, toLines)
+	}
 }

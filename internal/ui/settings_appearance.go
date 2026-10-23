@@ -18,7 +18,7 @@ func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
+	mgo.Column(c).Gap(u * 2).MaxWidth(720).Children(func() {
 		mgo.Text(c, "快捷键").FontWeight(600)
 		if cw.status != "" {
 			mgo.Text(c, cw.status).TextColor(k.Danger).FontSize(small).
@@ -64,41 +64,51 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 			cw.themeMode = mcore.Mode(mode)
 			cw.saveAppearance()
 		}
-		mgo.Text(c, "主题色").FontSize(small).TextColor(k.TextMuted)
-		mgo.Row(c).Gap(u * 2).Wrap().Children(func() {
-			for i := range mtheme.Themes {
-				cw.colorThemeSwatch(c, mtheme.Themes[i])
+		mgo.Text(c, "颜色主题").FontWeight(600)
+		mgo.Text(c, "每种颜色主题都提供浅色与深色两套配色，随「主题模式」自动切换。").
+			FontSize(small).TextColor(k.TextMuted)
+		mgo.Column(c).Gap(u * 2).FillWidth().Children(func() {
+			for i := 0; i < len(mtheme.Themes); i += 3 {
+				mgo.Row(c).Gap(u * 2).FillWidth().AlignItems(mgo.Start).Children(func() {
+					for j := i; j < i+3 && j < len(mtheme.Themes); j++ {
+						cw.colorThemeCard(c, mtheme.Themes[j])
+					}
+					for j := len(mtheme.Themes); j < i+3; j++ {
+						mgo.Box(c).Grow(1)
+					}
+				})
 			}
 		})
-		mgo.Text(c, "主题色只改强调色，底色与文字沿用 MyGo 原生的浅色/深色主题。").
-			FontSize(small).TextColor(k.TextMuted)
 	})
 }
 
-// colorThemeSwatch is one selectable accent, previewed in both appearances.
-func (cw *ChatWindow) colorThemeSwatch(c *mgo.Context, t mtheme.Theme) {
+// colorThemeCard is one selectable theme, previewed as a light and a dark
+// card side by side, as the appearance settings show them.
+func (cw *ChatWindow) colorThemeCard(c *mgo.Context, t mtheme.Theme) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
 	selected := cw.colorTheme.Name == t.Name
-	b := mgo.ButtonBase(c.Key("accent:"+t.Name)).Width(104).Padding(u*2).Gap(u).
-		AlignItems(mgo.Center).Radius(k.Radius).Background(k.Surface).
+	b := mgo.ButtonBase(c.Key("theme:"+t.Name)).Grow(1).MinWidth(0).Padding(u*2).Gap(u).
+		AlignItems(mgo.Center).Justify(mgo.Center).Radius(k.Radius).Background(k.Surface).
 		Border(mtheme.BorderWidth, k.Border).Label(t.Label).Selected(selected)
 	switch {
 	case selected:
-		b.BorderColor(k.Accent)
+		b.BorderColor(k.Accent).BorderWidth(2)
 	case b.Hovered():
 		b.Background(k.SurfaceHover)
 	}
-	light, dark := t.Sample()
 	b.Children(func() {
-		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			accentDot(c, light)
-			accentDot(c, dark)
+		mgo.Column(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				themeCardPreview(c, t, false)
+				themeCardPreview(c, t, true)
+			})
+			label := mgo.Text(c, t.Label).FontSize(small).SingleLine()
+			if selected {
+				label.FontWeight(600).TextColor(k.Accent)
+			}
 		})
-		label := mgo.Text(c, t.Label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).SingleLine()
-		if selected {
-			label.FontWeight(600).TextColor(k.Accent)
-		}
 	})
 	if b.Clicked() && !selected {
 		cw.colorTheme = t
@@ -106,10 +116,30 @@ func (cw *ChatWindow) colorThemeSwatch(c *mgo.Context, t mtheme.Theme) {
 	}
 }
 
-// accentDot previews one appearance's accent.
-func accentDot(c *mgo.Context, fill mgo.Color) {
-	mgo.Box(c).Size(18, 18).Radius(9).Background(fill).
-		Border(mtheme.BorderWidth, mcore.Tokens(c).Border)
+// themeCardPreview is one half of a theme card: a page background with the
+// theme's accent as a pill across it.
+func themeCardPreview(c *mgo.Context, t mtheme.Theme, dark bool) {
+	u := mcore.Density(c).Unit()
+	lightBG, darkBG := t.Cards()
+	bg, accent := lightBG, lightBG
+	if dark {
+		bg = darkBG
+	}
+	if t.Name == mtheme.DefaultName {
+		accent = mgo.LightTheme().Accent
+		if dark {
+			accent = mgo.DarkTheme().Accent
+		}
+	} else {
+		accent = mgo.Hex(t.Accent.Light)
+		if dark {
+			accent = mgo.Hex(t.Accent.Dark)
+		}
+	}
+	mgo.Box(c).Width(u*13).Height(u*9).Shrink(0).Radius(mtheme.ControlRadius).
+		Background(bg).Border(mtheme.BorderWidth, accent).Center().Children(func() {
+		mgo.Box(c).Width(u * 7).Height(u * 2.2).Radius(u).Background(accent)
+	})
 }
 
 func (cw *ChatWindow) systemTab(c *mgo.Context) {
