@@ -94,7 +94,7 @@ func (cw *ChatWindow) colorThemeCard(c *mgo.Context, t mtheme.Theme) {
 		Border(mtheme.BorderWidth, k.Border).Label(t.Label).Selected(selected)
 	switch {
 	case selected:
-		b.BorderColor(k.Accent).BorderWidth(2)
+		b.Background(k.Surface).TextColor(k.Text).BorderColor(k.Accent).BorderWidth(2)
 	case b.Hovered():
 		b.Background(k.SurfaceHover)
 	}
