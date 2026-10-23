@@ -19,7 +19,7 @@ require (
 	github.com/cloudwego/eino-ext/components/tool/wikipedia v0.0.0-20260924074145-3603a39473c3
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.13
 	github.com/coder/acp-go-sdk v0.13.5
-	github.com/egoist/mygo v0.5.5
+	github.com/egoist/mygo v0.6.3
 	github.com/issue9/identicon v1.2.1
 	github.com/larksuite/oapi-sdk-go/v3 v3.12.0
 	github.com/mark3labs/mcp-go v1.2.1
