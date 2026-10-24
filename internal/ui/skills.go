@@ -139,6 +139,7 @@ func (cw *ChatWindow) skillsPage(c *mgo.Context) {
 		}
 		mgo.Row(c).Grow(1).MinWidth(0).MinHeight(0).Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
 			cw.skillsList(c)
+			mgo.Divider(c)
 			cw.skillViewer(c)
 		})
 	})
@@ -181,26 +182,33 @@ func (cw *ChatWindow) skillsList(c *mgo.Context) {
 			selected := cw.skills.sel == s.ID
 			enabled := cw.skillEnabled(s.ID)
 			b := mgo.ButtonBase(c).Key(s.ID).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
-				Padding(u, u*2).Radius(mtheme.ControlRadius)
+				Padding(u, u*2).Gap(u).AlignItems(mgo.Center).Justify(mgo.Start).
+				Radius(mtheme.ControlRadius)
 			if selected {
 				b.Background(k.Selection)
 			} else if b.Hovered() {
 				b.Background(k.SurfaceHover)
 			}
+			if selected {
+				b.DrawOver(func(p *mgo.Painter, r mgo.Rect) {
+					p.Fill(mgo.Rect{X: r.X, Y: r.Y + u, W: u * 0.75, H: r.H - u*2}, k.Accent, u*0.375)
+				})
+			}
 			b.Children(func() {
-				mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-					dotColor := k.TextMuted
-					if enabled {
-						dotColor = k.Success
+				icon, iconColor := "circle", k.TextMuted
+				if enabled {
+					icon, iconColor = "circle-check", k.Success
+				}
+				mgo.Icon(c, icons.Must(icon)).Size(16, 16).TextColor(iconColor).Shrink(0)
+				mgo.Column(c).Gap(u / 2).MinWidth(0).Grow(1).Children(func() {
+					name := mgo.Text(c, s.Name).FontWeight(600).SingleLine().MinWidth(0).Ellipsis("…")
+					if !enabled {
+						name.TextColor(k.TextMuted)
 					}
-					mgo.Icon(c, icons.Must("circle")).Size(6, 6).TextColor(dotColor).Shrink(0)
-					mgo.Column(c).Gap(u / 2).MinWidth(0).Grow(1).Children(func() {
-						mgo.Text(c, s.Name).FontWeight(600).SingleLine()
-						if s.Description != "" {
-							mgo.Text(c, s.Description).TextColor(k.TextMuted).
-								FontSize(mcore.FontSize(c, mtheme.CaptionSize)).MaxLines(1)
-						}
-					})
+					if s.Description != "" {
+						mgo.Text(c, s.Description).TextColor(k.TextMuted).
+							FontSize(mcore.FontSize(c, mtheme.CaptionSize)).MaxLines(1).Ellipsis("…")
+					}
 				})
 			})
 			if b.Clicked() {
@@ -228,7 +236,7 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 2).Children(func() {
+	mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 3).Children(func() {
 		var s *skill
 		for i := range cw.skills.list {
 			if cw.skills.list[i].ID == cw.skills.sel {
@@ -236,24 +244,30 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 			}
 		}
 		if s == nil {
-			mgo.Text(c, "从左侧选择一个 Skill 查看详情").TextColor(k.TextMuted)
+			mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u*2).Children(func() {
+				mgo.Icon(c, icons.Must("brain")).Size(36, 36).TextColor(k.TextMuted)
+				mgo.Text(c, "从左侧选择一个 Skill 查看详情").TextColor(k.TextMuted)
+			})
 			return
 		}
-		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			mgo.Text(c, s.Name).
-				FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
-			on := cw.skillEnabled(s.ID)
-			if mgo.Switch(c, &on).Label("启用").Changed() {
-				cw.setSkillEnabled(s.ID, on)
+		mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
+			mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
+				mgo.Text(c, s.Name).
+					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				on := cw.skillEnabled(s.ID)
+				if mgo.Switch(c, &on).Label("启用").Changed() {
+					cw.setSkillEnabled(s.ID, on)
+				}
+			})
+			if s.Description != "" {
+				mgo.Text(c, s.Description).TextColor(k.TextMuted).MaxLines(3)
 			}
-		})
-		if s.Description != "" {
-			mgo.Text(c, s.Description).TextColor(k.TextMuted)
-		}
-		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			agentTag(c, skillSourceLabel(s.Source))
-			mgo.Text(c, s.Path).Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).
-				SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+			mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
+				agentTag(c, skillSourceLabel(s.Source))
+				mgo.Text(c, filepath.Base(s.Path)).Font(mtheme.MonoFont).FontSize(caption).
+					TextColor(k.TextMuted).SingleLine().Ellipsis("…").Grow(1).MinWidth(0).
+					Tooltip(s.Path)
+			})
 		})
 		dir := filepath.Dir(s.Path)
 		if cw.skills.filesFor != s.ID {
@@ -266,9 +280,15 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 			cw.skills.fileSel = "SKILL.md"
 		}
 		if len(cw.skills.files) > 0 {
-			mgo.Scroll(c).MaxHeight(180).Children(func() {
-				cw.skillFileTree(c, dir)
-			})
+			mgo.Divider(c)
+			mgo.Text(c, "文件").FontWeight(600)
+			mgo.Column(c).FillWidth().
+				Radius(mtheme.ControlRadius).Border(mtheme.BorderWidth, k.Border).
+				Padding(u, u*2).Children(func() {
+					mgo.Scroll(c).MaxHeight(u * 40).Children(func() {
+						cw.skillFileTree(c, dir)
+					})
+				})
 		}
 		if cw.skills.fileBodyOf != cw.skills.fileSel {
 			data, err := os.ReadFile(filepath.Join(dir, cw.skills.fileSel))
@@ -279,6 +299,7 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 			}
 			cw.skills.fileBodyOf = cw.skills.fileSel
 		}
+		mgo.Divider(c)
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			if strings.HasSuffix(strings.ToLower(cw.skills.fileSel), ".md") {
 				kit.MarkdownView(c, cw.skills.fileBody)
@@ -320,7 +341,7 @@ func skillTreeInto(c *mgo.Context, dir, prefix string, files []string, sel strin
 	sort.Strings(names)
 	for _, name := range names {
 		n := name
-		open := mgo.Local(c.Root(), "skilldir:"+dir+"/"+prefix+n, func() bool { return true })
+		open := mgo.Local(c.Root(), "skilldir:"+dir+"/"+prefix+n, func() bool { return false })
 		kit.Collapsible(c, open, kit.CollapsibleOptions{Title: n}, func() {
 			mgo.Column(c).Margin(0, 0, 0, u*3).Children(func() {
 				skillTreeInto(c, dir, prefix+n+"/", sub[n], sel, onSelect)
@@ -332,17 +353,18 @@ func skillTreeInto(c *mgo.Context, dir, prefix string, files []string, sel strin
 func skillFileButton(c *mgo.Context, rel, sel string, onSelect func(string)) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	b := mgo.ButtonBase(c).Row().FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
-		Padding(u, u*2).Gap(u).AlignItems(mgo.Center).Justify(mgo.Start).Radius(mtheme.ControlRadius).Label(rel)
+	b := mgo.ButtonBase(c).Row().FillWidth().MinHeight(mtheme.MinHitSize).
+		Padding(u*0.5, u*1.5).Gap(u).AlignItems(mgo.Center).Justify(mgo.Start).
+		Radius(mtheme.ControlRadius).Label(rel)
 	switch {
 	case sel == rel:
-		b.Background(k.Selection)
+		b.Background(k.Selection).TextColor(k.Accent)
 	case b.Hovered():
 		b.Background(k.SurfaceHover)
 	}
 	b.Children(func() {
 		mgo.Icon(c, icons.Must("file-text")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
-		mgo.Text(c, filepath.Base(rel)).SingleLine()
+		mgo.Text(c, filepath.Base(rel)).SingleLine().MinWidth(0).Ellipsis("…")
 	})
 	if b.Clicked() {
 		onSelect(rel)
