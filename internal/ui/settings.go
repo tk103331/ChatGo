@@ -12,6 +12,7 @@ import (
 type settingsState struct {
 	tab         int
 	prov        providerForm
+	group       groupForm
 	mcp         mcpForm
 	builtin     builtinForm
 	shortcut    shortcutForm
@@ -45,12 +46,21 @@ type providerForm struct {
 	editing  int
 	name     string
 	typ      string
+	apiType  string
 	apiKey   string
 	baseURL  string
 	models   []string
 	newModel string
 	enabled  bool
 	preset   bool
+}
+
+type groupForm struct {
+	editing  int
+	name     string
+	strategy string
+	members  []config.GroupMember
+	enabled  bool
 }
 
 type mcpForm struct {

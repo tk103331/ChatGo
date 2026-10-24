@@ -13,6 +13,7 @@ import (
 // Config represents the application configuration
 type Config struct {
 	Providers         []Provider      `yaml:"providers"`
+	ProviderGroups    []ProviderGroup `yaml:"provider_groups,omitempty"`
 	MCPServers        []MCPServer     `yaml:"mcp_servers"`
 	BuiltinTools      []BuiltinTool   `yaml:"builtin_tools"`
 	CurrentProvider   string          `yaml:"current_provider"`
@@ -135,8 +136,203 @@ type Provider struct {
 	Model   string   `yaml:"model"`
 	Models  []string `yaml:"models,omitempty"`
 	Enabled bool     `yaml:"enabled"`
+	// APIType selects the upstream protocol of a custom provider: openai,
+	// openai_responses, claude or gemini. Requests are written with the OpenAI
+	// Chat format and converted to APIType, and the response is converted back.
+	APIType string `yaml:"api_type,omitempty"`
 	// Preset marks a shipped example whose name and type are fixed.
 	Preset bool `yaml:"preset,omitempty"`
+}
+
+const ProviderTypeCustom = "custom"
+
+// APITypes lists the upstream protocols a custom provider can speak.
+func APITypes() []string {
+	return []string{"openai", "openai_responses", "claude", "gemini"}
+}
+
+// GetAPITypeDisplayName returns the human-readable name of a custom API type.
+func GetAPITypeDisplayName(apiType string) string {
+	names := map[string]string{
+		"openai":           "OpenAI Chat Completions",
+		"openai_responses": "OpenAI Responses",
+		"claude":           "Claude Messages",
+		"gemini":           "Gemini generateContent",
+	}
+	if name, ok := names[apiType]; ok {
+		return name
+	}
+	return apiType
+}
+
+// EffectiveAPIType returns the downstream protocol of the provider: a custom
+// provider uses its configured APIType, everything else its own type. An empty
+// custom APIType falls back to OpenAI Chat Completions.
+func (p Provider) EffectiveAPIType() string {
+	if p.Type != ProviderTypeCustom {
+		return p.Type
+	}
+	if p.APIType != "" {
+		return p.APIType
+	}
+	return "openai"
+}
+
+// UsesConversion reports whether requests must be converted before they are
+// sent with an OpenAI Chat model, i.e. the upstream speaks another protocol.
+func (p Provider) UsesConversion() bool {
+	switch p.EffectiveAPIType() {
+	case "", "openai":
+		return false
+	}
+	return true
+}
+
+// ProviderGroup routes one logical model name over several provider endpoints.
+// Every member must name a custom provider; the members are tried in the order
+// the routing strategy picks.
+type ProviderGroup struct {
+	Name     string        `yaml:"name"`
+	Strategy string        `yaml:"strategy,omitempty"`
+	Members  []GroupMember `yaml:"members,omitempty"`
+	Enabled  bool          `yaml:"enabled"`
+}
+
+// GroupMember is one provider of a group together with the upstream models
+// selected for it. Every provider in a group speaks a custom API type.
+type GroupMember struct {
+	Provider string   `yaml:"provider"`
+	Models   []string `yaml:"models,omitempty"`
+}
+
+// Routing strategies of a provider group.
+const (
+	StrategyFallback   = "fallback"
+	StrategyRoundRobin = "round_robin"
+	StrategyRandom     = "random"
+)
+
+// GroupStrategies lists the routing strategies a provider group can use.
+func GroupStrategies() []string {
+	return []string{StrategyFallback, StrategyRoundRobin, StrategyRandom}
+}
+
+// GetStrategyDisplayName returns the human-readable name of a routing strategy.
+func GetStrategyDisplayName(strategy string) string {
+	names := map[string]string{
+		StrategyFallback:   "故障转移（按顺序重试）",
+		StrategyRoundRobin: "轮询（依次循环）",
+		StrategyRandom:     "随机",
+	}
+	if name, ok := names[strategy]; ok {
+		return name
+	}
+	return strategy
+}
+
+// EffectiveStrategy returns the group's strategy, defaulting to fallback.
+func (g ProviderGroup) EffectiveStrategy() string {
+	if g.Strategy == "" {
+		return StrategyFallback
+	}
+	return g.Strategy
+}
+
+// ModelsList returns the group's model names, one per distinct selected model.
+func (g ProviderGroup) ModelsList() []string {
+	out := make([]string, 0, len(g.Members))
+	for _, m := range g.Members {
+		for _, model := range m.Models {
+			if model != "" && !containsString(out, model) {
+				out = append(out, model)
+			}
+		}
+	}
+	return out
+}
+
+// MemberCount counts the members that selected at least one model.
+func (g ProviderGroup) MemberCount() int {
+	n := 0
+	for _, m := range g.Members {
+		if len(m.Models) > 0 {
+			n++
+		}
+	}
+	return n
+}
+
+// MatchModels reports whether the group can serve the given model name.
+func (g ProviderGroup) MatchModels(model string) bool {
+	return containsString(g.ModelsList(), model)
+}
+
+// Routes returns the endpoints to try for a model, ordered the way the
+// strategy picks them: every selected model of every member, starting at the
+// member the strategy chose. A member without the requested model falls back
+// to its other selected models.
+func (g ProviderGroup) Routes(model string, pick func(n int) int) []GroupMember {
+	n := len(g.Members)
+	if n == 0 {
+		return nil
+	}
+	start := 0
+	if pick != nil && n > 1 {
+		start = pick(n)
+	}
+	out := make([]GroupMember, 0, n)
+	for i := 0; i < n; i++ {
+		member := g.Members[(start+i)%n]
+		if len(member.Models) == 0 {
+			continue
+		}
+		ordered := append([]string(nil), member.Models...)
+		if model != "" {
+			ordered = append([]string{model}, removeString(ordered, model)...)
+		}
+		out = append(out, GroupMember{Provider: member.Provider, Models: ordered})
+	}
+	return out
+}
+
+// ProviderGroups returns the enabled, non-empty groups of a config.
+func (c *Config) EnabledGroups() []ProviderGroup {
+	out := make([]ProviderGroup, 0, len(c.ProviderGroups))
+	for _, g := range c.ProviderGroups {
+		if g.Enabled && g.Name != "" && len(g.Members) > 0 {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// FindProviderGroup looks a group up by name.
+func (c *Config) FindProviderGroup(name string) (ProviderGroup, bool) {
+	for _, g := range c.ProviderGroups {
+		if g.Name == name {
+			return g, true
+		}
+	}
+	return ProviderGroup{}, false
+}
+
+func removeString(list []string, v string) []string {
+	out := make([]string, 0, len(list))
+	for _, x := range list {
+		if x != v {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+func containsString(list []string, v string) bool {
+	for _, x := range list {
+		if x == v {
+			return true
+		}
+	}
+	return false
 }
 
 // ModelsList returns the provider's models, falling back to the single Model.
@@ -345,6 +541,7 @@ func ProviderPresets() []Provider {
 		{Name: "Qwen", Type: "qwen", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-max", Models: []string{"qwen-max"}, Enabled: false, Preset: true},
 		{Name: "DeepSeek", Type: "deepseek", BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat", Models: []string{"deepseek-chat"}, Enabled: false, Preset: true},
 		{Name: "Gemini", Type: "gemini", Model: "gemini-2.0-flash", Models: []string{"gemini-2.0-flash"}, Enabled: false, Preset: true},
+		{Name: "Custom", Type: ProviderTypeCustom, BaseURL: "https://api.example.com/v1", Model: "gpt-4o", Models: []string{"gpt-4o"}, APIType: "openai", Enabled: false, Preset: true},
 	}
 }
 
@@ -429,8 +626,11 @@ func loadFile(path string) (*Config, error) {
 		if len(p.Models) == 0 && p.Model != "" {
 			p.Models = []string{p.Model}
 		}
-		if p.Enabled && p.APIKey == "" && p.Type != "ollama" && p.Type != "custom" {
+		if p.Enabled && p.APIKey == "" && p.Type != "ollama" && p.Type != ProviderTypeCustom {
 			p.Enabled = false
+		}
+		if p.Type == ProviderTypeCustom && p.APIType == "" {
+			p.APIType = "openai"
 		}
 	}
 	for i := range config.Agents {

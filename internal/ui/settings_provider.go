@@ -22,15 +22,28 @@ func (cw *ChatWindow) providersTab(c *mgo.Context) {
 			mgo.Row(c).FillWidth().Justify(mgo.SpaceBetween).AlignItems(mgo.Center).Children(func() {
 				mgo.Text(c, "模型").
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
-				if kit.Button(c, "新增", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("plus")}).Clicked() {
-					cw.addNewProvider()
-				}
+				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+					if kit.Button(c, "新增模型", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("plus")}).Clicked() {
+						cw.addNewProvider()
+					}
+					if kit.Button(c, "新增组", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("plus")}).Clicked() {
+						cw.addNewGroup()
+					}
+				})
 			})
 			if len(cw.cfg.Providers) == 0 {
 				cw.providerEmptyState(c)
 			} else {
 				for i := range cw.cfg.Providers {
 					cw.providerCard(c, i)
+				}
+			}
+			if len(cw.cfg.ProviderGroups) > 0 {
+				mgo.Box(c).FillWidth().Height(1).Background(mcore.Tokens(c).Border)
+				mgo.Text(c, "模型组").
+					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600)
+				for i := range cw.cfg.ProviderGroups {
+					cw.groupCard(c, i)
 				}
 			}
 		})
@@ -122,8 +135,21 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 		for _, t := range providerTypes {
 			opts = append(opts, kit.SelectOption[string]{Value: t, Label: t})
 		}
+		prevType := f.typ
 		if r := kit.Select(c, &f.typ, opts, kit.SelectOptions{Placeholder: "类型", Label: "类型", Disabled: f.preset}); r.Changed() {
+			if f.typ == config.ProviderTypeCustom && prevType != config.ProviderTypeCustom {
+				f.apiType = "openai"
+			}
 			changed = true
+		}
+		if f.typ == config.ProviderTypeCustom {
+			apiOpts := make([]kit.SelectOption[string], 0, len(config.APITypes()))
+			for _, t := range config.APITypes() {
+				apiOpts = append(apiOpts, kit.SelectOption[string]{Value: t, Label: config.GetAPITypeDisplayName(t)})
+			}
+			if r := kit.Select(c, &f.apiType, apiOpts, kit.SelectOptions{Placeholder: "API 类型", Label: "API 类型"}); r.Changed() {
+				changed = true
+			}
 		}
 		if r := kit.PasswordInput(c, &f.apiKey, kit.PasswordInputOptions{Label: "API Key", Placeholder: "API Key"}); r.Changed() {
 			changed = true
@@ -172,7 +198,7 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 func (cw *ChatWindow) loadProviderForm(i int) {
 	p := cw.cfg.Providers[i]
 	cw.settings.prov = providerForm{
-		editing: i, name: p.Name, typ: p.Type, apiKey: p.APIKey,
+		editing: i, name: p.Name, typ: p.Type, apiType: p.EffectiveAPIType(), apiKey: p.APIKey,
 		baseURL: p.BaseURL, models: append([]string(nil), p.ModelsList()...), enabled: p.Enabled,
 		preset: p.Preset || providerIsPreset(p),
 	}
@@ -190,7 +216,7 @@ func providerIsPreset(p config.Provider) bool {
 }
 
 func (cw *ChatWindow) clearProviderForm() {
-	cw.settings.prov = providerForm{editing: -1, typ: "openai", enabled: false}
+	cw.settings.prov = providerForm{editing: -1, typ: "openai", apiType: "openai", enabled: false}
 }
 
 func (cw *ChatWindow) saveProvider() {
@@ -212,8 +238,11 @@ func (cw *ChatWindow) persistProvider() bool {
 		model = f.models[0]
 	}
 	p := config.Provider{
-		Name: f.name, Type: f.typ, APIKey: f.apiKey,
+		Name: f.name, Type: f.typ, APIType: f.apiType, APIKey: f.apiKey,
 		BaseURL: f.baseURL, Model: model, Models: append([]string(nil), f.models...), Enabled: f.enabled, Preset: f.preset,
+	}
+	if p.Type != config.ProviderTypeCustom {
+		p.APIType = ""
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Providers) {
 		cw.cfg.Providers[f.editing] = p

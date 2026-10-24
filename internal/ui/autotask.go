@@ -603,7 +603,7 @@ func (cw *ChatWindow) startAutoTask(i int) {
 	if cw.autoRunning[t.ID] {
 		return
 	}
-	client, react, err := cw.taskClient(t.Agent, t.Workspace)
+	client, react, groupClient, groupReact, err := cw.taskClient(t.Agent, t.Workspace)
 	if err != nil {
 		cw.cfg.AutoTasks[i].LastRun = time.Now()
 		cw.cfg.AutoTasks[i].LastNote = "失败: " + err.Error()
@@ -629,14 +629,29 @@ func (cw *ChatWindow) startAutoTask(i int) {
 		reasoning := ""
 		var runErr error
 		ctx := context.Background()
-		if react != nil {
+		switch {
+		case groupReact != nil:
+			resp, err := groupReact.Chat(ctx, msgs, nil, nil)
+			if resp != nil {
+				reply = resp.Content
+				reasoning = resp.Reasoning
+			}
+			runErr = err
+		case react != nil:
 			resp, err := react.Chat(ctx, msgs, nil, nil)
 			if resp != nil {
 				reply = resp.Content
 				reasoning = resp.Reasoning
 			}
 			runErr = err
-		} else {
+		case groupClient != nil:
+			resp, err := groupClient.Chat(ctx, msgs, nil)
+			if resp != nil {
+				reply = resp.Content
+				reasoning = resp.Reasoning
+			}
+			runErr = err
+		default:
 			resp, err := client.Chat(ctx, msgs, nil)
 			if resp != nil {
 				reply = resp.Content
@@ -697,11 +712,11 @@ func (cw *ChatWindow) ensureTaskConv(task *config.AutoTask) (*models.Conversatio
 }
 
 // taskClient builds a client for an agent without touching the active state.
-func (cw *ChatWindow) taskClient(agent, workspace string) (*llm.Client, *llm.ReactClient, error) {
+func (cw *ChatWindow) taskClient(agent, workspace string) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
 	return cw.taskClientWithChannel(agent, workspace, nil, nil)
 }
 
-func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext) (*llm.Client, *llm.ReactClient, error) {
+func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
 	provName, model, sys, ws, toolIDs := cw.taskAgentSpec(agent)
 	root := workspace
 	if root == "" {
@@ -710,12 +725,36 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 	if root == "" {
 		root = cw.fileRoot()
 	}
+	if g, ok := cw.cfg.FindProviderGroup(provName); ok {
+		if model == "" {
+			if ms := g.ModelsList(); len(ms) > 0 {
+				model = ms[0]
+			}
+		}
+		einoTools := cw.buildEinoTools(toolIDs, root)
+		if ch != nil {
+			einoTools = combineTools(einoTools, cw.buildChannelTools(ch, msgCtx))
+		}
+		if len(einoTools) > 0 {
+			rc, err := llm.NewGroupReactClient(g, cw.cfg.Providers, einoTools, &llm.ReactAgentConfig{MaxStep: cw.cfg.ReactAgentMaxStep, SystemPrompt: sys})
+			if err == nil {
+				return nil, nil, nil, rc, nil
+			}
+			log.Printf("[channel-agent] NewGroupReactClient failed: %v", err)
+		}
+		gc, err := llm.NewGroupClient(g, cw.cfg.Providers)
+		return nil, nil, gc, nil, err
+	}
 	p, ok := cw.findProvider(provName)
 	if !ok {
 		p, ok = cw.firstEnabled()
 	}
 	if !ok {
-		return nil, nil, fmt.Errorf("尚未配置模型")
+		if g, ok := cw.firstGroup(); ok {
+			gc, err := llm.NewGroupClient(g, cw.cfg.Providers)
+			return nil, nil, gc, nil, err
+		}
+		return nil, nil, nil, nil, fmt.Errorf("尚未配置模型")
 	}
 	if model == "" {
 		if ms := p.ModelsList(); len(ms) > 0 {
@@ -732,11 +771,11 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 		if err != nil {
 			log.Printf("[channel-agent] NewReactClientWithEinoTools failed: %v (tools=%d)", err, len(einoTools))
 		} else {
-			return nil, rc, nil
+			return nil, rc, nil, nil, nil
 		}
 	}
 	c, err := llm.NewClient(p)
-	return c, nil, err
+	return c, nil, nil, nil, err
 }
 
 // taskSystemPrompt returns the system prompt an agent runs with.

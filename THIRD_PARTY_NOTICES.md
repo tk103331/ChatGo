@@ -55,3 +55,11 @@ SOFTWARE.
 ## simple-icons (internal/ui/assets)
 
 Provider and agent brand marks. Source: https://simpleicons.org — CC0-1.0.
+
+## RelayKit (github.com/QuantumNous/new-api/relaykit)
+
+Converts chat requests and responses between the OpenAI Chat Completions,
+OpenAI Responses, Claude Messages and Gemini generateContent protocols for
+`custom` providers. Source: https://github.com/QuantumNous/new-api — GNU Affero
+General Public License v3.0. The full license text is available in the upstream
+repository.

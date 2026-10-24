@@ -182,23 +182,36 @@ func (cw *ChatWindow) runChannelLLMAgent(conv *models.Conversation, agent, works
 	if sys := cw.taskSystemPrompt(agent); sys != "" {
 		msgs = append([]llm.ChatMessage{{Role: "system", Content: sys}}, msgs...)
 	}
-	client, react, err := cw.taskClientWithChannel(agent, workspace, ch, msgCtx)
+	client, react, groupClient, groupReact, err := cw.taskClientWithChannel(agent, workspace, ch, msgCtx)
 	if err != nil {
 		done("⚠️ " + err.Error())
 		return
 	}
-	log.Printf("[channel-agent] agent=%q react=%v client=%v", agent, react != nil, client != nil)
+	log.Printf("[channel-agent] agent=%q react=%v client=%v group=%v groupReact=%v", agent, react != nil, client != nil, groupClient != nil, groupReact != nil)
 	go func() {
 		ctx := context.Background()
 		reply := ""
 		var runErr error
-		if react != nil {
+		switch {
+		case groupReact != nil:
+			resp, e := groupReact.Chat(ctx, msgs, nil, nil)
+			runErr = e
+			if resp != nil {
+				reply = resp.Content
+			}
+		case react != nil:
 			resp, e := react.Chat(ctx, msgs, nil, nil)
 			runErr = e
 			if resp != nil {
 				reply = resp.Content
 			}
-		} else {
+		case groupClient != nil:
+			resp, e := groupClient.Chat(ctx, msgs, nil)
+			runErr = e
+			if resp != nil {
+				reply = resp.Content
+			}
+		default:
 			resp, e := client.Chat(ctx, msgs, nil)
 			runErr = e
 			if resp != nil {

@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	github.com/Calcium-Ion/moejs v0.1.0-alpha.6
+	github.com/QuantumNous/new-api/relaykit v0.3.5
 	github.com/cloudwego/eino v0.7.21
 	github.com/cloudwego/eino-ext/components/model/claude v0.1.13
 	github.com/cloudwego/eino-ext/components/model/deepseek v0.1.2
@@ -95,11 +96,12 @@ require (
 	github.com/ollama/ollama v0.6.5 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/samber/lo v1.53.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/slongfield/pyfmt v0.0.0-20220222012616-ea85ff4c361f // indirect
 	github.com/spf13/cast v1.7.1 // indirect
-	github.com/tidwall/gjson v1.18.0 // indirect
+	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.2.5 // indirect

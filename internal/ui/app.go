@@ -135,8 +135,10 @@ type ChatWindow struct {
 
 	llmClient   *llm.Client
 	reactClient *llm.ReactClient
+	groupClient *llm.GroupClient
+	groupReact  *llm.GroupReactClient
 
-	streaming    bool
+	streaming bool
 	// streamingConvID is the conversation the running reply belongs to,
 	// which stays executing while another conversation is shown.
 	streamingConvID string

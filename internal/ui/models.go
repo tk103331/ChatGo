@@ -27,7 +27,8 @@ func modelLabel(ref string) string {
 	}
 }
 
-// allModelRefs lists every configured provider model.
+// allModelRefs lists every configured provider model, then every enabled
+// provider group model.
 func (cw *ChatWindow) allModelRefs() []string {
 	var out []string
 	for _, p := range cw.cfg.Providers {
@@ -36,6 +37,11 @@ func (cw *ChatWindow) allModelRefs() []string {
 		}
 		for _, m := range p.ModelsList() {
 			out = append(out, modelRef(p.Name, m))
+		}
+	}
+	for _, g := range cw.cfg.EnabledGroups() {
+		for _, m := range g.ModelsList() {
+			out = append(out, modelRef(g.Name, m))
 		}
 	}
 	return out
@@ -74,4 +80,37 @@ func (cw *ChatWindow) modelOptions(custom []string) []string {
 		}
 	}
 	return out
+}
+
+// defaultTarget returns the provider (or group) and model a new conversation
+// starts with: the active selection, falling back to the first enabled one.
+func (cw *ChatWindow) defaultTarget() (name, model string) {
+	name, model = cw.provider, cw.model
+	if name == "" {
+		if p, ok := cw.firstEnabled(); ok {
+			name = p.Name
+		} else if g, ok := cw.firstGroup(); ok {
+			name = g.Name
+		}
+	}
+	if model == "" {
+		model = cw.firstModelOf(name)
+	}
+	return name, model
+}
+
+// firstModelOf returns the first model of the named provider or group.
+func (cw *ChatWindow) firstModelOf(name string) string {
+	if g, ok := cw.cfg.FindProviderGroup(name); ok {
+		if ms := g.ModelsList(); len(ms) > 0 {
+			return ms[0]
+		}
+		return ""
+	}
+	if p, ok := cw.findProvider(name); ok {
+		if ms := p.ModelsList(); len(ms) > 0 {
+			return ms[0]
+		}
+	}
+	return ""
 }

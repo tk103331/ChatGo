@@ -61,18 +61,7 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 	if aw := cw.agentWorkspace(agent); aw != "" {
 		ws = aw
 	}
-	name := cw.provider
-	if name == "" {
-		if p, ok := cw.firstEnabled(); ok {
-			name = p.Name
-		}
-	}
-	model := cw.model
-	if p, ok := cw.findProvider(name); ok && model == "" {
-		if ms := p.ModelsList(); len(ms) > 0 {
-			model = ms[0]
-		}
-	}
+	name, model := cw.defaultTarget()
 	conv, err := cw.convManager.CreateConversation(defaultTitle, name, model)
 	if err != nil {
 		cw.status = "创建会话失败: " + err.Error()
@@ -223,18 +212,7 @@ func (cw *ChatWindow) newAppConversation(id string) {
 	if !ok {
 		return
 	}
-	name := cw.provider
-	if name == "" {
-		if p, ok := cw.firstEnabled(); ok {
-			name = p.Name
-		}
-	}
-	model := cw.model
-	if p, ok := cw.findProvider(name); ok && model == "" {
-		if ms := p.ModelsList(); len(ms) > 0 {
-			model = ms[0]
-		}
-	}
+	name, model := cw.defaultTarget()
 	conv, err := cw.convManager.CreateConversation(a.Title, name, model)
 	if err != nil {
 		cw.status = "创建应用会话失败: " + err.Error()
@@ -296,8 +274,12 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 		})
 	}
 	switch {
+	case cw.groupReact != nil:
+		resp, err = cw.groupReact.Chat(ctx, msgs, onChunk, onTool, onReasoning)
 	case cw.reactClient != nil:
 		resp, err = cw.reactClient.Chat(ctx, msgs, onChunk, onTool, onReasoning)
+	case cw.groupClient != nil:
+		resp, err = cw.groupClient.Chat(ctx, msgs, onChunk, onReasoning)
 	case cw.llmClient != nil:
 		resp, err = cw.llmClient.Chat(ctx, msgs, onChunk, onReasoning)
 	default:
@@ -375,25 +357,35 @@ func (cw *ChatWindow) generateTitle(conv *models.Conversation) {
 	if user == "" || assistant == "" || strings.HasPrefix(assistant, "⚠️") {
 		return
 	}
-	provider, ok := cw.findProvider(turnProvider(conv))
-	if !ok {
-		provider, ok = cw.firstEnabled()
-	}
-	if !ok {
-		return
-	}
-	if m := turnModel(conv); m != "" {
-		provider.Model = m
-	}
-	client, err := llm.NewClient(provider)
-	if err != nil {
-		return
+	var chat func(context.Context, []llm.ChatMessage) (*llm.ChatResponse, error)
+	if g, ok := cw.cfg.FindProviderGroup(turnProvider(conv)); ok {
+		gc, err := llm.NewGroupClient(g, cw.cfg.Providers)
+		if err != nil {
+			return
+		}
+		chat = gc.ChatNonBlocking
+	} else {
+		provider, ok := cw.findProvider(turnProvider(conv))
+		if !ok {
+			provider, ok = cw.firstEnabled()
+		}
+		if !ok {
+			return
+		}
+		if m := turnModel(conv); m != "" {
+			provider.Model = m
+		}
+		client, err := llm.NewClient(provider)
+		if err != nil {
+			return
+		}
+		chat = client.ChatNonBlocking
 	}
 	go func() {
-		resp, err := client.Chat(context.Background(), []llm.ChatMessage{
+		resp, err := chat(context.Background(), []llm.ChatMessage{
 			{Role: "system", Content: titleSystemPrompt},
 			{Role: "user", Content: "用户：" + user + "\n助手：" + assistant},
-		}, nil)
+		})
 		if err != nil || resp == nil {
 			return
 		}

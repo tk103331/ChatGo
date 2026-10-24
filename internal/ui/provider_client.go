@@ -39,11 +39,20 @@ func (cw *ChatWindow) firstEnabled() (config.Provider, bool) {
 // With agent mode on it builds a React agent carrying the selected tools.
 
 func (cw *ChatWindow) setupProvider(name string) {
+	if g, ok := cw.cfg.FindProviderGroup(name); ok {
+		cw.setupGroup(g)
+		return
+	}
+	cw.groupClient, cw.groupReact = nil, nil
 	p, ok := cw.findProvider(name)
 	if !ok {
 		p, ok = cw.firstEnabled()
 	}
 	if !ok {
+		if g, ok := cw.firstGroup(); ok {
+			cw.setupGroup(g)
+			return
+		}
 		cw.llmClient, cw.reactClient = nil, nil
 		cw.status = "尚未配置模型，请在设置中添加 Provider"
 		return
@@ -77,21 +86,62 @@ func (cw *ChatWindow) setupProvider(name string) {
 	cw.status = ""
 }
 
+// setupGroup builds the routing client for a provider group.
+func (cw *ChatWindow) setupGroup(g config.ProviderGroup) {
+	cw.provider = g.Name
+	cw.cfg.CurrentProvider = g.Name
+	if ms := g.ModelsList(); len(ms) > 0 && !containsStr(ms, cw.model) {
+		cw.model = ms[0]
+	}
+	if cw.model == "" {
+		if ms := g.ModelsList(); len(ms) > 0 {
+			cw.model = ms[0]
+		}
+	}
+	if cw.model == "" {
+		cw.llmClient, cw.reactClient, cw.groupClient, cw.groupReact = nil, nil, nil, nil
+		cw.status = "模型组「" + g.Name + "」尚未配置模型"
+		return
+	}
+	if cw.agentMode || len(cw.selectedToolIDs()) > 0 {
+		einoTools, systemPrompt := cw.agentToolsAndPrompt()
+		rc, err := llm.NewGroupReactClient(g, cw.cfg.Providers, einoTools, &llm.ReactAgentConfig{
+			MaxStep:      cw.cfg.ReactAgentMaxStep,
+			SystemPrompt: systemPrompt,
+		})
+		if err == nil {
+			cw.llmClient, cw.reactClient, cw.groupClient = nil, nil, nil
+			cw.groupReact = rc
+			cw.status = ""
+			return
+		}
+	}
+	c, err := llm.NewGroupClient(g, cw.cfg.Providers)
+	if err != nil {
+		cw.llmClient, cw.reactClient, cw.groupClient, cw.groupReact = nil, nil, nil, nil
+		cw.status = "模型组初始化失败: " + err.Error()
+		return
+	}
+	cw.llmClient, cw.reactClient, cw.groupReact = nil, nil, nil
+	cw.groupClient = c
+	cw.status = ""
+}
+
+// firstGroup returns the first enabled provider group, used when no provider
+// is enabled but a group is.
+func (cw *ChatWindow) firstGroup() (config.ProviderGroup, bool) {
+	if groups := cw.cfg.EnabledGroups(); len(groups) > 0 {
+		return groups[0], true
+	}
+	return config.ProviderGroup{}, false
+}
+
 // setupReactAgent builds the tool-enabled React agent from cfg and tool state.
 // An App conversation carries only that App's tools; every other conversation
 // carries the selected builtin and MCP tools.
 
 func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
-	var einoTools []tool.BaseTool
-	if cw.currentApp != "" {
-		einoTools = cw.buildAppTools(cw.currentApp)
-	} else {
-		einoTools = cw.buildEinoTools(cw.selectedToolIDs(), cw.fileRoot())
-	}
-	systemPrompt := cw.systemPrompt
-	if systemPrompt == "" {
-		systemPrompt = defaultSystemPrompt
-	}
+	einoTools, systemPrompt := cw.agentToolsAndPrompt()
 	agentConfig := &llm.ReactAgentConfig{
 		MaxStep:      cw.cfg.ReactAgentMaxStep,
 		SystemPrompt: systemPrompt,
@@ -321,3 +371,19 @@ func (cw *ChatWindow) initMCPServers() {
 }
 
 // workspaces lists the configured workspaces, the current one first.
+
+// agentToolsAndPrompt returns the tools and system prompt of the current
+// agent, app or built-in chat, used by both client builders.
+func (cw *ChatWindow) agentToolsAndPrompt() ([]tool.BaseTool, string) {
+	var einoTools []tool.BaseTool
+	if cw.currentApp != "" {
+		einoTools = cw.buildAppTools(cw.currentApp)
+	} else {
+		einoTools = cw.buildEinoTools(cw.selectedToolIDs(), cw.fileRoot())
+	}
+	systemPrompt := cw.systemPrompt
+	if systemPrompt == "" {
+		systemPrompt = defaultSystemPrompt
+	}
+	return einoTools, systemPrompt
+}

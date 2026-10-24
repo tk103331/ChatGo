@@ -31,6 +31,14 @@ func NewClient(provider config.Provider) (*Client, error) {
 
 	ctx := context.Background()
 
+	if provider.UsesConversion() {
+		converted, err := newConvertedChatModel(provider)
+		if err != nil {
+			return nil, err
+		}
+		return &Client{provider: provider, model: converted}, nil
+	}
+
 	switch provider.Type {
 	case "openai", "custom":
 		// OpenAI and custom providers use OpenAI-compatible API
@@ -193,9 +201,7 @@ func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message,
 		if chunk == nil {
 			continue
 		}
-		if chunk.ResponseMeta != nil && chunk.ResponseMeta.Usage != nil {
-			usage = chunk.ResponseMeta.Usage
-		}
+		takeUsage(&usage, chunk)
 		if chunk.Content != "" {
 			fullContent.WriteString(chunk.Content)
 			onChunk(chunk.Content)

@@ -13,6 +13,7 @@ A simple cross-platform AI chat client built with Go and [MyGo](https://github.c
 - 🎨 **Native UI** - MyGo's GPU-drawn interface and its own light and dark themes, with a self-drawn title bar
 - 🏠 **Quick Start Home** - Centered composer with capability cards and project (workspace) / Agent selectors
 - 🤖 **Multi-Provider, Multi-Model** - OpenAI, Anthropic, Claude, Ollama, Qwen, DeepSeek, Gemini and any OpenAI-compatible API. Each provider holds a list of models; every type ships a disabled example config with its brand logo
+- 🧵 **Provider Groups** - Bundle the models of several providers into one logical model name and route across them with fallback, round-robin or random selection
 - 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills) and ACP Agents (local coding CLIs)
 - 🔧 **Tools & MCP** - Built-in tools and whole MCP servers toggle per chat/agent, with search; an MCP marketplace is bundled
 - 📚 **Skills** - Scans local SKILL directories, with per-agent selection and search
@@ -74,9 +75,28 @@ go install github.com/tk103331/ChatGo@latest
 | **Qwen** | `qwen` | Alibaba Tongyi Qianwen |
 | **DeepSeek** | `deepseek` | DeepSeek AI |
 | **Gemini** | `gemini` | Google Gemini |
-| **Custom** | `custom` | Any OpenAI-compatible API |
+| **Custom** | `custom` | Any API; `api_type` selects the upstream protocol (`openai`, `openai_responses`, `claude`, `gemini`) and requests/responses are converted with [RelayKit](https://github.com/QuantumNous/new-api/blob/main/relaykit/README.md) |
 
 Each provider can list several models, and the model selector shows them all.
+
+### Provider Groups
+
+A provider group bundles several providers into one logical model name, which
+the model selector then offers like any other model. Every member names a
+provider and the models it should serve; pick a provider first, then tick the
+models it contributes. Three routing strategies are available:
+
+| Strategy | Key | Behaviour |
+|----------|-----|-----------|
+| Fallback | `fallback` | Always try the first member, move to the next one when a request fails before producing output |
+| Round-robin | `round_robin` | Rotate the starting member on every request, then fall back through the rest |
+| Random | `random` | Pick a random starting member, then fall back through the rest |
+
+When the selected model is not served by the first member, that member falls
+back to its other selected models instead of being skipped. Failures that happen
+after a member already streamed text or ran a tool are not retried, because
+their output was already delivered. Create and edit groups
+with the **新增组** button on the **Settings → Models** page.
 
 ### Configuration File
 
@@ -99,6 +119,24 @@ providers:
     model: "llama3.2"
     enabled: true
 
+  # custom: any upstream protocol, converted by RelayKit
+  - name: "MyClaudeProxy"
+    type: "custom"
+    api_type: "claude"          # openai | openai_responses | claude | gemini
+    api_key: "sk-..."
+    base_url: "https://proxy.example.com"
+    model: "claude-sonnet-4-5"
+    models: ["claude-sonnet-4-5"]
+    enabled: true
+
+provider_groups:
+  - name: "Claude Pool"
+    strategy: "fallback"       # fallback | round_robin | random
+    enabled: true
+    members:
+      - provider: "MyClaudeProxy"
+        models: ["claude-sonnet-4-5"]
+
 mcp_servers: []
 current_provider: "OpenAI"
 ```
@@ -106,6 +144,7 @@ current_provider: "OpenAI"
 ### Configure in UI
 
 - **Settings → Models**: add/edit providers and their model lists (each row shows the provider logo)
+- **Settings → Models → 新增组**: bundle the models of several providers into one routed model name
 - **Settings → Built-in tools**: enable built-in tools and fill their config
 - **Settings → ACP**: manage local ACP connections (Claude Code, OpenCode, …)
 - **Settings → Appearance**: theme mode and language
@@ -172,7 +211,7 @@ ChatGo/
 │       ├── acp_client.go    # ACP client callbacks and session updates
 │       ├── acp_session.go   # ACP session lifecycle and runtime
 │       ├── terminal.go      # Multi-tab terminal panel
-│       ├── settings*.go     # Settings tabs (providers, mcp, tools, appearance, channels)
+│       ├── settings*.go     # Settings tabs (providers and groups, mcp, tools, appearance, channels)
 │       ├── selection.go     # Availability whitelists
 │       ├── models.go        # Model references
 │       ├── theme.go         # Appearance persistence

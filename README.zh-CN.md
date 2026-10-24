@@ -74,9 +74,23 @@ go install github.com/tk103331/ChatGo@latest
 | **Qwen** | `qwen` | 阿里通义千问 |
 | **DeepSeek** | `deepseek` | DeepSeek AI |
 | **Gemini** | `gemini` | Google Gemini |
-| **Custom** | `custom` | 任何 OpenAI 兼容的 API |
+| **Custom** | `custom` | 任意 API；通过 `api_type` 选择上游协议（`openai`、`openai_responses`、`claude`、`gemini`），请求与响应由 [RelayKit](https://github.com/QuantumNous/new-api/blob/main/relaykit/README.md) 转换 |
 
 每个 Provider 可列出多个模型，模型选择器会全部列出。
+
+### 模型组
+
+模型组把多个模型聚合成一个逻辑模型名，在模型选择器里与普通模型一样可选。
+每个成员先选 Provider，再勾选该 Provider 下要参与路由的模型。支持三种路由策略：
+
+| 策略 | 取值 | 行为 |
+|------|------|------|
+| 故障转移 | `fallback` | 固定先请求第一个成员，未产生任何输出就失败时换下一个 |
+| 轮询 | `round_robin` | 每次请求轮换起始成员，失败后按顺序重试其余成员 |
+| 随机 | `random` | 随机选择起始成员，失败后按顺序重试其余成员 |
+
+当所选模型不在某个成员下时，该成员改用它自己勾选的其他模型，而不是被跳过。
+已经流式输出或执行过工具的请求不会重试，避免重复输出。在**设置 → 模型**页点击**新增组**创建和编辑模型组。
 
 ### 配置文件
 
@@ -99,6 +113,24 @@ providers:
     model: "llama3.2"
     enabled: true
 
+  # custom：任意上游协议，由 RelayKit 转换
+  - name: "MyClaudeProxy"
+    type: "custom"
+    api_type: "claude"          # openai | openai_responses | claude | gemini
+    api_key: "sk-..."
+    base_url: "https://proxy.example.com"
+    model: "claude-sonnet-4-5"
+    models: ["claude-sonnet-4-5"]
+    enabled: true
+
+provider_groups:
+  - name: "Claude Pool"
+    strategy: "fallback"       # fallback | round_robin | random
+    enabled: true
+    members:
+      - provider: "MyClaudeProxy"
+        models: ["claude-sonnet-4-5"]
+
 mcp_servers: []
 current_provider: "OpenAI"
 ```
@@ -106,6 +138,7 @@ current_provider: "OpenAI"
 ### 在界面中配置
 
 - **设置 → 模型**：增删 Provider 及其模型列表（每行显示 Provider logo）
+- **设置 → 模型 → 新增组**：把多个 Provider 的模型聚合成一个带路由策略的模型名
 - **设置 → 内置工具**：启用内置工具并填写配置
 - **设置 → ACP**：管理本地 ACP 连接（Claude Code、OpenCode 等）
 - **设置 → 外观**：主题模式与语言

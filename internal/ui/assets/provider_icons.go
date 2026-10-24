@@ -33,5 +33,8 @@ func ProviderLogo(typ string) *mgo.SVG {
 			}
 		}
 	})
-	return providerLogos[typ]
+	if svg, ok := providerLogos[typ]; ok {
+		return svg
+	}
+	return providerLogos["openai"]
 }
