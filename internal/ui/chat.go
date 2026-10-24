@@ -146,8 +146,9 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 						FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
 				})
 			}
+			streaming := cw.streaming && cw.cur != nil && cw.streamingConvID == cw.cur.ID
 			r := kit.SendButton(c, kit.SendButtonOptions{
-				Streaming: cw.streaming,
+				Streaming: streaming,
 				Disabled:  initializing || strings.TrimSpace(cw.draft) == "",
 			})
 			if r.Sent() {

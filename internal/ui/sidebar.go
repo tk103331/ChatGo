@@ -264,7 +264,9 @@ func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	mgo.Row(c).FillWidth().Margin(0, 0, 0, mcore.Density(c).Unit()*3).AlignItems(mgo.Center).Children(func() {
 		cw.convLeading(c, conv, 16)
 		mgo.Box(c).Grow(1).MinWidth(0).Children(func() {
-			v = kit.ConversationItem(c, &mc, kit.ConversationItemOptions{Selected: selected})
+			v = kit.ConversationItem(c, &mc, kit.ConversationItemOptions{
+				Selected: selected, Status: cw.convStatusOf(conv.ID),
+			})
 		})
 	})
 	switch {
@@ -278,6 +280,32 @@ func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	case v.Deleted:
 		cw.askDeleteConversation(conv.ID, conv.Title)
 	}
+}
+
+// convStatusOf reports the conversation's runtime phase: a waiting permission
+// outranks a running reply or task, and an idle conversation shows no light.
+func (cw *ChatWindow) convStatusOf(convID string) kit.ConversationStatus {
+	if convID == "" {
+		return kit.ConvIdle
+	}
+	cw.acp.mu.Lock()
+	waiting := false
+	if cw.acp.permissionShow && cw.acp.permissionReq != nil {
+		waiting = cw.acp.convBySess[cw.acp.permissionReq.SessionId] == convID
+	}
+	cw.acp.mu.Unlock()
+	if waiting {
+		return kit.ConvWaiting
+	}
+	if cw.streaming && cw.streamingConvID == convID {
+		return kit.ConvRunning
+	}
+	for _, t := range cw.cfg.AutoTasks {
+		if t.ConvID == convID && cw.autoRunning[t.ID] {
+			return kit.ConvRunning
+		}
+	}
+	return kit.ConvIdle
 }
 
 // exportConversation copies the conversation as Markdown to the clipboard.

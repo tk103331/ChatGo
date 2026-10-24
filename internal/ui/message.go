@@ -22,7 +22,8 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 		cw.editMessage(c, i, msg)
 		return
 	}
-	streaming := cw.streaming && cw.cur != nil && i == len(cw.cur.Messages)-1 && msg.Role == "assistant"
+	streaming := cw.streaming && cw.cur != nil && cw.streamingConvID == cw.cur.ID &&
+		i == len(cw.cur.Messages)-1 && msg.Role == "assistant"
 	role := roleOf(msg)
 	opts := kit.MessageBubbleOptions{MaxWidth: 900}
 	if role == kit.MessageAssistant {
@@ -315,6 +316,8 @@ func (cw *ChatWindow) appendTurn(conv *models.Conversation, userMsg, reply model
 
 func (cw *ChatWindow) streamFrom(conv *models.Conversation, i int) {
 	cw.streaming = true
+	cw.streamingConvID = conv.ID
+	cw.invalidate()
 	cw.msgList.ScrollToEnd()
 	if strings.HasPrefix(conv.Agent, "acp:") {
 		_ = cw.convManager.SaveConversation(conv)

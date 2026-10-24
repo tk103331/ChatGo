@@ -137,7 +137,10 @@ type ChatWindow struct {
 	reactClient *llm.ReactClient
 
 	streaming    bool
-	streamCancel context.CancelFunc
+	// streamingConvID is the conversation the running reply belongs to,
+	// which stays executing while another conversation is shown.
+	streamingConvID string
+	streamCancel    context.CancelFunc
 
 	toolOn  map[string]bool
 	skillOn map[string]bool

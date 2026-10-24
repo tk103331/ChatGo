@@ -165,6 +165,8 @@ func (cw *ChatWindow) sendDraft() {
 	_ = cw.convManager.SaveConversation(conv)
 	cw.msgList.ScrollToEnd()
 	cw.streaming = true
+	cw.streamingConvID = conv.ID
+	cw.invalidate()
 	if strings.HasPrefix(conv.Agent, "acp:") {
 		cw.reloadConvs()
 		cw.acpChatStart(conv, strings.TrimPrefix(conv.Agent, "acp:"), idx, text)
@@ -323,6 +325,7 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 			t.EndedAt = time.Now()
 		}
 		cw.streaming = false
+		cw.streamingConvID = ""
 		cw.streamCancel = nil
 		conv.UpdatedAt = time.Now()
 		_ = cw.convManager.SaveConversation(conv)

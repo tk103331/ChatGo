@@ -299,12 +299,26 @@ type ChatConversation struct {
 	Updated   time.Time
 }
 
+// ConversationStatus is a conversation's runtime phase, shown as a light
+// beside its title.
+type ConversationStatus int
+
+const (
+	// ConvIdle shows no light.
+	ConvIdle ConversationStatus = iota
+	// ConvRunning means the agent is executing: a reply streams or a task runs.
+	ConvRunning
+	// ConvWaiting means the agent waits for the user, as before a permission.
+	ConvWaiting
+)
+
 // ConversationItemOptions configure a ConversationItem.
 type ConversationItemOptions struct {
 	// Today decides the time stamp; zero uses the window clock.
 	Today    uikit.Date
 	Selected bool
 	Disabled bool
+	Status   ConversationStatus
 }
 
 // ConversationItemView is a built ConversationItem and its requests.
@@ -363,6 +377,12 @@ func ConversationItem(c *mgo.Context, conv *ChatConversation, opts ConversationI
 			}
 			main.Transition(uikit.ColorFade)
 			main.Children(func() {
+				switch opts.Status {
+				case ConvRunning:
+					mgo.Box(c).Size(u*1.5, u*1.5).Shrink(0).Radius(u * 0.75).Background(k.Success)
+				case ConvWaiting:
+					mgo.Box(c).Size(u*1.5, u*1.5).Shrink(0).Radius(u * 0.75).Background(k.Warning)
+				}
 				t := mgo.Text(c, title).SingleLine().Grow(1).MinWidth(0)
 				if opts.Selected {
 					t.TextColor(k.Accent)

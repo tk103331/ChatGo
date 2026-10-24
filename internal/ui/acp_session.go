@@ -235,6 +235,7 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 	if !ok {
 		conv.Messages[idx].Content = "⚠️ 未找到 ACP 连接：" + connName
 		cw.streaming = false
+		cw.streamingConvID = ""
 		return
 	}
 	cw.acp.convObj[conv.ID] = conv
@@ -244,6 +245,7 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 			cw.postMain(func() {
 				conv.Messages[idx].Content = "⚠️ " + err.Error()
 				cw.streaming = false
+				cw.streamingConvID = ""
 				_ = cw.convManager.SaveConversation(conv)
 			})
 			return
@@ -262,6 +264,7 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 				t.EndedAt = time.Now()
 			}
 			cw.streaming = false
+			cw.streamingConvID = ""
 			conv.UpdatedAt = time.Now()
 			_ = cw.convManager.SaveConversation(conv)
 			cw.reloadConvs()
