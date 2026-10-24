@@ -76,6 +76,9 @@ type Conversation struct {
 	ACPConfig map[string]string `json:"acp_config,omitempty"`
 	Skills    []string          `json:"skills,omitempty"`
 	TaskID    string            `json:"task_id,omitempty"`
+	// TaskStatus is the last auto-task run's outcome on this conversation:
+	// "success" or "failed", empty for a conversation without a run.
+	TaskStatus string `json:"task_status,omitempty"`
 }
 
 // ConversationManager manages conversation storage

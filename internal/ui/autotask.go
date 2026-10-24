@@ -142,22 +142,28 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 			mgo.Row(c).Gap(u / 2).AlignItems(mgo.Center).Children(func() {
 				mgo.Text(c, "运行中…").FontSize(caption).TextColor(k.Accent)
 			})
-		} else if !t.LastRun.IsZero() {
-			mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-				if t.LastNote != "" {
-					mgo.Text(c, t.LastNote).FontSize(caption).TextColor(dotCol).Shrink(0)
+		} else {
+			mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+				statusIcon, statusText, statusColor := "circle", "尚未运行", k.TextMuted
+				switch {
+				case strings.HasPrefix(t.LastNote, "失败"):
+					statusIcon, statusText, statusColor = "circle-x", "失败", k.Danger
+				case strings.HasPrefix(t.LastNote, "成功"):
+					statusIcon, statusText, statusColor = "circle-check", "成功", k.Success
 				}
-				mgo.Text(c, "上次: "+t.LastRun.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-				nr := nextRun(t.Schedule, t.LastRun)
-				if !nr.IsZero() {
-					mgo.Text(c, "下次: "+nr.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+				mgo.Icon(c, icons.Must(statusIcon)).Size(14, 14).TextColor(statusColor).Shrink(0)
+				mgo.Text(c, statusText).FontSize(caption).TextColor(statusColor).Shrink(0)
+				if !t.LastRun.IsZero() {
+					mgo.Text(c, "上次 "+t.LastRun.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+				}
+				from := t.LastRun
+				if from.IsZero() {
+					from = time.Now()
+				}
+				if nr := nextRun(t.Schedule, from); !nr.IsZero() {
+					mgo.Text(c, "下次 "+nr.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
 				}
 			})
-		} else {
-			nr := nextRun(t.Schedule, time.Now())
-			if !nr.IsZero() {
-				mgo.Text(c, "下次: "+nr.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted)
-			}
 		}
 
 		mgo.Row(c).Gap(u).Children(func() {
@@ -205,7 +211,7 @@ func (cw *ChatWindow) autoTaskConvsDialog(c *mgo.Context) {
 	}
 	kit.Dialog(c, &cw.autoConvsOpen, kit.DialogOptions{
 		Title: title,
-		Width: 520,
+		Width: 640,
 	}, func() {
 		mgo.Column(c).Gap(u * 2).Children(func() {
 			if len(cw.autoConvs) == 0 {
@@ -216,18 +222,62 @@ func (cw *ChatWindow) autoTaskConvsDialog(c *mgo.Context) {
 				mgo.Column(c).Gap(u).Children(func() {
 					for _, conv := range cw.autoConvs {
 						conv := conv
-						b := mgo.ButtonBase(c).FillWidth().Justify(mgo.Start).Gap(u).MinHeight(mcore.Density(c).ControlHeight()).
-							Padding(u, u*2).Radius(mtheme.ControlRadius)
-						b.Children(func() {
-							mgo.Icon(c, icons.Must("message-square")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
-							mgo.Text(c, conv.Title).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
-							mgo.Text(c, convLast(conv).Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
-							mgo.Icon(c, icons.Must("chevron-right")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
-						})
-						if b.Clicked() {
-							cw.autoConvsOpen = false
-							cw.openConversation(conv.ID)
+						open := mgo.Local(c.Root(), "autoconv:"+conv.ID, func() bool { return false })
+						last := ""
+						if n := len(conv.Messages); n > 0 {
+							last = strings.TrimSpace(conv.Messages[n-1].Content)
 						}
+						mgo.Column(c).FillWidth().Gap(u).Children(func() {
+							mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
+								trig := mgo.ButtonBase(c).Key(conv.ID).Grow(1).Basis(0).MinWidth(0).
+									Gap(u).AlignItems(mgo.Center).Justify(mgo.Start).
+									Padding(u, u*2).Radius(mtheme.ControlRadius).
+									Label(conv.Title)
+								if trig.Hovered() {
+									trig.Background(k.SurfaceHover)
+								}
+								trig.Children(func() {
+									arrow := "chevron-right"
+									if *open {
+										arrow = "chevron-down"
+									}
+									mgo.Icon(c, icons.Must(arrow)).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
+									mgo.Icon(c, icons.Must("message-square")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
+									mgo.Text(c, conv.Title).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
+									switch conv.TaskStatus {
+									case "failed":
+										mgo.Icon(c, icons.Must("circle-x")).Size(14, 14).TextColor(k.Danger).Shrink(0)
+										mgo.Text(c, "失败").FontSize(caption).TextColor(k.Danger).Shrink(0)
+									case "success":
+										mgo.Icon(c, icons.Must("circle-check")).Size(14, 14).TextColor(k.Success).Shrink(0)
+										mgo.Text(c, "成功").FontSize(caption).TextColor(k.Success).Shrink(0)
+									default:
+										mgo.Icon(c, icons.Must("circle")).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
+										mgo.Text(c, "未运行").FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+									}
+									mgo.Text(c, convLast(conv).Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+								})
+								if trig.Clicked() && last != "" {
+									*open = !*open
+								}
+								if kit.Button(c, "进入对话", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+									cw.autoConvsOpen = false
+									cw.openConversation(conv.ID)
+								}
+							})
+							if *open && last != "" {
+								mgo.Column(c).FillWidth().Padding(u*2, u*3).Gap(u).
+									Radius(mtheme.ControlRadius).Background(k.Surface).
+									Children(func() {
+										color := k.Text
+										if strings.HasPrefix(last, "⚠️") {
+											color = k.Danger
+										}
+										mgo.Text(c, last).FontSize(caption).TextColor(color).
+											Font(mtheme.MonoFont).MaxLines(6)
+									})
+							}
+						})
 					}
 				})
 			})
@@ -257,52 +307,125 @@ func (cw *ChatWindow) autoTaskEditor(c *mgo.Context) {
 			}
 		})
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			mgo.Column(c).FillWidth().AlignItems(mgo.Center).Children(func() {
-				mgo.Column(c).FillWidth().MaxWidth(760).Gap(u * 2).Children(func() {
-					kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "任务名称"})
-					agentOpts := []kit.SelectOption[string]{{Value: "", Label: chatAgentName}}
-					for _, a := range cw.cfg.Agents {
-						agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
-					}
-					kit.Select(c, &f.agent, agentOpts, kit.SelectOptions{Label: "Agent"})
-					kit.TextArea(c, &f.prompt, kit.TextAreaOptions{Label: "提示词", Placeholder: "每次运行发送给 Agent 的内容", MinHeight: 120})
-					mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-						in := kit.TextInput(c, &f.workspace, kit.TextInputOptions{Label: "工作目录", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})
-						in.Element.Grow(1)
-						if kit.Button(c, "选择", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
-							cw.pickDirectory("选择工作目录", func(path string) { f.workspace = path })
-						}
+			mgo.Column(c).FillWidth().AlignItems(mgo.Center).Padding(0, 0, u*4, 0).Children(func() {
+				mgo.Column(c).FillWidth().MaxWidth(760).Gap(u * 3).Children(func() {
+					autoFormGroup(c, "基本信息", func() {
+						formField(c, "名称", func() {
+							kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "任务名称"})
+						})
+						formField(c, "Agent", func() {
+							agentOpts := []kit.SelectOption[string]{{Value: "", Label: chatAgentName}}
+							for _, a := range cw.cfg.Agents {
+								agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
+							}
+							kit.Select(c, &f.agent, agentOpts, kit.SelectOptions{Label: "Agent"})
+						})
+						formField(c, "提示词", func() {
+							kit.TextArea(c, &f.prompt, kit.TextAreaOptions{Label: "提示词", Placeholder: "每次运行发送给 Agent 的内容", MinHeight: 120})
+						})
+						formField(c, "工作目录", func() {
+							mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.End).Children(func() {
+								in := kit.TextInput(c, &f.workspace, kit.TextInputOptions{Label: "工作目录", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})
+								in.Element.Grow(1)
+								if kit.Button(c, "选择", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+									cw.pickDirectory("选择工作目录", func(path string) { f.workspace = path })
+								}
+							})
+						})
 					})
-					cw.autoScheduleForm(c, f)
-					mgo.Switch(c, &f.reuse).Label("复用会话（否则每次新建）")
-					mgo.Switch(c, &f.enabled).Label("启用")
+					mgo.Divider(c)
+					autoFormGroup(c, "调度", func() {
+						cw.autoScheduleForm(c, f)
+					})
+					mgo.Divider(c)
+					autoFormGroup(c, "运行选项", func() {
+						switchRow(c, &f.reuse, "复用会话", "在同一会话中继续，否则每次运行新建会话")
+						switchRow(c, &f.enabled, "启用任务", "关闭后不再按计划自动运行")
+					})
 				})
 			})
 		})
 	})
 }
 
-// autoScheduleForm edits the schedule fields on one row.
+// autoScheduleForm edits the schedule fields on one row, each under its own
+// label so the row reads without guessing which field is the kind and which
+// the time.
 func (cw *ChatWindow) autoScheduleForm(c *mgo.Context, f *autoForm) {
 	u := mcore.Density(c).Unit()
 	kinds := []kit.SelectOption[string]{{Value: "daily", Label: "每天"}, {Value: "weekly", Label: "每周"}, {Value: "monthly", Label: "每月"}}
-	mgo.Row(c).Gap(u).AlignItems(mgo.End).Wrap().Children(func() {
-		kit.Select(c, &f.kind, kinds, kit.SelectOptions{Label: "频率"}).Element.Width(120)
-		kit.TimePicker(c, &f.tod, kit.TimePickerOptions{}).Element.Width(170)
+	mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Start).Wrap().Children(func() {
+		formField(c, "频率", func() {
+			kit.Select(c, &f.kind, kinds, kit.SelectOptions{Label: "频率"}).Element.Width(140)
+		})
 		switch f.kind {
 		case "weekly":
 			opts := []kit.SelectOption[int]{
 				{Value: 1, Label: "周一"}, {Value: 2, Label: "周二"}, {Value: 3, Label: "周三"}, {Value: 4, Label: "周四"},
 				{Value: 5, Label: "周五"}, {Value: 6, Label: "周六"}, {Value: 0, Label: "周日"},
 			}
-			kit.Select(c, &f.weekday, opts, kit.SelectOptions{Label: "星期"}).Element.Width(120)
+			formField(c, "星期", func() {
+				kit.Select(c, &f.weekday, opts, kit.SelectOptions{Label: "星期"}).Element.Width(140)
+			})
 		case "monthly":
 			opts := make([]kit.SelectOption[int], 0, 31)
 			for d := 1; d <= 31; d++ {
 				opts = append(opts, kit.SelectOption[int]{Value: d, Label: fmt.Sprintf("%d 日", d)})
 			}
-			kit.Select(c, &f.day, opts, kit.SelectOptions{Label: "日期"}).Element.Width(120)
+			formField(c, "日期", func() {
+				kit.Select(c, &f.day, opts, kit.SelectOptions{Label: "日期"}).Element.Width(140)
+			})
 		}
+		formField(c, "时间", func() {
+			kit.TimePicker(c, &f.tod, kit.TimePickerOptions{Label: "时间"}).Element.Width(190)
+		})
+	})
+}
+
+// formField stacks a field's label just above its control, so each control
+// reads as its own field while the group stays compact.
+func formField(c *mgo.Context, label string, control func()) {
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).Gap(u).Children(func() {
+		fieldLabel(c, label)
+		control()
+	})
+}
+
+// fieldLabel shows a field's name above its control; the controls themselves
+// carry only an accessibility label, so this is what the eye reads.
+func fieldLabel(c *mgo.Context, text string) {
+	mgo.Text(c, text).
+		FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+		TextColor(mcore.Tokens(c).TextMuted)
+}
+
+// switchRow shows a labeled switch, its name and hint at the start and the
+// switch at the end, and reports a change.
+func switchRow(c *mgo.Context, on *bool, label, hint string) bool {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	changed := false
+	mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u * 2).Children(func() {
+		mgo.Column(c).Grow(1).Gap(u / 2).Children(func() {
+			mgo.Text(c, label)
+			if hint != "" {
+				mgo.Text(c, hint).FontSize(small).TextColor(k.TextMuted)
+			}
+		})
+		changed = mgo.Switch(c, on).Label(label).Changed()
+	})
+	return changed
+}
+
+// autoFormGroup stacks a titled block of fields, separating the editor into
+// readable sections.
+func autoFormGroup(c *mgo.Context, title string, fields func()) {
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
+		mgo.Text(c, title).FontWeight(600)
+		fields()
 	})
 }
 
@@ -525,8 +648,10 @@ func (cw *ChatWindow) startAutoTask(i int) {
 			if runErr != nil {
 				reply = "⚠️ " + runErr.Error()
 				cw.cfg.AutoTasks[i].LastNote = "失败: " + runErr.Error()
+				conv.TaskStatus = "failed"
 			} else {
 				cw.cfg.AutoTasks[i].LastNote = "成功"
+				conv.TaskStatus = "success"
 			}
 			conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Content: reply, Reasoning: reasoning, Timestamp: time.Now()})
 			_ = cw.convManager.SaveConversation(conv)
