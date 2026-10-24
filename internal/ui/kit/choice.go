@@ -23,6 +23,8 @@ type SelectOptions struct {
 	Empty string
 	// Label names the select for assistive technology.
 	Label string
+	// MinWidth is the trigger's minimum width in DIPs; zero uses the default.
+	MinWidth float32
 }
 
 // SelectResult is what a Select built and reported this frame.
@@ -68,8 +70,12 @@ func Select[T comparable](c *mgo.Context, value *T, opts []SelectOption[T], o Se
 		}
 	}
 
+	minWidth := o.MinWidth
+	if minWidth <= 0 {
+		minWidth = u * 35
+	}
 	sel := mgo.SelectBase(c, value)
-	trigger := sel.Trigger.Justify(mgo.SpaceBetween).MinWidth(u*35).
+	trigger := sel.Trigger.Justify(mgo.SpaceBetween).MinWidth(minWidth).
 		Padding(u*1.5, u*3.5).Gap(u * 1.5).Radius(k.Radius).
 		Background(k.Surface).TextColor(k.Text).Disabled(o.Disabled)
 	if o.Label != "" {
@@ -89,7 +95,8 @@ func Select[T comparable](c *mgo.Context, value *T, opts []SelectOption[T], o Se
 	sel.Popup(func(panel mgo.Element) {
 		panel.Margin(u, 0, 0, 0).Padding(u).Radius(k.Radius+2).
 			Background(k.Background).Border(theme.BorderWidth, k.Border).
-			Shadow(0, 6, 20, 0, mgo.RGBA(0, 0, 0, 0.18))
+			Shadow(0, 6, 20, 0, mgo.RGBA(0, 0, 0, 0.18)).
+			MaxHeight(u * 72)
 		if len(opts) == 0 {
 			empty := o.Empty
 			if empty == "" {
@@ -99,17 +106,21 @@ func Select[T comparable](c *mgo.Context, value *T, opts []SelectOption[T], o Se
 				FontSize(uikit.FontSize(c, theme.CaptionSize)).TextColor(k.TextMuted)
 			return
 		}
-		for _, opt := range opts {
-			item := sel.Item(opt.Value).Padding(u*1.5, u*2.5).Radius(k.Radius).
-				Disabled(opt.Disabled)
-			switch {
-			case item.Highlighted():
-				item.Background(k.Accent).TextColor(k.AccentText)
-			case opt.Value == *value:
-				item.Background(k.Surface)
-			}
-			item.Children(func() { mgo.Text(c, opt.Label).SingleLine() })
-		}
+		mgo.Scroll(c).MaxHeight(u * 64).Children(func() {
+			mgo.Column(c).Children(func() {
+				for _, opt := range opts {
+					item := sel.Item(opt.Value).Padding(u*1.5, u*2.5).Radius(k.Radius).
+						Disabled(opt.Disabled)
+					switch {
+					case item.Highlighted():
+						item.Background(k.Accent).TextColor(k.AccentText)
+					case opt.Value == *value:
+						item.Background(k.Surface)
+					}
+					item.Children(func() { mgo.Text(c, opt.Label).SingleLine() })
+				}
+			})
+		})
 	})
 	return SelectResult{Element: trigger, changed: trigger.Changed()}
 }

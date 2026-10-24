@@ -66,12 +66,12 @@ func TimePicker(c *mgo.Context, value *TimeOfDay, opts TimePickerOptions) Choice
 	r.Element = mgo.Row(c).Gap(u).AlignItems(mgo.Center).Shrink(0).Label(label)
 	r.Element.Children(func() {
 		h := Select(c, &value.Hour, hours, SelectOptions{
-			Label: label + " 时", Disabled: opts.Disabled,
+			Label: label + " 时", Disabled: opts.Disabled, MinWidth: u * 6,
 		})
 		h.Element.Grow(1).Basis(0)
 		mgo.Text(c, ":").TextColor(uikit.Tokens(c).TextMuted).Shrink(0)
 		m := Select(c, &value.Minute, minutes, SelectOptions{
-			Label: label + " 分", Disabled: opts.Disabled,
+			Label: label + " 分", Disabled: opts.Disabled, MinWidth: u * 6,
 		})
 		m.Element.Grow(1).Basis(0)
 		r.changed = h.Changed() || m.Changed()
