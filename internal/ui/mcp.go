@@ -71,7 +71,7 @@ func (cw *ChatWindow) mcpPage(c *mgo.Context) {
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
 		kit.SegmentedControl(c, &cw.mcp.tabSel, []kit.Segment{
 			{Label: "我的服务"}, {Label: "市场"},
-		}, kit.SegmentedControlOptions{Label: "MCP", Equal: true})
+		}, kit.SegmentedControlOptions{Label: "MCP", Equal: true}).Width(320)
 		if cw.mcp.tabSel == 1 {
 			cw.mcpMarketTab(c)
 			return
@@ -81,6 +81,7 @@ func (cw *ChatWindow) mcpPage(c *mgo.Context) {
 	cw.mcpEditor(c)
 	cw.mcpDetailDialog(c)
 	cw.mcpToolsDialog(c)
+	cw.mcpErrorDialog(c)
 }
 
 // mcpDetailDialog shows one marketplace server's full metadata.

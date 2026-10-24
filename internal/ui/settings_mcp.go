@@ -25,7 +25,8 @@ func (cw *ChatWindow) mcpTab(c *mgo.Context) {
 	mgo.Column(c).Grow(1).MinWidth(0).MinHeight(0).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u * 2).Children(func() {
 			in := kit.SearchInput(c, &cw.mcp.myQuery, kit.SearchInputOptions{Placeholder: "搜索服务", Label: "搜索服务"})
-			in.Element.Grow(1)
+			in.Element.Grow(1).MaxWidth(420)
+			mgo.Spacer(c)
 			if kit.Button(c, "新增服务", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearMCPForm()
 				cw.mcp.editorOpen = true
@@ -43,9 +44,19 @@ func (cw *ChatWindow) mcpTab(c *mgo.Context) {
 		mgo.Text(c, fmt.Sprintf("共 %d 个服务", len(items))).TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			mgo.Grid(c).Columns(3).Gap(u * 3).Children(func() {
-				for _, i := range items {
-					cw.mcpServerCard(c, i)
+			mgo.Column(c).FillWidth().Gap(u * 3).Children(func() {
+				for r := 0; r < len(items); r += 2 {
+					row := r
+					mgo.Row(c).FillWidth().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
+						mgo.Column(c).Grow(1).Basis(0).MinWidth(0).Children(func() {
+							cw.mcpServerCard(c, items[row])
+						})
+						mgo.Column(c).Grow(1).Basis(0).MinWidth(0).Children(func() {
+							if row+1 < len(items) {
+								cw.mcpServerCard(c, items[row+1])
+							}
+						})
+					})
 				}
 			})
 		})
@@ -106,22 +117,44 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 	if typ == "" {
 		typ = "stdio"
 	}
-	mgo.Column(c).Key("mcp:"+s.Name).Gap(u*2).Padding(u*3).FillWidth().
+	status, note := mcpStatus(cw, s.Name)
+	st, hasSt := cw.mcpManager.GetServerStatus(s.Name)
+	connected := hasSt && st.Status == "initialized"
+	tools := 0
+	if connected {
+		tools = len(st.Tools)
+	}
+	detail := strings.TrimSpace(s.Command + " " + strings.Join(s.Args, " "))
+	if s.Command == "" {
+		detail = strings.TrimSpace(s.URL)
+	}
+	mgo.Column(c).Key("mcp:"+s.Name).MinWidth(0).FillWidth().Gap(u*2).Padding(u*3).
 		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
 		Children(func() {
-			mgo.Row(c).AlignItems(mgo.Center).Gap(u).Children(func() {
+			mgo.Row(c).FillWidth().MinWidth(0).AlignItems(mgo.Center).Gap(u).Children(func() {
 				if svg := assets.MCPLogo(); svg != nil {
-					mgo.Icon(c, svg).Size(18, 18).TextColor(k.Text)
+					mgo.Icon(c, svg).Size(18, 18).TextColor(k.Text).Shrink(0)
 				}
 				mgo.Text(c, s.Name).
-					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
-				status, note := mcpStatus(cw, s.Name)
-				kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{})
-				if note != "" && note != "未初始化" {
-					mgo.Text(c, note).FontSize(caption).TextColor(k.TextMuted).SingleLine().Ellipsis("…")
+					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				if status == kit.StatusError && note != "" {
+					b := mgo.ButtonBase(c.Key("mcp:err:"+s.Name)).Label("查看错误").Shrink(0).
+						AlignItems(mgo.Center).Padding(u/2).Radius(mtheme.ControlRadius).
+						Cursor(mgo.CursorPointer).Tooltip("点击查看错误")
+					if b.Hovered() {
+						b.Background(k.SurfaceHover)
+					}
+					b.Children(func() { kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{}) })
+					if b.Clicked() {
+						cw.mcp.errServer = s.Name
+						cw.mcp.errMsg = note
+						cw.mcp.errOpen = true
+					}
+				} else {
+					kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{}).Shrink(0)
 				}
 			})
-			mgo.Row(c).Gap(u).Wrap().Children(func() {
+			mgo.Row(c).FillWidth().MinWidth(0).Gap(u).Wrap().AlignItems(mgo.Center).Children(func() {
 				agentTag(c, mcpTypeLabel(typ))
 				if s.Enabled {
 					agentTag(c, "已启用")
@@ -130,15 +163,13 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 						Padding(0, u*1.5).Radius(mtheme.ControlRadius).Border(mtheme.BorderWidth, k.Border).SingleLine()
 				}
 			})
-			if s.Command != "" {
-				mgo.Text(c, s.Command+" "+strings.Join(s.Args, " ")).TextColor(k.TextMuted).
-					FontSize(caption).SingleLine().Ellipsis("…").MaxLines(1)
-			} else if s.URL != "" {
-				mgo.Text(c, s.URL).TextColor(k.TextMuted).FontSize(caption).SingleLine().Ellipsis("…").MaxLines(1)
+			if detail != "" {
+				mgo.Text(c, detail).TextColor(k.TextMuted).
+					FontSize(caption).Font(mtheme.MonoFont).MinWidth(0).SingleLine().Ellipsis("…")
 			}
-			mgo.Row(c).Gap(u).Wrap().Children(func() {
-				if st, ok := cw.mcpManager.GetServerStatus(s.Name); ok && st.Status == "initialized" && len(st.Tools) > 0 {
-					if kit.Button(c, "工具 ("+strconv.Itoa(len(st.Tools))+")", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+			mgo.Row(c).FillWidth().MinWidth(0).Gap(u).Wrap().AlignItems(mgo.Center).Children(func() {
+				if tools > 0 {
+					if kit.Button(c, "工具 ("+strconv.Itoa(tools)+")", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 						cw.openMCPTools(s.Name)
 					}
 				}
@@ -146,12 +177,13 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 					cw.loadMCPForm(i)
 					cw.mcp.editorOpen = true
 				}
-				if kit.Button(c, "初始化", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+				if connected {
+					if kit.Button(c, "断开", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+						_ = cw.mcpManager.manager.DisconnectServer(s.Name)
+						cw.toast("已断开 "+s.Name, mcore.SeverityInfo)
+					}
+				} else if kit.Button(c, "初始化", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 					cw.initMCPServer(s.Name)
-				}
-				if kit.Button(c, "断开", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
-					_ = cw.mcpManager.manager.DisconnectServer(s.Name)
-					cw.toast("已断开 "+s.Name, mcore.SeverityInfo)
 				}
 				if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
 					cw.deleteMCPServer(s.Name)
@@ -173,6 +205,28 @@ func (cw *ChatWindow) openMCPTools(name string) {
 }
 
 // mcpToolsDialog lists the tools an initialized server exposes.
+
+// mcpErrorDialog shows why a server failed to initialize.
+func (cw *ChatWindow) mcpErrorDialog(c *mgo.Context) {
+	if !cw.mcp.errOpen {
+		return
+	}
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	kit.Dialog(c, &cw.mcp.errOpen, kit.DialogOptions{
+		Title: cw.mcp.errServer + " · 初始化失败",
+		Width: 560,
+	}, func() {
+		mgo.Column(c).Gap(u * 2).Children(func() {
+			if cw.mcp.errMsg == "" {
+				mgo.Text(c, "没有更多错误信息").TextColor(k.TextMuted)
+				return
+			}
+			mgo.Text(c, cw.mcp.errMsg).TextColor(k.Danger).Font(mtheme.MonoFont).
+				FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		})
+	})
+}
 
 func (cw *ChatWindow) mcpToolsDialog(c *mgo.Context) {
 	if !cw.mcp.toolsOpen {
@@ -296,42 +350,60 @@ func (cw *ChatWindow) mcpFormFields(c *mgo.Context) {
 	f := &cw.settings.mcp
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	mgo.Column(c).Gap(u * 2).Children(func() {
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Column(c).Gap(u * 3).Children(func() {
 		if f.hint != "" {
 			mgo.Text(c, f.hint).TextColor(k.TextMuted).
-				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Font(mtheme.MonoFont)
+				FontSize(caption).Font(mtheme.MonoFont).MaxLines(4)
 		}
-		kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "服务器名称"})
-		typ := 0
-		for i, t := range mcpTypes {
-			if t == f.typ {
-				typ = i
+		formField(c, "名称", func() {
+			kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "服务器名称"})
+		})
+		formField(c, "类型", func() {
+			typ := 0
+			for i, t := range mcpTypes {
+				if t == f.typ {
+					typ = i
+				}
 			}
-		}
-		kit.SegmentedControl(c, &typ, []kit.Segment{
-			{Label: "STDIO"}, {Label: "SSE"}, {Label: "HTTP"},
-		}, kit.SegmentedControlOptions{Label: "类型", Equal: true})
-		f.typ = mcpTypes[typ]
-		if mgo.Switch(c, &f.enabled).Label("启用").Changed() {
+			kit.SegmentedControl(c, &typ, []kit.Segment{
+				{Label: "STDIO"}, {Label: "SSE"}, {Label: "HTTP"},
+			}, kit.SegmentedControlOptions{Label: "类型", Equal: true})
+			f.typ = mcpTypes[typ]
+		})
+		if switchRow(c, &f.enabled, "启用", "关闭后不再连接此服务") {
 			cw.saveMCP()
 		}
+		mgo.Divider(c)
 		if f.typ == "stdio" {
-			kit.TextInput(c, &f.command, kit.TextInputOptions{Label: "命令", Placeholder: "如 npx"})
-			kit.TextArea(c, &f.args, kit.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 72})
-			mgo.Text(c, "环境变量").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
-			kit.KeyValueInput(c, &f.env, kit.KeyValueInputOptions{Label: "环境变量", KeyPlaceholder: "KEY", ValuePlaceholder: "VALUE"})
+			formField(c, "命令", func() {
+				kit.TextInput(c, &f.command, kit.TextInputOptions{Label: "命令", Placeholder: "如 npx"})
+			})
+			formField(c, "参数", func() {
+				kit.TextArea(c, &f.args, kit.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 72})
+			})
+			formField(c, "环境变量", func() {
+				kit.KeyValueInput(c, &f.env, kit.KeyValueInputOptions{Label: "环境变量", KeyPlaceholder: "KEY", ValuePlaceholder: "VALUE"})
+			})
 		} else {
-			kit.TextInput(c, &f.url, kit.TextInputOptions{Label: "URL", Placeholder: "https://..."})
-			mgo.Text(c, "请求头").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
-			kit.KeyValueInput(c, &f.headers, kit.KeyValueInputOptions{Label: "请求头", KeyPlaceholder: "Header", ValuePlaceholder: "Value"})
-			kit.TextInput(c, &f.timeout, kit.TextInputOptions{Label: "超时（秒）", Placeholder: "30"})
+			formField(c, "URL", func() {
+				kit.TextInput(c, &f.url, kit.TextInputOptions{Label: "URL", Placeholder: "https://..."})
+			})
+			formField(c, "请求头", func() {
+				kit.KeyValueInput(c, &f.headers, kit.KeyValueInputOptions{Label: "请求头", KeyPlaceholder: "Header", ValuePlaceholder: "Value"})
+			})
+			formField(c, "超时（秒）", func() {
+				kit.TextInput(c, &f.timeout, kit.TextInputOptions{Label: "超时（秒）", Placeholder: "30"})
+			})
 		}
 		if f.editing >= 0 && f.editing < len(cw.cfg.MCPServers) {
 			status, note := mcpStatus(cw, cw.cfg.MCPServers[f.editing].Name)
+			mgo.Divider(c)
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{})
 				if note != "" {
-					mgo.Text(c, note).TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+					mgo.Text(c, note).TextColor(k.TextMuted).FontSize(caption).
+						Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				}
 			})
 		}
@@ -537,6 +609,9 @@ type mcpState struct {
 	detail         mcpMarketServer
 	toolsOpen      bool
 	toolsServer    string
+	errOpen        bool
+	errServer      string
+	errMsg         string
 	tools          []mcp.MCPTool
 }
 
