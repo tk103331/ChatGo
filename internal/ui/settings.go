@@ -40,6 +40,7 @@ type channelForm struct {
 
 type shortcutForm struct {
 	value string
+	err   string
 }
 
 type providerForm struct {
@@ -104,10 +105,6 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 	mgo.Column(c).Fill().Padding(u * 4).Gap(u * 3).Children(func() {
 		mgo.Text(c, "设置").
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
-		if cw.status != "" {
-			mgo.Text(c, cw.status).TextColor(mcore.Tokens(c).Danger).
-				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Shrink(0)
-		}
 		res := kit.Tabs(c, &cw.settings.tab, []kit.Tab{
 			{Label: "模型", Panel: func() { cw.providersTab(c) }},
 			{Label: "工具", Panel: func() { cw.builtinTab(c) }},
@@ -119,6 +116,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 		}, kit.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)
 	})
+	cw.importDialog(c)
 }
 
 // confirmDialog shows the pending confirmation and runs its action. It keeps

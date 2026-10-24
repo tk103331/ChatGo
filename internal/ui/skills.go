@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"chatgo/internal/agentimport"
 	"chatgo/internal/config"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -35,21 +36,11 @@ type skillFrontmatter struct {
 	Description string `yaml:"description"`
 }
 
-func skillDirs() []string {
-	var dirs []string
-	if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, ".agents", "skills"))
-	}
-	if wd, err := os.Getwd(); err == nil {
-		dirs = append(dirs, filepath.Join(wd, ".agents", "skills"), filepath.Join(wd, ".claude", "skills"))
-	}
-	if home, err := os.UserHomeDir(); err == nil {
-		for _, d := range []string{".claude/skills", ".opencode/skill", ".opencode/skills"} {
-			dirs = append(dirs, filepath.Join(home, d))
-		}
-	}
-	return dirs
-}
+// skillDirs are the directories scanned for skills: ~/.chatgo/skills, which
+// ChatGo owns and imports into, then the shared ~/.agents/skills. Skills of
+// other agents are brought in explicitly through the import dialog instead of
+// being read in place, so ChatGo's own copy is the one that runs.
+func skillDirs() []string { return agentimport.SearchDirs() }
 
 func skillSourceLabel(source string) string {
 	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(source, home) {
@@ -129,6 +120,9 @@ func (cw *ChatWindow) skillsPage(c *mgo.Context) {
 				FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Grow(1)
 			mgo.Text(c, "共 "+strconv.Itoa(len(cw.skills.list))+" 个").TextColor(k.TextMuted).
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+			if kit.Button(c, "导入", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("arrow-down")}).Clicked() {
+				cw.openImportDialog(importSkills)
+			}
 			if kit.Button(c, "重新扫描", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("refresh-cw")}).Clicked() {
 				cw.loadSkills()
 			}
@@ -143,6 +137,7 @@ func (cw *ChatWindow) skillsPage(c *mgo.Context) {
 			cw.skillViewer(c)
 		})
 	})
+	cw.importDialog(c)
 }
 
 func (cw *ChatWindow) skillsEmptyState(c *mgo.Context) {
@@ -160,9 +155,14 @@ func (cw *ChatWindow) skillsEmptyState(c *mgo.Context) {
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 			}
 		})
-		if kit.Button(c, "重新扫描", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
-			cw.loadSkills()
-		}
+		mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+			if kit.Button(c, "从其他 Agent 导入", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("arrow-down")}).Clicked() {
+				cw.openImportDialog(importSkills)
+			}
+			if kit.Button(c, "重新扫描", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+				cw.loadSkills()
+			}
+		})
 	})
 }
 
@@ -244,7 +244,7 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 			}
 		}
 		if s == nil {
-			mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u*2).Children(func() {
+			mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u * 2).Children(func() {
 				mgo.Icon(c, icons.Must("brain")).Size(36, 36).TextColor(k.TextMuted)
 				mgo.Text(c, "从左侧选择一个 Skill 查看详情").TextColor(k.TextMuted)
 			})
@@ -285,10 +285,10 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 			mgo.Column(c).FillWidth().
 				Radius(mtheme.ControlRadius).Border(mtheme.BorderWidth, k.Border).
 				Padding(u, u*2).Children(func() {
-					mgo.Scroll(c).MaxHeight(u * 40).Children(func() {
-						cw.skillFileTree(c, dir)
-					})
+				mgo.Scroll(c).MaxHeight(u * 40).Children(func() {
+					cw.skillFileTree(c, dir)
 				})
+			})
 		}
 		if cw.skills.fileBodyOf != cw.skills.fileSel {
 			data, err := os.ReadFile(filepath.Join(dir, cw.skills.fileSel))
@@ -464,7 +464,6 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 		return
 	}
 	k := mcore.Tokens(c)
-	small := mcore.FontSize(c, mtheme.CaptionSize)
 	count := 0
 	for _, id := range ids {
 		if cw.skillRuntime(id) {
@@ -488,31 +487,19 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 			mgo.Text(c, strconv.Itoa(count)).FontWeight(600).TextColor(k.Accent).SingleLine()
 		}
 	})
+	items := make([]selectItem, 0, len(ids))
+	for _, id := range ids {
+		s := cw.skillByID(id)
+		if s == nil {
+			continue
+		}
+		items = append(items, selectItem{ID: id, Title: s.Name, Desc: s.Description})
+	}
 	changed := false
-	kit.Popover(c, b, open, kit.PopoverOptions{Title: "Skills", Width: 320, MaxHeight: mcore.Density(c).Unit() * 88, Up: true}, func() {
-		mgo.Column(c).Gap(mcore.Density(c).Unit() * 2).Children(func() {
-			agentSearch(c, &cw.skills.menuQuery, "搜索 Skill").Height(mcore.Density(c).ControlHeight() - 6)
-			q := strings.ToLower(strings.TrimSpace(cw.skills.menuQuery))
-			for _, id := range ids {
-				s := cw.skillByID(id)
-				if s == nil {
-					continue
-				}
-				if q != "" && !strings.Contains(strings.ToLower(s.Name+" "+s.Description), q) {
-					continue
-				}
-				v := cw.skillRuntime(id)
-				mgo.Column(c).Gap(0).Children(func() {
-					if mgo.Switch(c, &v).Label(s.Name).Changed() {
-						cw.skillOn[id] = v
-						changed = true
-					}
-					if s.Description != "" {
-						mgo.Text(c, s.Description).FontSize(small).TextColor(k.TextMuted).MaxLines(1).Ellipsis("…")
-					}
-				})
-			}
-		})
+	kit.Popover(c, b, open, kit.PopoverOptions{Title: "Skills", Width: 360, MaxHeight: mcore.Density(c).Unit() * 88, Up: true}, func() {
+		changed = selectList(c, &cw.skills.menuQuery, "搜索 Skill", items,
+			cw.skillRuntime,
+			func(id string, on bool) { cw.skillOn[id] = on })
 	})
 	if changed {
 		if cw.currentAgent == "" {

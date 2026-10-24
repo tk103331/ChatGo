@@ -224,7 +224,8 @@ func Popover(c *mgo.Context, anchor mgo.Element, open *bool, opts PopoverOptions
 			panel.MaxHeight(min(opts.MaxHeight, popoverRoom(c, b)))
 		}
 		if opts.Up {
-			panel.AttachTo(anchor, mgo.AnchorTopEnd, mgo.AnchorBottomStart)
+			at, self := popoverUpAnchors()
+			panel.AttachTo(anchor, at, self)
 		}
 		if opts.Width > 0 {
 			panel.Width(popoverWide(c, opts.Width))
@@ -237,6 +238,14 @@ func Popover(c *mgo.Context, anchor mgo.Element, open *bool, opts PopoverOptions
 		}
 		mgo.Scroll(c).Shrink(1).Children(content)
 	})
+}
+
+// popoverUpAnchors are the anchors of a panel opening above its button: the
+// panel's bottom start sits on the button's top start, so both leading edges
+// line up. Using an end anchor on either side offsets the panel by the
+// button's width.
+func popoverUpAnchors() (at, self mgo.Anchor) {
+	return mgo.AnchorTopStart, mgo.AnchorBottomStart
 }
 
 // popoverRoom is the tallest a panel below or above anchor b may be.

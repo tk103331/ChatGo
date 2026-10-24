@@ -178,16 +178,6 @@ func (p Provider) EffectiveAPIType() string {
 	return "openai"
 }
 
-// UsesConversion reports whether requests must be converted before they are
-// sent with an OpenAI Chat model, i.e. the upstream speaks another protocol.
-func (p Provider) UsesConversion() bool {
-	switch p.EffectiveAPIType() {
-	case "", "openai":
-		return false
-	}
-	return true
-}
-
 // ProviderGroup routes one logical model name over several provider endpoints.
 // Every member must name a custom provider; the members are tried in the order
 // the routing strategy picks.
@@ -217,12 +207,14 @@ func GroupStrategies() []string {
 	return []string{StrategyFallback, StrategyRoundRobin, StrategyRandom}
 }
 
-// GetStrategyDisplayName returns the human-readable name of a routing strategy.
+// GetStrategyDisplayName returns the human-readable name of a routing
+// strategy. The names are self-explanatory, so the same one fits both the
+// settings dropdown and the model selector.
 func GetStrategyDisplayName(strategy string) string {
 	names := map[string]string{
-		StrategyFallback:   "故障转移（按顺序重试）",
-		StrategyRoundRobin: "轮询（依次循环）",
-		StrategyRandom:     "随机",
+		StrategyFallback:   "故障迁移",
+		StrategyRoundRobin: "依次轮询",
+		StrategyRandom:     "随机访问",
 	}
 	if name, ok := names[strategy]; ok {
 		return name
@@ -335,6 +327,29 @@ func containsString(list []string, v string) bool {
 	return false
 }
 
+// NeedsAPIKey reports whether a provider type cannot work without an API key.
+// Ollama runs locally, and a custom provider may point at an unauthenticated
+// endpoint, so neither requires one.
+func (p Provider) NeedsAPIKey() bool {
+	switch p.Type {
+	case "ollama", ProviderTypeCustom:
+		return false
+	}
+	return true
+}
+
+// Validate reports why a provider cannot be used yet, in a message meant for
+// the user rather than the upstream SDK's wording.
+func (p Provider) Validate() error {
+	if p.Model == "" {
+		return fmt.Errorf("模型「%s」尚未选择具体模型，请在设置中添加模型名", p.Name)
+	}
+	if p.NeedsAPIKey() && strings.TrimSpace(p.APIKey) == "" {
+		return fmt.Errorf("模型「%s」尚未填写 API Key，请在设置 → 模型中填写", p.Name)
+	}
+	return nil
+}
+
 // ModelsList returns the provider's models, falling back to the single Model.
 func (p Provider) ModelsList() []string {
 	if len(p.Models) > 0 {
@@ -390,6 +405,7 @@ func GetAvailableBuiltinTools() []string {
 		"sequentialthinking",
 		"jssandbox",
 		"webview",
+		"knowledge_search",
 	}
 }
 
@@ -407,6 +423,7 @@ func GetBuiltinToolDisplayName(toolType string) string {
 		"sequentialthinking": "链式思考",
 		"jssandbox":          "JS 沙箱",
 		"webview":            "WebView 浏览器",
+		"knowledge_search":   "知识库检索",
 	}
 	if name, ok := names[toolType]; ok {
 		return name
@@ -428,6 +445,7 @@ func GetBuiltinToolDescription(toolType string) string {
 		"sequentialthinking": "Sequential Thinking - Chain of thought reasoning tool",
 		"jssandbox":          "JS Sandbox - Run JavaScript/TypeScript code in a secure sandbox (powered by moejs)",
 		"webview":            "WebView - Open a URL or local HTML in the app's web view, read the page, click and type in it",
+		"knowledge_search":   "Knowledge Search - Search the local knowledge bases built from indexed text documents, returning the matching passages with their source",
 	}
 	if desc, ok := descriptions[toolType]; ok {
 		return desc
@@ -458,6 +476,8 @@ func GetBuiltinToolConfigFields(toolType string) []string {
 		return []string{"memory_limit_mb", "timeout_seconds", "typescript"}
 	case "webview":
 		return []string{"allow_remote"}
+	case "knowledge_search":
+		return []string{"knowledge_base", "top_k"}
 	default:
 		return []string{}
 	}
@@ -486,6 +506,8 @@ func GetRequiredConfigFields(toolType string) []string {
 		return []string{} // all fields have defaults
 	case "webview":
 		return []string{} // allow_remote has a default
+	case "knowledge_search":
+		return []string{} // searches every knowledge base by default
 	default:
 		return []string{}
 	}
@@ -801,6 +823,9 @@ func defaultBuiltinTool(toolType string) BuiltinTool {
 	case "webview":
 		t.Enabled = true
 		t.Config = map[string]string{"allow_remote": "true"}
+	case "knowledge_search":
+		t.Enabled = true
+		t.Config = map[string]string{"top_k": "5"}
 	}
 	return t
 }

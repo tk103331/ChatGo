@@ -82,6 +82,7 @@ func (cw *ChatWindow) mcpPage(c *mgo.Context) {
 	cw.mcpDetailDialog(c)
 	cw.mcpToolsDialog(c)
 	cw.mcpErrorDialog(c)
+	cw.importDialog(c)
 }
 
 // mcpDetailDialog shows one marketplace server's full metadata.

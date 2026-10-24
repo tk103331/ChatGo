@@ -74,7 +74,7 @@ go install github.com/tk103331/ChatGo@latest
 | **Qwen** | `qwen` | 阿里通义千问 |
 | **DeepSeek** | `deepseek` | DeepSeek AI |
 | **Gemini** | `gemini` | Google Gemini |
-| **Custom** | `custom` | 任意 API；通过 `api_type` 选择上游协议（`openai`、`openai_responses`、`claude`、`gemini`），请求与响应由 [RelayKit](https://github.com/QuantumNous/new-api/blob/main/relaykit/README.md) 转换 |
+| **Custom** | `custom` | 任意 API；通过 `api_type` 选择上游协议（`openai`、`openai_responses`、`claude`、`gemini`），请求直接按该协议发送，不经中间转换 |
 
 每个 Provider 可列出多个模型，模型选择器会全部列出。
 
@@ -85,9 +85,9 @@ go install github.com/tk103331/ChatGo@latest
 
 | 策略 | 取值 | 行为 |
 |------|------|------|
-| 故障转移 | `fallback` | 固定先请求第一个成员，未产生任何输出就失败时换下一个 |
-| 轮询 | `round_robin` | 每次请求轮换起始成员，失败后按顺序重试其余成员 |
-| 随机 | `random` | 随机选择起始成员，失败后按顺序重试其余成员 |
+| 故障迁移 | `fallback` | 固定先请求第一个成员，未产生任何输出就失败时换下一个 |
+| 依次轮询 | `round_robin` | 每次请求轮换起始成员，失败后按顺序重试其余成员 |
+| 随机访问 | `random` | 随机选择起始成员，失败后按顺序重试其余成员 |
 
 当所选模型不在某个成员下时，该成员改用它自己勾选的其他模型，而不是被跳过。
 已经流式输出或执行过工具的请求不会重试，避免重复输出。在**设置 → 模型**页点击**新增组**创建和编辑模型组。
@@ -113,7 +113,7 @@ providers:
     model: "llama3.2"
     enabled: true
 
-  # custom：任意上游协议，由 RelayKit 转换
+  # custom：用 api_type 指定上游协议
   - name: "MyClaudeProxy"
     type: "custom"
     api_type: "claude"          # openai | openai_responses | claude | gemini
@@ -143,6 +143,7 @@ current_provider: "OpenAI"
 - **设置 → ACP**：管理本地 ACP 连接（Claude Code、OpenCode 等）
 - **设置 → 外观**：主题模式与语言
 - **Agent** 页：创建自定义 Agent（模型、内置工具、MCP 服务器、Skill）
+- **知识库** 页：新建知识库、导入文档、重建索引与检索测试
 - **MCP** 页：我的服务与内置市场
 
 ## 💡 使用
@@ -161,6 +162,21 @@ current_provider: "OpenAI"
 - **内置 Chat**：记住全局的模型/工具/MCP/Skill 选择，下次启动自动恢复
 - **自定义 Agent**：在设置里定义可用白名单（模型可多选），默认全启用，聊天中可临时关闭
 - **ACP Agent**：按 ACP 协议提供的模式与选项控制
+
+### 知识库
+
+**知识库**页管理本地文本知识库。文档按 Markdown 标题切块，经分词（中文切成重叠二元组、
+英文小写化）后写入 SQLite FTS5，检索完全离线、不需要任何嵌入服务。导入是增量的：
+内容哈希未变的文件会被跳过。
+
+- 支持导入单个文件、整个目录（自动跳过隐藏目录）或粘贴文本
+- 支持的文本类型：Markdown、txt、rst/adoc/org、JSON/YAML/TOML/INI、CSV、日志与常见源码文件
+- `重建索引` 会重新读取所有文件型文档，并移除磁盘上已删除的文档
+- 内置检索测试框会显示命中片段与 BM25 分数，便于调参
+- 内置工具 `knowledge_search` 把同一套检索暴露给 Agent：在**设置 → 工具**中启用，可指定默认知识库与 `top_k`
+
+数据保存在 `~/.chatgo/knowledge/kb.db`。全部为纯 Go 实现（`modernc.org/sqlite`），
+因此仍可用 `CGO_ENABLED=0` 构建。
 
 ### 工具、MCP 与 Skill
 

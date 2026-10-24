@@ -18,7 +18,10 @@ import (
 
 func testWindow() *ChatWindow {
 	cfg := &config.Config{
-		Providers:         []config.Provider{{Name: "OpenAI", Type: "openai", Model: "gpt-4", Enabled: true}},
+		Providers: []config.Provider{{
+			Name: "OpenAI", Type: "openai", Model: "gpt-4",
+			Models: []string{"gpt-4", "gpt-4o"}, Enabled: true,
+		}},
 		CurrentProvider:   "OpenAI",
 		ReactAgentMaxStep: 20,
 	}

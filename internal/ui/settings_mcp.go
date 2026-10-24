@@ -27,6 +27,9 @@ func (cw *ChatWindow) mcpTab(c *mgo.Context) {
 			in := kit.SearchInput(c, &cw.mcp.myQuery, kit.SearchInputOptions{Placeholder: "搜索服务", Label: "搜索服务"})
 			in.Element.Grow(1).MaxWidth(420)
 			mgo.Spacer(c)
+			if kit.Button(c, "导入", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("arrow-down")}).Clicked() {
+				cw.openImportDialog(importMCP)
+			}
 			if kit.Button(c, "新增服务", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.clearMCPForm()
 				cw.mcp.editorOpen = true
@@ -44,21 +47,7 @@ func (cw *ChatWindow) mcpTab(c *mgo.Context) {
 		mgo.Text(c, fmt.Sprintf("共 %d 个服务", len(items))).TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 		mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			mgo.Column(c).FillWidth().Gap(u * 3).Children(func() {
-				for r := 0; r < len(items); r += 2 {
-					row := r
-					mgo.Row(c).FillWidth().Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-						mgo.Column(c).Grow(1).Basis(0).MinWidth(0).Children(func() {
-							cw.mcpServerCard(c, items[row])
-						})
-						mgo.Column(c).Grow(1).Basis(0).MinWidth(0).Children(func() {
-							if row+1 < len(items) {
-								cw.mcpServerCard(c, items[row+1])
-							}
-						})
-					})
-				}
-			})
+			cardRows(c, 2, len(items), func(i int) { cw.mcpServerCard(c, items[i]) })
 		})
 	})
 }
@@ -66,15 +55,11 @@ func (cw *ChatWindow) mcpTab(c *mgo.Context) {
 // mcpEmptyState shows a centered call-to-action when no servers are configured.
 
 func (cw *ChatWindow) mcpEmptyState(c *mgo.Context) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u * 2).Children(func() {
-		mgo.Icon(c, icons.Must("layout-grid")).Size(48, 48).TextColor(k.TextMuted)
-		mgo.Text(c, "还没有配置 MCP 服务").
-			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
-		mgo.Text(c, "从市场安装，或手动添加一个服务器").TextColor(k.TextMuted).
-			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		mgo.Row(c).Gap(u * 2).Children(func() {
+	emptyState(c, emptyStateOptions{
+		Icon:  "layout-grid",
+		Title: "还没有配置 MCP 服务",
+		Hint:  "从市场安装，或手动添加一个服务器",
+		Actions: func() {
 			if kit.Button(c, "浏览市场", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.mcp.tabSel = 1
 			}
@@ -82,7 +67,7 @@ func (cw *ChatWindow) mcpEmptyState(c *mgo.Context) {
 				cw.clearMCPForm()
 				cw.mcp.editorOpen = true
 			}
-		})
+		},
 	})
 }
 
@@ -128,68 +113,65 @@ func (cw *ChatWindow) mcpServerCard(c *mgo.Context, i int) {
 	if s.Command == "" {
 		detail = strings.TrimSpace(s.URL)
 	}
-	mgo.Column(c).Key("mcp:"+s.Name).MinWidth(0).FillWidth().Gap(u*2).Padding(u*3).
-		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
-		Children(func() {
-			mgo.Row(c).FillWidth().MinWidth(0).AlignItems(mgo.Center).Gap(u).Children(func() {
-				if svg := assets.MCPLogo(); svg != nil {
-					mgo.Icon(c, svg).Size(18, 18).TextColor(k.Text).Shrink(0)
-				}
-				mgo.Text(c, s.Name).
-					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-				if status == kit.StatusError && note != "" {
-					b := mgo.ButtonBase(c.Key("mcp:err:"+s.Name)).Label("查看错误").Shrink(0).
-						AlignItems(mgo.Center).Padding(u/2).Radius(mtheme.ControlRadius).
-						Cursor(mgo.CursorPointer).Tooltip("点击查看错误")
-					if b.Hovered() {
-						b.Background(k.SurfaceHover)
-					}
-					b.Children(func() { kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{}) })
-					if b.Clicked() {
-						cw.mcp.errServer = s.Name
-						cw.mcp.errMsg = note
-						cw.mcp.errOpen = true
-					}
-				} else {
-					kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{}).Shrink(0)
-				}
-			})
-			mgo.Row(c).FillWidth().MinWidth(0).Gap(u).Wrap().AlignItems(mgo.Center).Children(func() {
-				agentTag(c, mcpTypeLabel(typ))
-				if s.Enabled {
-					agentTag(c, "已启用")
-				} else {
-					mgo.Text(c, "已禁用").FontSize(caption).TextColor(k.TextMuted).
-						Padding(0, u*1.5).Radius(mtheme.ControlRadius).Border(mtheme.BorderWidth, k.Border).SingleLine()
-				}
-			})
-			if detail != "" {
-				mgo.Text(c, detail).TextColor(k.TextMuted).
-					FontSize(caption).Font(mtheme.MonoFont).MinWidth(0).SingleLine().Ellipsis("…")
+	cardShell(c, "mcp:"+s.Name, func() {
+		cardTitleRow(c, func() {
+			if svg := assets.MCPLogo(); svg != nil {
+				mgo.Icon(c, svg).Size(18, 18).TextColor(k.Text).Shrink(0)
 			}
-			mgo.Row(c).FillWidth().MinWidth(0).Gap(u).Wrap().AlignItems(mgo.Center).Children(func() {
-				if tools > 0 {
-					if kit.Button(c, "工具 ("+strconv.Itoa(tools)+")", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
-						cw.openMCPTools(s.Name)
-					}
+			cardTitle(c, s.Name)
+			if status == kit.StatusError && note != "" {
+				b := mgo.ButtonBase(c.Key("mcp:err:" + s.Name)).Label("查看错误").Shrink(0).
+					AlignItems(mgo.Center).Padding(u / 2).Radius(mtheme.ControlRadius).
+					Cursor(mgo.CursorPointer).Tooltip("点击查看错误")
+				if b.Hovered() {
+					b.Background(k.SurfaceHover)
 				}
-				if kit.Button(c, "编辑", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
-					cw.loadMCPForm(i)
-					cw.mcp.editorOpen = true
+				b.Children(func() { kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{}) })
+				if b.Clicked() {
+					cw.mcp.errServer = s.Name
+					cw.mcp.errMsg = note
+					cw.mcp.errOpen = true
 				}
-				if connected {
-					if kit.Button(c, "断开", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
-						_ = cw.mcpManager.manager.DisconnectServer(s.Name)
-						cw.toast("已断开 "+s.Name, mcore.SeverityInfo)
-					}
-				} else if kit.Button(c, "初始化", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
-					cw.initMCPServer(s.Name)
-				}
-				if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
-					cw.deleteMCPServer(s.Name)
-				}
-			})
+			} else {
+				kit.StatusIndicator(c, status, kit.StatusIndicatorOptions{}).Shrink(0)
+			}
 		})
+		cardMetaRow(c, func() {
+			agentTag(c, mcpTypeLabel(typ))
+			if s.Enabled {
+				agentTag(c, "已启用")
+			} else {
+				mgo.Text(c, "已禁用").FontSize(caption).TextColor(k.TextMuted).
+					Padding(0, u*1.5).Radius(mtheme.ControlRadius).Border(mtheme.BorderWidth, k.Border).SingleLine()
+			}
+		})
+		if detail != "" {
+			mgo.Text(c, detail).TextColor(k.TextMuted).
+				FontSize(caption).Font(mtheme.MonoFont).MinWidth(0).SingleLine().Ellipsis("…")
+		}
+		cardActionRow(c, func() {
+			if tools > 0 {
+				if kit.Button(c, "工具 ("+strconv.Itoa(tools)+")", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+					cw.openMCPTools(s.Name)
+				}
+			}
+			if kit.Button(c, "编辑", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+				cw.loadMCPForm(i)
+				cw.mcp.editorOpen = true
+			}
+			if connected {
+				if kit.Button(c, "断开", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+					_ = cw.mcpManager.manager.DisconnectServer(s.Name)
+					cw.toast("已断开 "+s.Name, mcore.SeverityInfo)
+				}
+			} else if kit.Button(c, "初始化", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+				cw.initMCPServer(s.Name)
+			}
+			if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
+				cw.deleteMCPServer(s.Name)
+			}
+		})
+	})
 }
 
 // openMCPTools snapshots an initialized server's tools for the dialog.

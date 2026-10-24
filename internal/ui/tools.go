@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"chatgo/internal/config"
@@ -28,9 +29,37 @@ func (cw *ChatWindow) toolMetas() []toolMeta {
 		out = append(out, toolMeta{ID: "builtin:" + name, Label: name, Desc: desc})
 	}
 	for _, name := range cw.visibleMCPServerNames() {
-		out = append(out, toolMeta{ID: "mcp:" + name, Label: name, Desc: "MCP 服务器"})
+		out = append(out, toolMeta{ID: "mcp:" + name, Label: name, Desc: cw.mcpServerDesc(name)})
 	}
 	return out
+}
+
+// mcpServerDesc describes an MCP server by what it runs and, once connected,
+// how many tools it offers, so the entries are told apart in the picker.
+func (cw *ChatWindow) mcpServerDesc(name string) string {
+	var s config.MCPServer
+	for _, srv := range cw.cfg.MCPServers {
+		if srv.Name == name {
+			s = srv
+			break
+		}
+	}
+	target := strings.TrimSpace(s.Command + " " + strings.Join(s.Args, " "))
+	if target == "" {
+		target = strings.TrimSpace(s.URL)
+	}
+	typ := string(s.Type)
+	if typ == "" {
+		typ = "stdio"
+	}
+	parts := []string{typ}
+	if st, ok := cw.mcpManager.GetServerStatus(name); ok && st.Status == "initialized" {
+		parts = append(parts, fmt.Sprintf("%d 个工具", len(st.Tools)))
+	}
+	if target != "" {
+		parts = append(parts, target)
+	}
+	return strings.Join(parts, " · ")
 }
 
 // toolEnabled reports whether a tool is selected; unknown tools default on.
@@ -39,21 +68,6 @@ func (cw *ChatWindow) toolEnabled(id string) bool {
 		return v
 	}
 	return true
-}
-
-// filterMetas returns the tools whose label or description contains query.
-func filterMetas(list []toolMeta, query string) []toolMeta {
-	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" {
-		return list
-	}
-	var out []toolMeta
-	for _, m := range list {
-		if strings.Contains(strings.ToLower(m.Label), q) || strings.Contains(strings.ToLower(m.Desc), q) {
-			out = append(out, m)
-		}
-	}
-	return out
 }
 
 // selectedToolIDs returns the IDs of the tools the user has left on.

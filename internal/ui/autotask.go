@@ -60,13 +60,7 @@ func (cw *ChatWindow) autoTasksPage(c *mgo.Context) {
 				cw.autoTaskEmptyState(c)
 				return
 			}
-			mgo.Column(c).FillWidth().Grow(1).AlignItems(mgo.Center).Children(func() {
-				mgo.Column(c).FillWidth().MaxWidth(900).Gap(u * 2).Children(func() {
-					for i := range cw.cfg.AutoTasks {
-						cw.autoTaskCard(c, i)
-					}
-				})
-			})
+			cardRows(c, 2, len(cw.cfg.AutoTasks), func(i int) { cw.autoTaskCard(c, i) })
 		})
 	})
 	cw.autoTaskConvsDialog(c)
@@ -74,19 +68,16 @@ func (cw *ChatWindow) autoTasksPage(c *mgo.Context) {
 
 // autoTaskEmptyState shows a centered placeholder when no tasks exist.
 func (cw *ChatWindow) autoTaskEmptyState(c *mgo.Context) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u*2).
-		Padding(u*8, 0).Children(func() {
-		mgo.Icon(c, icons.Must("clock")).Size(48, 48).TextColor(k.TextMuted)
-		mgo.Text(c, "还没有自动任务").
-			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
-		mgo.Text(c, "创建任务后，Agent 会按计划自动执行").TextColor(k.TextMuted).
-			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		if kit.Button(c, "新建任务", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
-			cw.clearAutoForm()
-			cw.autoTaskEditorOpen = true
-		}
+	emptyState(c, emptyStateOptions{
+		Icon:  "clock",
+		Title: "还没有自动任务",
+		Hint:  "创建任务后，Agent 会按计划自动执行",
+		Actions: func() {
+			if kit.Button(c, "新建任务", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
+				cw.clearAutoForm()
+				cw.autoTaskEditorOpen = true
+			}
+		},
 	})
 }
 
@@ -113,12 +104,10 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 		dotIcon, dotCol = "circle", k.TextMuted
 	}
 
-	mgo.Column(c).Gap(u).Padding(u*3).FillWidth().Background(k.Surface).
-		Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).Children(func() {
-
-		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
+	cardShell(c, "task:"+t.ID, func() {
+		cardTitleRow(c, func() {
 			mgo.Icon(c, icons.Must(dotIcon)).Size(16, 16).TextColor(dotCol).Shrink(0)
-			mgo.Text(c, t.Name).FontWeight(600).Grow(1).SingleLine().MinWidth(0).Ellipsis("…")
+			cardTitle(c, t.Name)
 			enabled := t.Enabled
 			if mgo.Switch(c, &enabled).Changed() {
 				cw.cfg.AutoTasks[i].Enabled = enabled
@@ -126,7 +115,7 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 			}
 		})
 
-		mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+		cardMetaRow(c, func() {
 			mgo.Row(c).Gap(u / 2).AlignItems(mgo.Center).Shrink(0).Children(func() {
 				mgo.Icon(c, icons.Must("clock")).Size(14, 14).TextColor(k.TextMuted)
 				mgo.Text(c, scheduleText(t.Schedule)).FontSize(caption).TextColor(k.TextMuted)
@@ -143,7 +132,7 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 				mgo.Text(c, "运行中…").FontSize(caption).TextColor(k.Accent)
 			})
 		} else {
-			mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+			cardMetaRow(c, func() {
 				statusIcon, statusText, statusColor := "circle", "尚未运行", k.TextMuted
 				switch {
 				case strings.HasPrefix(t.LastNote, "失败"):
@@ -166,7 +155,7 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 			})
 		}
 
-		mgo.Row(c).Gap(u).Children(func() {
+		cardActionRow(c, func() {
 			if kit.Button(c, "运行", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("play")}).Clicked() {
 				cw.startAutoTask(i)
 			}

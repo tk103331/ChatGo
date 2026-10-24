@@ -87,11 +87,8 @@ func (cw *ChatWindow) appsPage(c *mgo.Context) {
 			FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600).Shrink(0)
 		mgo.Text(c, "基于 Agent 的应用：左侧操作、右侧对话，操作能力向 Agent 开放").
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted).Shrink(0)
-		mgo.Grid(c).Columns(3).Gap(u * 3).Children(func() {
-			for _, a := range apps() {
-				cw.appCard(c, a)
-			}
-		})
+		list := apps()
+		cardRows(c, 3, len(list), func(i int) { cw.appCard(c, list[i]) })
 	})
 }
 

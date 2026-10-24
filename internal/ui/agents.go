@@ -2,7 +2,6 @@ package ui
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +28,7 @@ type agentForm struct {
 	icon         string
 	avatarSeed   string
 	models       []string
+	modelQuery   string
 	builtinTools []string
 	toolQuery    string
 	mcpServers   []string
@@ -58,72 +58,61 @@ func (cw *ChatWindow) agentsPage(c *mgo.Context) {
 				cw.agentEmptyState(c)
 				return
 			}
-			mgo.Grid(c).Columns(3).Gap(u * 3).Children(func() {
-				for i := range cw.cfg.Agents {
-					cw.agentCard(c, i)
-				}
-			})
+			cardRows(c, 2, len(cw.cfg.Agents), func(i int) { cw.agentCard(c, i) })
 		})
 	})
 }
 
 // agentEmptyState shows a centered placeholder when no agents exist.
 func (cw *ChatWindow) agentEmptyState(c *mgo.Context) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u*2).
-		Padding(u*8, 0).Children(func() {
-		mgo.Icon(c, icons.Must("bot")).Size(48, 48).TextColor(k.TextMuted)
-		mgo.Text(c, "还没有 Agent").
-			FontSize(mcore.FontSize(c, mtheme.H3Size)).TextColor(k.TextMuted)
-		mgo.Text(c, "创建自定义 Agent，配置模型、工具和技能").TextColor(k.TextMuted).
-			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		if kit.Button(c, "新建 Agent", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
-			cw.clearAgentForm()
-			cw.agentEditorOpen = true
-		}
+	emptyState(c, emptyStateOptions{
+		Icon:  "bot",
+		Title: "还没有 Agent",
+		Hint:  "创建自定义 Agent，配置模型、工具和技能",
+		Actions: func() {
+			if kit.Button(c, "新建 Agent", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
+				cw.clearAgentForm()
+				cw.agentEditorOpen = true
+			}
+		},
 	})
 }
 
 func (cw *ChatWindow) agentCard(c *mgo.Context, i int) {
 	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
 	a := cw.cfg.Agents[i]
-	mgo.Column(c).Key("agent:"+a.Name).Gap(u*2).Padding(u*3).FillWidth().
-		Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).
-		Children(func() {
-			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				cw.agentMark(c, a, 20)
-				mgo.Text(c, a.Name).
-					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).SingleLine()
-			})
-			if a.Description != "" {
-				mgo.Text(c, a.Description).TextColor(k.TextMuted).
-					FontSize(mcore.FontSize(c, mtheme.CaptionSize)).MaxLines(2)
-			}
-			mgo.Row(c).Gap(u).Wrap().Children(func() {
-				mode := "对话"
-				if a.Mode == "agent" {
-					mode = "Agents"
-				}
-				agentTag(c, mode)
-				if len(a.Models) > 0 {
-					agentTag(c, modelLabel(a.Models[0]))
-				}
-				if n := len(a.BuiltinTools) + len(a.MCPServers); n > 0 {
-					agentTag(c, fmt.Sprintf("%d 个工具", n))
-				}
-			})
-			mgo.Row(c).Gap(u).Children(func() {
-				if kit.Button(c, "编辑", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
-					cw.loadAgentForm(i)
-					cw.agentEditorOpen = true
-				}
-				if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
-					cw.deleteAgentAt(i)
-				}
-			})
+	cardShell(c, "agent:"+a.Name, func() {
+		cardTitleRow(c, func() {
+			cw.agentMark(c, a, 20)
+			cardTitle(c, a.Name)
 		})
+		if a.Description != "" {
+			mgo.Text(c, a.Description).TextColor(k.TextMuted).
+				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).MinWidth(0).MaxLines(2)
+		}
+		cardMetaRow(c, func() {
+			mode := "对话"
+			if a.Mode == "agent" {
+				mode = "Agents"
+			}
+			agentTag(c, mode)
+			if len(a.Models) > 0 {
+				agentTag(c, cw.refLabel(a.Models[0]))
+			}
+			if n := len(a.BuiltinTools) + len(a.MCPServers); n > 0 {
+				agentTag(c, fmt.Sprintf("%d 个工具", n))
+			}
+		})
+		cardActionRow(c, func() {
+			if kit.Button(c, "编辑", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+				cw.loadAgentForm(i)
+				cw.agentEditorOpen = true
+			}
+			if kit.Button(c, "删除", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
+				cw.deleteAgentAt(i)
+			}
+		})
+	})
 }
 
 func agentTag(c *mgo.Context, label string) {
@@ -213,81 +202,64 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 				})
 				on := countSelected(f.models, models)
 				cw.agentGroup(c, &cw.agentSecModels, fmt.Sprintf("可用模型  %d/%d", on, len(models)), func() {
-					agentAction(c, on, len(models), func(all bool) { f.models = toggleAll(models, all) },
-						func() { cw.settings.tab = 0; cw.goConfigure(sectionSettings) })
-					mgo.Row(c).Gap(u).Wrap().Children(func() {
-						for _, ref := range models {
-							ref := ref
-							on := containsStr(f.models, ref)
-							mgo.Checkbox(c, &on, modelLabel(ref))
-							f.models = setTool(f.models, ref, on)
-						}
-					})
+					agentConfigureLink(c, func() { cw.settings.tab = 0; cw.goConfigure(sectionSettings) })
+					modelItems := make([]selectItem, 0, len(models))
+					for _, ref := range models {
+						desc, tags := cw.refDetail(ref)
+						modelItems = append(modelItems, selectItem{
+							ID: ref, Title: cw.refLabel(ref), Desc: desc, Tags: tags,
+						})
+					}
+					selectList(c, &f.modelQuery, "搜索模型", modelItems,
+						func(id string) bool { return containsStr(f.models, id) },
+						func(id string, on bool) { f.models = setTool(f.models, id, on) })
 				})
 				on = countSelected(f.builtinTools, tools)
 				cw.agentGroup(c, &cw.agentSecTools, fmt.Sprintf("工具  %d/%d", on, len(tools)), func() {
-					agentAction(c, on, len(tools), func(all bool) { f.builtinTools = toggleAll(tools, all) },
-						func() { cw.settings.tab = 1; cw.goConfigure(sectionSettings) })
-					agentSearch(c, &f.toolQuery, "搜索工具")
-					mgo.Grid(c).Columns(2).Gap(u).Children(func() {
-						for _, t := range filterStrings(tools, f.toolQuery) {
-							t := t
-							mgo.Column(c).Gap(0).MinWidth(0).Children(func() {
-								on := containsStr(f.builtinTools, t)
-								mgo.Checkbox(c, &on, t)
-								f.builtinTools = setTool(f.builtinTools, t, on)
-								mgo.Text(c, config.GetBuiltinToolDescription(t)).FontSize(small).TextColor(k.TextMuted).
-									MaxLines(1).Ellipsis("…")
-							})
-						}
-					})
+					toolItems := make([]selectItem, 0, len(tools))
+					for _, t := range tools {
+						toolItems = append(toolItems, selectItem{
+							ID: t, Title: t, Desc: config.GetBuiltinToolDescription(t),
+						})
+					}
+					agentConfigureLink(c, func() { cw.settings.tab = 1; cw.goConfigure(sectionSettings) })
+					selectList(c, &f.toolQuery, "搜索工具", toolItems,
+						func(id string) bool { return containsStr(f.builtinTools, id) },
+						func(id string, on bool) { f.builtinTools = setTool(f.builtinTools, id, on) })
 				})
 				on = countSelected(f.mcpServers, servers)
 				cw.agentGroup(c, &cw.agentSecMCP, fmt.Sprintf("MCP 服务器  %d/%d", on, len(servers)), func() {
-					agentAction(c, on, len(servers), func(all bool) { f.mcpServers = toggleAll(servers, all) },
-						func() { cw.goConfigure(sectionMCP) })
+					agentConfigureLink(c, func() { cw.goConfigure(sectionMCP) })
 					if len(servers) == 0 {
 						mgo.Text(c, "尚未配置 MCP 服务器。").FontSize(small).TextColor(k.TextMuted)
+						return
 					}
-					agentSearch(c, &f.mcpQuery, "搜索 MCP 服务器")
-					mgo.Grid(c).Columns(2).Gap(u).Children(func() {
-						for _, s := range filterStrings(servers, f.mcpQuery) {
-							on := containsStr(f.mcpServers, s)
-							mgo.Checkbox(c, &on, s)
-							f.mcpServers = setTool(f.mcpServers, s, on)
-						}
-					})
+					mcpItems := make([]selectItem, 0, len(servers))
+					for _, srv := range servers {
+						mcpItems = append(mcpItems, selectItem{
+							ID: srv, Title: srv, Desc: cw.mcpServerDesc(srv),
+						})
+					}
+					selectList(c, &f.mcpQuery, "搜索 MCP 服务器", mcpItems,
+						func(id string) bool { return containsStr(f.mcpServers, id) },
+						func(id string, on bool) { f.mcpServers = setTool(f.mcpServers, id, on) })
 				})
 				on = countSelected(f.skills, names)
 				cw.agentGroup(c, &cw.agentSecSkills, fmt.Sprintf("Skills  %d/%d", on, len(names)), func() {
-					agentAction(c, on, len(names), func(all bool) { f.skills = toggleAll(names, all) },
-						func() { cw.goConfigure(sectionSkill) })
+					agentConfigureLink(c, func() { cw.goConfigure(sectionSkill) })
 					if len(names) == 0 {
 						mgo.Text(c, "未发现 Skill。").FontSize(small).TextColor(k.TextMuted)
+						return
 					}
-					agentSearch(c, &f.skillQuery, "搜索 Skill")
-					mgo.Column(c).Gap(u).Children(func() {
-						for _, s := range filterSkills(skillsEnabled, f.skillQuery) {
-							s := s
-							on := containsStr(f.skills, s.Name)
-							mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-								mgo.Checkbox(c, &on, "")
-								body := mgo.ButtonBase(c).Grow(1).MinWidth(0).Justify(mgo.Start).Children(func() {
-									mgo.Column(c).Grow(1).MinWidth(0).Children(func() {
-										mgo.Text(c, s.Name).SingleLine()
-										if s.Description != "" {
-											mgo.Text(c, s.Description).FontSize(small).TextColor(k.TextMuted).
-												SingleLine().Ellipsis("…")
-										}
-									})
-								})
-								if body.Clicked() {
-									on = !on
-								}
-							})
-							f.skills = setTool(f.skills, s.Name, on)
-						}
-					})
+					skillItems := make([]selectItem, 0, len(skillsEnabled))
+					for _, sk := range skillsEnabled {
+						skillItems = append(skillItems, selectItem{
+							ID: sk.Name, Title: sk.Name, Desc: sk.Description,
+						})
+					}
+					selectList(c, &f.skillQuery, "搜索 Skill", skillItems,
+						func(id string) bool { return containsStr(f.skills, id) },
+						func(id string, on bool) { f.skills = setTool(f.skills, id, on) })
 				})
 			})
 		})
@@ -297,28 +269,6 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 // agentGroup renders a collapsible capability section.
 func (cw *ChatWindow) agentGroup(c *mgo.Context, open *bool, title string, body func()) {
 	kit.Collapsible(c, open, kit.CollapsibleOptions{Title: title}, body)
-}
-
-// agentAction shows a group's count with a select-all/clear button and an
-// optional shortcut to the global configuration page.
-func agentAction(c *mgo.Context, on, total int, toggle func(all bool), configure func()) {
-	k := mcore.Tokens(c)
-	small := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
-		mgo.Text(c, "已选 "+strconv.Itoa(on)).FontSize(small).TextColor(k.TextMuted).Grow(1)
-		label := "全选"
-		if total > 0 && on == total {
-			label = "清空"
-		}
-		if kit.Button(c, label, kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
-			toggle(on != total)
-		}
-		if configure != nil {
-			if kit.Button(c, "去配置", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("sliders-horizontal")}).Clicked() {
-				configure()
-			}
-		}
-	})
 }
 
 // agentSeed is the seed an agent's generated avatar uses.
@@ -395,29 +345,6 @@ func agentSearch(c *mgo.Context, query *string, placeholder string) mgo.Element 
 	return in.Element.FillWidth()
 }
 
-// filterStrings returns the items containing query, case-insensitively.
-func filterStrings(list []string, query string) []string {
-	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" {
-		return list
-	}
-	var out []string
-	for _, s := range list {
-		if strings.Contains(strings.ToLower(s), q) {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-// toggleAll returns every item in want, or none.
-func toggleAll(want []string, all bool) []string {
-	if all {
-		return append([]string(nil), want...)
-	}
-	return nil
-}
-
 // enabledBuiltinTools lists the globally enabled built-in tool types.
 func (cw *ChatWindow) enabledBuiltinTools() []string {
 	var out []string
@@ -457,21 +384,6 @@ func (cw *ChatWindow) skillList() []skill {
 		cw.loadSkills()
 	}
 	return cw.skills.list
-}
-
-// filterSkills returns the skills whose name or description contains query.
-func filterSkills(list []skill, query string) []skill {
-	q := strings.ToLower(strings.TrimSpace(query))
-	if q == "" {
-		return list
-	}
-	var out []skill
-	for _, s := range list {
-		if strings.Contains(strings.ToLower(s.Name), q) || strings.Contains(strings.ToLower(s.Description), q) {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 func (cw *ChatWindow) loadAgentForm(i int) {
@@ -640,4 +552,12 @@ func setTool(s []string, id string, on bool) []string {
 		}
 	}
 	return out
+}
+
+// agentConfigureLink offers the shortcut to the page that defines what a
+// capability group can contain.
+func agentConfigureLink(c *mgo.Context, configure func()) {
+	if kit.Button(c, "去配置", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("sliders-horizontal")}).Clicked() {
+		configure()
+	}
 }

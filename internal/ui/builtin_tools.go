@@ -52,6 +52,12 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 		}
 	case "webview":
 		return webviewParams()
+	case "knowledge_search":
+		return map[string]*schema.ParameterInfo{
+			"query":          {Type: schema.String, Desc: "检索关键词或问题", Required: true},
+			"knowledge_base": {Type: schema.String, Desc: "知识库名称，留空检索全部知识库"},
+			"top_k":          {Type: schema.Integer, Desc: "返回片段数，默认 5，最多 20"},
+		}
 	}
 	return map[string]*schema.ParameterInfo{}
 }
@@ -183,6 +189,8 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) 
 		}
 	case "webview":
 		return cw.webviewTool
+	case "knowledge_search":
+		return cw.knowledgeSearchTool(tool.Config)
 	}
 	return func(context.Context, string) (string, error) {
 		return "工具 " + tool.Type + " 暂未实现", nil

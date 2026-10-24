@@ -31,15 +31,13 @@ func NewClient(provider config.Provider) (*Client, error) {
 
 	ctx := context.Background()
 
-	if provider.UsesConversion() {
-		converted, err := newConvertedChatModel(provider)
-		if err != nil {
-			return nil, err
-		}
-		return &Client{provider: provider, model: converted}, nil
+	if err := provider.Validate(); err != nil {
+		return nil, err
 	}
 
-	switch provider.Type {
+	// A custom provider declares which protocol its endpoint speaks, so it is
+	// built with the client for that protocol rather than its own type name.
+	switch provider.EffectiveAPIType() {
 	case "openai", "custom":
 		// OpenAI and custom providers use OpenAI-compatible API
 		cfg := &openai.Config{
@@ -51,7 +49,7 @@ func NewClient(provider config.Provider) (*Client, error) {
 		}
 		client, err := openai.NewClient(ctx, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create openai client: %w", err)
+			return nil, setupError(provider, err)
 		}
 		chatModel = client
 
@@ -66,7 +64,7 @@ func NewClient(provider config.Provider) (*Client, error) {
 		}
 		chatModel, err = claude.NewChatModel(ctx, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create claude client: %w", err)
+			return nil, setupError(provider, err)
 		}
 
 	case "ollama":
@@ -79,7 +77,7 @@ func NewClient(provider config.Provider) (*Client, error) {
 		}
 		chatModel, err = ollama.NewChatModel(ctx, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create ollama client: %w", err)
+			return nil, setupError(provider, err)
 		}
 
 	case "qwen":
@@ -93,7 +91,7 @@ func NewClient(provider config.Provider) (*Client, error) {
 		}
 		chatModel, err = qwen.NewChatModel(ctx, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create qwen client: %w", err)
+			return nil, setupError(provider, err)
 		}
 
 	case "deepseek":
@@ -107,16 +105,25 @@ func NewClient(provider config.Provider) (*Client, error) {
 		}
 		chatModel, err = deepseek.NewChatModel(ctx, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create deepseek client: %w", err)
+			return nil, setupError(provider, err)
+		}
+
+	case "openai_responses":
+		// The OpenAI Responses API, which eino-ext does not cover.
+		chatModel, err = newResponsesChatModel(provider)
+		if err != nil {
+			return nil, setupError(provider, err)
 		}
 
 	case "gemini":
 		// Google Gemini - need to create genai client first
-		genaiClient, err := genai.NewClient(ctx, &genai.ClientConfig{
-			APIKey: provider.APIKey,
-		})
+		genaiCfg := &genai.ClientConfig{APIKey: provider.APIKey}
+		if provider.BaseURL != "" {
+			genaiCfg.HTTPOptions.BaseURL = provider.BaseURL
+		}
+		genaiClient, err := genai.NewClient(ctx, genaiCfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create genai client: %w", err)
+			return nil, setupError(provider, err)
 		}
 		cfg := &gemini.Config{
 			Client: genaiClient,
@@ -124,17 +131,43 @@ func NewClient(provider config.Provider) (*Client, error) {
 		}
 		chatModel, err = gemini.NewChatModel(ctx, cfg)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create gemini client: %w", err)
+			return nil, setupError(provider, err)
 		}
 
 	default:
-		return nil, fmt.Errorf("unsupported provider type: %s", provider.Type)
+		return nil, fmt.Errorf("不支持的模型类型：%s", provider.EffectiveAPIType())
 	}
 
 	return &Client{
 		provider: provider,
 		model:    chatModel,
 	}, nil
+}
+
+// setupError turns an upstream SDK failure into a message that names the
+// provider and, for the common case of a missing credential, says so plainly
+// instead of quoting the SDK's environment-variable wording.
+func setupError(provider config.Provider, err error) error {
+	if err == nil {
+		return nil
+	}
+	low := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(low, "api key") || strings.Contains(low, "apikey") ||
+		strings.Contains(low, "authtoken") || strings.Contains(low, "api_key"):
+		return fmt.Errorf("模型「%s」的 API Key 无效或缺失，请在设置 → 模型中检查", provider.Name)
+	default:
+		return fmt.Errorf("模型「%s」初始化失败：%s", provider.Name, firstLine(err.Error()))
+	}
+}
+
+// firstLine keeps an error to its first line so a multi-line SDK dump does not
+// take over the status bar.
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		s = s[:i]
+	}
+	return strings.TrimSpace(s)
 }
 
 // ChatMessage represents a chat message

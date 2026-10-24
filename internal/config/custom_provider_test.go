@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestEffectiveAPIType(t *testing.T) {
 	custom := Provider{Type: ProviderTypeCustom}
@@ -14,25 +17,6 @@ func TestEffectiveAPIType(t *testing.T) {
 	openai := Provider{Type: "openai", APIType: "gemini"}
 	if got := openai.EffectiveAPIType(); got != "openai" {
 		t.Fatalf("non-custom provider must ignore api_type, got %s", got)
-	}
-}
-
-func TestUsesConversion(t *testing.T) {
-	cases := []struct {
-		apiType string
-		want    bool
-	}{
-		{"", false},
-		{"openai", false},
-		{"claude", true},
-		{"gemini", true},
-		{"openai_responses", true},
-	}
-	for _, c := range cases {
-		p := Provider{Type: ProviderTypeCustom, APIType: c.apiType}
-		if got := p.UsesConversion(); got != c.want {
-			t.Fatalf("api type %q: got %v want %v", c.apiType, got, c.want)
-		}
 	}
 }
 
@@ -96,5 +80,71 @@ func TestEnabledGroups(t *testing.T) {
 	}
 	if _, ok := c.FindProviderGroup("off"); !ok {
 		t.Fatal("FindProviderGroup should find disabled groups")
+	}
+}
+
+func TestValidateExplainsMissingConfigInChinese(t *testing.T) {
+	// A provider type that authenticates must say the API key is missing
+	// rather than leak the SDK's environment-variable wording.
+	for _, typ := range []string{"openai", "deepseek", "qwen", "claude", "anthropic", "gemini"} {
+		p := Provider{Name: "线上", Type: typ, Model: "m"}
+		err := p.Validate()
+		if err == nil {
+			t.Fatalf("%s without an API key must be rejected", typ)
+		}
+		if !strings.Contains(err.Error(), "API Key") || !strings.Contains(err.Error(), "线上") {
+			t.Fatalf("%s message should name the provider and the API key, got %q", typ, err)
+		}
+	}
+	// Ollama runs locally and needs no key.
+	if err := (Provider{Name: "本地", Type: "ollama", Model: "llama3"}).Validate(); err != nil {
+		t.Fatalf("ollama should not require an API key: %v", err)
+	}
+	// A custom provider may target an unauthenticated endpoint, and an empty
+	// base URL falls back to the protocol's official host, so neither is
+	// required.
+	if err := (Provider{Name: "代理", Type: ProviderTypeCustom, Model: "m"}).Validate(); err != nil {
+		t.Fatalf("a custom provider should not require a key or base URL: %v", err)
+	}
+	// A missing model name is reported before anything else.
+	err := (Provider{Name: "空", Type: "openai", APIKey: "k"}).Validate()
+	if err == nil || !strings.Contains(err.Error(), "模型名") {
+		t.Fatalf("a provider without a model should say so, got %v", err)
+	}
+}
+
+func TestNeedsAPIKey(t *testing.T) {
+	for _, typ := range []string{"openai", "deepseek", "claude", "gemini", "qwen", "anthropic"} {
+		if !(Provider{Type: typ}).NeedsAPIKey() {
+			t.Fatalf("%s should need an API key", typ)
+		}
+	}
+	for _, typ := range []string{"ollama", ProviderTypeCustom} {
+		if (Provider{Type: typ}).NeedsAPIKey() {
+			t.Fatalf("%s should not need an API key", typ)
+		}
+	}
+}
+
+// TestCustomProviderMayOmitAPIKey records a deliberate choice: a custom
+// provider can point at a local, unauthenticated endpoint such as vLLM or LM
+// Studio, so an empty API key is accepted and any rejection is left to the
+// upstream. Requiring a key here would break those setups.
+func TestCustomProviderMayOmitAPIKey(t *testing.T) {
+	for _, apiType := range APITypes() {
+		p := Provider{
+			Name: "本地", Type: ProviderTypeCustom, APIType: apiType,
+			Model: "m", BaseURL: "http://127.0.0.1:8000/v1",
+		}
+		if p.NeedsAPIKey() {
+			t.Fatalf("custom/%s must not require an API key", apiType)
+		}
+		if err := p.Validate(); err != nil {
+			t.Fatalf("custom/%s without a key should pass: %v", apiType, err)
+		}
+	}
+	// A native type still requires one.
+	if !(Provider{Type: "openai"}).NeedsAPIKey() {
+		t.Fatal("a native provider type must require an API key")
 	}
 }

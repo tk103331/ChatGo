@@ -20,6 +20,7 @@ const (
 	sectionAgent
 	sectionSkill
 	sectionAuto
+	sectionKnowledge
 	sectionMCP
 	sectionStats
 	sectionSettings
@@ -36,6 +37,7 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 		cw.navItem(c, "自动任务", "clock", sectionAuto)
 		cw.navItem(c, "Agent", "bot", sectionAgent)
 		cw.navItem(c, "Skill", "brain", sectionSkill)
+		cw.navItem(c, "知识库", "file-text", sectionKnowledge)
 		cw.navItemSVG(c, "MCP", assets.MCPLogo(), sectionMCP)
 		cw.navItem(c, "统计", "chart-column", sectionStats)
 		mgo.Spacer(c)
@@ -123,6 +125,8 @@ func (cw *ChatWindow) sectionView(c *mgo.Context) {
 		cw.skillsPage(c)
 	case sectionAuto:
 		cw.autoTasksPage(c)
+	case sectionKnowledge:
+		cw.knowledgePage(c)
 	case sectionMCP:
 		cw.mcpPage(c)
 	case sectionStats:

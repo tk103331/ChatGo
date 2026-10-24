@@ -165,10 +165,33 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 	if in.Submitted() && !initializing {
 		cw.sendDraft()
 	}
+	cw.modelSetupNotice(c)
 	if cw.status != "" {
 		k := mcore.Tokens(c)
 		mgo.Text(c, cw.status).TextColor(k.Danger).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 	}
+}
+
+// modelSetupNotice explains a model configuration problem under the composer
+// and offers the one action that fixes it.
+func (cw *ChatWindow) modelSetupNotice(c *mgo.Context) {
+	msg := cw.modelSetupError()
+	if msg == "" {
+		return
+	}
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Row(c).FillWidth().MinWidth(0).Gap(u).AlignItems(mgo.Center).
+		Padding(u, u*2).Radius(mtheme.ControlRadius).Background(k.Surface).Children(func() {
+		mgo.Icon(c, icons.Must("triangle-alert")).Size(16, 16).TextColor(k.Danger).Shrink(0)
+		mgo.Text(c, msg).TextColor(k.Danger).FontSize(caption).
+			Grow(1).MinWidth(0).MaxLines(2)
+		if kit.Button(c, "去设置", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+			cw.settings.tab = 0
+			cw.goConfigure(sectionSettings)
+		}
+	})
 }
 
 // modelSelector chooses among the models the active agent may use.
@@ -176,7 +199,7 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	refs := cw.agentModelRefs()
 	var models []kit.ModelOption
 	for _, ref := range refs {
-		models = append(models, kit.ModelOption{ID: ref, Name: modelLabel(ref)})
+		models = append(models, kit.ModelOption{ID: ref, Name: cw.refLabel(ref)})
 	}
 	if len(models) == 0 {
 		if kit.Button(c, "配置模型", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
@@ -296,7 +319,6 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 	}
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	small := mcore.FontSize(c, mtheme.CaptionSize)
 	on := 0
 	for _, mt := range list {
 		if cw.toolEnabled(mt.ID) {
@@ -331,24 +353,15 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 	if prefix == "mcp:" {
 		query = &cw.mcpQuery
 	}
+	items := make([]selectItem, 0, len(list))
+	for _, mt := range list {
+		items = append(items, selectItem{ID: mt.ID, Title: mt.Label, Desc: mt.Desc})
+	}
 	changed := false
-	kit.Popover(c, b, open, kit.PopoverOptions{Title: title, Width: 340, MaxHeight: u * 88, Up: true}, func() {
-		mgo.Column(c).Gap(u * 2).Children(func() {
-			agentSearch(c, query, "搜索"+buttonLabel).Height(mcore.Density(c).ControlHeight() - 6)
-			for _, mt := range filterMetas(list, *query) {
-				mt := mt
-				v := cw.toolEnabled(mt.ID)
-				mgo.Column(c).Gap(0).Children(func() {
-					if mgo.Switch(c, &v).Label(mt.Label).Changed() {
-						cw.toolOn[mt.ID] = v
-						changed = true
-					}
-					if mt.Desc != "" {
-						mgo.Text(c, mt.Desc).FontSize(small).TextColor(k.TextMuted).MaxLines(1).Ellipsis("…")
-					}
-				})
-			}
-		})
+	kit.Popover(c, b, open, kit.PopoverOptions{Title: title, Width: 360, MaxHeight: u * 88, Up: true}, func() {
+		changed = selectList(c, query, "搜索"+buttonLabel, items,
+			cw.toolEnabled,
+			func(id string, on bool) { cw.toolOn[id] = on })
 	})
 	if changed {
 		if cw.currentAgent == "" {

@@ -54,53 +54,49 @@ func (cw *ChatWindow) setupProvider(name string) {
 			return
 		}
 		cw.llmClient, cw.reactClient = nil, nil
-		cw.status = "尚未配置模型，请在设置中添加 Provider"
+		cw.setSetupError("尚未配置可用模型，请在设置 → 模型中添加并启用一个模型")
 		return
 	}
 	cw.provider = p.Name
 	cw.cfg.CurrentProvider = p.Name
-	if cw.model == "" {
-		if ms := p.ModelsList(); len(ms) > 0 {
-			cw.model = ms[0]
-		}
+	// The selected model must belong to this provider: switching providers
+	// keeps cw.model, and sending another provider's model name upstream is
+	// rejected as an unknown model.
+	if ms := p.ModelsList(); len(ms) > 0 && !containsStr(ms, cw.model) {
+		cw.model = ms[0]
 	}
 	p.Model = cw.model
-	if p.Model == "" {
+	if err := p.Validate(); err != nil {
 		cw.llmClient, cw.reactClient = nil, nil
-		cw.status = "Provider「" + p.Name + "」尚未配置模型"
+		cw.setSetupError(err.Error())
 		return
 	}
 	if cw.agentMode || len(cw.selectedToolIDs()) > 0 {
 		if err := cw.setupReactAgent(p); err == nil {
-			cw.status = ""
+			cw.clearSetupError()
 			return
 		}
 	}
 	client, err := llm.NewClient(p)
 	if err != nil {
 		cw.llmClient, cw.reactClient = nil, nil
-		cw.status = "模型初始化失败: " + err.Error()
+		cw.setSetupError(err.Error())
 		return
 	}
 	cw.llmClient, cw.reactClient = client, nil
-	cw.status = ""
+	cw.clearSetupError()
 }
 
 // setupGroup builds the routing client for a provider group.
 func (cw *ChatWindow) setupGroup(g config.ProviderGroup) {
 	cw.provider = g.Name
 	cw.cfg.CurrentProvider = g.Name
-	if ms := g.ModelsList(); len(ms) > 0 && !containsStr(ms, cw.model) {
-		cw.model = ms[0]
-	}
-	if cw.model == "" {
-		if ms := g.ModelsList(); len(ms) > 0 {
-			cw.model = ms[0]
-		}
-	}
-	if cw.model == "" {
+	// A group picks the model per request through its routing strategy, so the
+	// active model is cleared: holding one here would pin every request to it.
+	cw.model = ""
+	if len(g.ModelsList()) == 0 {
 		cw.llmClient, cw.reactClient, cw.groupClient, cw.groupReact = nil, nil, nil, nil
-		cw.status = "模型组「" + g.Name + "」尚未配置模型"
+		cw.setSetupError("模型组「" + g.Name + "」尚未勾选任何模型，请在设置 → 模型中配置")
 		return
 	}
 	if cw.agentMode || len(cw.selectedToolIDs()) > 0 {
@@ -112,19 +108,19 @@ func (cw *ChatWindow) setupGroup(g config.ProviderGroup) {
 		if err == nil {
 			cw.llmClient, cw.reactClient, cw.groupClient = nil, nil, nil
 			cw.groupReact = rc
-			cw.status = ""
+			cw.clearSetupError()
 			return
 		}
 	}
 	c, err := llm.NewGroupClient(g, cw.cfg.Providers)
 	if err != nil {
 		cw.llmClient, cw.reactClient, cw.groupClient, cw.groupReact = nil, nil, nil, nil
-		cw.status = "模型组初始化失败: " + err.Error()
+		cw.setSetupError("模型组「" + g.Name + "」初始化失败：" + err.Error())
 		return
 	}
 	cw.llmClient, cw.reactClient, cw.groupReact = nil, nil, nil
 	cw.groupClient = c
-	cw.status = ""
+	cw.clearSetupError()
 }
 
 // firstGroup returns the first enabled provider group, used when no provider
@@ -386,4 +382,20 @@ func (cw *ChatWindow) agentToolsAndPrompt() ([]tool.BaseTool, string) {
 		systemPrompt = defaultSystemPrompt
 	}
 	return einoTools, systemPrompt
+}
+
+// setSetupError records why no model client could be built. It is kept apart
+// from cw.status so a model problem is shown next to the composer and the model
+// settings, instead of on whatever settings tab happens to be open.
+func (cw *ChatWindow) setSetupError(msg string) {
+	cw.setupErr = msg
+}
+
+func (cw *ChatWindow) clearSetupError() {
+	cw.setupErr = ""
+}
+
+// modelSetupError returns the pending model configuration problem, if any.
+func (cw *ChatWindow) modelSetupError() string {
+	return cw.setupErr
 }

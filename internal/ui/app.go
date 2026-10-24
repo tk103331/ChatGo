@@ -50,6 +50,9 @@ type ChatWindow struct {
 
 	winMu  sync.Mutex
 	window *mygo.Window
+	// dispatch runs a main-thread callback when there is no window yet, which
+	// is how tests drain the work postMain would otherwise drop.
+	dispatch func(func())
 
 	mode    pageMode
 	section navSection
@@ -118,9 +121,11 @@ type ChatWindow struct {
 	workspace   string
 	wsCollapsed map[string]bool
 
-	homeList mgo.ListState
-	convList mgo.ListState
-	msgList  kit.MessageListState
+	homeList  mgo.ListState
+	convList  mgo.ListState
+	msgList   kit.MessageListState
+	knowledge kbState
+	imp       importState
 
 	draft        string
 	mentionRoot  string
@@ -147,7 +152,10 @@ type ChatWindow struct {
 	toolOn  map[string]bool
 	skillOn map[string]bool
 
-	status        string
+	status string
+	// setupErr explains why no model client exists; it is shown in the
+	// composer and on the model settings, not on every settings tab.
+	setupErr      string
 	toastText     string
 	toastSeverity mcore.Severity
 
@@ -343,14 +351,14 @@ func (cw *ChatWindow) applyQuickShortcut() {
 	if err := mygo.GlobalShortcut.Register(acc, func() {
 		cw.openQuick()
 	}); err != nil {
-		cw.status = "快捷对话快捷键注册失败: " + err.Error()
+		cw.settings.shortcut.err = "快捷键注册失败：" + err.Error()
 		return
 	}
 	if cw.quickShortcut != "" {
 		mygo.GlobalShortcut.Unregister(cw.quickShortcut)
 	}
 	cw.quickShortcut = acc
-	cw.status = ""
+	cw.settings.shortcut.err = ""
 }
 
 // saveQuickShortcut persists the accelerator and re-registers it.
@@ -591,9 +599,13 @@ const defaultSystemPrompt = "You are a helpful AI assistant with access to vario
 func (cw *ChatWindow) postMain(fn func()) {
 	cw.winMu.Lock()
 	w := cw.window
+	dispatch := cw.dispatch
 	cw.winMu.Unlock()
-	if w != nil {
+	switch {
+	case w != nil:
 		w.Update(fn)
+	case dispatch != nil:
+		dispatch(fn)
 	}
 }
 

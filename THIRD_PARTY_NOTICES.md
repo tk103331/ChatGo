@@ -56,10 +56,13 @@ SOFTWARE.
 
 Provider and agent brand marks. Source: https://simpleicons.org — CC0-1.0.
 
-## RelayKit (github.com/QuantumNous/new-api/relaykit)
+## openai-go (github.com/openai/openai-go)
 
-Converts chat requests and responses between the OpenAI Chat Completions,
-OpenAI Responses, Claude Messages and Gemini generateContent protocols for
-`custom` providers. Source: https://github.com/QuantumNous/new-api — GNU Affero
-General Public License v3.0. The full license text is available in the upstream
-repository.
+OpenAI's official Go SDK, used for the Responses API that eino-ext does not
+cover. Source: https://github.com/openai/openai-go — Apache License 2.0.
+
+## modernc.org/sqlite
+
+A pure-Go (no cgo) SQLite implementation, used for the local knowledge base
+index with FTS5 full-text search. Source: https://gitlab.com/cznic/sqlite —
+BSD-3-Clause.

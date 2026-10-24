@@ -23,6 +23,9 @@ func (cw *ChatWindow) providersTab(c *mgo.Context) {
 				mgo.Text(c, "模型").
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+					if kit.Button(c, "导入", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("arrow-down")}).Clicked() {
+						cw.openImportDialog(importProviders)
+					}
 					if kit.Button(c, "新增模型", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("plus")}).Clicked() {
 						cw.addNewProvider()
 					}
@@ -31,6 +34,15 @@ func (cw *ChatWindow) providersTab(c *mgo.Context) {
 					}
 				})
 			})
+			if msg := cw.modelSetupError(); msg != "" {
+				k := mcore.Tokens(c)
+				mgo.Row(c).FillWidth().MinWidth(0).Gap(u).AlignItems(mgo.Center).
+					Padding(u, u*2).Radius(mtheme.ControlRadius).Background(k.Surface).Children(func() {
+					mgo.Icon(c, icons.Must("triangle-alert")).Size(16, 16).TextColor(k.Danger).Shrink(0)
+					mgo.Text(c, msg).TextColor(k.Danger).
+						FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Grow(1).MinWidth(0).MaxLines(2)
+				})
+			}
 			if len(cw.cfg.Providers) == 0 {
 				cw.providerEmptyState(c)
 			} else {
@@ -197,8 +209,15 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 
 func (cw *ChatWindow) loadProviderForm(i int) {
 	p := cw.cfg.Providers[i]
+	// Only a custom provider has an api_type; for every other type the field
+	// is unused, and seeding it with the provider type would make switching to
+	// custom produce an invalid api_type.
+	apiType := "openai"
+	if p.Type == config.ProviderTypeCustom {
+		apiType = p.EffectiveAPIType()
+	}
 	cw.settings.prov = providerForm{
-		editing: i, name: p.Name, typ: p.Type, apiType: p.EffectiveAPIType(), apiKey: p.APIKey,
+		editing: i, name: p.Name, typ: p.Type, apiType: apiType, apiKey: p.APIKey,
 		baseURL: p.BaseURL, models: append([]string(nil), p.ModelsList()...), enabled: p.Enabled,
 		preset: p.Preset || providerIsPreset(p),
 	}

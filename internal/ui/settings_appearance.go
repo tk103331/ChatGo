@@ -20,9 +20,8 @@ func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	mgo.Column(c).Gap(u * 2).MaxWidth(720).Children(func() {
 		mgo.Text(c, "快捷键").FontWeight(600)
-		if cw.status != "" {
-			mgo.Text(c, cw.status).TextColor(k.Danger).FontSize(small).
-				Font(mtheme.MonoFont)
+		if cw.settings.shortcut.err != "" {
+			mgo.Text(c, cw.settings.shortcut.err).TextColor(k.Danger).FontSize(small)
 		}
 		mgo.Text(c, "快捷对话").FontSize(small).TextColor(k.TextMuted)
 		f := &cw.settings.shortcut

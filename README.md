@@ -17,6 +17,7 @@ A simple cross-platform AI chat client built with Go and [MyGo](https://github.c
 - 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills) and ACP Agents (local coding CLIs)
 - 🔧 **Tools & MCP** - Built-in tools and whole MCP servers toggle per chat/agent, with search; an MCP marketplace is bundled
 - 📚 **Skills** - Scans local SKILL directories, with per-agent selection and search
+- 📖 **Knowledge Bases** - Index local text documents into a pure-Go SQLite FTS5 store and retrieve them offline; agents search them with the `knowledge_search` tool
 - 🗂️ **Workspaces & Panels** - Sessions grouped by workspace and collapsible; resizable chat / preview / file panels with a multi-tab file preview and a Git diff panel
 - ⌨️ **Terminal** - Multi-tab bottom terminal (Ghostty VT)
 - 💬 **Streaming Output** - Real-time streaming responses with Markdown rendering
@@ -75,7 +76,7 @@ go install github.com/tk103331/ChatGo@latest
 | **Qwen** | `qwen` | Alibaba Tongyi Qianwen |
 | **DeepSeek** | `deepseek` | DeepSeek AI |
 | **Gemini** | `gemini` | Google Gemini |
-| **Custom** | `custom` | Any API; `api_type` selects the upstream protocol (`openai`, `openai_responses`, `claude`, `gemini`) and requests/responses are converted with [RelayKit](https://github.com/QuantumNous/new-api/blob/main/relaykit/README.md) |
+| **Custom** | `custom` | Any API; `api_type` selects the upstream protocol (`openai`, `openai_responses`, `claude`, `gemini`) and the request goes straight to that protocol's client |
 
 Each provider can list several models, and the model selector shows them all.
 
@@ -119,7 +120,7 @@ providers:
     model: "llama3.2"
     enabled: true
 
-  # custom: any upstream protocol, converted by RelayKit
+  # custom: pick the upstream protocol with api_type
   - name: "MyClaudeProxy"
     type: "custom"
     api_type: "claude"          # openai | openai_responses | claude | gemini
@@ -149,6 +150,7 @@ current_provider: "OpenAI"
 - **Settings → ACP**: manage local ACP connections (Claude Code, OpenCode, …)
 - **Settings → Appearance**: theme mode and language
 - **Agent** page: create custom Agents (models, built-in tools, MCP servers, Skills)
+- **知识库** page: create knowledge bases, import documents, rebuild the index and test retrieval
 - **MCP** page: your servers plus an embedded marketplace
 
 ## 💡 Usage
@@ -167,6 +169,23 @@ Grouped by workspace; create, rename, delete, and search. Hide or show the list 
 - **Built-in Chat** remembers its global model / tool / MCP / Skill selection and reloads it on start
 - **Custom Agents** define an availability whitelist in Settings (models are multi-select), all enabled by default and temporary toggles in chat
 - **ACP Agents** expose the modes and options the protocol provides
+
+### Knowledge Bases
+
+The **知识库** page manages local text knowledge bases. Documents are chunked by
+Markdown heading, segmented (Han text into overlapping bigrams, latin words
+lowercased) and indexed into SQLite FTS5, so retrieval is fully offline and
+needs no embedding service. Imports are incremental: a file whose content hash
+is unchanged is skipped.
+
+- Import single files, whole directories (hidden directories are skipped), or pasted text
+- Supported text types: Markdown, txt, rst/adoc/org, JSON/YAML/TOML/INI, CSV, logs and common source files
+- `重建索引` re-reads every file document and drops the ones deleted on disk
+- The built-in retrieval box shows the ranked passages with their BM25 score, for tuning
+- The `knowledge_search` built-in tool exposes the same retrieval to agents: enable it in **Settings → Tools**, optionally pinning a default knowledge base and `top_k`
+
+Storage lives in `~/.chatgo/knowledge/kb.db`. Everything is pure Go
+(`modernc.org/sqlite`), so the app still builds with `CGO_ENABLED=0`.
 
 ### Tools, MCP & Skills
 

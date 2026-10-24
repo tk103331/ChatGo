@@ -1,6 +1,11 @@
 package ui
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+
+	"chatgo/internal/config"
+)
 
 // modelRef identifies a model: "provider::model", or "::model" for a custom
 // model name run through the active provider.
@@ -28,7 +33,9 @@ func modelLabel(ref string) string {
 }
 
 // allModelRefs lists every configured provider model, then every enabled
-// provider group model.
+// provider group. A group is one entry with no model of its own: picking a
+// member's model would pin the request to it and bypass the group's routing
+// strategy, so the model is left to the strategy at call time.
 func (cw *ChatWindow) allModelRefs() []string {
 	var out []string
 	for _, p := range cw.cfg.Providers {
@@ -40,11 +47,33 @@ func (cw *ChatWindow) allModelRefs() []string {
 		}
 	}
 	for _, g := range cw.cfg.EnabledGroups() {
-		for _, m := range g.ModelsList() {
-			out = append(out, modelRef(g.Name, m))
-		}
+		out = append(out, groupRef(g.Name))
 	}
 	return out
+}
+
+// groupRef is the model reference of a whole provider group.
+func groupRef(name string) string { return name + "::" }
+
+// refLabel renders a reference for display, naming a group's routing strategy
+// so a group entry is told apart from a provider of the same name.
+func (cw *ChatWindow) refLabel(ref string) string {
+	if name, model := splitModelRef(ref); model == "" && name != "" {
+		if g, ok := cw.cfg.FindProviderGroup(name); ok {
+			return name + " · " + config.GetStrategyDisplayName(g.EffectiveStrategy())
+		}
+	}
+	return modelLabel(ref)
+}
+
+// isGroupRef reports whether a reference names a group rather than one model.
+func (cw *ChatWindow) isGroupRef(ref string) bool {
+	name, model := splitModelRef(ref)
+	if name == "" || model != "" {
+		return false
+	}
+	_, ok := cw.cfg.FindProviderGroup(name)
+	return ok
 }
 
 // agentModelRefs is the models the active agent may switch between: the built-in
@@ -99,12 +128,11 @@ func (cw *ChatWindow) defaultTarget() (name, model string) {
 	return name, model
 }
 
-// firstModelOf returns the first model of the named provider or group.
+// firstModelOf returns the first model of the named provider. A group has no
+// model of its own, so it reports none: recording a member's model would make
+// a replayed turn run on that member instead of the group.
 func (cw *ChatWindow) firstModelOf(name string) string {
-	if g, ok := cw.cfg.FindProviderGroup(name); ok {
-		if ms := g.ModelsList(); len(ms) > 0 {
-			return ms[0]
-		}
+	if _, ok := cw.cfg.FindProviderGroup(name); ok {
 		return ""
 	}
 	if p, ok := cw.findProvider(name); ok {
@@ -113,4 +141,25 @@ func (cw *ChatWindow) firstModelOf(name string) string {
 		}
 	}
 	return ""
+}
+
+// refDetail describes a model reference under its title: a group lists the
+// members it routes over, a provider model names its provider.
+func (cw *ChatWindow) refDetail(ref string) (desc string, tags []string) {
+	name, model := splitModelRef(ref)
+	if model == "" && name != "" {
+		if g, ok := cw.cfg.FindProviderGroup(name); ok {
+			members := make([]string, 0, len(g.Members))
+			for _, m := range g.Members {
+				if len(m.Models) > 0 {
+					members = append(members, m.Provider)
+				}
+			}
+			return fmt.Sprintf("模型组 · %d 个成员", len(members)), members
+		}
+	}
+	if name == "" {
+		return "自定义模型名", nil
+	}
+	return name, nil
 }
