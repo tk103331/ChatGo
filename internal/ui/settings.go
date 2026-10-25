@@ -115,6 +115,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 		res.Element.Grow(1).MinHeight(0)
 	})
 	cw.importDialog(c)
+	cw.modelRefreshDialog(c)
 }
 
 // confirmDialog shows the pending confirmation and runs its action. It keeps

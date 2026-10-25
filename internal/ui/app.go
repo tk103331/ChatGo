@@ -126,6 +126,7 @@ type ChatWindow struct {
 	msgList   kit.MessageListState
 	knowledge kbState
 	imp       importState
+	modelRef  modelRefreshState
 
 	draft        string
 	mentionRoot  string
