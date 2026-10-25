@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"chatgo/internal/config"
+	"chatgo/internal/llm"
 	"chatgo/internal/ui/assets"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -170,7 +171,17 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 		if r := kit.TextInput(c, &f.baseURL, kit.TextInputOptions{Label: "Base URL", Placeholder: "Base URL"}); r.Changed() {
 			changed = true
 		}
-		mgo.Text(c, "模型").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
+		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+			mgo.Text(c, "模型").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
+			mgo.Spacer(c)
+			if kit.Button(c, "刷新列表", kit.ButtonOptions{
+				Variant: kit.Ghost, Icon: icons.Must("refresh-cw"),
+				Disabled: cw.modelRef.loading || !cw.providerFormCanList(),
+				Loading:  cw.modelRef.loading,
+			}).Clicked() {
+				cw.startModelRefresh()
+			}
+		})
 		for _, m := range f.models {
 			m := m
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
@@ -206,6 +217,15 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 	if changed && f.editing >= 0 {
 		cw.persistProvider()
 	}
+}
+
+// providerFormCanList reports whether the provider being edited could be
+// asked for its models, so the refresh button is only offered when a click
+// would do something.
+func (cw *ChatWindow) providerFormCanList() bool {
+	f := &cw.settings.prov
+	p := config.Provider{Name: f.name, Type: f.typ, APIType: f.apiType, APIKey: f.apiKey, BaseURL: f.baseURL}
+	return llm.SupportsListModels(p)
 }
 
 func (cw *ChatWindow) loadProviderForm(i int) {
