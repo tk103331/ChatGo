@@ -36,7 +36,7 @@ func (cw *ChatWindow) openCodeSearchTab(pane int) {
 		return
 	}
 	cw.openCenterTab(pane, &centerTab{
-		ID: "codesearch", Kind: centerCodeSearch, Title: "代码搜索",
+		ID: "codesearch", Kind: centerCodeSearch, Title: "CodeSearch",
 	})
 }
 
@@ -49,7 +49,7 @@ func (cw *ChatWindow) codeSearchBody(c *mgo.Context) {
 		mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			in := kit.TextInput(c, &cw.search.query, kit.TextInputOptions{
 				Placeholder: "搜索工作区代码，回车搜索",
-				Label:       "代码搜索",
+				Label:       "CodeSearch",
 			})
 			in.Element.Grow(1).MinWidth(0)
 			if in.Submitted() {
@@ -162,13 +162,17 @@ func (cw *ChatWindow) searchHitLine(c *mgo.Context, hit *searchHit) {
 		b.Background(k.SurfaceHover)
 	}
 	b.Children(func() {
+		// The gutter is sized from the font, not from the density unit: a
+		// monospace digit is about 0.62em, so six digits need ~3.7em and a
+		// unit-based width silently clips four-digit lines.
 		mgo.Text(c, itoa(hit.Line)).Font(mtheme.MonoFont).FontSize(caption).
-			TextColor(k.Accent).Shrink(0).Width(u * 4).SingleLine()
+			TextColor(k.Accent).Shrink(0).Width(caption * 3.8).
+			Justify(mgo.End).SingleLine()
 		mgo.Text(c, strings.TrimSpace(hit.Text)).FontSize(caption).TextColor(k.TextMuted).
 			SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 	})
 	if b.DoubleClicked() {
-		cw.openPreview(hit.Path)
+		cw.openPreviewAt(hit.Path, hit.Line)
 	}
 }
 

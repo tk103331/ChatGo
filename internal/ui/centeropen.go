@@ -19,8 +19,16 @@ import (
 // openPreview opens a file in the center area, or focuses the tab already
 // showing it. Images decode to an image tab, everything else to source.
 func (cw *ChatWindow) openPreview(path string) {
+	cw.openPreviewAt(path, 0)
+}
+
+// openPreviewAt opens a file and scrolls to a one-based line, 0 for the top.
+func (cw *ChatWindow) openPreviewAt(path string, line int) {
 	id := "file:" + path
-	if cw.focusCenterTab(id) != nil {
+	if tab := cw.focusCenterTab(id); tab != nil {
+		if line > 0 {
+			tab.GotoLine = line
+		}
 		return
 	}
 	t := &centerTab{ID: id, Path: path, Title: titleOfPath(path)}
@@ -59,6 +67,7 @@ func (cw *ChatWindow) openPreview(path string) {
 			t.Body = string(data)
 		}
 	}
+	t.GotoLine = line
 	cw.openCenterTab(cw.center.focus, t)
 }
 
