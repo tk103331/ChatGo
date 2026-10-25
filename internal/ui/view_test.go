@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,8 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 
 	"chatgo/internal/config"
+	"chatgo/internal/ui/icons"
+	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	"chatgo/pkg/models"
 
@@ -247,12 +250,558 @@ func TestPreviewClose(t *testing.T) {
 	cw.openPreview(wd + "/nav.go")
 	tr := mgo.NewTester(cw.view, 1400, 800)
 	tr.Frame()
-	if err := tr.Click("关闭预览"); err != nil {
+	if err := tr.Click("关闭 nav.go"); err != nil {
 		t.Fatalf("click close: %v", err)
 	}
 	tr.Frame()
-	if len(cw.previewTabs) != 1 {
-		t.Fatalf("expected 1 tab, got %d", len(cw.previewTabs))
+	// The pinned Chat tab and the remaining file tab survive.
+	tabs := cw.center.panes[0].tabs
+	if len(tabs) != 2 {
+		t.Fatalf("expected 2 tabs, got %d", len(tabs))
+	}
+	if tabs[0].Kind != centerChat {
+		t.Fatalf("expected the Chat tab to stay pinned first, got %q", tabs[0].Kind)
+	}
+}
+
+// Rendering a pane with several tab kinds must not panic: the strip draws
+// every tab before applying any close it collected, so a context menu action
+// can never shift the slice under the drawing loop.
+func TestRenderMixedTabs(t *testing.T) {
+	wd, _ := os.Getwd()
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.workspace = wd
+	cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: wd,
+		Messages: []models.Message{{ID: "u", Role: "user", Content: "hi"}}}
+	cw.convs = []models.Conversation{*cw.cur}
+	cw.setLayout(layoutLeftWide)
+	cw.openPreview(wd + "/chat.go")
+	cw.openPreview(wd + "/nav.go")
+	cw.openCenterTab(1, &centerTab{Kind: centerDiff, Title: "a.go (diff)",
+		Path: "diff:a.go", Lang: "go", From: "x", To: "y"})
+	cw.openCenterTab(2, &centerTab{Kind: centerGitGraph, Title: "GitGraph"})
+	for i := 0; i < 4; i++ {
+		img := mgo.Render(cw.view, 1500, 900, 1)
+		if img == nil {
+			t.Fatalf("frame %d did not render", i)
+		}
+	}
+}
+
+// The Chat tab is pinned: it has no close control and closing it is refused.
+func TestChatTabCannotClose(t *testing.T) {
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.cur = &models.Conversation{ID: "c", Title: "t"}
+	cw.center.ensureChatTab()
+	cw.closeCenterTab(0, 0)
+	tabs := cw.center.panes[0].tabs
+	if len(tabs) != 1 || tabs[0].Kind != centerChat {
+		t.Fatalf("Chat tab must survive a close, got %d tabs", len(tabs))
+	}
+}
+
+// The Chat tab is named and marked after the conversation's agent, which is
+// what tells a plain agent from an ACP one.
+func TestChatTabNameFollowsAgent(t *testing.T) {
+	cw := testWindow()
+	cases := []struct{ agent, want string }{
+		{"", chatAgentName},
+		{"agent:Helper", "Helper"},
+		{"acp:Claude Code", "Claude Code"},
+	}
+	for _, tc := range cases {
+		cw.cur = &models.Conversation{ID: "c", Agent: tc.agent}
+		if got := cw.chatTabName(); got != tc.want {
+			t.Fatalf("agent %q: want %q, got %q", tc.agent, tc.want, got)
+		}
+	}
+}
+
+// Every layout renders.
+func TestCenterLayoutsRender(t *testing.T) {
+	wd, _ := os.Getwd()
+	for _, l := range []centerLayout{layoutSingle, layoutCols, layoutLeftWide} {
+		cw := testWindow()
+		cw.mode = modeChat
+		cw.workspace = wd
+		cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: wd}
+		cw.convs = []models.Conversation{*cw.cur}
+		cw.setLayout(l)
+		img := mgo.Render(cw.view, 1400, 900, 1)
+		if img == nil || img.Bounds().Dx() != 1400 {
+			t.Fatalf("layout %d render failed: %v", l, img)
+		}
+	}
+}
+
+// Each layout shows the number of panes it is named for.
+func TestCenterLayoutPaneCounts(t *testing.T) {
+	cases := []struct {
+		layout centerLayout
+		want   int
+	}{
+		{layoutSingle, 1},
+		{layoutCols, 2},
+		{layoutLeftWide, 3},
+	}
+	for _, tc := range cases {
+		if got := tc.layout.paneCount(); got != tc.want {
+			t.Fatalf("layout %d: want %d panes, got %d", tc.layout, tc.want, got)
+		}
+	}
+}
+
+// The three-pane layout keeps its tabs apart, one strip per pane.
+func TestThreePaneTabsStayPerPane(t *testing.T) {
+	cw := testWindow()
+	cw.setLayout(layoutLeftWide)
+	cw.openCenterTab(1, &centerTab{Kind: centerText, Title: "x"})
+	cw.openCenterTab(2, &centerTab{Kind: centerText, Title: "y"})
+	counts := [3]int{}
+	for i := range 3 {
+		counts[i] = len(cw.center.panes[i].tabs)
+	}
+	if counts != [3]int{1, 1, 1} {
+		t.Fatalf("want one tab per pane, got %v", counts)
+	}
+}
+
+// Shrinking a three-pane layout into one keeps every tab.
+func TestCollapseThreePaneLayout(t *testing.T) {
+	cw := testWindow()
+	cw.setLayout(layoutLeftWide)
+	cw.openCenterTab(1, &centerTab{Kind: centerText, Title: "x"})
+	cw.openCenterTab(2, &centerTab{Kind: centerText, Title: "y"})
+	cw.setLayout(layoutSingle)
+	if n := len(cw.center.panes[0].tabs); n != 3 {
+		t.Fatalf("expected Chat plus both tabs, got %d", n)
+	}
+}
+
+// Shrinking keeps every pane the new layout still draws at its index, and
+// folds only the dropped ones into the pane now covering their region.
+func TestCollapseFoldsDroppedPanes(t *testing.T) {
+	cases := []struct {
+		from, to centerLayout
+		fromPane int
+		wantPane int
+	}{
+		// Two columns drops the right column's lower pane into the pane
+		// above it.
+		{layoutLeftWide, layoutCols, 2, 1},
+		// One column drops both extra panes into pane 0.
+		{layoutLeftWide, layoutSingle, 1, 0},
+		{layoutLeftWide, layoutSingle, 2, 0},
+		{layoutCols, layoutSingle, 1, 0},
+	}
+	for _, tc := range cases {
+		cw := testWindow()
+		cw.setLayout(tc.from)
+		moved := cw.openCenterTab(tc.fromPane, &centerTab{Kind: centerText, Title: "m"})
+		cw.setLayout(tc.to)
+		pane, _ := cw.paneHoldingTab(moved)
+		if pane != tc.wantPane {
+			t.Fatalf("%d->%d from %d: want pane %d, got %d",
+				tc.from, tc.to, tc.fromPane, tc.wantPane, pane)
+		}
+		if len(cw.center.panes[tc.fromPane].tabs) != 0 {
+			t.Fatalf("%d->%d: dropped pane %d still holds tabs", tc.from, tc.to, tc.fromPane)
+		}
+	}
+}
+
+// A pane the shrinking layout keeps does not lose its tabs.
+func TestCollapseKeepsVisiblePanesInPlace(t *testing.T) {
+	cw := testWindow()
+	cw.setLayout(layoutLeftWide)
+	kept := cw.openCenterTab(1, &centerTab{Kind: centerText, Title: "kept"})
+	cw.setLayout(layoutCols)
+	pane, _ := cw.paneHoldingTab(kept)
+	if pane != 1 {
+		t.Fatalf("a drawn pane must keep its tabs, want 1, got %d", pane)
+	}
+}
+
+// The layout switcher belongs to the leftmost pane, whatever it shows, and to
+// no other pane.
+func TestLayoutMenuOnLeftPaneOnly(t *testing.T) {
+	cw := testWindow()
+	cw.setLayout(layoutCols)
+	cw.center.ensureChatTab()
+	if !cw.showLayoutMenu(0) {
+		t.Fatal("the left pane must carry the switcher")
+	}
+	if cw.showLayoutMenu(1) {
+		t.Fatal("no other pane may carry the switcher")
+	}
+	// Covering the Chat tab with another panel keeps the switcher, which is
+	// how a layout can still be changed while reading a file.
+	cw.openCenterTab(0, &centerTab{Kind: centerText, Title: "f"})
+	if !cw.showLayoutMenu(0) {
+		t.Fatal("the switcher must survive a non-Chat tab taking the pane")
+	}
+	if cw.center.panes[0].active().Kind != centerText {
+		t.Fatal("the test needs a non-Chat tab to be active")
+	}
+}
+
+// The layout icons match the shape they name: the leading pane must be the
+// tall one for "left one, right two".
+func TestLayoutIconsMatchTheirShape(t *testing.T) {
+	// layout-panel-left is the tall rect on the left and the two small ones on
+	// the right, which is what 左一右二 draws.
+	if got := layoutIcon(layoutLeftWide); got != "layout-panel-left" {
+		t.Fatalf("layoutLeftWide wants the tall-left mark, got %q", got)
+	}
+	if got := layoutIcon(layoutCols); got != "columns-2" {
+		t.Fatalf("layoutCols wants the two-column mark, got %q", got)
+	}
+	if got := layoutIcon(layoutSingle); got != "square" {
+		t.Fatalf("layoutSingle wants the single mark, got %q", got)
+	}
+	for _, l := range []centerLayout{layoutSingle, layoutCols, layoutLeftWide} {
+		if _, ok := icons.Get(layoutIcon(l)); !ok {
+			t.Fatalf("layout %d names a missing icon %q", l, layoutIcon(l))
+		}
+	}
+}
+
+// Every layout draws the switcher's pane on the left.
+func TestLayoutSwitcherPaneIsLeftmost(t *testing.T) {
+	for _, l := range []centerLayout{layoutSingle, layoutCols, layoutLeftWide} {
+		cw := testWindow()
+		cw.setLayout(l)
+		if !cw.showLayoutMenu(chatPaneIndex) {
+			t.Fatalf("layout %d: the leftmost pane must carry the switcher", l)
+		}
+	}
+}
+
+// Every layout with extra panes opens them empty, each offering a new tab.
+func TestNewPanesStartEmpty(t *testing.T) {
+	for _, l := range []centerLayout{layoutCols, layoutLeftWide} {
+		cw := testWindow()
+		cw.setLayout(l)
+		for i := 1; i < l.paneCount(); i++ {
+			if n := len(cw.center.panes[i].tabs); n != 0 {
+				t.Fatalf("layout %d: pane %d should start empty, got %d tabs", l, i, n)
+			}
+			if cw.center.panes[i].sel != -1 {
+				t.Fatalf("layout %d: empty pane %d should have no selection", l, i)
+			}
+		}
+		img := mgo.Render(cw.view, 1400, 900, 1)
+		if img == nil {
+			t.Fatalf("layout %d: empty panes failed to render", l)
+		}
+	}
+}
+
+// gitCommitRefs labels commits with the branches and tags on them, which the
+// GitGraph tab shows.
+func TestGitCommitRefsAreLabelled(t *testing.T) {
+	wd, _ := os.Getwd()
+	commits := gitCommitHistory(wd, 50)
+	if len(commits) == 0 {
+		t.Skip("the working copy has no history")
+	}
+	labelled := 0
+	for _, commit := range commits {
+		if len(commit.Refs) > 0 {
+			labelled++
+		}
+	}
+	if labelled == 0 {
+		t.Fatal("no commit carried a branch or tag name")
+	}
+}
+
+// The graph lays every commit in a column and draws the joins between them.
+func TestBuildGraphLaysOutLanes(t *testing.T) {
+	commits := []kit.Commit{
+		{Hash: "d", Parents: []string{"b", "c"}},
+		{Hash: "c", Parents: []string{"a"}},
+		{Hash: "b", Parents: []string{"a"}},
+		{Hash: "a"},
+	}
+	rows := buildGraph(commits)
+	if len(rows) != 4 {
+		t.Fatalf("want 4 rows, got %d", len(rows))
+	}
+	if rows[0].Commit.Hash != "d" || rows[0].Lane != 0 {
+		t.Fatalf("the newest commit must take the first lane: %+v", rows[0])
+	}
+	// A merge opens a second column for its second parent.
+	if rows[0].Lanes < 2 {
+		t.Fatalf("a merge must widen the graph, got %d lanes", rows[0].Lanes)
+	}
+	merging := 0
+	for _, seg := range rows[0].Segments {
+		if seg.Merging {
+			merging++
+		}
+	}
+	if merging != 1 {
+		t.Fatalf("want one merging line for the second parent, got %d", merging)
+	}
+	// Every commit still gets a dot once its turn comes.
+	seen := map[string]bool{}
+	for _, row := range rows {
+		if seen[row.Commit.Hash] {
+			t.Fatalf("%s drawn twice", row.Commit.Hash)
+		}
+		seen[row.Commit.Hash] = true
+		if row.Lane < 0 || row.Lane >= maxGraphLanes {
+			t.Fatalf("%s got lane %d", row.Commit.Hash, row.Lane)
+		}
+	}
+}
+
+// A linear history stays in one lane and needs no widening.
+func TestBuildGraphLinearHistory(t *testing.T) {
+	commits := []kit.Commit{
+		{Hash: "c", Parents: []string{"b"}},
+		{Hash: "b", Parents: []string{"a"}},
+		{Hash: "a"},
+	}
+	rows := buildGraph(commits)
+	for i, row := range rows {
+		if row.Lane != 0 {
+			t.Fatalf("row %d drifted to lane %d", i, row.Lane)
+		}
+		if row.Lanes != 1 {
+			t.Fatalf("row %d wants 1 lane, got %d", i, row.Lanes)
+		}
+	}
+}
+
+// The graph reads history a page at a time, beyond the working tree's log.
+func TestGitHistoryPagePaginates(t *testing.T) {
+	wd, _ := os.Getwd()
+	first, hasMore := gitHistoryPage(wd, 0, 2)
+	if len(first) == 0 {
+		t.Skip("the working copy has no history")
+	}
+	if len(first) > 2 {
+		t.Fatalf("a page of 2 returned %d commits", len(first))
+	}
+	if hasMore {
+		second, _ := gitHistoryPage(wd, 2, 2)
+		if len(second) == 0 {
+			t.Fatal("hasMore was set but the next page is empty")
+		}
+		if second[0].Hash == first[0].Hash {
+			t.Fatal("the second page repeated the first")
+		}
+	}
+}
+
+// The layout switcher stays on the leftmost pane.
+// Opening the GitGraph tab leaves the Git panel's state untouched, and the
+// panel leaves the graph's alone.
+func TestGitGraphStateIsIsolated(t *testing.T) {
+	cw := testWindow()
+	cw.workspace, _ = os.Getwd()
+
+	// Stand in for the Git panel's own data.
+	cw.gitBranch = "panel-branch"
+	cw.gitCommits = []kit.Commit{{Hash: "panelsha", Subject: "panel commit"}}
+	cw.gitStat = [2]int{7, 3}
+
+	cw.openGitGraphTab(0)
+
+	if cw.gitBranch != "panel-branch" {
+		t.Fatalf("the panel's branch changed to %q", cw.gitBranch)
+	}
+	if len(cw.gitCommits) != 1 || cw.gitCommits[0].Hash != "panelsha" {
+		t.Fatalf("the panel's history changed: %+v", cw.gitCommits)
+	}
+	if cw.gitStat != [2]int{7, 3} {
+		t.Fatalf("the panel's diff stat changed: %v", cw.gitStat)
+	}
+
+	// And the graph keeps its own copies.
+	cw.gg.branch = "graph-branch"
+	cw.gg.stat = [2]int{1, 1}
+	if cw.gitBranch != "panel-branch" || cw.gitStat != [2]int{7, 3} {
+		t.Fatal("writing the graph state altered the panel state")
+	}
+}
+
+// The graph's history and the panel's are separate lists.
+func TestGitGraphHistoryIsSeparate(t *testing.T) {
+	cw := testWindow()
+	cw.workspace, _ = os.Getwd()
+	cw.gitCommits = []kit.Commit{{Hash: "panelonly", Subject: "panel"}}
+	cw.dispatch = func(fn func()) { fn() }
+	cw.openGitGraphTab(0)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && !cw.gg.loaded {
+		mgo.Render(cw.view, 1400, 900, 1)
+		time.Sleep(2 * time.Millisecond)
+	}
+	if len(cw.gitCommits) != 1 || cw.gitCommits[0].Hash != "panelonly" {
+		t.Fatalf("loading the graph rewrote the panel list: %+v", cw.gitCommits)
+	}
+	if len(cw.gg.commits) > 0 && cw.gg.commits[0].Hash == "panelonly" {
+		t.Fatal("the graph reused the panel's list")
+	}
+}
+
+// The history list sits below the toolbar rather than over it.
+func TestGitGraphListClearsToolbar(t *testing.T) {
+	wd, _ := os.Getwd()
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.workspace = wd
+	cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: wd}
+	cw.convs = []models.Conversation{*cw.cur}
+	cw.dispatch = func(fn func()) { fn() }
+	cw.openGitGraphTab(0)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && !cw.gg.loaded {
+		mgo.Render(cw.view, 1500, 900, 1)
+		time.Sleep(2 * time.Millisecond)
+	}
+	if !cw.gg.loaded || len(cw.gg.rows) == 0 {
+		t.Skip("the working copy has no Git history to lay out")
+	}
+	tr := mgo.NewTester(cw.view, 1500, 900)
+	for range 8 {
+		tr.Frame()
+	}
+	tab, ok := tr.Find("GitGraph")
+	if !ok {
+		t.Fatal("no GitGraph tab")
+	}
+	bar, ok := tr.Find(fmt.Sprintf("%d 个提交", len(cw.gg.rows)))
+	if !ok {
+		t.Fatal("no commit count in the toolbar")
+	}
+	row, ok := tr.Find(cw.gg.rows[0].Commit.Subject)
+	if !ok {
+		t.Fatal("the first commit row is missing")
+	}
+	if bar.Y < tab.Y+tab.H {
+		t.Fatalf("the toolbar overlaps the tab strip: bar %.1f, tabs end %.1f",
+			bar.Y, tab.Y+tab.H)
+	}
+	if row.Y < bar.Y+bar.H {
+		t.Fatalf("the history overlaps the toolbar: row %.1f, bar ends %.1f",
+			row.Y, bar.Y+bar.H)
+	}
+	if row.W == 0 {
+		t.Fatal("the first commit row has no width")
+	}
+}
+
+// The Editor tab is opened from a file chooser that starts in the workspace.
+func TestFilePickStartsInWorkspace(t *testing.T) {
+	wd, _ := os.Getwd()
+	cw := testWindow()
+	cw.workspace = wd
+	cw.askFile("", nil)
+	if !cw.filePick.open {
+		t.Fatal("the chooser should open")
+	}
+	if cw.filePick.dir != wd {
+		t.Fatalf("want the workspace %q, got %q", wd, cw.filePick.dir)
+	}
+}
+
+// The chooser walks out of the workspace, so files outside it can be edited.
+func TestFilePickReachesOuterDirectories(t *testing.T) {
+	wd, _ := os.Getwd()
+	cw := testWindow()
+	cw.workspace = wd
+	cw.askFile("", nil)
+	tr := mgo.NewTester(cw.view, 1400, 900)
+	for range 6 {
+		tr.Frame()
+	}
+	if err := tr.Click(".."); err != nil {
+		t.Fatalf("click parent: %v", err)
+	}
+	tr.Frame()
+	if cw.filePick.dir == wd {
+		t.Fatalf("the parent button must leave the workspace, still at %q", cw.filePick.dir)
+	}
+	if want := filepath.Dir(wd); cw.filePick.dir != want {
+		t.Fatalf("want parent %q, got %q", want, cw.filePick.dir)
+	}
+}
+
+// A file chosen in the chooser opens as an Editor tab in the focused pane.
+func TestFilePickOpensEditorTab(t *testing.T) {
+	wd, _ := os.Getwd()
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.workspace = wd
+	var got string
+	cw.askFile("", func(p string) { got = p; cw.openEditor(p) })
+	tr := mgo.NewTester(cw.view, 1400, 900)
+	for range 6 {
+		tr.Frame()
+	}
+	hint, ok := tr.Find("双击文件打开")
+	if !ok {
+		t.Fatal("the chooser did not render")
+	}
+	for y := hint.Y - 60; y > hint.Y-500 && got == ""; y -= 36 {
+		tr.ClickAt(700, y)
+		tr.Frame()
+		tr.ClickAt(700, y)
+		tr.Frame()
+		if cw.filePick.picked != "" {
+			tr.Frame()
+		}
+	}
+	if got == "" {
+		t.Fatal("double clicking a file never picked one")
+	}
+	editors := 0
+	for _, tab := range cw.center.panes[0].tabs {
+		if tab.Kind == centerEditor {
+			editors++
+			if tab.Path != got {
+				t.Fatalf("editor tab holds %q, want %q", tab.Path, got)
+			}
+		}
+	}
+	if editors != 1 {
+		t.Fatalf("want 1 editor tab, got %d", editors)
+	}
+	if cw.filePick.open {
+		t.Fatal("the chooser should close after a pick")
+	}
+}
+
+// Opening the same file twice focuses the open tab rather than duplicating it.
+func TestOpenPreviewReusesTab(t *testing.T) {
+	wd, _ := os.Getwd()
+	cw := testWindow()
+	cw.workspace = wd
+	cw.openPreview(wd + "/chat.go")
+	cw.openPreview(wd + "/chat.go")
+	if n := len(cw.center.panes[0].tabs); n != 2 {
+		t.Fatalf("expected the Chat tab plus one file tab, got %d", n)
+	}
+}
+
+// A tab moves between panes, and the pinned Chat tab refuses to move.
+func TestMoveCenterTab(t *testing.T) {
+	cw := testWindow()
+	cw.setLayout(layoutCols)
+	cw.openCenterTab(0, &centerTab{ID: "t1", Kind: centerText, Title: "a.go"})
+	cw.moveCenterTab(0, 1, 1)
+	if len(cw.center.panes[1].tabs) != 1 {
+		t.Fatalf("expected the tab to land in pane 1")
+	}
+	cw.moveCenterTab(0, 0, 1)
+	if len(cw.center.panes[1].tabs) != 1 {
+		t.Fatalf("the Chat tab must not move panes")
 	}
 }
 

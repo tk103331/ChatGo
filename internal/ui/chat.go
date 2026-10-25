@@ -18,7 +18,7 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 )
 
-// chatView lays out the sidebar, message list and composer.
+// chatView lays out the sidebar, the tabbed center area and the file panel.
 func (cw *ChatWindow) chatView(c *mgo.Context) {
 	if cw.leftW == 0 {
 		cw.leftW = 280
@@ -26,68 +26,41 @@ func (cw *ChatWindow) chatView(c *mgo.Context) {
 	if cw.treeW == 0 {
 		cw.treeW = 300
 	}
-	if cw.previewW == 0 {
-		cw.previewW = 320
-	}
 	winW, _ := c.Size()
 	tree := float32(0)
 	if cw.rightPanel {
 		tree = cw.treeW
 	}
-	hasPreview := len(cw.previewTabs) > 0
 	left := cw.leftW
 	if cw.leftHidden {
 		left = 0
 	}
-	if winW != cw.lastWinW || tree != cw.lastRightW || hasPreview != cw.lastPreview || cw.mainW == 0 {
-		cw.lastWinW, cw.lastRightW, cw.lastPreview = winW, tree, hasPreview
-		flex := winW - 60 - left - tree - 4
-		cw.mainW = max(240, flex)
-		if hasPreview {
-			cw.chatW = max(240, cw.mainW*0.6)
-		} else {
-			cw.chatW = cw.mainW
-		}
+	if winW != cw.lastWinW || tree != cw.lastRightW || cw.mainW == 0 {
+		cw.lastWinW, cw.lastRightW = winW, tree
+		cw.mainW = max(240, winW-60-left-tree-4)
 	}
 	if cw.leftHidden {
-		cw.chatContent(c, hasPreview)
+		cw.chatContent(c)
 		return
 	}
-	mgo.Split(c, &cw.leftW, func() { cw.sidebar(c) }, func() { cw.chatContent(c, hasPreview) }).Fill()
+	mgo.Split(c, &cw.leftW, func() { cw.sidebar(c) }, func() { cw.chatContent(c) }).Fill()
 }
 
-// chatContent lays out the message area, preview column and file panel.
-func (cw *ChatWindow) chatContent(c *mgo.Context, hasPreview bool) {
-	if cw.termOpen {
-		if cw.termH == 0 {
-			_, winH := c.Size()
-			cw.termH = max(120, winH-navItemSize-260)
-		}
-		mgo.SplitVertical(c, &cw.termH, func() { cw.chatMainArea(c, hasPreview) }, func() { cw.terminalPanel(c) }).Fill()
-		return
-	}
-	cw.chatMainArea(c, hasPreview)
+// chatContent lays out the center area.
+func (cw *ChatWindow) chatContent(c *mgo.Context) {
+	cw.chatMainArea(c)
 }
 
-// chatMainArea lays out the message area, preview column and file panel.
-func (cw *ChatWindow) chatMainArea(c *mgo.Context, hasPreview bool) {
+// chatMainArea lays out the tabbed center area and the file panel.
+func (cw *ChatWindow) chatMainArea(c *mgo.Context) {
 	if cw.rightPanel {
 		if cw.mainW == 0 {
-			cw.mainW = cw.chatW
+			cw.mainW = 480
 		}
-		mgo.Split(c, &cw.mainW, func() { cw.chatArea(c, hasPreview) }, func() { cw.sourcePanel(c) }).Fill()
+		mgo.Split(c, &cw.mainW, func() { cw.centerArea(c) }, func() { cw.sourcePanel(c) }).Fill()
 		return
 	}
-	cw.chatArea(c, hasPreview)
-}
-
-// chatArea is the message list and the optional preview column.
-func (cw *ChatWindow) chatArea(c *mgo.Context, hasPreview bool) {
-	if hasPreview {
-		mgo.Split(c, &cw.chatW, func() { cw.messageArea(c) }, func() { cw.previewPanel(c) }).Fill()
-		return
-	}
-	cw.messageArea(c)
+	cw.centerArea(c)
 }
 
 // messageArea is the message list and the composer, without the sidebar.

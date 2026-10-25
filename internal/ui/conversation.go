@@ -76,6 +76,7 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 		cw.workspace = ws
 	}
 	cw.mode = modeChat
+	cw.focusChatTab()
 	cw.msgList.ScrollToEnd()
 	cw.applyConversationAgent(conv)
 	cw.reloadConvs()
@@ -95,6 +96,7 @@ func (cw *ChatWindow) selectConversation(id string) {
 	}
 	cw.applyConversationAgent(conv)
 	cw.applyConversationModel(conv)
+	cw.focusChatTab()
 	cw.msgList.ScrollToEnd()
 }
 

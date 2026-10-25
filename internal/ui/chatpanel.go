@@ -19,29 +19,6 @@ import (
 	mcore "chatgo/internal/ui/uikit"
 )
 
-// previewTab is one open file or diff in the preview area.
-type previewTab struct {
-	Path  string
-	Title string
-	Kind  string // text, image, diff, fdiff, blame
-	Body  string
-	From  string
-	To    string
-	Lang  string
-	Bmp   *mgo.Bitmap
-	Svg   *mgo.SVG
-	blame []kit.BlameLine
-	view  kit.CodeViewerState
-	dview kit.DiffViewerState
-	bview kit.BlameViewState
-	// Rendered shows a Markdown file as rendered preview rather than source.
-	Rendered bool
-	// Web is the web view of a Kind "web" tab.
-	Web *webTab
-	// Commit is a commit diff tab's message, files own their diff views.
-	Commit *commitInfo
-}
-
 // commitInfo is what a commit diff tab shows above its files.
 type commitInfo struct {
 	Hash    string
@@ -90,45 +67,6 @@ func (cw *ChatWindow) sourcePanel(c *mgo.Context) {
 			}
 		})
 		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { cw.sourceView(c) })
-	})
-}
-
-// previewPanel shows the opened files in their own column.
-func (cw *ChatWindow) previewPanel(c *mgo.Context) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	if cw.previewW == 0 {
-		cw.previewW = 320
-	}
-	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).AlignItems(mgo.Stretch).Background(k.Surface).
-		BorderWidth(0, 0, 0, mtheme.BorderWidth).BorderColor(k.Border).Padding(u * 2).Gap(u * 2).Children(func() {
-		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			mgo.Text(c, "预览").FontWeight(600).Grow(1)
-			if t := cw.activePreviewTab(); t != nil && t.Kind == "text" && isMarkdownFile(t.Path) {
-				label := "预览"
-				if t.Rendered {
-					label = "源码"
-				}
-				if kit.Button(c, label, kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("eye")}).Clicked() {
-					t.Rendered = !t.Rendered
-				}
-			}
-			if t := cw.activePreviewTab(); t != nil && t.Kind == "text" {
-				if kit.Button(c, "追溯", kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("history")}).Clicked() {
-					cw.openBlame(t.Path)
-				}
-			}
-			if mcore.IconAction(c, icons.Must("globe"), "新建 WebView 标签").Tooltip("新建 WebView 标签").Clicked() {
-				cw.newWebPreview("", "")
-			}
-			if len(cw.previewTabs) > 1 {
-				if kit.Button(c, "全部关闭", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
-					cw.previewTabs = nil
-					cw.previewSel = -1
-				}
-			}
-		})
-		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() { cw.previewView(c) })
 	})
 }
 
@@ -260,7 +198,8 @@ func (cw *ChatWindow) gitPanel(c *mgo.Context) {
 			return
 		}
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-			sel := kit.BranchSelector(c, &cw.gitBranch, cw.gitBranches, kit.BranchSelectorOptions{AllowCreate: true})
+			sel := kit.BranchSelector(c, &cw.gitBranch, cw.gitBranches,
+				kit.BranchSelectorOptions{AllowCreate: true, Key: "gitpanel"})
 			if sel.Changed() {
 				cw.checkoutBranch(cw.gitBranch)
 			}
@@ -366,322 +305,6 @@ func gitChangePath(line string) string {
 	return strings.Trim(p, "\"")
 }
 
-// previewView is the multi-tab file preview.
-func (cw *ChatWindow) previewView(c *mgo.Context) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	if len(cw.previewTabs) == 0 {
-		mgo.Column(c).Fill().Center().Children(func() {
-			mgo.Text(c, "双击左侧文件预览").TextColor(k.TextMuted).
-				FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		})
-		return
-	}
-	if cw.previewSel < 0 || cw.previewSel >= len(cw.previewTabs) {
-		cw.previewSel = 0
-	}
-	closeIdx := -1
-	mgo.Column(c).FillWidth().Shrink(0).MinWidth(0).Children(func() {
-		mgo.ScrollHorizontal(c).Shrink(0).MinWidth(0).Children(func() {
-			mgo.Row(c).Gap(u).Children(func() {
-				for i := range cw.previewTabs {
-					if cw.previewTab(c, i) {
-						closeIdx = i
-					}
-				}
-			})
-		})
-	})
-	if closeIdx >= 0 {
-		cw.closePreview(closeIdx)
-	}
-	if len(cw.previewTabs) == 0 {
-		mgo.Text(c, "双击左侧文件预览").TextColor(k.TextMuted).
-			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		return
-	}
-	if cw.previewSel < 0 || cw.previewSel >= len(cw.previewTabs) {
-		cw.previewSel = 0
-	}
-	tab := &cw.previewTabs[cw.previewSel]
-	if tab.Web != nil {
-		cw.webToolbar(c, tab.Web)
-		mgo.Box(c).Grow(1).MinHeight(0).Children(func() {
-			if tab.Web.URL == webLandingURL {
-				cw.webLanding(c, tab.Web)
-				return
-			}
-			mgo.WebView(c, tab.Web.view).Grow(1).MinHeight(0)
-		})
-		return
-	}
-	isMD := strings.HasSuffix(strings.ToLower(tab.Path), ".md")
-	if tab.Kind == "text" && tab.Bmp == nil && tab.Svg == nil && (!isMD || !tab.Rendered) {
-		kit.CodeViewer(c, tab.Body, &tab.view, kit.CodeViewerOptions{Language: tab.Lang, Path: tab.Path}).
-			Grow(1).MinHeight(0)
-		return
-	}
-	if tab.Kind == "commit" && tab.Commit != nil {
-		cw.commitDiffView(c, tab.Commit)
-		return
-	}
-	if tab.Kind == "fdiff" {
-		k := mcore.Tokens(c)
-		u := mcore.Density(c).Unit()
-		caption := mcore.FontSize(c, mtheme.CaptionSize)
-		unified := mgo.Local(c.Root(), "fdiff-unified:"+tab.Path, func() bool { return false })
-		mgo.Column(c).FillWidth().Grow(1).MinHeight(0).Gap(u).Children(func() {
-			mgo.Row(c).FillWidth().Shrink(0).AlignItems(mgo.Center).Gap(u).Children(func() {
-				mgo.Icon(c, icons.Must("file-text")).Size(13, 13).
-					TextColor(k.TextMuted).Shrink(0)
-				rel := strings.TrimPrefix(tab.Path, "diff:")
-				mgo.Text(c, rel).Font(mtheme.MonoFont).FontSize(caption).
-					SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-				label := "Inline"
-				if *unified {
-					label = "Split"
-				}
-				if kit.Button(c, label, kit.ButtonOptions{Variant: kit.Ghost, Icon: icons.Must("columns-2")}).Clicked() {
-					*unified = !*unified
-				}
-			})
-			mgo.Box(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
-				kit.DiffViewer(c, &tab.dview, tab.From, tab.To, kit.DiffViewerOptions{
-					Language: tab.Lang, Unified: *unified,
-				}).Fill()
-			})
-		})
-		return
-	}
-	if tab.Kind == "blame" {
-		kit.BlameView(c, &tab.bview, tab.blame, kit.BlameViewOptions{Language: tab.Lang}).
-			Grow(1).MinHeight(0)
-		return
-	}
-	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-		cw.previewContent(c, *tab)
-	})
-}
-
-// previewTab draws one preview tab and reports whether its close was clicked.
-func (cw *ChatWindow) previewTab(c *mgo.Context, i int) bool {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	tab := cw.previewTabs[i]
-	if tab.Web != nil {
-		cw.previewTabs[i].Title = tab.Web.Title
-		tab = cw.previewTabs[i]
-	}
-	closing := false
-	b := mgo.ButtonBase(c).Row().Shrink(0).MinHeight(mcore.Density(c).ControlHeight()).
-		Padding(u, u*2).Gap(u).AlignItems(mgo.Center).Radius(mtheme.ControlRadius).Label(tab.Title)
-	if i == cw.previewSel {
-		b.Background(k.Selection)
-	}
-	b.Children(func() {
-		if icon := previewTabIcon(tab); icon != "" {
-			mgo.Icon(c, icons.Must(icon)).Size(13, 13).TextColor(k.TextMuted).Shrink(0)
-		}
-		mgo.Text(c, tab.Title).SingleLine()
-		if mcore.IconAction(c, icons.Must("x"), "关闭预览").Clicked() {
-			closing = true
-		}
-	})
-	if b.Clicked() && i != cw.previewSel {
-		cw.previewSel = i
-	}
-	return closing
-}
-
-func previewTabIcon(tab previewTab) string {
-	switch tab.Kind {
-	case "image":
-		return "image"
-	case "fdiff", "commit":
-		return "git-branch"
-	case "blame":
-		return "history"
-	case "web":
-		return "globe"
-	case "text":
-		if isMarkdownFile(tab.Path) {
-			return "eye"
-		}
-		return "file-text"
-	}
-	return ""
-}
-
-func (cw *ChatWindow) previewContent(c *mgo.Context, tab previewTab) {
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	switch tab.Kind {
-	case "image":
-		switch {
-		case tab.Bmp != nil:
-			mgo.Image(c, tab.Bmp).Fit(mgo.Contain)
-		case tab.Svg != nil:
-			mgo.Image(c, tab.Svg).Fit(mgo.Contain)
-		}
-	case "diff":
-		renderDiff(c, tab.Body)
-	default:
-		if isMarkdownFile(tab.Path) {
-			kit.MarkdownPreview(c, tab.Body)
-		} else {
-			kit.CodeBlock(c, tab.Body, kit.CodeBlockOptions{Language: tab.Lang})
-		}
-		_ = caption
-	}
-}
-
-// renderDiff shows a unified diff with colored line bands.
-func renderDiff(c *mgo.Context, body string) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	if strings.TrimSpace(body) == "" {
-		mgo.Text(c, "无变更内容").TextColor(k.TextMuted).FontSize(caption)
-		return
-	}
-	for _, line := range strings.Split(body, "\n") {
-		fg, bg := k.Text, mgo.Color{}
-		switch {
-		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
-			fg = k.TextMuted
-		case strings.HasPrefix(line, "@@"):
-			fg = k.Accent
-		case strings.HasPrefix(line, "+"):
-			fg, bg = k.Success, k.Success.Alpha(0.12)
-		case strings.HasPrefix(line, "-"):
-			fg, bg = k.Danger, k.Danger.Alpha(0.12)
-		}
-		row := mgo.Row(c).FillWidth().Padding(0, u).MinHeight(caption * 1.7)
-		if bg.A > 0 {
-			row.Background(bg).Radius(2)
-		}
-		row.Children(func() {
-			mgo.Text(c, line).Font(mtheme.MonoFont).FontSize(caption).TextColor(fg)
-		})
-	}
-}
-
-func (cw *ChatWindow) closePreview(i int) {
-	if i < 0 || i >= len(cw.previewTabs) {
-		return
-	}
-	if tab := cw.previewTabs[i].Web; tab != nil && tab.view != nil {
-		tab.view.Destroy()
-	}
-	cw.previewTabs = append(cw.previewTabs[:i], cw.previewTabs[i+1:]...)
-	if cw.previewSel >= len(cw.previewTabs) {
-		cw.previewSel = len(cw.previewTabs) - 1
-	}
-}
-
-// openPreview opens or focuses a file in the preview area.
-func (cw *ChatWindow) openPreview(path string) {
-	for i := range cw.previewTabs {
-		if cw.previewTabs[i].Path == path && cw.previewTabs[i].Kind != "diff" {
-			cw.previewSel = i
-			return
-		}
-	}
-	t := previewTab{Path: path, Title: filepath.Base(path)}
-	ext := strings.ToLower(filepath.Ext(path))
-	switch ext {
-	case ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp":
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Kind, t.Body = "text", "读取失败："+err.Error()
-		} else if bmp, err := mgo.DecodeBitmap(data); err == nil {
-			t.Kind, t.Bmp = "image", bmp
-		} else {
-			t.Kind, t.Body = "text", "无法解码图片："+err.Error()
-		}
-	case ".svg":
-		data, err := os.ReadFile(path)
-		if err == nil {
-			if svg, err := mgo.ParseSVG(data); err == nil {
-				t.Kind, t.Svg = "image", svg
-			}
-		}
-		if t.Kind == "" {
-			t.Kind, t.Body = "text", "无法解码 SVG"
-		}
-	default:
-		t.Kind, t.Lang = "text", langOfExt(ext)
-		data, err := os.ReadFile(path)
-		if err != nil {
-			t.Body = "读取失败：" + err.Error()
-		} else if len(data) > 2<<20 {
-			t.Body = string(data[:2<<20]) + "\n\n…（文件过大，已截断）"
-		} else {
-			t.Body = string(data)
-		}
-	}
-	cw.previewTabs = append(cw.previewTabs, t)
-	cw.previewSel = len(cw.previewTabs) - 1
-}
-
-// openGitDiff loads a changed file's working-tree diff into the preview area.
-func (cw *ChatWindow) openGitDiff(rel string) {
-	ws := cw.workspace
-	path := "diff:" + rel
-	go func() {
-		old := gitOut(ws, "show", "HEAD:"+rel)
-		newContent := ""
-		if data, err := os.ReadFile(filepath.Join(ws, rel)); err == nil {
-			newContent = string(data)
-		}
-		cw.postMain(func() {
-			for i := range cw.previewTabs {
-				if cw.previewTabs[i].Path == path {
-					cw.previewTabs[i].From = old
-					cw.previewTabs[i].To = newContent
-					cw.previewSel = i
-					return
-				}
-			}
-			cw.previewTabs = append(cw.previewTabs, previewTab{
-				Path: path, Title: filepath.Base(rel) + " (diff)", Kind: "fdiff",
-				From: old, To: newContent, Lang: langOfExt(strings.ToLower(filepath.Ext(rel))),
-			})
-			cw.previewSel = len(cw.previewTabs) - 1
-		})
-	}()
-}
-
-// activePreviewTab returns the selected preview tab, if any.
-func (cw *ChatWindow) activePreviewTab() *previewTab {
-	if cw.previewSel < 0 || cw.previewSel >= len(cw.previewTabs) {
-		return nil
-	}
-	return &cw.previewTabs[cw.previewSel]
-}
-
-// openBlame loads a file's line-by-line history into the preview area.
-func (cw *ChatWindow) openBlame(rel string) {
-	ws := cw.workspace
-	path := "blame:" + rel
-	go func() {
-		lines := gitBlameLines(ws, rel)
-		cw.postMain(func() {
-			for i := range cw.previewTabs {
-				if cw.previewTabs[i].Path == path {
-					cw.previewTabs[i].blame = lines
-					cw.previewSel = i
-					return
-				}
-			}
-			cw.previewTabs = append(cw.previewTabs, previewTab{
-				Path: path, Title: filepath.Base(rel) + " (blame)", Kind: "blame",
-				blame: lines, Lang: langOfExt(strings.ToLower(filepath.Ext(rel))),
-			})
-			cw.previewSel = len(cw.previewTabs) - 1
-		})
-	}()
-}
-
 // gitBlameLines parses git blame --line-porcelain into per-line commits.
 func gitBlameLines(dir, rel string) []kit.BlameLine {
 	out := gitOut(dir, "blame", "--line-porcelain", "--", rel)
@@ -738,31 +361,6 @@ func (cw *ChatWindow) createBranch(name string) {
 		cw.toast(out, mcore.SeverityError)
 	}
 	cw.loadGit(cw.workspace)
-}
-
-// openCommitDiff loads a commit's message and per-file diffs into the preview
-// area, titled by the short hash.
-func (cw *ChatWindow) openCommitDiff(hash string) {
-	ws := cw.workspace
-	path := "commit:" + hash
-	short := shortHash(hash)
-	go func() {
-		info := loadCommit(ws, hash)
-		cw.postMain(func() {
-			for i := range cw.previewTabs {
-				if cw.previewTabs[i].Path == path {
-					cw.previewTabs[i].Commit = info
-					cw.previewTabs[i].Title = short + " (diff)"
-					cw.previewSel = i
-					return
-				}
-			}
-			cw.previewTabs = append(cw.previewTabs, previewTab{
-				Path: path, Title: short + " (diff)", Kind: "commit", Commit: info,
-			})
-			cw.previewSel = len(cw.previewTabs) - 1
-		})
-	}()
 }
 
 // shortHash is the seven-character abbreviation a commit diff is titled by.
@@ -943,8 +541,11 @@ func gitStatusCode(code byte) kit.GitStatus {
 }
 
 // gitCommitHistory reads the last n commits, newest first.
+// gitCommitHistory reads the last n commits, newest first, tagging each with
+// the branches and tags that point at it.
 func gitCommitHistory(dir string, n int) []kit.Commit {
 	out := gitOut(dir, "log", "--pretty=format:%H%x09%P%x09%an%x09%at%x09%s", "-n", strconv.Itoa(n))
+	refs := gitCommitRefs(dir)
 	var commits []kit.Commit
 	for _, line := range splitRaw(out) {
 		parts := strings.SplitN(line, "\t", 5)
@@ -957,10 +558,27 @@ func gitCommitHistory(dir string, n int) []kit.Commit {
 			parents = strings.Fields(parts[1])
 		}
 		commits = append(commits, kit.Commit{
-			Hash: parts[0], Parents: parents, Author: parts[2], When: time.Unix(sec, 0), Subject: parts[4],
+			Hash: parts[0], Parents: parents, Author: parts[2], When: time.Unix(sec, 0),
+			Subject: parts[4], Refs: refs[parts[0]],
 		})
 	}
 	return commits
+}
+
+// gitCommitRefs maps each commit hash to the branch and tag names on it, so
+// the graph can label where the repository's refs sit.
+func gitCommitRefs(dir string) map[string][]string {
+	refs := map[string][]string{}
+	out := gitOut(dir, "for-each-ref", "--format=%(objectname)%09%(refname:short)",
+		"refs/heads", "refs/tags")
+	for _, line := range splitRaw(out) {
+		hash, name, ok := strings.Cut(line, "\t")
+		if !ok || hash == "" || name == "" {
+			continue
+		}
+		refs[hash] = append(refs[hash], name)
+	}
+	return refs
 }
 
 // gitDiffStat sums added and deleted lines against HEAD.
