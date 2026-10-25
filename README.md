@@ -12,7 +12,7 @@ A simple cross-platform AI chat client built with Go and [MyGo](https://github.c
 
 - 🎨 **Native UI** - MyGo's GPU-drawn interface and its own light and dark themes, with a self-drawn title bar
 - 🏠 **Quick Start Home** - Centered composer with capability cards and project (workspace) / Agent selectors
-- 🤖 **Multi-Provider, Multi-Model** - OpenAI, Anthropic, Claude, Ollama, Qwen, DeepSeek, Gemini and any OpenAI-compatible API. Each provider holds a list of models; every type ships a disabled example config with its brand logo
+- 🤖 **Multi-Provider, Multi-Model** - OpenAI, Anthropic, Claude, Ollama, Qwen, DeepSeek, Gemini, the local magpie gateway and any OpenAI-compatible API. Each provider holds a list of models; every type ships a disabled example config with its brand logo
 - 🧵 **Provider Groups** - Bundle the models of several providers into one logical model name and route across them with fallback, round-robin or random selection
 - 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills) and ACP Agents (local coding CLIs)
 - 🔧 **Tools & MCP** - Built-in tools and whole MCP servers toggle per chat/agent, with search; an MCP marketplace is bundled
@@ -76,6 +76,7 @@ go install github.com/tk103331/ChatGo@latest
 | **Qwen** | `qwen` | Alibaba Tongyi Qianwen |
 | **DeepSeek** | `deepseek` | DeepSeek AI |
 | **Gemini** | `gemini` | Google Gemini |
+| **magpie** | `magpie` | The [magpie](https://usemagpie.ai) gateway running on this machine, which re-exports every model configured in magpie over an OpenAI-compatible API at `http://127.0.0.1:3425/v1`; no API key |
 | **Custom** | `custom` | Any API; `api_type` selects the upstream protocol (`openai`, `openai_responses`, `claude`, `gemini`) and the request goes straight to that protocol's client |
 
 Each provider can list several models, and the model selector shows them all.

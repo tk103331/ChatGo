@@ -81,7 +81,7 @@ func (cw *ChatWindow) providerEmptyState(c *mgo.Context) {
 
 func (cw *ChatWindow) addNewProvider() {
 	cw.cfg.Providers = append(cw.cfg.Providers, config.Provider{
-		Name: "New Provider", Type: "openai", Enabled: false,
+		Name: "New Provider", Type: config.ProviderTypeOpenAI, Enabled: false,
 	})
 	_ = config.SaveConfig(cw.cfg)
 	cw.loadProviderForm(len(cw.cfg.Providers) - 1)
@@ -143,14 +143,15 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 		if r := kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "Provider 名称", ReadOnly: f.preset}); r.Changed() {
 			changed = true
 		}
-		opts := make([]kit.SelectOption[string], 0, len(providerTypes))
-		for _, t := range providerTypes {
+		types := config.ProviderTypes()
+		opts := make([]kit.SelectOption[string], 0, len(types))
+		for _, t := range types {
 			opts = append(opts, kit.SelectOption[string]{Value: t, Label: t})
 		}
 		prevType := f.typ
 		if r := kit.Select(c, &f.typ, opts, kit.SelectOptions{Placeholder: "类型", Label: "类型", Disabled: f.preset}); r.Changed() {
 			if f.typ == config.ProviderTypeCustom && prevType != config.ProviderTypeCustom {
-				f.apiType = "openai"
+				f.apiType = config.ProviderTypeOpenAI
 			}
 			changed = true
 		}
@@ -212,7 +213,7 @@ func (cw *ChatWindow) loadProviderForm(i int) {
 	// Only a custom provider has an api_type; for every other type the field
 	// is unused, and seeding it with the provider type would make switching to
 	// custom produce an invalid api_type.
-	apiType := "openai"
+	apiType := config.ProviderTypeOpenAI
 	if p.Type == config.ProviderTypeCustom {
 		apiType = p.EffectiveAPIType()
 	}
@@ -235,7 +236,7 @@ func providerIsPreset(p config.Provider) bool {
 }
 
 func (cw *ChatWindow) clearProviderForm() {
-	cw.settings.prov = providerForm{editing: -1, typ: "openai", apiType: "openai", enabled: false}
+	cw.settings.prov = providerForm{editing: -1, typ: config.ProviderTypeOpenAI, apiType: config.ProviderTypeOpenAI, enabled: false}
 }
 
 func (cw *ChatWindow) saveProvider() {

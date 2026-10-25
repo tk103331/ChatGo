@@ -94,8 +94,6 @@ type confirmState struct {
 	action func()
 }
 
-var providerTypes = []string{"openai", "anthropic", "claude", "ollama", "custom", "qwen", "deepseek", "gemini"}
-
 var mcpTypes = []string{"stdio", "sse", "streamable_http"}
 
 // settingsPage shows the tabbed configuration page.
