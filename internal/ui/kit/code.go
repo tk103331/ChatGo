@@ -63,6 +63,22 @@ func CodeViewer(c *mgo.Context, text string, st *CodeViewerState, opts CodeViewe
 	return v
 }
 
+// ScrollToLine scrolls a one-based line to the top of the viewer and reports
+// whether it took: the editor needs a laid-out view to know where a line is,
+// so a call made before the first frame has one does nothing and must be
+// repeated.
+func (st *CodeViewerState) ScrollToLine(line int) bool {
+	if st == nil || st.st.Buffer == nil || line < 1 {
+		return false
+	}
+	if n := st.st.Buffer.LineCount(); line > n {
+		line = n
+	}
+	st.st.ScrollTo(line - 1)
+	first, last := st.st.VisibleLines()
+	return last > first && line-1 >= first && line-1 <= last
+}
+
 // editorLanguage resolves a language by name, or by a file name's extension.
 func editorLanguage(name string) *editor.Language {
 	if name == "" {

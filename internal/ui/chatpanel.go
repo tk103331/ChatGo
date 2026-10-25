@@ -634,6 +634,7 @@ func (cw *ChatWindow) commitDiffView(c *mgo.Context, info *commitInfo) {
 		*sel = 0
 	}
 	unified := mgo.Local(c.Root(), "commit-unified:"+shortHash(info.Hash), func() bool { return false })
+	listH := mgo.Local(c.Root(), "commit-list-h:"+shortHash(info.Hash), func() float32 { return 220 })
 	mgo.Column(c).FillWidth().Grow(1).MinHeight(0).Gap(u*2).Padding(0, u).Children(func() {
 		mgo.Column(c).FillWidth().Shrink(0).Gap(u).Padding(u*2).Background(k.Surface).
 			Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).Children(func() {
@@ -662,38 +663,43 @@ func (cw *ChatWindow) commitDiffView(c *mgo.Context, info *commitInfo) {
 				*unified = !*unified
 			}
 		})
-		mgo.Scroll(c).FillWidth().Shrink(0).MaxHeight(220).Children(func() {
-			mgo.Column(c).FillWidth().Gap(2).Children(func() {
-				for i := range info.Files {
-					file := &info.Files[i]
-					b := mgo.ButtonBase(c).Row().FillWidth().Shrink(0).
-						Padding(u/2, u).Gap(u).AlignItems(mgo.Center).
-						Radius(mtheme.ControlRadius)
-					if i == *sel {
-						b.Background(k.Selection)
-					} else if b.Hovered() {
-						b.Background(k.SurfaceHover)
-					}
-					b.Children(func() {
-						mgo.Icon(c, icons.Must("file-text")).Size(13, 13).
-							TextColor(k.TextMuted).Shrink(0)
-						mgo.Text(c, file.Path).Font(mtheme.MonoFont).FontSize(caption).
-							SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-						mgo.Text(c, fileChangeLabel(file)).FontSize(caption).
-							TextColor(k.TextMuted).Shrink(0)
+		mgo.SplitVertical(c, listH,
+			func() {
+				mgo.Scroll(c).FillWidth().Grow(1).MinHeight(0).Children(func() {
+					mgo.Column(c).FillWidth().Gap(2).Children(func() {
+						for i := range info.Files {
+							file := &info.Files[i]
+							b := mgo.ButtonBase(c).Row().FillWidth().Shrink(0).
+								Padding(u/2, u).Gap(u).AlignItems(mgo.Center).
+								Radius(mtheme.ControlRadius)
+							if i == *sel {
+								b.Background(k.Selection)
+							} else if b.Hovered() {
+								b.Background(k.SurfaceHover)
+							}
+							b.Children(func() {
+								mgo.Icon(c, icons.Must("file-text")).Size(13, 13).
+									TextColor(k.TextMuted).Shrink(0)
+								mgo.Text(c, file.Path).Font(mtheme.MonoFont).FontSize(caption).
+									SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+								mgo.Text(c, fileChangeLabel(file)).FontSize(caption).
+									TextColor(k.TextMuted).Shrink(0)
+							})
+							if b.Clicked() && i != *sel {
+								*sel = i
+							}
+						}
 					})
-					if b.Clicked() && i != *sel {
-						*sel = i
-					}
-				}
-			})
-		})
-		file := &info.Files[*sel]
-		mgo.Box(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
-			kit.DiffViewer(c, &file.view, file.From, file.To, kit.DiffViewerOptions{
-				Language: file.Lang, Path: file.Path, Unified: *unified,
-			}).Fill()
-		})
+				})
+			},
+			func() {
+				file := &info.Files[*sel]
+				mgo.Box(c).FillWidth().Grow(1).MinHeight(0).Clip().Children(func() {
+					kit.DiffViewer(c, &file.view, file.From, file.To, kit.DiffViewerOptions{
+						Language: file.Lang, Path: file.Path, Unified: *unified,
+					}).Fill()
+				})
+			}).Grow(1).MinHeight(0)
 	})
 }
 
