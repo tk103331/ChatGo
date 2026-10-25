@@ -243,7 +243,7 @@ func (cw *ChatWindow) runProviderImport() {
 		cw.cfg.Providers = append(cw.cfg.Providers, config.Provider{
 			Name:    cw.uniqueProviderName(p.Name),
 			Type:    config.ProviderTypeCustom,
-			APIType: "openai",
+			APIType: config.ProviderTypeOpenAI,
 			APIKey:  p.APIKey,
 			BaseURL: p.BaseURL,
 			Model:   model,

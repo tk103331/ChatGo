@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -113,17 +115,135 @@ func TestValidateExplainsMissingConfigInChinese(t *testing.T) {
 	}
 }
 
+// TestProviderTypesMatchPresets locks the single source of the type list: the
+// settings dropdown is built from ProviderTypes, so a type offered there
+// without a shipped preset would open an empty form, and a preset whose type
+// is missing from the list would make the dropdown blank out an existing
+// provider and persist the wrong type on the next edit.
+func TestProviderTypesMatchPresets(t *testing.T) {
+	types := ProviderTypes()
+	seen := map[string]bool{}
+	for _, typ := range types {
+		if typ == "" {
+			t.Fatal("an empty provider type must not be offered")
+		}
+		if seen[typ] {
+			t.Fatalf("provider type %q is listed twice", typ)
+		}
+		seen[typ] = true
+	}
+	for _, p := range ProviderPresets() {
+		if !seen[p.Type] {
+			t.Fatalf("preset %q has type %q, which the dropdown does not offer", p.Name, p.Type)
+		}
+	}
+	// APITypeOpenAIResponses is reachable only as a custom api_type, so
+	// offering it as a provider type would build a client that no preset
+	// documents.
+	if seen[APITypeOpenAIResponses] {
+		t.Fatalf("%q is an api_type, not a provider type", APITypeOpenAIResponses)
+	}
+	if !containsString(APITypes(), APITypeOpenAIResponses) {
+		t.Fatalf("%q must stay selectable as a custom api_type", APITypeOpenAIResponses)
+	}
+}
+
+// TestProviderTypeConstantsKeepTheirWireValues pins the constants to the
+// strings already written into every user's config.yaml: renaming one would
+// silently orphan their configured providers.
+func TestProviderTypeConstantsKeepTheirWireValues(t *testing.T) {
+	for want, got := range map[string]string{
+		"openai":           ProviderTypeOpenAI,
+		"anthropic":        ProviderTypeAnthropic,
+		"claude":           ProviderTypeClaude,
+		"ollama":           ProviderTypeOllama,
+		"qwen":             ProviderTypeQwen,
+		"deepseek":         ProviderTypeDeepSeek,
+		"gemini":           ProviderTypeGemini,
+		"magpie":           ProviderTypeMagpie,
+		"custom":           ProviderTypeCustom,
+		"openai_responses": APITypeOpenAIResponses,
+	} {
+		if got != want {
+			t.Fatalf("constant changed wire value: got %q, want %q", got, want)
+		}
+	}
+}
+
 func TestNeedsAPIKey(t *testing.T) {
 	for _, typ := range []string{"openai", "deepseek", "claude", "gemini", "qwen", "anthropic"} {
 		if !(Provider{Type: typ}).NeedsAPIKey() {
 			t.Fatalf("%s should need an API key", typ)
 		}
 	}
-	for _, typ := range []string{"ollama", ProviderTypeCustom} {
+	for _, typ := range []string{"ollama", ProviderTypeMagpie, ProviderTypeCustom} {
 		if (Provider{Type: typ}).NeedsAPIKey() {
 			t.Fatalf("%s should not need an API key", typ)
 		}
 	}
+}
+
+// TestMagpiePreset records that the magpie preset is usable as shipped: the
+// gateway runs on this machine, so the preset carries its address and the
+// provider passes validation with no key, only a model to pick.
+func TestMagpiePreset(t *testing.T) {
+	var preset Provider
+	for _, p := range ProviderPresets() {
+		if p.Type == ProviderTypeMagpie {
+			preset = p
+			break
+		}
+	}
+	if preset.Type == "" {
+		t.Fatal("magpie preset missing")
+	}
+	if preset.BaseURL != MagpieBaseURL {
+		t.Fatalf("magpie preset should point at the local gateway, got %q", preset.BaseURL)
+	}
+	if preset.APIType != "" {
+		t.Fatalf("magpie is a type of its own and needs no api_type, got %q", preset.APIType)
+	}
+	if preset.Enabled {
+		t.Fatal("a shipped preset must stay disabled")
+	}
+	preset.Model = "deepseek/deepseek-v4-pro"
+	if err := preset.Validate(); err != nil {
+		t.Fatalf("magpie with a model and no key should pass: %v", err)
+	}
+}
+
+// TestMagpieStaysEnabledWithoutKey guards the load-time rule that disables an
+// enabled provider with no API key: the local gateway takes none, so a user
+// who enabled magpie must find it still enabled on the next start.
+func TestMagpieStaysEnabledWithoutKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	body := "providers:\n" +
+		"  - name: magpie\n" +
+		"    type: magpie\n" +
+		"    base_url: " + MagpieBaseURL + "\n" +
+		"    model: group/joycode\n" +
+		"    enabled: true\n"
+	if err := os.WriteFile(path, []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := loadFile(path)
+	if err != nil {
+		t.Fatalf("loadFile: %v", err)
+	}
+	for _, p := range cfg.Providers {
+		if p.Type != ProviderTypeMagpie || p.Name != "magpie" {
+			continue
+		}
+		if !p.Enabled {
+			t.Fatal("magpie without an API key must stay enabled")
+		}
+		if len(p.Models) != 1 || p.Models[0] != "group/joycode" {
+			t.Fatalf("the single model should seed the model list, got %v", p.Models)
+		}
+		return
+	}
+	t.Fatal("the magpie provider was dropped")
 }
 
 // TestCustomProviderMayOmitAPIKey records a deliberate choice: a custom

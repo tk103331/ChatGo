@@ -12,7 +12,7 @@
 
 - 🎨 **原生界面** - MyGo GPU 自绘，沿用其原生浅色/深色主题，自绘标题栏
 - 🏠 **首页快速开始** - 居中输入框 + 能力卡片，并可选项目（工作区）与 Agent
-- 🤖 **多 Provider、多模型** - 支持 OpenAI、Anthropic、Claude、Ollama、Qwen、DeepSeek、Gemini 及任意 OpenAI 兼容接口；每个 Provider 可配置多个模型，每种类型自带一条默认不启用的示例配置与品牌 logo
+- 🤖 **多 Provider、多模型** - 支持 OpenAI、Anthropic、Claude、Ollama、Qwen、DeepSeek、Gemini、本机 magpie 网关及任意 OpenAI 兼容接口；每个 Provider 可配置多个模型，每种类型自带一条默认不启用的示例配置与品牌 logo
 - 🧩 **Agent** - 内置 Chat、自定义 Agent（模型/内置工具/MCP/Skill 白名单）、ACP Agent（本地编码 CLI）
 - 🔧 **工具与 MCP** - 按会话/Agent 勾选内置工具与整个 MCP 服务器，支持检索；内置 MCP 市场
 - 📚 **Skill** - 扫描本地 SKILL 目录，按 Agent 选择并支持检索
@@ -74,6 +74,7 @@ go install github.com/tk103331/ChatGo@latest
 | **Qwen** | `qwen` | 阿里通义千问 |
 | **DeepSeek** | `deepseek` | DeepSeek AI |
 | **Gemini** | `gemini` | Google Gemini |
+| **magpie** | `magpie` | 本机运行的 [magpie](https://usemagpie.ai) 网关，把 magpie 里配置的全部模型以 OpenAI 兼容接口暴露在 `http://127.0.0.1:3425/v1`，无需 API Key |
 | **Custom** | `custom` | 任意 API；通过 `api_type` 选择上游协议（`openai`、`openai_responses`、`claude`、`gemini`），请求直接按该协议发送，不经中间转换 |
 
 每个 Provider 可列出多个模型，模型选择器会全部列出。

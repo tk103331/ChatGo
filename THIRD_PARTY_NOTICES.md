@@ -56,6 +56,13 @@ SOFTWARE.
 
 Provider and agent brand marks. Source: https://simpleicons.org — CC0-1.0.
 
+## magpie (internal/ui/assets/provider_magpie.svg)
+
+The magpie brand mark, copied from https://usemagpie.ai/img/magpie.svg with
+only the root element's attributes changed, so it draws in the theme text
+color like every other provider mark. magpie is MIT-licensed. Source:
+https://github.com/yetone/magpie
+
 ## openai-go (github.com/openai/openai-go)
 
 OpenAI's official Go SDK, used for the Responses API that eino-ext does not

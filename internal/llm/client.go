@@ -38,14 +38,18 @@ func NewClient(provider config.Provider) (*Client, error) {
 	// A custom provider declares which protocol its endpoint speaks, so it is
 	// built with the client for that protocol rather than its own type name.
 	switch provider.EffectiveAPIType() {
-	case "openai", "custom":
-		// OpenAI and custom providers use OpenAI-compatible API
+	case config.ProviderTypeOpenAI, config.ProviderTypeCustom, config.ProviderTypeMagpie:
+		// OpenAI, magpie and custom providers use OpenAI-compatible API
 		cfg := &openai.Config{
 			APIKey: provider.APIKey,
 			Model:  provider.Model,
 		}
 		if provider.BaseURL != "" {
 			cfg.BaseURL = provider.BaseURL
+		} else if provider.Type == config.ProviderTypeMagpie {
+			// An empty base URL would send the request to api.openai.com,
+			// so the local gateway's own address stands in.
+			cfg.BaseURL = config.MagpieBaseURL
 		}
 		client, err := openai.NewClient(ctx, cfg)
 		if err != nil {
@@ -53,7 +57,7 @@ func NewClient(provider config.Provider) (*Client, error) {
 		}
 		chatModel = client
 
-	case "anthropic", "claude":
+	case config.ProviderTypeAnthropic, config.ProviderTypeClaude:
 		// Anthropic Claude
 		cfg := &claude.Config{
 			APIKey: provider.APIKey,
@@ -67,7 +71,7 @@ func NewClient(provider config.Provider) (*Client, error) {
 			return nil, setupError(provider, err)
 		}
 
-	case "ollama":
+	case config.ProviderTypeOllama:
 		// Ollama - no APIKey needed
 		cfg := &ollama.ChatModelConfig{
 			Model: provider.Model,
@@ -80,7 +84,7 @@ func NewClient(provider config.Provider) (*Client, error) {
 			return nil, setupError(provider, err)
 		}
 
-	case "qwen":
+	case config.ProviderTypeQwen:
 		// Alibaba Qwen
 		cfg := &qwen.ChatModelConfig{
 			APIKey: provider.APIKey,
@@ -94,7 +98,7 @@ func NewClient(provider config.Provider) (*Client, error) {
 			return nil, setupError(provider, err)
 		}
 
-	case "deepseek":
+	case config.ProviderTypeDeepSeek:
 		// DeepSeek
 		cfg := &deepseek.ChatModelConfig{
 			APIKey: provider.APIKey,
@@ -108,14 +112,14 @@ func NewClient(provider config.Provider) (*Client, error) {
 			return nil, setupError(provider, err)
 		}
 
-	case "openai_responses":
+	case config.APITypeOpenAIResponses:
 		// The OpenAI Responses API, which eino-ext does not cover.
 		chatModel, err = newResponsesChatModel(provider)
 		if err != nil {
 			return nil, setupError(provider, err)
 		}
 
-	case "gemini":
+	case config.ProviderTypeGemini:
 		// Google Gemini - need to create genai client first
 		genaiCfg := &genai.ClientConfig{APIKey: provider.APIKey}
 		if provider.BaseURL != "" {

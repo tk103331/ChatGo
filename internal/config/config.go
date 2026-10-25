@@ -144,20 +144,57 @@ type Provider struct {
 	Preset bool `yaml:"preset,omitempty"`
 }
 
-const ProviderTypeCustom = "custom"
+// The provider types ChatGo can talk to. A provider's type names the protocol
+// its endpoint speaks, which is also what llm.NewClient switches on, so these
+// strings are written into config.yaml and must stay stable.
+const (
+	ProviderTypeOpenAI    = "openai"
+	ProviderTypeAnthropic = "anthropic"
+	ProviderTypeClaude    = "claude"
+	ProviderTypeOllama    = "ollama"
+	ProviderTypeQwen      = "qwen"
+	ProviderTypeDeepSeek  = "deepseek"
+	ProviderTypeGemini    = "gemini"
+	// ProviderTypeMagpie is the local magpie gateway (https://usemagpie.ai),
+	// which re-exports the models configured in magpie over an
+	// OpenAI-compatible API, so it takes no credential of its own.
+	ProviderTypeMagpie = "magpie"
+	ProviderTypeCustom = "custom"
+)
+
+// APITypeOpenAIResponses is the OpenAI Responses protocol. It is reachable
+// only as a custom provider's api_type, never as a provider type of its own.
+const APITypeOpenAIResponses = "openai_responses"
+
+// MagpieBaseURL is the address the magpie gateway listens on by default.
+const MagpieBaseURL = "http://127.0.0.1:3425/v1"
+
+// ProviderTypes lists the selectable provider types, in the order the
+// settings dropdown shows them. It is derived from ProviderPresets so a type
+// cannot be offered without a shipped example to configure it from.
+func ProviderTypes() []string {
+	presets := ProviderPresets()
+	out := make([]string, 0, len(presets))
+	for _, p := range presets {
+		if !containsString(out, p.Type) {
+			out = append(out, p.Type)
+		}
+	}
+	return out
+}
 
 // APITypes lists the upstream protocols a custom provider can speak.
 func APITypes() []string {
-	return []string{"openai", "openai_responses", "claude", "gemini"}
+	return []string{ProviderTypeOpenAI, APITypeOpenAIResponses, ProviderTypeClaude, ProviderTypeGemini}
 }
 
 // GetAPITypeDisplayName returns the human-readable name of a custom API type.
 func GetAPITypeDisplayName(apiType string) string {
 	names := map[string]string{
-		"openai":           "OpenAI Chat Completions",
-		"openai_responses": "OpenAI Responses",
-		"claude":           "Claude Messages",
-		"gemini":           "Gemini generateContent",
+		ProviderTypeOpenAI:     "OpenAI Chat Completions",
+		APITypeOpenAIResponses: "OpenAI Responses",
+		ProviderTypeClaude:     "Claude Messages",
+		ProviderTypeGemini:     "Gemini generateContent",
 	}
 	if name, ok := names[apiType]; ok {
 		return name
@@ -175,7 +212,7 @@ func (p Provider) EffectiveAPIType() string {
 	if p.APIType != "" {
 		return p.APIType
 	}
-	return "openai"
+	return ProviderTypeOpenAI
 }
 
 // ProviderGroup routes one logical model name over several provider endpoints.
@@ -328,11 +365,11 @@ func containsString(list []string, v string) bool {
 }
 
 // NeedsAPIKey reports whether a provider type cannot work without an API key.
-// Ollama runs locally, and a custom provider may point at an unauthenticated
-// endpoint, so neither requires one.
+// Ollama and magpie are local endpoints, and a custom provider may point at an
+// unauthenticated one, so none of them requires a key.
 func (p Provider) NeedsAPIKey() bool {
 	switch p.Type {
-	case "ollama", ProviderTypeCustom:
+	case ProviderTypeOllama, ProviderTypeMagpie, ProviderTypeCustom:
 		return false
 	}
 	return true
@@ -556,14 +593,15 @@ func ensureProviderPresets(existing []Provider) []Provider {
 // type, so a fresh configuration shows a template of each.
 func ProviderPresets() []Provider {
 	return []Provider{
-		{Name: "OpenAI", Type: "openai", BaseURL: "https://api.openai.com/v1", Model: "gpt-4o", Models: []string{"gpt-4o"}, Enabled: false, Preset: true},
-		{Name: "Anthropic", Type: "anthropic", BaseURL: "https://api.anthropic.com", Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false, Preset: true},
-		{Name: "Claude", Type: "claude", Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false, Preset: true},
-		{Name: "Ollama", Type: "ollama", BaseURL: "http://localhost:11434", Model: "llama3.2", Models: []string{"llama3.2"}, Enabled: false, Preset: true},
-		{Name: "Qwen", Type: "qwen", BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-max", Models: []string{"qwen-max"}, Enabled: false, Preset: true},
-		{Name: "DeepSeek", Type: "deepseek", BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat", Models: []string{"deepseek-chat"}, Enabled: false, Preset: true},
-		{Name: "Gemini", Type: "gemini", Model: "gemini-2.0-flash", Models: []string{"gemini-2.0-flash"}, Enabled: false, Preset: true},
-		{Name: "Custom", Type: ProviderTypeCustom, BaseURL: "https://api.example.com/v1", Model: "gpt-4o", Models: []string{"gpt-4o"}, APIType: "openai", Enabled: false, Preset: true},
+		{Name: "OpenAI", Type: ProviderTypeOpenAI, BaseURL: "https://api.openai.com/v1", Model: "gpt-4o", Models: []string{"gpt-4o"}, Enabled: false, Preset: true},
+		{Name: "Anthropic", Type: ProviderTypeAnthropic, BaseURL: "https://api.anthropic.com", Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false, Preset: true},
+		{Name: "Claude", Type: ProviderTypeClaude, Model: "claude-3-5-sonnet-20241022", Models: []string{"claude-3-5-sonnet-20241022"}, Enabled: false, Preset: true},
+		{Name: "Ollama", Type: ProviderTypeOllama, BaseURL: "http://localhost:11434", Model: "llama3.2", Models: []string{"llama3.2"}, Enabled: false, Preset: true},
+		{Name: "Qwen", Type: ProviderTypeQwen, BaseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1", Model: "qwen-max", Models: []string{"qwen-max"}, Enabled: false, Preset: true},
+		{Name: "DeepSeek", Type: ProviderTypeDeepSeek, BaseURL: "https://api.deepseek.com/v1", Model: "deepseek-chat", Models: []string{"deepseek-chat"}, Enabled: false, Preset: true},
+		{Name: "Gemini", Type: ProviderTypeGemini, Model: "gemini-2.0-flash", Models: []string{"gemini-2.0-flash"}, Enabled: false, Preset: true},
+		{Name: "magpie", Type: ProviderTypeMagpie, BaseURL: MagpieBaseURL, Enabled: false, Preset: true},
+		{Name: "Custom", Type: ProviderTypeCustom, BaseURL: "https://api.example.com/v1", Model: "gpt-4o", Models: []string{"gpt-4o"}, APIType: ProviderTypeOpenAI, Enabled: false, Preset: true},
 	}
 }
 
@@ -648,11 +686,11 @@ func loadFile(path string) (*Config, error) {
 		if len(p.Models) == 0 && p.Model != "" {
 			p.Models = []string{p.Model}
 		}
-		if p.Enabled && p.APIKey == "" && p.Type != "ollama" && p.Type != ProviderTypeCustom {
+		if p.Enabled && p.APIKey == "" && p.NeedsAPIKey() {
 			p.Enabled = false
 		}
 		if p.Type == ProviderTypeCustom && p.APIType == "" {
-			p.APIType = "openai"
+			p.APIType = ProviderTypeOpenAI
 		}
 	}
 	for i := range config.Agents {

@@ -36,6 +36,7 @@ func TestProviderTypesUseTheirOwnClient(t *testing.T) {
 		"claude":   &claude.ChatModel{},
 		"ollama":   &ollama.ChatModel{},
 		"gemini":   &gemini.ChatModel{},
+		"magpie":   &einoopenai.Client{},
 	}
 	for typ, exemplar := range want {
 		p := config.Provider{Name: typ, Type: typ, APIKey: "test-key", Model: "test-model"}
@@ -106,6 +107,41 @@ func TestNewClientRejectsMissingAPIKey(t *testing.T) {
 		}
 		if !strings.Contains(msg, "线上") {
 			t.Fatalf("%s message should name the provider: %s", typ, msg)
+		}
+	}
+}
+
+// TestMagpieNeedsNoKeyAndDefaultsToItsGateway covers the local gateway: it
+// takes no credential, and an empty base URL must not fall through to
+// api.openai.com, which would send the request off the machine.
+func TestMagpieNeedsNoKeyAndDefaultsToItsGateway(t *testing.T) {
+	p := config.Provider{Name: "magpie", Type: config.ProviderTypeMagpie, Model: "group/joycode"}
+	c, err := NewClient(p)
+	if err != nil {
+		t.Fatalf("magpie without an API key should build: %v", err)
+	}
+	if got, expect := modelTypeName(c), reflect.TypeOf(&einoopenai.Client{}).String(); got != expect {
+		t.Fatalf("magpie built %s, want %s", got, expect)
+	}
+	if !strings.HasPrefix(config.MagpieBaseURL, "http://127.0.0.1:") {
+		t.Fatalf("the magpie gateway must stay local, got %q", config.MagpieBaseURL)
+	}
+}
+
+// TestEveryOfferedTypeBuildsAClient closes the gap between the settings
+// dropdown and this switch: a type the UI offers but NewClient does not handle
+// falls to the default branch, so the user only learns it is unsupported after
+// picking it. Deriving the cases from config.ProviderTypes makes adding a type
+// without wiring its client a test failure rather than a runtime surprise.
+func TestEveryOfferedTypeBuildsAClient(t *testing.T) {
+	for _, typ := range config.ProviderTypes() {
+		p := config.Provider{Name: typ, Type: typ, APIKey: "test-key", Model: "test-model"}
+		c, err := NewClient(p)
+		if err != nil {
+			t.Fatalf("provider type %q is offered in settings but failed to build: %v", typ, err)
+		}
+		if c == nil || c.model == nil {
+			t.Fatalf("provider type %q built no chat model", typ)
 		}
 	}
 }

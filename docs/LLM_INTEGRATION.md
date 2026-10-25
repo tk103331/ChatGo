@@ -20,6 +20,7 @@ Eino 是字节跳动开源的 LLM 应用开发框架，提供了：
 | **Qwen** | `qwen` | 通义千问系列 (qwen-max, qwen-plus 等) | [文档](https://help.aliyun.com/zh/model-studio/) |
 | **DeepSeek** | `deepseek` | DeepSeek-V3, DeepSeek-Chat 等 | [文档](https://platform.deepseek.com) |
 | **Gemini** | `gemini` | Google Gemini 2.0 Flash, Pro 等 | [文档](https://ai.google.dev) |
+| **magpie** | `magpie` | 本机 magpie 网关，转发其中配置的全部模型，无需 API Key | [文档](https://usemagpie.ai/docs/start) |
 | **自定义** | `custom` | 兼容 OpenAI API 格式的服务 | - |
 
 ## 配置
@@ -68,6 +69,12 @@ providers:
     type: "gemini"
     api_key: "AIzaSyxxx"
     model: "gemini-2.0-flash-exp"
+
+  # magpie 本机网关（无需 api_key）
+  - name: "magpie"
+    type: "magpie"
+    base_url: "http://127.0.0.1:3425/v1"
+    model: "deepseek/deepseek-v4-pro"
 
   # 自定义 API (兼容 OpenAI 格式)
   - name: "Custom"
@@ -193,7 +200,32 @@ model: "gemini-2.0-flash-exp"
 
 **获取 API Key：** https://aistudio.google.com/app/apikey
 
-### 7. 自定义 API
+### 7. magpie 网关
+
+[magpie](https://usemagpie.ai) 是运行在本机的模型网关，把你在 magpie 里配置
+的全部供应商（订阅、API Key、本地服务）统一以 OpenAI 兼容接口暴露在
+`http://127.0.0.1:3425/v1`。ChatGo 按 OpenAI 协议直接请求它，鉴权由 magpie 自己
+完成，因此本类型不需要填写 API Key。
+
+**模型名格式：** `provider/model`，例如 `deepseek/deepseek-v4-pro`；
+路由组为 `group/<id>`。可用模型列表由 `magpie models` 或
+`curl http://127.0.0.1:3425/v1/models` 查看。
+
+**配置示例：**
+```yaml
+type: "magpie"
+base_url: "http://127.0.0.1:3425/v1"
+model: "deepseek/deepseek-v4-pro"
+models:
+  - "deepseek/deepseek-v4-pro"
+  - "group/joycode"
+enabled: true
+```
+
+**前提：** magpie 需处于运行状态（应用常驻、`magpie serve` 或
+`magpie daemon install`），否则请求会连接失败。
+
+### 8. 自定义 API
 
 适用于任何兼容 OpenAI API 格式的服务，如：
 - Azure OpenAI
