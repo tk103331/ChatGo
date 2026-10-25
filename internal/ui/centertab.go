@@ -12,6 +12,7 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
+	"chatgo/pkg/models"
 )
 
 // centerTab is one tab of the center area. Kind decides which fields matter
@@ -24,6 +25,11 @@ type centerTab struct {
 	// Title labels the tab; Path is the file or resource behind it.
 	Title string
 	Path  string
+	// ConvID is the conversation a chat tab shows, and Agent its agent, so
+	// the tab names and marks itself without leaning on the window's current
+	// conversation.
+	ConvID string
+	Agent  string
 
 	// Body, From, To and Lang carry text for the text, diff and editor kinds.
 	Body     string
@@ -36,6 +42,9 @@ type centerTab struct {
 
 	// Rendered shows a Markdown file as a rendered preview rather than source.
 	Rendered bool
+	// GotoLine is a one-based line the viewer should scroll to, 0 for none.
+	// It survives until the editor has a laid-out view able to honour it.
+	GotoLine int
 
 	blame []kit.BlameLine
 	view  kit.CodeViewerState
@@ -68,9 +77,9 @@ func (t *centerTab) dirty() bool {
 	return t.Edit != nil && t.Edit.st.Buffer != nil && t.Edit.st.Buffer.Version() != t.Edit.saved
 }
 
-// closable reports whether the tab may be closed: every tab but the pinned
-// Chat one.
-func (t *centerTab) closable() bool { return t.Kind != centerChat }
+// closable reports whether the tab may be closed. Every tab can: a chat tab
+// closes its view, keeping the conversation in the list to reopen.
+func (t *centerTab) closable() bool { return true }
 
 // centerPaneView draws one pane: its tab strip and the active tab's body.
 func (cw *ChatWindow) centerPaneView(c *mgo.Context, idx int) {
@@ -224,41 +233,40 @@ func (cw *ChatWindow) centerTabButton(c *mgo.Context, pane, i int, action *cente
 	cw.centerTabContextMenu(c, b, pane, i, action)
 }
 
-// centerTabTitle is the label a tab shows. The Chat tab is named after the
+// centerTabTitle is the label a tab shows. A chat tab is named after its
 // conversation's agent, so a plain agent and an ACP one are told apart by
 // name as well as by icon.
 func (cw *ChatWindow) centerTabTitle(tab *centerTab) string {
 	if tab.Kind != centerChat {
 		return tab.Title
 	}
-	return cw.chatTabName()
+	return agentTabName(tab.Agent)
 }
 
-// chatTabName names the Chat tab after the current conversation's agent.
-func (cw *ChatWindow) chatTabName() string {
-	if cw.cur == nil {
-		return chatAgentName
-	}
+// agentTabName names a chat tab after its conversation's agent.
+func agentTabName(agent string) string {
 	switch {
-	case strings.HasPrefix(cw.cur.Agent, "acp:"):
-		return strings.TrimPrefix(cw.cur.Agent, "acp:")
-	case strings.HasPrefix(cw.cur.Agent, "agent:"):
-		return strings.TrimPrefix(cw.cur.Agent, "agent:")
+	case strings.HasPrefix(agent, "acp:"):
+		return strings.TrimPrefix(agent, "acp:")
+	case strings.HasPrefix(agent, "agent:"):
+		return strings.TrimPrefix(agent, "agent:")
 	default:
 		return chatAgentName
 	}
 }
 
-// centerTabIcon draws a tab's leading mark. The Chat tab reuses the
-// conversation list's agent marks, so an ACP agent shows its brand logo and a
-// custom agent its avatar.
+// centerTabIcon draws a tab's leading mark. A chat tab reuses the agent
+// marks, so an ACP agent shows its brand logo and a custom agent its avatar.
 func (cw *ChatWindow) centerTabIcon(c *mgo.Context, tab *centerTab) {
 	if tab.Kind == centerChat {
-		if cw.cur != nil {
-			cw.convLeading(c, *cw.cur, 14)
-			return
+		switch {
+		case strings.HasPrefix(tab.Agent, "acp:"):
+			cw.acpLeading(c, strings.TrimPrefix(tab.Agent, "acp:"), 14)
+		case strings.HasPrefix(tab.Agent, "agent:"):
+			cw.agentMarkByName(c, strings.TrimPrefix(tab.Agent, "agent:"), 14)
+		default:
+			mgo.Icon(c, icons.Must(chatAgentIcon)).Size(14, 14).TextColor(mcore.Tokens(c).Accent)
 		}
-		mgo.Icon(c, icons.Must(chatAgentIcon)).Size(14, 14).TextColor(mcore.Tokens(c).Accent)
 		return
 	}
 	if icon := centerTabIconName(tab); icon != "" {
@@ -318,6 +326,10 @@ func (cw *ChatWindow) centerTabContextMenu(c *mgo.Context, target mgo.Element, p
 			if target == pane {
 				continue
 			}
+			// A chat tab may only move back to the leftmost pane.
+			if tab.Kind == centerChat && target != chatPaneIndex {
+				continue
+			}
 			label := "移动到窗格 " + itoa(target+1)
 			if m.Item(label, kit.PopupMenuItemOptions{}) {
 				action.moveFrom, action.moveTo = i, target
@@ -339,14 +351,49 @@ func (cw *ChatWindow) newTabMenu(c *mgo.Context, pane int) {
 }
 
 // newTabChoices lists the tab kinds that can be opened, closing the menu and
-// opening the chosen kind in pane.
+// opening the chosen kind in pane. The Agent item opens a second level that
+// starts a conversation with the chosen agent, like the sidebar's own.
 func (cw *ChatWindow) newTabChoices(c *mgo.Context, anchor mgo.Element, open *bool, pane int) {
 	pick := func(run func(int)) {
 		*open = false
 		run(pane)
 	}
-	kit.Popover(c, anchor, open, kit.PopoverOptions{Title: "新建标签", Width: 220}, func() {
-		menuItem(c, iconLeading(c, "search"), "代码搜索", func() { pick(cw.openCodeSearchTab) })
+	stage := mgo.Local(anchor, "chatgo.center.newtab.stage", func() int { return 0 })
+	if !*open || pane != chatPaneIndex {
+		*stage = 0
+	}
+	newAgentConv := func(agent string) {
+		*stage = 0
+		*open = false
+		cw.newConversationIn(cw.workspace, agent)
+	}
+	title := "新建标签"
+	if *stage == 1 {
+		title = "Agent 会话"
+	}
+	kit.Popover(c, anchor, open, kit.PopoverOptions{Title: title, Width: 220}, func() {
+		if *stage == 1 {
+			menuItem(c, iconLeading(c, "chevron-left"), "返回", func() { *stage = 0 })
+			menuItem(c, iconLeading(c, chatAgentIcon), chatAgentName, func() { newAgentConv("") })
+			for _, a := range cw.cfg.Agents {
+				name := a.Name
+				menuItem(c, cw.agentLeading(c, name), name, func() { newAgentConv("agent:" + name) })
+			}
+			for _, a := range cw.cfg.ACPAgents {
+				if a.Disabled {
+					continue
+				}
+				name := a.Name
+				menuItem(c, logoLeading(c, name), name, func() { newAgentConv("acp:" + name) })
+			}
+			return
+		}
+		// A chat tab only opens in the leftmost pane, so its menu entry
+		// belongs to that pane's new-tab menu alone.
+		if pane == chatPaneIndex {
+			menuItem(c, iconLeading(c, "bot"), "Agent 会话", func() { *stage = 1 })
+		}
+		menuItem(c, iconLeading(c, "search"), "CodeSearch", func() { pick(cw.openCodeSearchTab) })
 		menuItem(c, iconLeading(c, "terminal"), "Terminal", func() { pick(cw.openTerminalTab) })
 		menuItem(c, iconLeading(c, "globe"), "WebView", func() { pick(cw.openWebTabIn) })
 		menuItem(c, iconLeading(c, "git-branch"), "GitGraph", func() { pick(cw.openGitGraphTab) })
@@ -400,6 +447,7 @@ func layoutLabel(l centerLayout) string {
 func (cw *ChatWindow) centerTabBody(c *mgo.Context, tab *centerTab) {
 	switch tab.Kind {
 	case centerChat:
+		cw.attachConvTab(tab)
 		cw.messageArea(c)
 	case centerTerm:
 		cw.centerTermBody(c, tab)
@@ -475,13 +523,25 @@ func (cw *ChatWindow) centerTextBody(c *mgo.Context, tab *centerTab) {
 		})
 		if isMarkdownFile(tab.Path) && tab.Rendered {
 			mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-				kit.MarkdownPreview(c, tab.Body)
+				mgo.Column(c).FillWidth().Padding(u*4, u*4, u*3, u*4).Children(func() {
+					kit.MarkdownPreview(c, tab.Body)
+				})
 			})
 			return
 		}
 		kit.CodeViewer(c, tab.Body, &tab.view, kit.CodeViewerOptions{
 			Language: tab.Lang, Path: tab.Path,
 		}).Grow(1).MinHeight(0)
+		// The scroll is asked for after the viewer is built, when the editor
+		// has the laid-out view it needs to find the line; until it takes,
+		// the request is kept for the next frame.
+		if tab.GotoLine > 0 {
+			if tab.view.ScrollToLine(tab.GotoLine) {
+				tab.GotoLine = 0
+			} else {
+				c.Invalidate()
+			}
+		}
 	})
 }
 
@@ -542,12 +602,20 @@ func (cw *ChatWindow) centerWebBody(c *mgo.Context, tab *centerTab) {
 
 // openCenterTab adds a tab to a pane and selects it, focusing that pane.
 func (cw *ChatWindow) openCenterTab(pane int, tab *centerTab) *centerTab {
+	// A chat tab always lives in the leftmost pane, first in its strip, so
+	// the conversation sits where it is expected whatever else is open.
+	if tab.Kind == centerChat {
+		pane = chatPaneIndex
+		p := &cw.center.panes[pane]
+		p.tabs = append([]*centerTab{tab}, p.tabs...)
+		p.sel = 0
+		cw.center.focus = pane
+		cw.invalidate()
+		return tab
+	}
 	if pane < 0 || pane >= cw.center.layout.paneCount() {
 		pane = cw.center.focus
 	}
-	// The pinned Chat tab is settled before the append, so it always holds
-	// the first slot of pane 0 no matter what order tabs are opened in.
-	cw.center.ensureChatTab()
 	p := &cw.center.panes[pane]
 	p.tabs = append(p.tabs, tab)
 	p.sel = len(p.tabs) - 1
@@ -614,6 +682,19 @@ func (cw *ChatWindow) forceCloseCenterTab(pane int, tab *centerTab) {
 	cw.invalidate()
 }
 
+// closeConvTabs closes every chat tab showing a conversation, as when the
+// conversation itself is deleted.
+func (cw *ChatWindow) closeConvTabs(id string) {
+	for _, pi := range cw.center.visiblePanes() {
+		p := &cw.center.panes[pi]
+		for i := len(p.tabs) - 1; i >= 0; i-- {
+			if p.tabs[i].Kind == centerChat && p.tabs[i].ConvID == id {
+				cw.forceCloseCenterTab(pi, p.tabs[i])
+			}
+		}
+	}
+}
+
 // closeOtherCenterTabs closes every closable tab of the pane but the one at i.
 func (cw *ChatWindow) closeOtherCenterTabs(pane, i int) {
 	p := &cw.center.panes[pane]
@@ -644,6 +725,10 @@ func (cw *ChatWindow) moveCenterTab(from, i, to int) {
 	if !tab.closable() {
 		return
 	}
+	// A chat tab never leaves the leftmost pane.
+	if tab.Kind == centerChat && to != chatPaneIndex {
+		return
+	}
 	src.tabs = append(src.tabs[:i], src.tabs[i+1:]...)
 	src.clampSel()
 	dst := &cw.center.panes[to]
@@ -653,18 +738,39 @@ func (cw *ChatWindow) moveCenterTab(from, i, to int) {
 	cw.invalidate()
 }
 
-// focusChatTab brings the pinned Chat tab to the front, which is where a new
-// or selected conversation must be read.
-func (cw *ChatWindow) focusChatTab() {
-	cw.center.ensureChatTab()
-	p := &cw.center.panes[0]
-	for i, t := range p.tabs {
-		if t.Kind == centerChat {
-			p.sel = i
-			cw.center.focus = 0
-			return
-		}
+// focusConvTab brings a conversation's own tab to the front, opening it in
+// pane 0 when it is not open yet.
+func (cw *ChatWindow) focusConvTab(conv *models.Conversation) {
+	if conv == nil {
+		return
 	}
+	id := "conv:" + conv.ID
+	if t := cw.focusCenterTab(id); t != nil {
+		return
+	}
+	cw.openCenterTab(0, &centerTab{
+		Kind: centerChat, ID: id, Title: agentTabName(conv.Agent),
+		ConvID: conv.ID, Agent: conv.Agent,
+	})
+}
+
+// attachConvTab makes the window follow a chat tab's conversation, so the
+// message area shows the right one no matter which tab is active.
+func (cw *ChatWindow) attachConvTab(tab *centerTab) {
+	if tab.ConvID == "" || cw.cur != nil && cw.cur.ID == tab.ConvID {
+		return
+	}
+	conv, err := cw.convManager.LoadConversation(tab.ConvID)
+	if err != nil {
+		return
+	}
+	cw.cur = conv
+	cw.mode = modeChat
+	if conv.Workspace != "" {
+		cw.workspace = conv.Workspace
+	}
+	cw.applyConversationAgent(conv)
+	cw.applyConversationModel(conv)
 }
 
 // centerTabsOfKind collects the open tabs of a kind across every pane.

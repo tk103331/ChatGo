@@ -85,9 +85,10 @@ type ChatWindow struct {
 	lastWinW   float32
 	lastRightW float32
 
-	center centerState
-	webMu  sync.Mutex
-	webSeq int
+	center       centerState
+	centerStates map[string]*centerState
+	webMu        sync.Mutex
+	webSeq       int
 
 	gitRepo        bool
 	gitBranch      string

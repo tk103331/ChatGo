@@ -155,6 +155,7 @@ func (cw *ChatWindow) askDeleteConversation(id, title string) {
 	cw.askConfirm("删除会话", "确定删除「"+title+"」？此操作不可撤销。", func() {
 		cw.acpConvClose(id)
 		_ = cw.convManager.DeleteConversation(id)
+		cw.closeConvTabs(id)
 		if cw.cur != nil && cw.cur.ID == id {
 			cw.cur = nil
 			cw.mode = modeHome
