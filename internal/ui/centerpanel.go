@@ -36,6 +36,8 @@ const (
 	centerGitGraph centerKind = "gitgraph"
 	// centerEditor is a writable file editor.
 	centerEditor centerKind = "editor"
+	// centerCodeSearch searches the workspace's files.
+	centerCodeSearch centerKind = "codesearch"
 )
 
 // centerLayout is how the center area divides itself into panes.
