@@ -72,11 +72,10 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 	_ = cw.convManager.SaveConversation(conv)
 	cw.cur = conv
 	cw.provider = name
-	if ws != "" {
-		cw.workspace = ws
-	}
+	cw.switchCenterState(ws)
+	cw.workspace = ws
 	cw.mode = modeChat
-	cw.focusChatTab()
+	cw.focusConvTab(conv)
 	cw.msgList.ScrollToEnd()
 	cw.applyConversationAgent(conv)
 	cw.reloadConvs()
@@ -91,12 +90,13 @@ func (cw *ChatWindow) selectConversation(id string) {
 	}
 	cw.cur = conv
 	cw.mode = modeChat
+	cw.switchCenterState(conv.Workspace)
 	if conv.Workspace != "" {
 		cw.workspace = conv.Workspace
 	}
 	cw.applyConversationAgent(conv)
 	cw.applyConversationModel(conv)
-	cw.focusChatTab()
+	cw.focusConvTab(conv)
 	cw.msgList.ScrollToEnd()
 }
 

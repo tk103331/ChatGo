@@ -125,33 +125,6 @@ func (p *centerPane) indexOf(tab *centerTab) int {
 	return -1
 }
 
-// ensureChatTab puts the pinned Chat tab first in pane 0, once.
-func (s *centerState) ensureChatTab() {
-	p := &s.panes[0]
-	for i, t := range p.tabs {
-		if t.Kind != centerChat {
-			continue
-		}
-		// The Chat tab is pinned first; move it there if anything slipped
-		// ahead of it.
-		if i != 0 {
-			p.tabs = append([]*centerTab{t}, append(p.tabs[:i:i], p.tabs[i+1:]...)...)
-			if p.sel == i {
-				p.sel = 0
-			} else if p.sel < i {
-				p.sel++
-			}
-		}
-		return
-	}
-	p.tabs = append([]*centerTab{{Kind: centerChat, ID: "chat", Title: chatAgentName}}, p.tabs...)
-	if p.sel < 0 {
-		p.sel = 0
-	} else {
-		p.sel++
-	}
-}
-
 // visiblePanes are the panes the layout draws, in order.
 func (s *centerState) visiblePanes() []int {
 	n := s.layout.paneCount()
@@ -220,7 +193,6 @@ func (cw *ChatWindow) setLayout(l centerLayout) {
 	// layout adds start with none and panes that lost tabs point at a
 	// remaining one.
 	cw.center.collapseHiddenPanes()
-	cw.center.ensureChatTab()
 	cw.invalidate()
 }
 
@@ -232,7 +204,6 @@ func (cw *ChatWindow) newTabID(prefix string) string {
 
 // centerArea draws the center area: the panes of the current layout.
 func (cw *ChatWindow) centerArea(c *mgo.Context) {
-	cw.center.ensureChatTab()
 	if cw.center.colW == 0 {
 		w, _ := c.Size()
 		cw.center.colW = max(240, w/2)
@@ -257,4 +228,45 @@ func (cw *ChatWindow) centerArea(c *mgo.Context) {
 	default:
 		cw.centerPaneView(c, 0)
 	}
+}
+
+// centerStateKey names a workspace's saved center state; the empty workspace
+// shares one state of its own.
+func centerStateKey(ws string) string {
+	if ws == "" {
+		return "(global)"
+	}
+	return ws
+}
+
+// saveCenterState stores the center area as it is now under ws, keeping the
+// tabs and layout each workspace opened.
+func (cw *ChatWindow) saveCenterState(ws string) {
+	if cw.centerStates == nil {
+		cw.centerStates = map[string]*centerState{}
+	}
+	st := cw.centerStates[centerStateKey(ws)]
+	if st == nil {
+		st = &centerState{}
+		cw.centerStates[centerStateKey(ws)] = st
+	}
+	*st = cw.center
+}
+
+// switchCenterState swaps the whole center area to the state saved under ws,
+// stashing the one it leaves, so every workspace has its own tabs and layout.
+func (cw *ChatWindow) switchCenterState(ws string) {
+	if cw.workspace == ws {
+		return
+	}
+	cw.saveCenterState(cw.workspace)
+	if cw.centerStates == nil {
+		cw.centerStates = map[string]*centerState{}
+	}
+	st := cw.centerStates[centerStateKey(ws)]
+	if st == nil {
+		st = &centerState{}
+		cw.centerStates[centerStateKey(ws)] = st
+	}
+	cw.center = *st
 }

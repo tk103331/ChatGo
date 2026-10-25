@@ -246,6 +246,7 @@ func TestPreviewClose(t *testing.T) {
 	cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: wd,
 		Messages: []models.Message{{ID: "u", Role: "user", Content: "hi", Timestamp: time.Now()}}}
 	cw.convs = []models.Conversation{*cw.cur}
+	cw.focusConvTab(cw.cur)
 	cw.openPreview(wd + "/chat.go")
 	cw.openPreview(wd + "/nav.go")
 	tr := mgo.NewTester(cw.view, 1400, 800)
@@ -351,31 +352,33 @@ func TestRenderMixedTabs(t *testing.T) {
 	}
 }
 
-// The Chat tab is pinned: it has no close control and closing it is refused.
-func TestChatTabCannotClose(t *testing.T) {
+// A chat tab closes like any other: the conversation stays in the list and
+// reopening it brings the tab back.
+func TestChatTabCloses(t *testing.T) {
 	cw := testWindow()
 	cw.mode = modeChat
-	cw.cur = &models.Conversation{ID: "c", Title: "t"}
-	cw.center.ensureChatTab()
+	conv := &models.Conversation{ID: "c", Title: "t"}
+	cw.cur = conv
+	cw.focusConvTab(conv)
+	if n := len(cw.center.panes[0].tabs); n != 1 {
+		t.Fatalf("expected the conversation tab, got %d tabs", n)
+	}
 	cw.closeCenterTab(0, 0)
-	tabs := cw.center.panes[0].tabs
-	if len(tabs) != 1 || tabs[0].Kind != centerChat {
-		t.Fatalf("Chat tab must survive a close, got %d tabs", len(tabs))
+	if n := len(cw.center.panes[0].tabs); n != 0 {
+		t.Fatalf("a chat tab must close, got %d tabs", n)
 	}
 }
 
 // The Chat tab is named and marked after the conversation's agent, which is
 // what tells a plain agent from an ACP one.
 func TestChatTabNameFollowsAgent(t *testing.T) {
-	cw := testWindow()
 	cases := []struct{ agent, want string }{
 		{"", chatAgentName},
 		{"agent:Helper", "Helper"},
 		{"acp:Claude Code", "Claude Code"},
 	}
 	for _, tc := range cases {
-		cw.cur = &models.Conversation{ID: "c", Agent: tc.agent}
-		if got := cw.chatTabName(); got != tc.want {
+		if got := agentTabName(tc.agent); got != tc.want {
 			t.Fatalf("agent %q: want %q, got %q", tc.agent, tc.want, got)
 		}
 	}
@@ -425,8 +428,8 @@ func TestThreePaneTabsStayPerPane(t *testing.T) {
 	for i := range 3 {
 		counts[i] = len(cw.center.panes[i].tabs)
 	}
-	if counts != [3]int{1, 1, 1} {
-		t.Fatalf("want one tab per pane, got %v", counts)
+	if counts != [3]int{0, 1, 1} {
+		t.Fatalf("want tabs only in panes 1 and 2, got %v", counts)
 	}
 }
 
@@ -437,8 +440,8 @@ func TestCollapseThreePaneLayout(t *testing.T) {
 	cw.openCenterTab(1, &centerTab{Kind: centerText, Title: "x"})
 	cw.openCenterTab(2, &centerTab{Kind: centerText, Title: "y"})
 	cw.setLayout(layoutSingle)
-	if n := len(cw.center.panes[0].tabs); n != 3 {
-		t.Fatalf("expected Chat plus both tabs, got %d", n)
+	if n := len(cw.center.panes[0].tabs); n != 2 {
+		t.Fatalf("expected both tabs folded into pane 0, got %d", n)
 	}
 }
 
@@ -491,7 +494,6 @@ func TestCollapseKeepsVisiblePanesInPlace(t *testing.T) {
 func TestLayoutMenuOnLeftPaneOnly(t *testing.T) {
 	cw := testWindow()
 	cw.setLayout(layoutCols)
-	cw.center.ensureChatTab()
 	if !cw.showLayoutMenu(0) {
 		t.Fatal("the left pane must carry the switcher")
 	}
@@ -847,8 +849,8 @@ func TestOpenPreviewReusesTab(t *testing.T) {
 	cw.workspace = wd
 	cw.openPreview(wd + "/chat.go")
 	cw.openPreview(wd + "/chat.go")
-	if n := len(cw.center.panes[0].tabs); n != 2 {
-		t.Fatalf("expected the Chat tab plus one file tab, got %d", n)
+	if n := len(cw.center.panes[0].tabs); n != 1 {
+		t.Fatalf("expected the one file tab reused, got %d", n)
 	}
 }
 
@@ -857,13 +859,14 @@ func TestMoveCenterTab(t *testing.T) {
 	cw := testWindow()
 	cw.setLayout(layoutCols)
 	cw.openCenterTab(0, &centerTab{ID: "t1", Kind: centerText, Title: "a.go"})
+	cw.openCenterTab(0, &centerTab{ID: "c1", Kind: centerChat, Title: "Chat"})
 	cw.moveCenterTab(0, 1, 1)
 	if len(cw.center.panes[1].tabs) != 1 {
-		t.Fatalf("expected the tab to land in pane 1")
+		t.Fatalf("expected the file tab to land in pane 1")
 	}
 	cw.moveCenterTab(0, 0, 1)
 	if len(cw.center.panes[1].tabs) != 1 {
-		t.Fatalf("the Chat tab must not move panes")
+		t.Fatalf("a chat tab must not leave the leftmost pane")
 	}
 }
 
