@@ -264,7 +264,69 @@ func TestPreviewClose(t *testing.T) {
 	}
 }
 
-// Rendering a pane with several tab kinds must not panic: the strip draws
+// Search finds a line in the working tree and skips binary files and build
+// output.
+func TestCodeSearchFindsHits(t *testing.T) {
+	wd, _ := os.Getwd()
+	hits := searchWorkspace(wd, "func searchWorkspace")
+	if len(hits) == 0 {
+		t.Fatal("search missed its own source")
+	}
+	found := false
+	for _, hit := range hits {
+		if filepath.Base(hit.Path) == "codesearch.go" && hit.Line > 0 {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected a hit in codesearch.go")
+	}
+}
+
+// Search results group by file, one group per path in file order.
+func TestCodeSearchGroupsByFile(t *testing.T) {
+	hits := []searchHit{
+		{Path: "a.go", Line: 1, Text: "x"},
+		{Path: "b.go", Line: 2, Text: "y"},
+		{Path: "a.go", Line: 3, Text: "z"},
+	}
+	groups := groupSearchHits(hits)
+	if len(groups) != 2 {
+		t.Fatalf("want 2 file groups, got %d", len(groups))
+	}
+	if groups[0].Path != "a.go" || len(groups[0].Hits) != 2 {
+		t.Fatalf("a.go should group its two hits first: %+v", groups[0])
+	}
+	if groups[1].Path != "b.go" || len(groups[1].Hits) != 1 {
+		t.Fatalf("b.go should hold one hit: %+v", groups[1])
+	}
+}
+
+// The Code Search tab renders as a center tab on its own.
+func TestCodeSearchTabRenders(t *testing.T) {
+	wd, _ := os.Getwd()
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.workspace = wd
+	cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: wd}
+	cw.convs = []models.Conversation{*cw.cur}
+	cw.search.query = "func"
+	cw.search.results = []searchHit{{Path: wd + "/chat.go", Line: 1, Text: "func x()"}}
+	cw.openCodeSearchTab(0)
+	img := mgo.Render(cw.view, 1400, 900, 1)
+	if img == nil {
+		t.Fatal("code search tab did not render")
+	}
+	tr := mgo.NewTester(cw.view, 1400, 900)
+	for range 3 {
+		tr.Frame()
+	}
+	if !tr.HasText("chat.go") {
+		t.Fatal("the grouped file is not shown")
+	}
+}
+
+// Rendering a pane with several tab kinds must not panic// Rendering a pane with several tab kinds must not panic: the strip draws
 // every tab before applying any close it collected, so a context menu action
 // can never shift the slice under the drawing loop.
 func TestRenderMixedTabs(t *testing.T) {

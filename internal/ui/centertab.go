@@ -283,6 +283,8 @@ func centerTabIconName(tab *centerTab) string {
 		return "terminal"
 	case centerEditor:
 		return "pencil"
+	case centerCodeSearch:
+		return "search"
 	case centerText:
 		if isMarkdownFile(tab.Path) {
 			return "eye"
@@ -344,6 +346,7 @@ func (cw *ChatWindow) newTabChoices(c *mgo.Context, anchor mgo.Element, open *bo
 		run(pane)
 	}
 	kit.Popover(c, anchor, open, kit.PopoverOptions{Title: "新建标签", Width: 220}, func() {
+		menuItem(c, iconLeading(c, "search"), "代码搜索", func() { pick(cw.openCodeSearchTab) })
 		menuItem(c, iconLeading(c, "terminal"), "Terminal", func() { pick(cw.openTerminalTab) })
 		menuItem(c, iconLeading(c, "globe"), "WebView", func() { pick(cw.openWebTabIn) })
 		menuItem(c, iconLeading(c, "git-branch"), "GitGraph", func() { pick(cw.openGitGraphTab) })
@@ -406,6 +409,8 @@ func (cw *ChatWindow) centerTabBody(c *mgo.Context, tab *centerTab) {
 		cw.gitGraphBody(c)
 	case centerEditor:
 		cw.centerEditorBody(c, tab)
+	case centerCodeSearch:
+		cw.codeSearchBody(c)
 	case centerCommit:
 		if tab.Commit != nil {
 			cw.commitDiffView(c, tab.Commit)

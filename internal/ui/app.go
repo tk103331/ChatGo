@@ -98,7 +98,11 @@ type ChatWindow struct {
 	gitGraph       kit.CommitGraphState
 	// gg is the GitGraph tab's own repository state, kept apart from the Git
 	// panel's so neither disturbs the other.
-	gg            gitGraphState
+	gg gitGraphState
+
+	// search is the Code Search tab's query and results.
+	search codeSearchState
+
 	gitCommit     kit.CommitMessage
 	gitCommitBusy bool
 	gitSplitH     float32
