@@ -73,12 +73,15 @@ func (cw *ChatWindow) treeContextMenu(c *mgo.Context, target mgo.Element, path s
 		if !isDir && m.Item("打开预览", kit.PopupMenuItemOptions{}) {
 			cw.openPreview(path)
 		}
+		if !isDir && m.Item("在编辑器中打开", kit.PopupMenuItemOptions{}) {
+			cw.openEditor(path)
+		}
 		if m.Item("添加到输入框上下文", kit.PopupMenuItemOptions{}) {
 			cw.addWorkspaceContext(path)
 		}
 		if isDir {
 			if m.Item("在此打开终端", kit.PopupMenuItemOptions{}) {
-				cw.addTermIn(path)
+				cw.openTerminalTabIn(cw.center.focus, path)
 			}
 			if m.Item("新建文件", kit.PopupMenuItemOptions{}) {
 				cw.newFileIn(path)

@@ -98,21 +98,13 @@ func (cw *ChatWindow) watchWebTab(tab *webTab) {
 // webTabByID returns the open web tab with id, or nil. An empty id takes the
 // first open tab.
 func (cw *ChatWindow) webTabByID(id string) *webTab {
-	for _, t := range cw.previewTabs {
+	for _, t := range cw.centerTabsOfKind(centerWeb) {
 		if t.Web == nil {
 			continue
 		}
 		if id == "" || t.Web.ID == id {
 			return t.Web
 		}
-	}
-	return nil
-}
-
-// currentWebTab is the web tab the preview shows, or nil.
-func (cw *ChatWindow) currentWebTab() *webTab {
-	if t := cw.activePreviewTab(); t != nil {
-		return t.Web
 	}
 	return nil
 }
@@ -125,9 +117,14 @@ func (cw *ChatWindow) openWebPreview(target string) {
 	}
 }
 
-// newWebPreview adds a web tab for target and shows it, reusing the tab named
-// id when it is already open.
+// newWebPreview adds a web tab for target in the focused pane.
 func (cw *ChatWindow) newWebPreview(target, id string) (string, error) {
+	return cw.newWebTabIn(cw.center.focus, target, id)
+}
+
+// newWebTabIn adds a web tab for target to a pane and shows it, reusing the
+// tab named id when it is already open.
+func (cw *ChatWindow) newWebTabIn(pane int, target, id string) (string, error) {
 	target = strings.TrimSpace(target)
 	src := ""
 	if target != "" {
@@ -149,23 +146,16 @@ func (cw *ChatWindow) newWebPreview(target, id string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	cw.previewTabs = append(cw.previewTabs, previewTab{
-		Path: "webview:" + tab.ID, Title: tab.Title, Kind: "web", Web: tab,
+	cw.openCenterTab(pane, &centerTab{
+		ID: "webview:" + tab.ID, Path: "webview:" + tab.ID,
+		Title: tab.Title, Kind: centerWeb, Web: tab,
 	})
-	cw.previewSel = len(cw.previewTabs) - 1
-	cw.invalidate()
 	return tab.ID, nil
 }
 
 // selectWebTab brings the tab holding id to the front.
 func (cw *ChatWindow) selectWebTab(id string) {
-	for i := range cw.previewTabs {
-		if cw.previewTabs[i].Web != nil && cw.previewTabs[i].Web.ID == id {
-			cw.previewSel = i
-			cw.invalidate()
-			return
-		}
-	}
+	cw.focusCenterTab("webview:" + id)
 }
 
 // loadWebTarget points a web view at src, reading file:// URLs as files.
@@ -295,16 +285,6 @@ func waitPage(ctx context.Context, p *mygo.Page) error {
 	}
 }
 
-// toggleWebPreview opens a new web tab, or closes the one showing.
-func (cw *ChatWindow) toggleWebPreview() {
-	if cw.currentWebTab() != nil {
-		cw.closePreview(cw.previewSel)
-		cw.invalidate()
-		return
-	}
-	cw.newWebPreview("", "")
-}
-
 // openWebInBrowser opens the tab's page in the desktop browser.
 func (cw *ChatWindow) openWebInBrowser(tab *webTab) {
 	if tab == nil || tab.URL == "" {
@@ -405,12 +385,16 @@ func (cw *ChatWindow) closeWebTab(id string) (string, error) {
 	if tab == nil {
 		return "", fmt.Errorf("没有找到 webview，请先用 action=list 查看已打开的标签")
 	}
-	for i := range cw.previewTabs {
-		if cw.previewTabs[i].Web == tab {
-			cw.closePreview(i)
-			cw.invalidate()
-			return "已关闭 webview " + tab.ID, nil
+	for _, t := range cw.centerTabsOfKind(centerWeb) {
+		if t.Web != tab {
+			continue
 		}
+		pane, i := cw.paneHoldingTab(t)
+		if pane < 0 {
+			break
+		}
+		cw.closeCenterTab(pane, i)
+		return "已关闭 webview " + tab.ID, nil
 	}
 	return "", fmt.Errorf("webview %s 已经关闭", tab.ID)
 }
@@ -418,7 +402,7 @@ func (cw *ChatWindow) closeWebTab(id string) (string, error) {
 // listWebTabs describes the open web tabs for the webview tool.
 func (cw *ChatWindow) listWebTabs() (string, error) {
 	var lines []string
-	for _, t := range cw.previewTabs {
+	for _, t := range cw.centerTabsOfKind(centerWeb) {
 		if t.Web == nil {
 			continue
 		}

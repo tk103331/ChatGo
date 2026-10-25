@@ -326,6 +326,21 @@ type BranchSelectorOptions struct {
 	// AllowCreate offers the typed name as a new branch.
 	AllowCreate bool
 	Disabled    bool
+	// Key names this selector's open and query state. Two selectors on screen
+	// at once need different keys, or opening one opens both.
+	Key string
+}
+
+// branchStateKeys names the local state a BranchSelector keeps. The key makes
+// two selectors independent: with one shared name, opening either would open
+// both.
+func branchStateKeys(key string) (open, query string) {
+	open, query = "chatgo.branch.open", "chatgo.branch.query"
+	if key != "" {
+		open += "." + key
+		query += "." + key
+	}
+	return open, query
 }
 
 // BranchSelectorResult is a built BranchSelector and its events.
@@ -347,8 +362,9 @@ func BranchSelector(c *mgo.Context, current *string, branches []Branch, opts Bra
 		panic("kit: BranchSelector needs a current branch")
 	}
 	var r BranchSelectorResult
-	open := mgo.Local(c.Root(), "chatgo.branch.open", func() bool { return false })
-	query := mgo.Local(c.Root(), "chatgo.branch.query", func() string { return "" })
+	openKey, queryKey := branchStateKeys(opts.Key)
+	open := mgo.Local(c.Root(), openKey, func() bool { return false })
+	query := mgo.Local(c.Root(), queryKey, func() string { return "" })
 
 	label := *current
 	if label == "" {

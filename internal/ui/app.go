@@ -78,24 +78,16 @@ type ChatWindow struct {
 	leftHidden bool
 	leftW      float32
 
-	termOpen     bool
-	terms        []*termTab
-	termTabs     []kit.TerminalTab
-	termActiveID string
-	termSeq      int
-	termH        float32
-	treeW        float32
-	previewW     float32
-	mainW        float32
-	chatW        float32
-	lastWinW     float32
-	lastRightW   float32
-	lastPreview  bool
+	// termSeq names the shells center tabs run.
+	termSeq    int
+	treeW      float32
+	mainW      float32
+	lastWinW   float32
+	lastRightW float32
 
-	previewTabs []previewTab
-	previewSel  int
-	webMu       sync.Mutex
-	webSeq      int
+	center centerState
+	webMu  sync.Mutex
+	webSeq int
 
 	gitRepo        bool
 	gitBranch      string
@@ -104,12 +96,15 @@ type ChatWindow struct {
 	gitCommits     []kit.Commit
 	gitChangesList kit.ChangesListState
 	gitGraph       kit.CommitGraphState
-	gitCommit      kit.CommitMessage
-	gitCommitBusy  bool
-	gitSplitH      float32
-	gitStat        [2]int
-	gitLoaded      bool
-	gitFor         string
+	// gg is the GitGraph tab's own repository state, kept apart from the Git
+	// panel's so neither disturbs the other.
+	gg            gitGraphState
+	gitCommit     kit.CommitMessage
+	gitCommitBusy bool
+	gitSplitH     float32
+	gitStat       [2]int
+	gitLoaded     bool
+	gitFor        string
 
 	currentAgent string
 	systemPrompt string
@@ -168,6 +163,7 @@ type ChatWindow struct {
 	settings settingsState
 	confirm  confirmState
 	input    inputState
+	filePick filePickState
 
 	agentForm       agentForm
 	agentEditorOpen bool
@@ -402,6 +398,7 @@ func (cw *ChatWindow) view(c *mgo.Context) {
 	kit.SetPreviewLinkOpener(c, openLink)
 	cw.confirmDialog(c)
 	cw.inputDialog(c)
+	cw.filePickDialog(c)
 	cw.acpPermissionDialog(c)
 	cw.flushToast(c)
 	kit.Toaster(c)
@@ -525,12 +522,6 @@ func (cw *ChatWindow) titleBar(c *mgo.Context) {
 		if cw.section == sectionChat {
 			if mcore.IconAction(c, icons.Must("panel-left"), "会话列表").Clicked() {
 				cw.leftHidden = !cw.leftHidden
-			}
-			if mcore.IconAction(c, icons.Must("terminal"), "终端").Clicked() {
-				cw.toggleTerminal()
-			}
-			if mcore.IconAction(c, icons.Must("globe"), "WebView 预览").Clicked() {
-				cw.toggleWebPreview()
 			}
 			if mcore.IconAction(c, assets.PanelRight(), "文件树").Clicked() {
 				cw.rightPanel = !cw.rightPanel
