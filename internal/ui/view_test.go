@@ -492,7 +492,12 @@ func TestAccentTextOnlyOnAccent(t *testing.T) {
 // TestColorThemesRecolorOnlyTheAccent checks that a theme changes the accent
 // family and nothing else: the neutral colors carry the contrast, so a theme
 // must not touch them.
-func TestColorThemesRecolorOnlyTheAccent(t *testing.T) {
+// TestColorThemesRecolorAccentAndSurfaces pins what a colour theme may
+// change. applySurfaces deliberately tints the page and the panels on it so
+// the preview matches the window, so Background, Surface and Border do move;
+// the text and the status colours must not, or labels and warnings would stop
+// reading the same across themes.
+func TestColorThemesRecolorAccentAndSurfaces(t *testing.T) {
 	for _, want := range mtheme.Themes {
 		for _, dark := range []bool{false, true} {
 			base := mgo.LightTheme()
@@ -505,18 +510,17 @@ func TestColorThemesRecolorOnlyTheAccent(t *testing.T) {
 			}
 			want.Apply(got)
 
-			if got.Accent == base.Accent && want.Name != "blue" {
+			// The default theme keeps MyGo's own colors, so it alone may
+			// leave the accent as it found it.
+			if got.Accent == base.Accent && want.Name != mtheme.DefaultName {
 				t.Errorf("%s (dark=%v): accent unchanged", want.Name, dark)
 			}
 			for _, c := range []struct {
 				name     string
 				got, was mgo.Color
 			}{
-				{"Background", got.Background, base.Background},
-				{"Surface", got.Surface, base.Surface},
 				{"Text", got.Text, base.Text},
 				{"TextMuted", got.TextMuted, base.TextMuted},
-				{"Border", got.Border, base.Border},
 				{"Danger", got.Danger, base.Danger},
 				{"Success", got.Success, base.Success},
 			} {
@@ -524,6 +528,15 @@ func TestColorThemesRecolorOnlyTheAccent(t *testing.T) {
 					t.Errorf("%s (dark=%v): %s changed from %v to %v",
 						want.Name, dark, c.name, c.was, c.got)
 				}
+			}
+			// Text on a surface must stay readable after the surface is tinted.
+			if r := mtheme.Contrast(got.Text, got.Background); r < 4.5 {
+				t.Errorf("%s (dark=%v): Text on Background contrast %.2f is too low",
+					want.Name, dark, r)
+			}
+			if r := mtheme.Contrast(got.Text, got.Surface); r < 4.5 {
+				t.Errorf("%s (dark=%v): Text on Surface contrast %.2f is too low",
+					want.Name, dark, r)
 			}
 			// Text on the accent must stay readable, whatever the accent.
 			if r := mtheme.Contrast(got.AccentText, got.Accent); r < 3 {
