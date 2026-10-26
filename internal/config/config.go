@@ -28,12 +28,16 @@ type Config struct {
 	RunInBackground   bool            `yaml:"run_in_background"`
 	Agents            []AgentDef      `yaml:"agents,omitempty"`
 	ACPAgents         []ACPConnection `yaml:"acp_agents,omitempty"`
-	Workspaces        []string        `yaml:"workspaces,omitempty"`
-	SkillsEnabled     []string        `yaml:"skills_enabled,omitempty"`
-	Chat              Selection       `yaml:"chat,omitempty"`
-	ChatInitialized   bool            `yaml:"chat_initialized,omitempty"`
-	AutoTasks         []AutoTask      `yaml:"auto_tasks,omitempty"`
-	Channels          []Channel       `yaml:"channels,omitempty"`
+	// AgentCheckpoint auto-commits an agent's file changes as checkpoints:
+	// "off" (default) disables it, "turn" commits once per completed reply,
+	// "batch" once per finished tool-call batch. Experimental.
+	AgentCheckpoint string     `yaml:"agent_checkpoint,omitempty"`
+	Workspaces      []string   `yaml:"workspaces,omitempty"`
+	SkillsEnabled   []string   `yaml:"skills_enabled,omitempty"`
+	Chat            Selection  `yaml:"chat,omitempty"`
+	ChatInitialized bool       `yaml:"chat_initialized,omitempty"`
+	AutoTasks       []AutoTask `yaml:"auto_tasks,omitempty"`
+	Channels        []Channel  `yaml:"channels,omitempty"`
 }
 
 // Channel is an IM channel configuration that can trigger Agent execution.
@@ -639,6 +643,7 @@ func LoadConfig() (*Config, error) {
 			CurrentProvider:   "",
 			UseReactAgent:     false,
 			ReactAgentMaxStep: 40,
+			AgentCheckpoint:   "off",
 			ThemeMode:         "system",
 			Density:           "compact",
 			Locale:            "zh-CN",

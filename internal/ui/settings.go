@@ -91,6 +91,8 @@ type confirmState struct {
 	active bool
 	title  string
 	desc   string
+	// label is the confirm button's text; empty means "删除".
+	label  string
 	action func()
 }
 
@@ -128,7 +130,7 @@ func (cw *ChatWindow) confirmDialog(c *mgo.Context) {
 	res := kit.AlertDialog(c, &cw.confirm.open, kit.AlertDialogOptions{
 		Title:        cw.confirm.title,
 		Description:  cw.confirm.desc,
-		ConfirmLabel: "删除",
+		ConfirmLabel: cw.confirm.label,
 	})
 	cw.confirm.active = cw.confirm.open
 	if res.Confirmed && cw.confirm.action != nil {
@@ -138,7 +140,12 @@ func (cw *ChatWindow) confirmDialog(c *mgo.Context) {
 }
 
 func (cw *ChatWindow) askConfirm(title, desc string, action func()) {
-	cw.confirm = confirmState{open: true, active: true, title: title, desc: desc, action: action}
+	cw.askConfirmAs(title, desc, "", action)
+}
+
+// askConfirmAs is askConfirm with a custom confirm-button label.
+func (cw *ChatWindow) askConfirmAs(title, desc, label string, action func()) {
+	cw.confirm = confirmState{open: true, active: true, title: title, desc: desc, label: label, action: action}
 }
 
 func removeStr(s []string, v string) []string {

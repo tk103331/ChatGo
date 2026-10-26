@@ -215,6 +215,9 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 					}
 					cw.acpToolDuration(tc, upd.id, upd.status)
 					cw.acpSyncToolSegment(last, tc)
+					if upd.status != "" {
+						cw.acpBatchTick(conv, last.ID, upd.id, upd.name, upd.status)
+					}
 					cw.invalidate()
 					return
 				}
@@ -231,13 +234,53 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 		idx := len(last.ToolCalls) - 1
 		cw.acpToolDuration(&last.ToolCalls[idx], upd.id, upd.status)
 		cw.acpSyncToolSegment(last, &last.ToolCalls[idx])
+		if upd.status != "" {
+			cw.acpBatchTick(conv, last.ID, upd.id, upd.name, upd.status)
+		}
 	}
 	cw.invalidate()
 }
 
-// acpSyncToolSegment keeps the ordered segment view in step with a tool call so
-// an ACP reply renders interleaved (thinking, tool, text, ...) like the ReAct
-// path instead of one collapsed group of every call.
+// acpBatchTick tracks one tool call in the current batch: an unseen,
+// still-running call joins the batch and its title is kept for the
+// checkpoint summary; a call turning completed or failed leaves it. When
+// the last call of a batch finishes, the batch's changes are committed.
+func (cw *ChatWindow) acpBatchTick(conv *models.Conversation, msgID, id, name, status string) {
+	if conv == nil {
+		return
+	}
+	rt := cw.acpRuntimeFor(conv.ID)
+	if rt == nil {
+		return
+	}
+	terminal := status == string(acp.ToolCallStatusCompleted) ||
+		status == string(acp.ToolCallStatusFailed)
+	cw.acp.mu.Lock()
+	if !rt.batch[id] {
+		if !terminal {
+			rt.batch[id] = true
+			if name != "" {
+				rt.batchSummary = append(rt.batchSummary, name)
+			}
+		}
+		cw.acp.mu.Unlock()
+		return
+	}
+	if !terminal {
+		cw.acp.mu.Unlock()
+		return
+	}
+	delete(rt.batch, id)
+	empty := len(rt.batch) == 0
+	summary := append([]string(nil), rt.batchSummary...)
+	rt.batchSummary = nil
+	cw.acp.mu.Unlock()
+	// Only the "batch" level commits per batch; under "turn" the whole reply
+	// is one checkpoint, committed by acpFlushTurn when the turn ends.
+	if empty && cw.cfg.AgentCheckpoint == "batch" {
+		cw.autoCommitCheckpoint(conv, msgID, summary)
+	}
+}
 
 func (cw *ChatWindow) acpSyncToolSegment(m *models.Message, tc *models.ToolCall) {
 	if tc.ID == "" {
