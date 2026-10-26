@@ -251,7 +251,7 @@ func (cw *ChatWindow) autoTaskConvsDialog(c *mgo.Context) {
 								}
 								if kit.Button(c, "进入对话", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 									cw.autoConvsOpen = false
-									cw.openConversation(conv.ID)
+									cw.openConversationByID(conv.ID)
 								}
 							})
 							if *open && last != "" {
@@ -483,7 +483,7 @@ func (cw *ChatWindow) deleteAutoTask(i int) {
 }
 
 // openConversation opens any conversation, including task ones, in chat.
-func (cw *ChatWindow) openConversation(id string) {
+func (cw *ChatWindow) openConversationByID(id string) {
 	cw.selectConversation(id)
 	cw.section = sectionChat
 }

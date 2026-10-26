@@ -57,6 +57,10 @@ func (cw *ChatWindow) openCreateTab() {
 func (cw *ChatWindow) openCreateTabIn(ws string) {
 	if ws != "" {
 		cw.create.ws = ws
+		// The tab picks the new conversation's directory, so the window moves
+		// to it as well: the tab must never list another project's tabs next
+		// to the sessions it is about to start here.
+		cw.pointAtWorkspace(ws)
 	}
 	cw.openCreateTab()
 }

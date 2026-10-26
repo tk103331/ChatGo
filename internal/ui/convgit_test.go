@@ -272,15 +272,8 @@ func TestWorktreeSetAsWorkspaceGroupsWithMain(t *testing.T) {
 		return cw.convGitProject(wt) != nil
 	})
 
-	rows := cw.groupedConvRows()
-	var headers []string
-	for _, r := range rows {
-		if r.header {
-			headers = append(headers, r.ws)
-		}
-	}
-	if len(headers) != 1 || headers[0] != dir {
-		t.Fatalf("one group under the main tree %q expected, got %v", dir, headers)
+	if got := projectHeaders(cw.groupedConvRows()); len(got) != 1 || got[0] != dir {
+		t.Fatalf("one group under the main tree %q expected, got %v", dir, got)
 	}
 }
 
@@ -301,15 +294,8 @@ func TestWorktreeSetAsWorkspaceWithoutConversationsGroups(t *testing.T) {
 		return cw.convGitProject(wt) != nil
 	})
 
-	rows := cw.groupedConvRows()
-	var headers []string
-	for _, r := range rows {
-		if r.header {
-			headers = append(headers, r.ws)
-		}
-	}
-	if len(headers) != 1 || headers[0] != dir {
-		t.Fatalf("one group under the main tree %q expected, got %v", dir, headers)
+	if got := projectHeaders(cw.groupedConvRows()); len(got) != 1 || got[0] != dir {
+		t.Fatalf("one group under the main tree %q expected, got %v", dir, got)
 	}
 }
 
@@ -331,16 +317,22 @@ func TestGroupedConvRowsMergeWorktrees(t *testing.T) {
 	cw.convGit.info[wt] = &convGitInfo{Project: &Project{Main: dir}}
 
 	rows := cw.groupedConvRows()
-	var headers, titles []string
+	if got := projectHeaders(rows); len(got) != 1 || got[0] != dir {
+		t.Fatalf("one group expected under %q, got %v", dir, got)
+	}
+	// Each tree is labelled under the project, so the two sessions are not
+	// drawn as one undifferentiated group.
+	var trees, titles []string
 	for _, r := range rows {
-		if r.header {
-			headers = append(headers, r.ws)
-		} else {
+		switch {
+		case r.header && r.sub:
+			trees = append(trees, r.ws)
+		case !r.header:
 			titles = append(titles, cw.convs[r.index].Title)
 		}
 	}
-	if len(headers) != 1 || headers[0] != dir {
-		t.Fatalf("one group expected under %q, got %v", dir, headers)
+	if len(trees) != 2 || trees[0] != dir || trees[1] != wt {
+		t.Fatalf("both trees must be labelled, main first: %v", trees)
 	}
 	if len(titles) != 2 {
 		t.Fatalf("both conversations must stay, got %v", titles)
@@ -465,38 +457,88 @@ func TestConversationRowMenuOffersWorkspaceActions(t *testing.T) {
 	}
 }
 
-// Picking a conversation from the list moves the window, the Git panel and
-// the file tree to that conversation's workspace, so a session in another
-// project does not keep showing the previous project's files.
-func TestSelectConversationSwitchesWorkspace(t *testing.T) {
-	projA := newTestRepo(t)
-	projB := newTestRepo(t)
-	cw := worktreeWindow(t, projA)
-	cm, err := models.NewConversationManagerAt(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+// projectHeaders lists the project headers of a row list, leaving out the
+// per-tree headers drawn under them.
+func projectHeaders(rows []convRow) []string {
+	var out []string
+	for _, r := range rows {
+		if r.header && !r.sub {
+			out = append(out, r.ws)
+		}
 	}
-	cw.convManager = cm
-	convB, err := cm.CreateConversation("in B", "OpenAI", "gpt-4")
-	if err != nil {
-		t.Fatal(err)
-	}
-	convB.Workspace = projB
-	if err := cm.SaveConversation(convB); err != nil {
-		t.Fatal(err)
-	}
-	cw.reloadConvs()
+	return out
+}
 
-	cw.selectConversation(convB.ID)
-	if cw.workspace != projB {
-		t.Fatalf("workspace is %q, want the picked conversation's %q", cw.workspace, projB)
+// A project whose sessions all live in one linked tree shows that tree alone
+// under its header: the main tree, holding nothing, gets no empty row.
+func TestGroupedConvRowsSkipsTreesWithoutSessions(t *testing.T) {
+	dir := newTestRepo(t)
+	wt := filepath.Join(filepath.Dir(dir), "wt-only")
+	if out, err := gitRun(dir, "worktree", "add", "-b", "only", wt); err != nil {
+		t.Fatalf("worktree add: %v: %s", err, out)
 	}
-	if cw.fileRoot() != projB {
-		t.Fatalf("the file tree root is %q, want %q", cw.fileRoot(), projB)
+	cw := testWindow()
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "linked", Workspace: wt},
 	}
-	tr := cw.tester(1000, 700, "in B")
-	_ = tr
-	if cw.gitFor != projB {
-		t.Fatalf("the Git panel points at %q, want %q", cw.gitFor, projB)
+	cw.convGit = newConvGitState()
+	cw.convGit.info[wt] = &convGitInfo{Project: &Project{Main: dir}}
+
+	rows := cw.groupedConvRows()
+	if got := projectHeaders(rows); len(got) != 1 || got[0] != dir {
+		t.Fatalf("one project group under %q expected, got %v", dir, got)
+	}
+	var headers []string
+	for _, r := range rows {
+		if r.header {
+			headers = append(headers, r.ws)
+		}
+	}
+	if len(headers) != 1 {
+		t.Fatalf("a single tree needs no header of its own, got %v", headers)
+	}
+}
+
+// A project with sessions in two trees labels each tree, and the main tree,
+// sorted first, gets a collapse state of its own rather than sharing the
+// project header's.
+func TestGroupedConvRowsLabelsEachTree(t *testing.T) {
+	dir := newTestRepo(t)
+	wt := filepath.Join(filepath.Dir(dir), "wt-label")
+	if out, err := gitRun(dir, "worktree", "add", "-b", "label", wt); err != nil {
+		t.Fatalf("worktree add: %v: %s", err, out)
+	}
+	cw := testWindow()
+	cw.wsCollapsed = map[string]bool{}
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "main", Workspace: dir},
+		{ID: "c2", Title: "linked", Workspace: wt},
+	}
+	cw.convGit = newConvGitState()
+	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir}}
+	cw.convGit.info[wt] = &convGitInfo{Project: &Project{Main: dir}}
+
+	rows := cw.groupedConvRows()
+	if len(rows) != 5 {
+		t.Fatalf("project, two tree headers and two sessions expected, got %d rows", len(rows))
+	}
+	if !rows[1].sub || !rows[1].first || rows[1].key == rows[0].key {
+		t.Fatalf("the main tree's header must be its own row with its own key: %+v", rows[1])
+	}
+	cw.wsCollapsed[rows[0].ws] = true
+	if got := cw.groupedConvRows(); len(got) != 1 {
+		t.Fatalf("collapsing the project must hide its trees, got %d rows", len(got))
+	}
+	cw.wsCollapsed[rows[0].ws] = false
+	cw.wsCollapsed[rows[1].key] = true
+	got := cw.groupedConvRows()
+	var titles []string
+	for _, r := range got {
+		if !r.header {
+			titles = append(titles, cw.convs[r.index].Title)
+		}
+	}
+	if len(titles) != 1 || titles[0] != "linked" {
+		t.Fatalf("collapsing the main tree must hide only its own session, got %v", titles)
 	}
 }

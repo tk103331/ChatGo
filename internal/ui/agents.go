@@ -489,10 +489,24 @@ func (cw *ChatWindow) agentSelector(c *mgo.Context) {
 	}
 }
 
-// applyAgent applies an agent's provider, mode, prompt and tools. The built-in
-// Chat restores its saved selection; a custom agent starts with every
-// whitelisted model, tool, MCP server and skill enabled.
+// applyAgent applies an agent's provider, mode, prompt and tools as an
+// explicit choice, moving the window to the agent's own workspace.
 func (cw *ChatWindow) applyAgent(name string) {
+	cw.applyAgentState(name, true)
+}
+
+// restoreAgent applies the agent a conversation was saved with, leaving the
+// workspace where the conversation puts it: an agent's saved workspace must
+// not drag an opened session into another project's directory, where its tab
+// would sit beside that project's own.
+func (cw *ChatWindow) restoreAgent(name string) {
+	cw.applyAgentState(name, false)
+}
+
+// applyAgentState applies an agent, moving the workspace only when move is
+// set. The built-in Chat restores its saved selection; a custom agent starts
+// with every whitelisted model, tool, MCP server and skill enabled.
+func (cw *ChatWindow) applyAgentState(name string, move bool) {
 	cw.currentAgent = name
 	cw.systemPrompt = ""
 	if name == "" {
@@ -501,8 +515,8 @@ func (cw *ChatWindow) applyAgent(name string) {
 		cw.loadChatSelection()
 		cw.provider = cw.cfg.Chat.Provider
 		cw.model = cw.cfg.Chat.Model
-		if cw.cfg.Chat.Workspace != "" {
-			cw.workspace = cw.cfg.Chat.Workspace
+		if move && cw.cfg.Chat.Workspace != "" {
+			cw.pointAtWorkspace(cw.cfg.Chat.Workspace)
 		}
 		cw.setupProvider(cw.provider)
 		return
@@ -516,8 +530,8 @@ func (cw *ChatWindow) applyAgent(name string) {
 		cw.cfg.UseReactAgent = cw.agentMode
 		cw.toolOn = map[string]bool{}
 		cw.skillOn = map[string]bool{}
-		if a.Workspace != "" {
-			cw.workspace = a.Workspace
+		if move && a.Workspace != "" {
+			cw.pointAtWorkspace(a.Workspace)
 		}
 		if refs := cw.agentModelRefs(); len(refs) > 0 {
 			cw.setModelRef(refs[0])
@@ -526,7 +540,7 @@ func (cw *ChatWindow) applyAgent(name string) {
 		return
 	}
 	cw.currentAgent = ""
-	cw.applyAgent("")
+	cw.applyAgentState("", move)
 }
 
 func containsStr(s []string, v string) bool {

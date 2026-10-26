@@ -21,13 +21,26 @@ type searchHit struct {
 	Text string
 }
 
-// codeSearchState is the Code Search tab: the query and the last results,
-// searched in the background so the interface stays responsive.
+// codeSearchState is the Code Search tab: the workspace it searched, the
+// query and the last results, searched in the background so the interface
+// stays responsive.
 type codeSearchState struct {
-	query string
-	// results are the matches of the last search, newest hit first by file.
+	// ws is the directory the results were searched in; the body drops them
+	// the moment the workspace moves, so a tab in another project never
+	// lists the previous one's matches.
+	ws        string
+	query     string
 	results   []searchHit
 	searching bool
+}
+
+// resetCodeSearch points the CodeSearch tab at ws, discarding the previous
+// directory's query and results when it changed.
+func (cw *ChatWindow) resetCodeSearch(ws string) {
+	if cw.search.ws == ws {
+		return
+	}
+	cw.search = codeSearchState{ws: ws}
 }
 
 // openCodeSearchTab opens the workspace search as a center tab, one at a time.
@@ -45,6 +58,7 @@ func (cw *ChatWindow) codeSearchBody(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	cw.resetCodeSearch(cw.workspace)
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Padding(u * 2).Gap(u).Children(func() {
 		mgo.Row(c).FillWidth().Shrink(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			in := kit.TextInput(c, &cw.search.query, kit.TextInputOptions{
@@ -185,9 +199,16 @@ func (cw *ChatWindow) runCodeSearch(query string) {
 	}
 	cw.search.searching = true
 	root := cw.fileRoot()
+	want := cw.workspace
+	cw.search.ws = want
 	go func() {
 		results := searchWorkspace(root, query)
 		cw.postMain(func() {
+			// The workspace may have moved while the search ran; a hit list
+			// of a directory that is no longer active is dropped.
+			if cw.search.ws != want || cw.workspace != want {
+				return
+			}
 			cw.search.searching = false
 			cw.search.results = results
 			cw.invalidate()

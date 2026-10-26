@@ -29,14 +29,15 @@ func (cw *ChatWindow) workspaces() []string {
 	return out
 }
 
+// addWorkspace registers dir as a known workspace without switching to it.
+// Switching the working directory is pointAtWorkspace's job, so the center
+// tabs and every git surface move together.
 func (cw *ChatWindow) addWorkspace(dir string) {
 	if dir == "" || containsStr(cw.cfg.Workspaces, dir) {
-		cw.workspace = dir
 		return
 	}
 	cw.cfg.Workspaces = append(cw.cfg.Workspaces, dir)
 	_ = config.SaveConfig(cw.cfg)
-	cw.workspace = dir
 }
 
 func (cw *ChatWindow) removeWorkspace(dir string) {
@@ -72,8 +73,7 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 	_ = cw.convManager.SaveConversation(conv)
 	cw.cur = conv
 	cw.provider = name
-	cw.switchCenterState(ws)
-	cw.workspace = ws
+	cw.pointAtWorkspace(ws)
 	cw.mode = modeChat
 	cw.focusConvTab(conv)
 	cw.msgList.ScrollToEnd()
@@ -81,24 +81,31 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 	cw.reloadConvs()
 }
 
-// selectConversation loads a conversation and shows it in chat mode.
-
+// selectConversation loads a conversation and shows it in chat mode. A
+// conversation of another directory replaces the center's tabs, so the center
+// shows the session that was just clicked and nothing of the project it was
+// left in; one of the same directory joins the tabs already open there.
 func (cw *ChatWindow) selectConversation(id string) {
 	conv, err := cw.convManager.LoadConversation(id)
 	if err != nil {
 		return
 	}
+	// The workspace comparison must happen before pointAtWorkspace moves the
+	// window, so a conversation of another project is known to replace the
+	// center rather than join it.
+	keep := cw.keepTabsOf(conv.Workspace)
+	cw.openConversation(conv, !keep)
+}
+
+// openConversation shows conv, replacing the center's tabs with its own chat
+// tab when keepTabs is false and adding it next to the open ones when true.
+func (cw *ChatWindow) openConversation(conv *models.Conversation, keepTabs bool) {
+	replaces := !keepTabs
 	cw.cur = conv
 	cw.mode = modeChat
-	// Before the workspace changes: switchCenterState adopts the unbound
-	// center for the workspace being left.
-	cw.switchCenterState(conv.Workspace)
-	if conv.Workspace != "" {
-		cw.workspace = conv.Workspace
-		// The Git panel only re-reads itself while it is on screen, so a
-		// conversation opened with the panel closed would keep the previous
-		// project's branch and changes when it is reopened.
-		cw.refreshGitPanel(conv.Workspace)
+	cw.pointAtWorkspace(conv.Workspace)
+	if replaces {
+		cw.resetCenterTabs()
 	}
 	cw.applyConversationAgent(conv)
 	cw.applyConversationModel(conv)
@@ -107,6 +114,15 @@ func (cw *ChatWindow) selectConversation(id string) {
 	// Refreshing the summary when a conversation is opened keeps its row
 	// current with commits and checkouts made since the list was drawn.
 	cw.bumpConvGit(conv.Workspace)
+}
+
+// keepTabsOf reports whether opening the conversation with the given
+// workspace keeps the center's open tabs, which it does only while the window
+// already stands in that directory: linked working trees of one project are
+// still different directories, and their tabs — with the Git panel and graph
+// beside them — belong to them.
+func (cw *ChatWindow) keepTabsOf(ws string) bool {
+	return cw.workspace != "" && ws == cw.workspace
 }
 
 // applyConversationModel restores the model the conversation last used, so
@@ -187,7 +203,8 @@ func (cw *ChatWindow) applyConversationAgent(conv *models.Conversation) {
 	switch {
 	case strings.HasPrefix(conv.Agent, "agent:"):
 		cw.currentAgent = strings.TrimPrefix(conv.Agent, "agent:")
-		cw.applyAgent(cw.currentAgent)
+		// Restoring, not choosing: the conversation's own workspace stands.
+		cw.restoreAgent(cw.currentAgent)
 	case strings.HasPrefix(conv.Agent, "app:"):
 		cw.applyApp(strings.TrimPrefix(conv.Agent, "app:"))
 	case strings.HasPrefix(conv.Agent, "acp:"):
@@ -195,7 +212,7 @@ func (cw *ChatWindow) applyConversationAgent(conv *models.Conversation) {
 		cw.status = ""
 		cw.acpWarmup(conv)
 	default:
-		cw.applyAgent("")
+		cw.restoreAgent("")
 	}
 }
 
@@ -575,6 +592,15 @@ func buildMessages(conv *models.Conversation, upto int) []llm.ChatMessage {
 		out = append(out, llm.ChatMessage{Role: m.Role, Content: m.Content})
 	}
 	return out
+}
+
+// selectedDir is the directory the right panel's Git tab describes: the
+// conversation on screen, or the window's workspace when no session is open.
+func (cw *ChatWindow) selectedDir() string {
+	if cw.cur != nil && cw.cur.Workspace != "" {
+		return cw.cur.Workspace
+	}
+	return cw.workspace
 }
 
 // switchProvider changes the active model and reconfigures the client.

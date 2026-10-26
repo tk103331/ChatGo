@@ -41,10 +41,15 @@ type commitFile struct {
 func (cw *ChatWindow) sourcePanel(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	if cw.gitFor != cw.workspace {
-		cw.gitFor = cw.workspace
+	// The Git tab follows the selected session's directory. When the window
+	// stands in one project but a session of another stays selected — a
+	// conversation saved without a workspace, opened while the list still
+	// shows the previous one — the panel must show that session's repository,
+	// not the directory the window happens to stand in.
+	if dir := cw.selectedDir(); cw.gitFor != dir {
+		cw.gitFor = dir
 		cw.gitLoaded = false
-		cw.loadGit(cw.workspace)
+		cw.loadGit(dir)
 	}
 	if cw.treeW == 0 {
 		cw.treeW = 300
