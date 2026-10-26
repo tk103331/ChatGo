@@ -51,7 +51,11 @@ func TestProjectWorktreeDialogRenders(t *testing.T) {
 	}
 	cw := worktreeWindow(t, dir)
 	cw.convs = []models.Conversation{{ID: "c", Title: "t", Workspace: dir}}
-	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir, Worktrees: []string{dir, wt}}}
+	cw.convGit.info[dir] = &convGitInfo{Project: &Project{
+		Main: dir, Worktrees: []string{dir, wt},
+		Branches:     []string{"dlg", "free-branch"},
+		TreeBranches: map[string]string{dir: "main", wt: "dlg"},
+	}}
 
 	tr := cw.tester(1000, 700, "t")
 	if err := tr.Click("新建/打开 Worktree"); err != nil {
@@ -60,9 +64,35 @@ func TestProjectWorktreeDialogRenders(t *testing.T) {
 	for range 6 {
 		tr.Frame()
 	}
-	for _, want := range []string{"新建工作树", "打开已有工作树", "设为工作区", "主工作树"} {
+	for _, want := range []string{"新建工作树", "选择分支", "目录名", "打开已有工作树", "设为工作区"} {
 		if !tr.HasText(want) {
 			t.Fatalf("the dialog lacks %q; texts: %v", want, tr.Texts())
 		}
+	}
+	// The open list shows each tree's branch: the main tree on main, the
+	// linked one on dlg.
+	if !tr.HasText("主工作树 · main · 002") || !tr.HasText("dlg · wt-dlg") {
+		t.Fatalf("the open list lacks the branches; texts: %v", tr.Texts())
+	}
+
+	// The branch is picked from a searchable dropdown: opening it lists the
+	// branches, and picking a free one fills the form.
+	if err := tr.Click("选择分支"); err != nil {
+		t.Fatalf("open the branch dropdown: %v", err)
+	}
+	for range 4 {
+		tr.Frame()
+	}
+	if !tr.HasText("free-branch") {
+		t.Fatalf("the dropdown lacks the free branch; texts: %v", tr.Texts())
+	}
+	if err := tr.Click("free-branch"); err != nil {
+		t.Fatalf("pick the branch: %v", err)
+	}
+	for range 4 {
+		tr.Frame()
+	}
+	if !tr.HasText("free-branch") {
+		t.Fatalf("the picked branch is not shown; texts: %v", tr.Texts())
 	}
 }

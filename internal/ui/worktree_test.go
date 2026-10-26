@@ -216,24 +216,22 @@ func TestWorktreeFilter(t *testing.T) {
 	}
 }
 
-// A branch already checked out somewhere cannot be taken a second time,
-// which is what git refuses.
-func TestWorktreeBranchTaken(t *testing.T) {
-	cw := testWindow()
-	cw.wt.trees = []worktreeInfo{
-		{Path: "/code/ChatGo", Branch: "main"},
-		{Path: "/wt/feat", Branch: "feat"},
-		{Path: "/wt/det", Detached: true},
+// A branch checked out somewhere cannot be taken a second time, which is
+// what git refuses.
+func TestGitBranchCheckedOut(t *testing.T) {
+	dir := newTestRepo(t)
+	if !gitBranchCheckedOut(dir, gitOut(dir, "rev-parse", "--abbrev-ref", "HEAD")) {
+		t.Error("the main tree's branch must count as checked out")
 	}
-	if !cw.worktreeBranchTaken("feat") {
-		t.Error("feat is checked out and must count as taken")
-	}
-	if cw.worktreeBranchTaken("other") {
+	if gitBranchCheckedOut(dir, "unused") {
 		t.Error("an unused branch must be free")
 	}
-	// A detached tree holds no branch, so the empty name is never taken.
-	if cw.worktreeBranchTaken("") {
-		t.Error("the empty branch name must never match a detached tree")
+	wt := filepath.Join(filepath.Dir(dir), "wt-checked")
+	if out, err := gitRun(dir, "worktree", "add", "-b", "checked", wt); err != nil {
+		t.Fatalf("worktree add: %v: %s", err, out)
+	}
+	if !gitBranchCheckedOut(dir, "checked") {
+		t.Error("a linked tree's branch must count as checked out")
 	}
 }
 
