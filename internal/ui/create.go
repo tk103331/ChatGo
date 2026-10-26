@@ -163,7 +163,18 @@ func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context) {
 				SearchPlaceholder: "搜索项目", Empty: "没有项目，可先新增",
 			})
 			if mcore.IconAction(c, icons.Must("folder"), "新增项目").Tooltip("新增项目").Clicked() {
-				cw.pickWorkspace()
+				// The new directory becomes the chosen project, exactly like
+				// picking it from the dropdown: the worktree resets to the
+				// new project's main tree so the pickers never disagree.
+				cw.pickDirectory("选择项目", func(path string) {
+					cw.addWorkspace(path)
+					cw.create.ws = path
+					cw.create.wt, cw.create.branch, cw.create.newBranch = "", "", false
+					cw.ensureConvGit(path)
+					if p := cw.convGitProject(path); p != nil {
+						cw.create.wt = p.Main
+					}
+				})
 			}
 			if sel.Changed() {
 				cw.create.wt, cw.create.branch, cw.create.newBranch = "", "", false

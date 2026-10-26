@@ -244,34 +244,35 @@ func centerStateKey(ws string) string {
 	return ws
 }
 
-// saveCenterState stores the center area as it is now under ws, keeping the
-// tabs and layout each workspace opened.
-func (cw *ChatWindow) saveCenterState(ws string) {
+// switchCenterState points the center area at the state saved under ws,
+// creating an empty one the first time, so every workspace owns its tabs and
+// layout. The center is the state's pointer, not a copy: edits to the open
+// tabs and layout write straight into the workspace's saved state.
+func (cw *ChatWindow) switchCenterState(ws string) {
 	if cw.centerStates == nil {
 		cw.centerStates = map[string]*centerState{}
+	}
+	// The window's first center is not bound to any workspace yet. Adopt it
+	// as the state of the workspace being left, so tabs opened before the
+	// first switch — the main tree's files — survive coming back.
+	if !cw.centerBound() {
+		cw.centerStates[centerStateKey(cw.workspace)] = cw.center
 	}
 	st := cw.centerStates[centerStateKey(ws)]
 	if st == nil {
 		st = &centerState{}
 		cw.centerStates[centerStateKey(ws)] = st
 	}
-	*st = cw.center
+	cw.center = st
 }
 
-// switchCenterState swaps the whole center area to the state saved under ws,
-// stashing the one it leaves, so every workspace has its own tabs and layout.
-func (cw *ChatWindow) switchCenterState(ws string) {
-	if cw.workspace == ws {
-		return
+// centerBound reports whether the active center already owns one of the
+// per-workspace states, rather than the window's initial unbound one.
+func (cw *ChatWindow) centerBound() bool {
+	for _, st := range cw.centerStates {
+		if st == cw.center {
+			return true
+		}
 	}
-	cw.saveCenterState(cw.workspace)
-	if cw.centerStates == nil {
-		cw.centerStates = map[string]*centerState{}
-	}
-	st := cw.centerStates[centerStateKey(ws)]
-	if st == nil {
-		st = &centerState{}
-		cw.centerStates[centerStateKey(ws)] = st
-	}
-	cw.center = *st
+	return false
 }

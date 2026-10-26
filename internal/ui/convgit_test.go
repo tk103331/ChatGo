@@ -464,3 +464,39 @@ func TestConversationRowMenuOffersWorkspaceActions(t *testing.T) {
 		t.Fatalf("copy path put %q on the clipboard, want %q", got, dir)
 	}
 }
+
+// Picking a conversation from the list moves the window, the Git panel and
+// the file tree to that conversation's workspace, so a session in another
+// project does not keep showing the previous project's files.
+func TestSelectConversationSwitchesWorkspace(t *testing.T) {
+	projA := newTestRepo(t)
+	projB := newTestRepo(t)
+	cw := worktreeWindow(t, projA)
+	cm, err := models.NewConversationManagerAt(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cw.convManager = cm
+	convB, err := cm.CreateConversation("in B", "OpenAI", "gpt-4")
+	if err != nil {
+		t.Fatal(err)
+	}
+	convB.Workspace = projB
+	if err := cm.SaveConversation(convB); err != nil {
+		t.Fatal(err)
+	}
+	cw.reloadConvs()
+
+	cw.selectConversation(convB.ID)
+	if cw.workspace != projB {
+		t.Fatalf("workspace is %q, want the picked conversation's %q", cw.workspace, projB)
+	}
+	if cw.fileRoot() != projB {
+		t.Fatalf("the file tree root is %q, want %q", cw.fileRoot(), projB)
+	}
+	tr := cw.tester(1000, 700, "in B")
+	_ = tr
+	if cw.gitFor != projB {
+		t.Fatalf("the Git panel points at %q, want %q", cw.gitFor, projB)
+	}
+}

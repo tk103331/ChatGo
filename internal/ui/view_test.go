@@ -35,6 +35,7 @@ func testWindow() *ChatWindow {
 		toolOn:     map[string]bool{},
 		editingIdx: -1,
 		acp:        newACPState(),
+		center:     &centerState{},
 	}
 }
 
