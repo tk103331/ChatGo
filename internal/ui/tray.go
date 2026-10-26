@@ -83,6 +83,8 @@ func (cw *ChatWindow) updateTrayMenu() {
 
 func (cw *ChatWindow) trayMenuKey() string {
 	var b strings.Builder
+	b.WriteString(cw.updateVer)
+	b.WriteByte('\n')
 	for _, conv := range cw.recentConvs(trayRecentMax) {
 		b.WriteString(conv.ID)
 		b.WriteByte('|')
@@ -99,6 +101,12 @@ func (cw *ChatWindow) buildTrayMenu() *mygo.Menu {
 		{Label: "打开 ChatGo", Click: func(*mygo.MenuItem, *mygo.Window) { cw.showMainWindow() }},
 		{Label: "新建会话", Click: func(*mygo.MenuItem, *mygo.Window) { cw.trayNewConversation() }},
 		mygo.Separator(),
+	}
+	if cw.updateVer != "" {
+		ver := cw.updateVer
+		items = append(items, &mygo.MenuItem{Label: "发现新版本 v" + ver, Click: func(*mygo.MenuItem, *mygo.Window) {
+			updater.CheckForUpdates()
+		}})
 	}
 	if recent := cw.recentConvs(trayRecentMax); len(recent) > 0 {
 		sub := make([]*mygo.MenuItem, 0, len(recent))
