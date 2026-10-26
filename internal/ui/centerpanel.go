@@ -34,6 +34,8 @@ const (
 	centerTerm centerKind = "term"
 	// centerGitGraph is the repository's branches and commit graph.
 	centerGitGraph centerKind = "gitgraph"
+	// centerWorktree is the repository's linked working trees.
+	centerWorktree centerKind = "worktree"
 	// centerEditor is a writable file editor.
 	centerEditor centerKind = "editor"
 	// centerCodeSearch searches the workspace's files.

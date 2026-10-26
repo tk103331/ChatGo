@@ -25,8 +25,9 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 The following embedded Lucide icons are derived from the Feather project:
 `chevron-down`, `chevron-left`, `chevron-right`, `circle`, `clipboard`-family
-(`copy`), `clock`, `globe`, `image`, `maximize`, `message-square`, `plus`,
-`search`, `sidebar`-family (`panel-left`), `terminal`, `x`.
+(`copy`), `clock`, `globe`, `image`, `lock`, `maximize`, `message-square`,
+`plus`, `search`, `sidebar`-family (`panel-left`), `terminal`,
+`unlock`-family (`lock-open`), `x`.
 
 ```text
 The MIT License (MIT) (for the icons listed above)

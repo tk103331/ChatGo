@@ -283,6 +283,8 @@ func centerTabIconName(tab *centerTab) string {
 		return "git-branch"
 	case centerGitGraph:
 		return "git-branch"
+	case centerWorktree:
+		return "git-fork"
 	case centerBlame:
 		return "history"
 	case centerWeb:
@@ -338,8 +340,8 @@ func (cw *ChatWindow) centerTabContextMenu(c *mgo.Context, target mgo.Element, p
 	})
 }
 
-// newTabMenu is the dropdown that opens a Terminal, WebView, GitGraph or
-// Editor tab in the pane it belongs to.
+// newTabMenu is the dropdown that opens a Terminal, WebView, GitGraph,
+// Worktree or Editor tab in the pane it belongs to.
 func (cw *ChatWindow) newTabMenu(c *mgo.Context, pane int) {
 	plus := mcore.IconAction(c, icons.Must("plus"), "新建标签").Tooltip("新建标签")
 	open := mgo.Local(plus, "chatgo.center.newtab", func() bool { return false })
@@ -397,6 +399,7 @@ func (cw *ChatWindow) newTabChoices(c *mgo.Context, anchor mgo.Element, open *bo
 		menuItem(c, iconLeading(c, "terminal"), "Terminal", func() { pick(cw.openTerminalTab) })
 		menuItem(c, iconLeading(c, "globe"), "WebView", func() { pick(cw.openWebTabIn) })
 		menuItem(c, iconLeading(c, "git-branch"), "GitGraph", func() { pick(cw.openGitGraphTab) })
+		menuItem(c, iconLeading(c, "git-fork"), "Worktree", func() { pick(cw.openWorktreeTab) })
 		menuItem(c, iconLeading(c, "pencil"), "Editor", func() { pick(cw.openEditorTabPick) })
 	})
 }
@@ -455,6 +458,8 @@ func (cw *ChatWindow) centerTabBody(c *mgo.Context, tab *centerTab) {
 		cw.centerWebBody(c, tab)
 	case centerGitGraph:
 		cw.gitGraphBody(c)
+	case centerWorktree:
+		cw.worktreeBody(c)
 	case centerEditor:
 		cw.centerEditorBody(c, tab)
 	case centerCodeSearch:

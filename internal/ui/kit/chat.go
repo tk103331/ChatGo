@@ -297,6 +297,10 @@ func ModelSelector(c *mgo.Context, id *string, models []ModelOption, opts ModelS
 type ChatConversation struct {
 	ID, Title string
 	Updated   time.Time
+	// Subtitle is a second, muted line under the title; empty keeps the row
+	// to one line. The sidebar uses it for the workspace's git branch and
+	// change count.
+	Subtitle string
 }
 
 // ConversationStatus is a conversation's runtime phase, shown as a light
@@ -377,19 +381,17 @@ func ConversationItem(c *mgo.Context, conv *ChatConversation, opts ConversationI
 			}
 			main.Transition(uikit.ColorFade)
 			main.Children(func() {
-				switch opts.Status {
-				case ConvRunning:
-					mgo.Box(c).Size(u*1.5, u*1.5).Shrink(0).Radius(u * 0.75).Background(k.Success)
-				case ConvWaiting:
-					mgo.Box(c).Size(u*1.5, u*1.5).Shrink(0).Radius(u * 0.75).Background(k.Warning)
+				if conv.Subtitle == "" {
+					conversationItemMainRow(c, k, opts, title, conv, today)
+					return
 				}
-				t := mgo.Text(c, title).SingleLine().Grow(1).MinWidth(0)
-				if opts.Selected {
-					t.TextColor(k.Accent)
-				}
-				mgo.Text(c, DateSeparatorWhen(conv.Updated, today)).
-					FontSize(uikit.FontSize(c, theme.CaptionSize)).
-					TextColor(k.TextMuted).Shrink(0)
+				// A subtitle makes the row two lines: the status light, title
+				// and time on the first, the subtitle under them.
+				mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
+					conversationItemMainRow(c, k, opts, title, conv, today)
+					mgo.Text(c, conv.Subtitle).FontSize(uikit.FontSize(c, theme.CaptionSize)).
+						TextColor(k.TextMuted).SingleLine().Ellipsis("…")
+				})
 			})
 			if !main.IsDisabled() {
 				v.Opened = main.Clicked()
@@ -408,6 +410,27 @@ func ConversationItem(c *mgo.Context, conv *ChatConversation, opts ConversationI
 		st.editing, st.fresh, st.draft = true, true, conv.Title
 	}
 	return v
+}
+
+// conversationItemMainRow is a conversation row's first line: the status
+// light, the title and the time it was last updated, laid out horizontally.
+func conversationItemMainRow(c *mgo.Context, k *mgo.Theme, opts ConversationItemOptions, title string, conv *ChatConversation, today uikit.Date) {
+	u := uikit.Density(c).Unit()
+	mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+		switch opts.Status {
+		case ConvRunning:
+			mgo.Box(c).Size(u*1.5, u*1.5).Shrink(0).Radius(u * 0.75).Background(k.Success)
+		case ConvWaiting:
+			mgo.Box(c).Size(u*1.5, u*1.5).Shrink(0).Radius(u * 0.75).Background(k.Warning)
+		}
+		t := mgo.Text(c, title).SingleLine().Grow(1).MinWidth(0)
+		if opts.Selected {
+			t.TextColor(k.Accent)
+		}
+		mgo.Text(c, DateSeparatorWhen(conv.Updated, today)).
+			FontSize(uikit.FontSize(c, theme.CaptionSize)).
+			TextColor(k.TextMuted).Shrink(0)
+	})
 }
 
 // conversationItemEditor edits the title in place; Escape cancels.
