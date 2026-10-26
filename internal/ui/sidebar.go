@@ -20,10 +20,10 @@ func (cw *ChatWindow) sidebar(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	mgo.Column(c).Fill().Children(func() {
 		mgo.Row(c).Padding(u*2, u).Gap(u).AlignItems(mgo.Center).Children(func() {
-			w := kit.Button(c, "新增工作区", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("folder")})
+			w := kit.Button(c, "新会话", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("message-square")})
 			w.Grow(1)
 			if w.Clicked() {
-				cw.pickWorkspace()
+				cw.openCreateTab()
 			}
 		})
 		cw.sidebarSearch(c)
@@ -227,40 +227,11 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 		mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.Accent).Shrink(0)
 		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(700).TextColor(k.Text).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(ws)
-		// A Git project's header offers worktrees beside the new-chat action:
-		// create a working tree of the project or open one as the workspace.
-		if cw.workspaceIsProject(ws) {
-			wtBtn := mcore.IconAction(c, icons.Must("git-fork"), "新建/打开 Worktree")
-			wtOpen := mgo.Local(wtBtn, "wt:"+ws, func() bool { return false })
-			if wtBtn.Clicked() {
-				cw.bumpConvGit(ws)
-				*wtOpen = true
-			}
-			cw.projectWorktreeDialog(c, ws, wtOpen)
+		// The header's one action opens the create tab with this project
+		// preselected; worktrees are chosen there rather than here.
+		if mcore.IconAction(c, icons.Must("plus"), "新建会话").Clicked() {
+			cw.openCreateTabIn(ws)
 		}
-		plus := mcore.IconAction(c, icons.Must("plus"), "新建会话")
-		open := mgo.Local(plus, "agents", func() bool { return false })
-		if plus.Clicked() {
-			*open = !*open
-		}
-		pick := func(agent string) {
-			*open = false
-			cw.newConversationIn(ws, agent)
-		}
-		kit.Popover(c, plus, open, kit.PopoverOptions{Title: "新建会话", Width: 240}, func() {
-			menuItem(c, iconLeading(c, chatAgentIcon), chatAgentName, func() { pick("") })
-			for _, a := range cw.cfg.Agents {
-				name := a.Name
-				menuItem(c, cw.agentLeading(c, name), name, func() { pick("agent:" + name) })
-			}
-			for _, a := range cw.cfg.ACPAgents {
-				if a.Disabled {
-					continue
-				}
-				name := a.Name
-				menuItem(c, logoLeading(c, name), name, func() { pick("acp:" + name) })
-			}
-		})
 		if containsStr(cw.cfg.Workspaces, ws) {
 			if mcore.IconAction(c, icons.Must("x"), "移除工作区").Clicked() {
 				cw.removeWorkspace(ws)
@@ -283,10 +254,11 @@ func workspaceTitle(ws string) string {
 func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	conv := cw.convs[i]
 	added, deleted := cw.convGitDiff(conv.Workspace)
+	subtitle := cw.convGitSubtitle(conv.Workspace)
 	mc := kit.ChatConversation{
 		ID: conv.ID, Title: conv.Title, Updated: convLast(conv),
-		Subtitle:  cw.convGitSubtitle(conv.Workspace),
-		DiffAdded: added, DiffDeleted: deleted,
+		Subtitle: subtitle, DiffAdded: added, DiffDeleted: deleted,
+		Workspace: conv.Workspace, Branch: subtitle,
 	}
 	selected := cw.cur != nil && cw.cur.ID == conv.ID
 	var v kit.ConversationItemView
@@ -302,6 +274,14 @@ func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	switch {
 	case v.Opened:
 		cw.selectConversation(conv.ID)
+	case v.CopyPath:
+		c.WriteClipboard(conv.Workspace)
+	case v.CopyBranch:
+		if mc.Branch != "" {
+			c.WriteClipboard(mc.Branch)
+		}
+	case v.Reveal:
+		revealPath(conv.Workspace)
 	case v.Renamed:
 		cw.convs[i].Title = mc.Title
 		_ = cw.convManager.SaveConversation(&cw.convs[i])

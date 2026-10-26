@@ -651,3 +651,25 @@ func (e *wtEnv) frames(n int) {
 		}
 	}
 }
+
+// A project header carries only the new-session action: worktrees are chosen
+// in the create tab, so no header — Git project or not — offers a worktree
+// button of its own.
+func TestProjectHeaderHasNoWorktreeButton(t *testing.T) {
+	dir := newTestRepo(t)
+	wt := filepath.Join(filepath.Dir(dir), "wt-hdr")
+	if out, err := gitRun(dir, "worktree", "add", "-b", "hdr", wt); err != nil {
+		t.Fatalf("worktree add: %v: %s", err, out)
+	}
+	cw := worktreeWindow(t, dir)
+	cw.convs = []models.Conversation{{ID: "c", Title: "t", Workspace: dir}}
+	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir, Worktrees: []string{dir, wt}}}
+
+	tr := cw.tester(1000, 700, "t")
+	if _, ok := tr.Find("新建/打开 Worktree"); ok {
+		t.Fatal("the project header still offers a worktree button")
+	}
+	if _, ok := tr.Find("新建会话"); !ok {
+		t.Fatalf("the project header lost its new-session action; texts: %v", tr.Texts())
+	}
+}

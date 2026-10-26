@@ -1,8 +1,11 @@
 package kit
 
 import (
+	"strings"
+
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/theme"
 	"chatgo/internal/ui/uikit"
 )
@@ -123,4 +126,193 @@ func Select[T comparable](c *mgo.Context, value *T, opts []SelectOption[T], o Se
 		})
 	})
 	return SelectResult{Element: trigger, changed: trigger.Changed()}
+}
+
+// SearchSelectOption is one choice of a SearchSelect.
+type SearchSelectOption[T comparable] struct {
+	Value T
+	Label string
+	// Note is a second, muted line under the label; empty shows one line.
+	Note string
+	// Leading draws a mark before the label, as an agent's avatar or a
+	// provider's logo; nil shows none. It is drawn in the row and, for the
+	// chosen option, in the trigger.
+	Leading func()
+}
+
+// SearchSelectOptions configure a SearchSelect.
+type SearchSelectOptions[T comparable] struct {
+	// Placeholder shows in the trigger while no option holds the value;
+	// empty uses "请选择…".
+	Placeholder string
+	// SearchPlaceholder is the filter field's; empty uses "搜索…".
+	SearchPlaceholder string
+	// Empty shows when the filter matches nothing; empty uses "无匹配项".
+	Empty string
+	// Label names the select for assistive technology.
+	Label string
+	// CreateLabel, when set, offers the typed text as a new choice with this
+	// label, and CreateValue turns that text into the created value; Created
+	// reports it. Without CreateValue the typed text itself is the value.
+	CreateLabel string
+	CreateValue func(string) T
+	Disabled    bool
+	// MinWidth is the trigger's minimum width in DIPs; zero grows freely.
+	MinWidth float32
+}
+
+// SearchSelectResult is a built SearchSelect and its events.
+type SearchSelectResult[T comparable] struct {
+	Element mgo.Element
+	changed bool
+	created T
+	hasNew  bool
+}
+
+// Changed reports a pick of another option.
+func (r SearchSelectResult[T]) Changed() bool { return r.changed }
+
+// Created reports the value the user asked to create, when the selector
+// offers creating.
+func (r SearchSelectResult[T]) Created() (T, bool) { return r.created, r.hasNew }
+
+// SearchSelect is a searchable dropdown: a trigger that opens a filter field
+// and the options under it, for picking from a list too long to scan. It is
+// the same shape as the branch selector, usable for any value.
+func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOption[T], o SearchSelectOptions[T]) SearchSelectResult[T] {
+	if value == nil {
+		panic("kit: SearchSelect needs a value")
+	}
+	var r SearchSelectResult[T]
+	openKey, queryKey := searchSelectKeys(o.Label)
+	open := mgo.Local(c.Root(), openKey, func() bool { return false })
+	query := mgo.Local(c.Root(), queryKey, func() string { return "" })
+
+	label := o.Placeholder
+	if label == "" {
+		label = "请选择…"
+	}
+	var leading func()
+	for _, opt := range opts {
+		if opt.Value == *value {
+			label, leading = opt.Label, opt.Leading
+			break
+		}
+	}
+	trigger := Button(c, label, ButtonOptions{
+		Variant: Secondary, Disabled: o.Disabled, Leading: leading,
+	})
+	if o.Label != "" {
+		// The trigger shows the chosen value, so the control's own name has
+		// to come from Label or assistive technology hears only the value.
+		trigger.Description(o.Label)
+	}
+	if o.MinWidth > 0 {
+		trigger.MinWidth(o.MinWidth)
+	}
+	r.Element = trigger
+	if trigger.Clicked() {
+		*open = !*open
+		*query = ""
+	}
+	if !*open {
+		return r
+	}
+	u := uikit.Unit(c)
+	k := uikit.Tokens(c)
+	q := strings.ToLower(strings.TrimSpace(*query))
+	placeholder := o.SearchPlaceholder
+	if placeholder == "" {
+		placeholder = "搜索…"
+	}
+	empty := o.Empty
+	if empty == "" {
+		empty = "无匹配项"
+	}
+	Popover(c, trigger, open, PopoverOptions{Label: o.Label}, func() {
+		// The filter field is named by its own placeholder, so two selectors
+		// on screen are told apart by assistive technology and in tests.
+		in := SearchInput(c, query, SearchInputOptions{Placeholder: placeholder, Label: placeholder})
+		in.Element.FillWidth()
+		uikit.AutoFocus(c, in.Input)
+		shown := 0
+		hasAny := false
+		mgo.Scroll(c).MaxHeight(u * 40).Children(func() {
+			mgo.Column(c).FillWidth().Gap(1).Children(func() {
+				for _, opt := range opts {
+					hasAny = true
+					if q != "" && !strings.Contains(strings.ToLower(opt.Label), q) &&
+						!strings.Contains(strings.ToLower(opt.Note), q) {
+						continue
+					}
+					shown++
+					selected := opt.Value == *value
+					row := mgo.ButtonBase(c).FillWidth().MinHeight(uikit.Density(c).ControlHeight()).
+						Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
+						Justify(mgo.Start).Radius(theme.ControlRadius).
+						Cursor(mgo.CursorPointer).Selected(selected)
+					switch {
+					case selected:
+						row.Background(k.Selection)
+					case row.Hovered():
+						row.Background(k.SurfaceHover)
+					}
+					if row.Clicked() && opt.Value != *value {
+						*value, r.changed, *open = opt.Value, true, false
+					}
+					row.Children(func() {
+						if opt.Leading != nil {
+							opt.Leading()
+						}
+						// A Note makes the row two lines, the label above it,
+						// so a long second line never crowds the first.
+						mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
+							mgo.Text(c, opt.Label).SingleLine().FillWidth().
+								MinWidth(0).Ellipsis("…")
+							if opt.Note != "" {
+								mgo.Text(c, opt.Note).SingleLine().FillWidth().MinWidth(0).
+									FontSize(uikit.FontSize(c, theme.CaptionSize)).
+									TextColor(k.TextMuted).Ellipsis("…")
+							}
+						})
+						if selected {
+							mgo.Icon(c, icons.Must("check")).Size(14, 14).
+								TextColor(k.Accent).Shrink(0)
+						}
+					})
+				}
+			})
+		})
+		name := strings.TrimSpace(*query)
+		switch {
+		case !hasAny:
+			gitCaption(c, "没有可选项").Padding(u * 2)
+		case shown == 0 && o.CreateLabel != "" && name != "":
+			if Button(c, o.CreateLabel+" "+name, ButtonOptions{
+				Variant: Ghost, Icon: icons.Must("plus"),
+			}).AlignSelf(mgo.Start).Clicked() {
+				if make := o.CreateValue; make != nil {
+					r.created, r.hasNew, *open = make(name), true, false
+				} else if typed, ok := any(name).(T); ok {
+					// The typed text is the value, which only fits a string
+					// choice; a non-string selector supplies CreateValue.
+					r.created, r.hasNew, *open = typed, true, false
+				}
+			}
+		case shown == 0:
+			gitCaption(c, empty).Padding(u * 2)
+		}
+	})
+	return r
+}
+
+// searchSelectKeys names the local state a SearchSelect keeps, per Label so
+// two selectors on screen stay independent.
+func searchSelectKeys(label string) (open, query string) {
+	open, query = "chatgo.searchselect.open", "chatgo.searchselect.query"
+	if label != "" {
+		open += "." + label
+		query += "." + label
+	}
+	return open, query
 }

@@ -109,6 +109,10 @@ type ChatWindow struct {
 	// title.
 	convGit convGitState
 
+	// create is the "新会话" tab: choose an agent, project, worktree and
+	// branch, then type a message that creates the conversation.
+	create createState
+
 	// search is the Code Search tab's query and results.
 	search codeSearchState
 

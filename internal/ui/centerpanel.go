@@ -40,6 +40,9 @@ const (
 	centerEditor centerKind = "editor"
 	// centerCodeSearch searches the workspace's files.
 	centerCodeSearch centerKind = "codesearch"
+	// centerCreate is the "新会话" tab that composes a conversation's agent,
+	// project, worktree and branch.
+	centerCreate centerKind = "create"
 )
 
 // centerLayout is how the center area divides itself into panes.

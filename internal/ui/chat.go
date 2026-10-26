@@ -170,28 +170,44 @@ func (cw *ChatWindow) modelSetupNotice(c *mgo.Context) {
 // modelSelector chooses among the models the active agent may use.
 func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	refs := cw.agentModelRefs()
-	var models []kit.ModelOption
-	for _, ref := range refs {
-		models = append(models, kit.ModelOption{ID: ref, Name: cw.refLabel(ref)})
-	}
-	if len(models) == 0 {
+	if len(refs) == 0 {
 		if kit.Button(c, "配置模型", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
 			cw.settings.tab = 0
 			cw.goConfigure(sectionSettings)
 		}
 		return
 	}
+	opts := make([]kit.SearchSelectOption[string], 0, len(refs))
+	for _, ref := range refs {
+		opts = append(opts, kit.SearchSelectOption[string]{
+			Value: ref, Label: cw.refLabel(ref), Leading: cw.providerLeading(c, ref),
+		})
+	}
 	cur := cw.currentModelRef()
 	if !containsStr(refs, cur) {
 		cur = refs[0]
 	}
-	r := kit.ModelSelector(c, &cur, models, kit.ModelSelectorOptions{Label: "模型"})
+	r := kit.SearchSelect(c, &cur, opts, kit.SearchSelectOptions[string]{
+		Label: "模型", Placeholder: "选择模型", SearchPlaceholder: "搜索模型",
+	})
 	if r.Changed() {
 		cw.setModelRef(cur)
 		if cw.currentAgent == "" {
 			cw.saveChatSelection()
 		}
 		cw.switchProvider(cw.provider)
+	}
+}
+
+// providerLeading draws the brand mark of the provider a model reference
+// belongs to, so the model list reads like the provider settings page.
+func (cw *ChatWindow) providerLeading(c *mgo.Context, ref string) func() {
+	svg := assets.ProviderLogo(cw.providerForRef(ref).Type)
+	if svg == nil {
+		return nil
+	}
+	return func() {
+		mgo.Icon(c, svg).Size(16, 16).Shrink(0).TextColor(mcore.Tokens(c).Text)
 	}
 }
 
@@ -273,14 +289,15 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 			list = append(list, mt)
 		}
 	}
-	if len(list) == 0 {
-		btnIcon := icons.Must(icon)
-		if prefix == "mcp:" {
-			if svg := assets.MCPLogo(); svg != nil {
-				btnIcon = svg
-			}
+	btnIcon := icons.Must(icon)
+	if prefix == "mcp:" {
+		if svg := assets.MCPLogo(); svg != nil {
+			btnIcon = svg
 		}
-		if kit.Button(c, "配置"+buttonLabel, kit.ButtonOptions{Variant: kit.Ghost, Icon: btnIcon}).Clicked() {
+	}
+	if len(list) == 0 {
+		// A configure fallback, styled like the model selector's own.
+		if kit.Button(c, "配置"+buttonLabel, kit.ButtonOptions{Variant: kit.Outline, Icon: btnIcon}).Clicked() {
 			if prefix == "mcp:" {
 				cw.goConfigure(sectionMCP)
 			} else {
@@ -290,7 +307,6 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 		}
 		return
 	}
-	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	on := 0
 	for _, mt := range list {
@@ -302,26 +318,13 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 	if on > 0 {
 		label = buttonLabel + " (" + strconv.Itoa(on) + ")"
 	}
-	b := mgo.ButtonBase(c).MinHeight(mtheme.MinHitSize).Padding(0, u*2).Gap(u).
-		Radius(mtheme.ControlRadius).Label(label).TextColor(k.TextMuted).Role(mgo.RolePopUpButton)
+	// The same secondary trigger as the model selector, so the four select
+	// buttons in the composer read as one family.
+	b := kit.Button(c, label, kit.ButtonOptions{Variant: kit.Secondary, Icon: btnIcon})
 	open := mgo.Local(b, key, func() bool { return false })
 	if b.Clicked() {
 		*open = !*open
 	}
-	b.Children(func() {
-		if prefix == "mcp:" {
-			if svg := assets.MCPLogo(); svg != nil {
-				mgo.Icon(c, svg).Size(16, 16).TextColor(k.TextMuted)
-			} else {
-				mgo.Icon(c, icons.Must(icon)).Size(16, 16)
-			}
-		} else {
-			mgo.Icon(c, icons.Must(icon)).Size(16, 16)
-		}
-		if on > 0 {
-			mgo.Text(c, strconv.Itoa(on)).FontWeight(600).TextColor(k.Accent).SingleLine()
-		}
-	})
 	query := &cw.toolQuery
 	if prefix == "mcp:" {
 		query = &cw.mcpQuery

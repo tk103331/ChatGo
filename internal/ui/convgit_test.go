@@ -407,3 +407,60 @@ func TestConversationRowShowsGitSubtitle(t *testing.T) {
 		t.Fatalf("the branch or the diff is missing; texts: %v", tr.Texts())
 	}
 }
+
+// A diff over a thousand lines is compacted, so the row stays short.
+func TestConversationRowShowsCompactDiff(t *testing.T) {
+	dir := newTestRepo(t)
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: dir}
+	cw.convs = []models.Conversation{*cw.cur}
+	cw.convGit = newConvGitState()
+	cw.convGit.info[dir] = &convGitInfo{Branch: "feat", DiffAdded: 3900, DiffDeleted: 12000}
+
+	tr := mgo.NewTester(cw.view, 1000, 700)
+	for range 3 {
+		tr.Frame()
+	}
+	if !tr.HasText("+3.9k") || !tr.HasText("-12.0k") {
+		t.Fatalf("the compact diff is missing; texts: %v", tr.Texts())
+	}
+}
+
+// The conversation row's menu offers the workspace actions: copy the path,
+// copy the branch and reveal the directory.
+func TestConversationRowMenuOffersWorkspaceActions(t *testing.T) {
+	dir := newTestRepo(t)
+	cw := testWindow()
+	cw.mode = modeChat
+	cw.cur = &models.Conversation{ID: "c", Title: "menu", Workspace: dir}
+	cw.convs = []models.Conversation{*cw.cur}
+	cw.convGit = newConvGitState()
+	cw.convGit.info[dir] = &convGitInfo{Branch: "main"}
+
+	tr := mgo.NewTester(cw.view, 1000, 700)
+	for range 3 {
+		tr.Frame()
+	}
+	if err := tr.Click("会话操作"); err != nil {
+		t.Fatalf("open the row menu: %v", err)
+	}
+	for range 2 {
+		tr.Frame()
+	}
+	for _, want := range []string{"复制路径", "复制分支", "在文件管理器中查看"} {
+		if !tr.HasText(want) {
+			t.Fatalf("the menu lacks %q; texts: %v", want, tr.Texts())
+		}
+	}
+	// Copy path puts the workspace directory on the clipboard.
+	if err := tr.Click("复制路径"); err != nil {
+		t.Fatalf("choose copy path: %v", err)
+	}
+	for range 2 {
+		tr.Frame()
+	}
+	if got := tr.Clipboard(); got != dir {
+		t.Fatalf("copy path put %q on the clipboard, want %q", got, dir)
+	}
+}

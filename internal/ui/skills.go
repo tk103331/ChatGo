@@ -463,7 +463,6 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 		}
 		return
 	}
-	k := mcore.Tokens(c)
 	count := 0
 	for _, id := range ids {
 		if cw.skillRuntime(id) {
@@ -474,19 +473,14 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 	if count > 0 {
 		label = "Skills (" + strconv.Itoa(count) + ")"
 	}
-	b := mgo.ButtonBase(c).MinHeight(mtheme.MinHitSize).Padding(0, mcore.Density(c).Unit()*2).
-		Gap(mcore.Density(c).Unit()).Radius(mtheme.ControlRadius).Label(label).
-		TextColor(k.TextMuted).Role(mgo.RolePopUpButton)
+	// The same secondary trigger as the model and tool selectors.
+	b := kit.Button(c, label, kit.ButtonOptions{
+		Variant: kit.Secondary, Icon: icons.Must("brain"),
+	})
 	open := mgo.Local(b, "skills", func() bool { return false })
 	if b.Clicked() {
 		*open = !*open
 	}
-	b.Children(func() {
-		mgo.Icon(c, icons.Must("brain")).Size(16, 16)
-		if count > 0 {
-			mgo.Text(c, strconv.Itoa(count)).FontWeight(600).TextColor(k.Accent).SingleLine()
-		}
-	})
 	items := make([]selectItem, 0, len(ids))
 	for _, id := range ids {
 		s := cw.skillByID(id)

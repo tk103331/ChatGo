@@ -304,6 +304,9 @@ type ChatConversation struct {
 	// DiffAdded and DiffDeleted are the workspace's line counts against HEAD,
 	// shown colored beside the subtitle.
 	DiffAdded, DiffDeleted int
+	// Workspace is the conversation's directory, and Branch its checked-out
+	// branch, for the path, branch and reveal actions of the row menu.
+	Workspace, Branch string
 }
 
 // ConversationStatus is a conversation's runtime phase, shown as a light
@@ -333,6 +336,8 @@ type ConversationItemView struct {
 	Element mgo.Element
 	// Opened, Deleted and Exported are requests for the caller.
 	Opened, Deleted, Exported bool
+	// CopyPath, CopyBranch and Reveal are the row menu's workspace actions.
+	CopyPath, CopyBranch, Reveal bool
 	// Renamed reports a confirmed new title, already in conv.Title.
 	Renamed bool
 }
@@ -398,9 +403,9 @@ func ConversationItem(c *mgo.Context, conv *ChatConversation, opts ConversationI
 						mgo.Text(c, conv.Subtitle).FontSize(uikit.FontSize(c, theme.CaptionSize)).
 							TextColor(k.TextMuted).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
 						if conv.DiffAdded > 0 || conv.DiffDeleted > 0 {
-							mgo.Text(c, "+"+strconv.Itoa(conv.DiffAdded)).Font(theme.MonoFont).
+							mgo.Text(c, "+"+shortCount(conv.DiffAdded)).Font(theme.MonoFont).
 								FontSize(uikit.FontSize(c, theme.CaptionSize)).TextColor(k.Success).Shrink(0)
-							mgo.Text(c, "-"+strconv.Itoa(conv.DiffDeleted)).Font(theme.MonoFont).
+							mgo.Text(c, "-"+shortCount(conv.DiffDeleted)).Font(theme.MonoFont).
 								FontSize(uikit.FontSize(c, theme.CaptionSize)).TextColor(k.Danger).Shrink(0)
 						}
 					})
@@ -415,6 +420,12 @@ func ConversationItem(c *mgo.Context, conv *ChatConversation, opts ConversationI
 		conversationItemMenu(c, "会话操作", func(m *PopupMenu) {
 			rename = m.Item("重命名", PopupMenuItemOptions{}) || rename
 			v.Exported = m.Item("导出 Markdown", PopupMenuItemOptions{})
+			if conv.Workspace != "" {
+				m.Separator()
+				v.CopyPath = m.Item("复制路径", PopupMenuItemOptions{})
+				v.CopyBranch = m.Item("复制分支", PopupMenuItemOptions{})
+				v.Reveal = m.Item("在文件管理器中查看", PopupMenuItemOptions{})
+			}
 			m.Separator()
 			v.Deleted = m.Item("删除", PopupMenuItemOptions{}) || v.Deleted
 		})
@@ -423,6 +434,19 @@ func ConversationItem(c *mgo.Context, conv *ChatConversation, opts ConversationI
 		st.editing, st.fresh, st.draft = true, true, conv.Title
 	}
 	return v
+}
+
+// shortCount writes a number compactly: below a thousand as itself, then in
+// thousands and millions with one decimal, so a big diff reads as "+3.9k".
+func shortCount(n int) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fm", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fk", float64(n)/1_000)
+	default:
+		return strconv.Itoa(n)
+	}
 }
 
 // conversationItemMainRow is a conversation row's first line: the status

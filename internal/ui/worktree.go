@@ -161,6 +161,21 @@ func (cw *ChatWindow) worktreeFormTarget() string {
 	return defaultWorktreePath(cw.wt.dir, name)
 }
 
+// workspaceIsProject reports whether a workspace is a Git repository, so its
+// header carries the worktree entry.
+func (cw *ChatWindow) workspaceIsProject(ws string) bool {
+	return cw.convGitProject(ws) != nil
+}
+
+// branchList turns branch names into the selector's list.
+func branchList(names []string) []kit.Branch {
+	out := make([]kit.Branch, 0, len(names))
+	for _, n := range names {
+		out = append(out, kit.Branch{Name: n})
+	}
+	return out
+}
+
 // worktreeSearch filters the list by path or branch.
 func (cw *ChatWindow) worktreeSearch(c *mgo.Context) {
 	if len(cw.wt.trees) < 2 {
