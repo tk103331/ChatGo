@@ -339,3 +339,81 @@ func TestCreateModelPickerIsSearchable(t *testing.T) {
 		t.Fatalf("the model picker is not the searchable component: %v", tr.Texts())
 	}
 }
+
+// Starting a conversation from the create tab lands its chat tab in the
+// center state of the project picked there, not the window's previous
+// workspace.
+func TestCreateSessionTabBelongsToPickedProject(t *testing.T) {
+	projA := newTestRepo(t)
+	projB := newTestRepo(t)
+	cw := worktreeWindow(t, projA)
+	cm, err := models.NewConversationManagerAt(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cw.convManager = cm
+	cw.convGit.info[projA] = &convGitInfo{Project: &Project{Main: projA}}
+	cw.convGit.info[projB] = &convGitInfo{Project: &Project{Main: projB}}
+	cw.draft = "hi"
+	cw.openCreateTab()
+	cw.create.ws = projA
+	cw.create.wt = projA
+	cw.startFromCreate()
+	cw.create.ws = projB
+	cw.create.wt = projB
+	cw.draft = "hi again"
+	cw.startFromCreate()
+
+	keyA := centerStateKey(projA)
+	keyB := centerStateKey(projB)
+	if chatTabs(cw.centerStates[keyB]) != 1 {
+		t.Fatalf("the picked project %q should own the new chat tab, got %d; A=%v B=%v",
+			projB, chatTabs(cw.centerStates[keyB]), tabsKinds(cw.centerStates[keyA]), tabsKinds(cw.centerStates[keyB]))
+	}
+	if chatTabs(cw.centerStates[keyA]) != 1 {
+		t.Fatalf("the earlier project %q keeps its own chat tab, got %d; A=%v B=%v",
+			projA, chatTabs(cw.centerStates[keyA]), tabsKinds(cw.centerStates[keyA]), tabsKinds(cw.centerStates[keyB]))
+	}
+}
+
+func chatTabs(st *centerState) int {
+	if st == nil {
+		return 0
+	}
+	n := 0
+	for pi := range st.visiblePanes() {
+		for _, tab := range st.panes[pi].tabs {
+			if tab.Kind == centerChat {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+func hasChatTab(st *centerState) bool {
+	if st == nil {
+		return false
+	}
+	for pi := range st.visiblePanes() {
+		for _, tab := range st.panes[pi].tabs {
+			if tab.Kind == centerChat {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func tabsKinds(st *centerState) []string {
+	if st == nil {
+		return nil
+	}
+	var out []string
+	for pi := range st.visiblePanes() {
+		for _, tab := range st.panes[pi].tabs {
+			out = append(out, string(tab.Kind))
+		}
+	}
+	return out
+}

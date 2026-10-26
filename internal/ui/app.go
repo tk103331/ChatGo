@@ -85,7 +85,7 @@ type ChatWindow struct {
 	lastWinW   float32
 	lastRightW float32
 
-	center       centerState
+	center       *centerState
 	centerStates map[string]*centerState
 	webMu        sync.Mutex
 	webSeq       int
@@ -279,6 +279,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		acp:            newACPState(),
 		skills:         newSkillsState(),
 		mcp:            mcpState{},
+		center:         &centerState{},
 		rightPanel:     false,
 		wsCollapsed:    map[string]bool{},
 		themeMode:      mcore.ParseMode(cfg.ThemeMode),

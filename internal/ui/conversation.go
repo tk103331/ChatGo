@@ -90,9 +90,15 @@ func (cw *ChatWindow) selectConversation(id string) {
 	}
 	cw.cur = conv
 	cw.mode = modeChat
+	// Before the workspace changes: switchCenterState adopts the unbound
+	// center for the workspace being left.
 	cw.switchCenterState(conv.Workspace)
 	if conv.Workspace != "" {
 		cw.workspace = conv.Workspace
+		// The Git panel only re-reads itself while it is on screen, so a
+		// conversation opened with the panel closed would keep the previous
+		// project's branch and changes when it is reopened.
+		cw.refreshGitPanel(conv.Workspace)
 	}
 	cw.applyConversationAgent(conv)
 	cw.applyConversationModel(conv)
