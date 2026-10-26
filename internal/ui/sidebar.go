@@ -282,9 +282,11 @@ func workspaceTitle(ws string) string {
 // convRow renders one conversation with open, rename, export and delete actions.
 func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	conv := cw.convs[i]
+	added, deleted := cw.convGitDiff(conv.Workspace)
 	mc := kit.ChatConversation{
 		ID: conv.ID, Title: conv.Title, Updated: convLast(conv),
-		Subtitle: cw.convGitSubtitle(conv.Workspace),
+		Subtitle:  cw.convGitSubtitle(conv.Workspace),
+		DiffAdded: added, DiffDeleted: deleted,
 	}
 	selected := cw.cur != nil && cw.cur.ID == conv.ID
 	var v kit.ConversationItemView

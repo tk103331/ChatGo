@@ -375,16 +375,26 @@ func TestChatTabCloses(t *testing.T) {
 
 // The Chat tab is named and marked after the conversation's agent, which is
 // what tells a plain agent from an ACP one.
-func TestChatTabNameFollowsAgent(t *testing.T) {
-	cases := []struct{ agent, want string }{
-		{"", chatAgentName},
-		{"agent:Helper", "Helper"},
-		{"acp:Claude Code", "Claude Code"},
+// A chat tab is named after its conversation's title, following a rename in
+// the list at once.
+func TestChatTabTitleFollowsConversation(t *testing.T) {
+	cw := testWindow()
+	cw.mode = modeChat
+	conv := &models.Conversation{ID: "c", Title: "重构登录模块", Agent: "agent:Helper"}
+	cw.convs = []models.Conversation{*conv}
+	cw.cur = conv
+	cw.focusConvTab(conv)
+	if n := len(cw.center.panes[0].tabs); n != 1 {
+		t.Fatalf("expected the conversation tab, got %d tabs", n)
 	}
-	for _, tc := range cases {
-		if got := agentTabName(tc.agent); got != tc.want {
-			t.Fatalf("agent %q: want %q, got %q", tc.agent, tc.want, got)
-		}
+	tab := cw.center.panes[0].tabs[0]
+	if got := cw.centerTabTitle(tab); got != "重构登录模块" {
+		t.Fatalf("the tab shows %q, want the conversation title", got)
+	}
+	// A rename in the list shows on the tab at once.
+	cw.convs[0].Title = "重命名后的标题"
+	if got := cw.centerTabTitle(tab); got != "重命名后的标题" {
+		t.Fatalf("the tab does not follow a rename, got %q", got)
 	}
 }
 

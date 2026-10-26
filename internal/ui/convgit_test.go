@@ -35,7 +35,7 @@ func TestReadConvGitReadsRepository(t *testing.T) {
 		t.Errorf("a clean repository has %d changes", info.Changes)
 	}
 
-	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("x\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("x\ny\nz\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	info = readConvGit(dir)
@@ -44,6 +44,9 @@ func TestReadConvGitReadsRepository(t *testing.T) {
 	}
 	if info.Untracked != 1 {
 		t.Errorf("one untracked file counted, got %+v", info)
+	}
+	if info.DiffAdded != 3 {
+		t.Errorf("three added lines counted, got %d", info.DiffAdded)
 	}
 }
 
@@ -132,13 +135,28 @@ func TestConvGitSubtitleFormats(t *testing.T) {
 	if got := cw.convGitSubtitle("/code/ChatGo"); got != "main" {
 		t.Errorf("a clean branch stands alone, got %q", got)
 	}
-	cw.convGit.info["/code/ChatGo"] = &convGitInfo{Branch: "feat", Changes: 3}
-	if got := cw.convGitSubtitle("/code/ChatGo"); got != "feat · 3 个变更" {
-		t.Errorf("dirty branch must count changes, got %q", got)
+	cw.convGit.info["/code/ChatGo"] = &convGitInfo{Branch: "feat"}
+	if got := cw.convGitSubtitle("/code/ChatGo"); got != "feat" {
+		t.Errorf("the subtitle is the branch, got %q", got)
 	}
 	// An empty workspace has no directory to read, whatever the cache holds.
 	if got := cw.convGitSubtitle(""); got != "" {
 		t.Errorf("the empty workspace shows nothing, got %q", got)
+	}
+}
+
+// The line counts ride beside the branch, and a missing summary reads zero.
+func TestConvGitDiffFormats(t *testing.T) {
+	isolateHome(t)
+	cw := testWindow()
+	cw.convGit = newConvGitState()
+	cw.convGit.info["/code/ChatGo"] = &convGitInfo{DiffAdded: 555, DiffDeleted: 777}
+	added, deleted := cw.convGitDiff("/code/ChatGo")
+	if added != 555 || deleted != 777 {
+		t.Errorf("diff %d/+%d, want +555 -777", added, deleted)
+	}
+	if a, d := cw.convGitDiff(""); a != 0 || d != 0 {
+		t.Errorf("the empty workspace reads %d/+%d, want 0", a, d)
 	}
 }
 
@@ -206,6 +224,18 @@ func TestProjectCollectsAllWorktrees(t *testing.T) {
 	}
 	if info.Project.Worktrees[0] != dir {
 		t.Errorf("the main tree heads the list, got %v", info.Project.Worktrees)
+	}
+	if info.Project.TreeBranches[dir] == "" {
+		t.Errorf("the main tree's branch is missing: %+v", info.Project.TreeBranches)
+	}
+	foundMain := false
+	for _, b := range info.Project.Branches {
+		if b == info.Project.TreeBranches[dir] {
+			foundMain = true
+		}
+	}
+	if !foundMain {
+		t.Errorf("the branch list misses the checked-out branch: %v", info.Project.Branches)
 	}
 }
 
@@ -355,8 +385,8 @@ func TestConvGitDoesNotReloadWhileLoading(t *testing.T) {
 	}
 }
 
-// The sidebar shows the workspace's branch and change count under the
-// conversation title, as a second, muted line.
+// The sidebar shows the workspace's branch and its colored line counts under
+// the conversation title.
 func TestConversationRowShowsGitSubtitle(t *testing.T) {
 	dir := newTestRepo(t)
 	cw := testWindow()
@@ -364,7 +394,7 @@ func TestConversationRowShowsGitSubtitle(t *testing.T) {
 	cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: dir}
 	cw.convs = []models.Conversation{*cw.cur}
 	cw.convGit = newConvGitState()
-	cw.convGit.info[dir] = &convGitInfo{Branch: "feat", Changes: 2}
+	cw.convGit.info[dir] = &convGitInfo{Branch: "feat", DiffAdded: 555, DiffDeleted: 777}
 
 	tr := mgo.NewTester(cw.view, 1000, 700)
 	for range 3 {
@@ -373,7 +403,7 @@ func TestConversationRowShowsGitSubtitle(t *testing.T) {
 	if !tr.HasText("t") {
 		t.Fatal("the conversation title is missing")
 	}
-	if !tr.HasText("feat · 2 个变更") {
-		t.Fatalf("the git subtitle is missing; texts: %v", tr.Texts())
+	if !tr.HasText("feat") || !tr.HasText("+555") || !tr.HasText("-777") {
+		t.Fatalf("the branch or the diff is missing; texts: %v", tr.Texts())
 	}
 }
