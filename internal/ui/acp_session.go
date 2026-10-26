@@ -65,6 +65,12 @@ type acpConv struct {
 	modeID    acp.SessionModeId
 	configs   []acp.SessionConfigOption
 	commands  []acp.AvailableCommand
+
+	// batch holds the tool calls still running in the current batch and the
+	// batch's titles; a batch ends when the map empties, which is the
+	// checkpoint trigger for the "batch" level.
+	batch        map[string]bool
+	batchSummary []string
 }
 
 // acpPersist stores a mode/config choice on the conversation so it survives a restart.
@@ -282,8 +288,55 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 			_ = cw.convManager.SaveConversation(conv)
 			cw.reloadConvs()
 			cw.notifySessionComplete(conv, conv.Messages[idx].Content)
+			// The turn is over: under "turn" this is the checkpoint; under
+			// "batch" it flushes a batch no tool finished, so a reply that
+			// hung on a tool never loses its changes.
+			cw.acpFlushTurn(conv, conv.Messages[idx].ID)
 		})
 	}()
+}
+
+// acpFlushTurn runs when a turn ends. The "turn" level commits the whole
+// reply as one checkpoint; the "batch" level only flushes a batch that a
+// finished reply left running, so a hung tool still keeps its changes.
+func (cw *ChatWindow) acpFlushTurn(conv *models.Conversation, msgID string) {
+	if conv == nil || conv.Workspace == "" {
+		return
+	}
+	if cw.cfg.AgentCheckpoint == "turn" {
+		cw.autoCommitCheckpoint(conv, msgID, toolsOfTurn(conv, msgID))
+		return
+	}
+	rt := cw.acpRuntimeFor(conv.ID)
+	if rt == nil {
+		return
+	}
+	cw.acp.mu.Lock()
+	pending := len(rt.batch) > 0
+	summary := append([]string(nil), rt.batchSummary...)
+	rt.batch = map[string]bool{}
+	rt.batchSummary = nil
+	cw.acp.mu.Unlock()
+	if pending && cw.cfg.AgentCheckpoint == "batch" {
+		cw.autoCommitCheckpoint(conv, msgID, summary)
+	}
+}
+
+// toolsOfTurn lists the tool titles of the reply with the given message ID.
+func toolsOfTurn(conv *models.Conversation, msgID string) []string {
+	var out []string
+	for _, m := range conv.Messages {
+		if m.ID != msgID {
+			continue
+		}
+		for _, tc := range m.ToolCalls {
+			if tc.Name != "" {
+				out = append(out, tc.Name)
+			}
+		}
+		break
+	}
+	return out
 }
 
 func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.ACPConnection) (*acpConv, error) {
@@ -335,7 +388,7 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	rt := &acpConv{cmd: cmd, convID: conv.ID}
+	rt := &acpConv{cmd: cmd, convID: conv.ID, batch: map[string]bool{}}
 	go func() {
 		_ = cmd.Wait()
 		cw.acpReap(rt)

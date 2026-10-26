@@ -139,6 +139,13 @@ func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, 
 		if mcore.IconAction(c, icons.Must("refresh-cw"), "重新生成").Tooltip("重新生成").Clicked() {
 			cw.regenerate(i)
 		}
+		if cw.checkpointEnabled() && msg.Role == "assistant" && msg.ID != "" {
+			if mcore.IconAction(c, icons.Must("history"), "回退到此点").Tooltip("回退到此点").Clicked() {
+				cw.askConfirmAs("回退到此点",
+					"将把代码回退到该回复完成时的 checkpoint。此回复之后的所有改动都会丢失，且不可撤销。",
+					"回退", func() { cw.revertToMessage(msg.ID) })
+			}
+		}
 		if t, ok := cw.turnFor(msg); ok {
 			if t.Total > 0 {
 				mgo.Text(c, tokenLabel(t)).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
@@ -149,6 +156,30 @@ func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, 
 }
 
 // turnFor returns the turn whose reply is msg.
+// revertToMessage resets the conversation workspace to the checkpoint of the
+// reply with the given message ID, discarding every change after it.
+func (cw *ChatWindow) revertToMessage(msgID string) {
+	if cw.cur == nil {
+		return
+	}
+	dir := cw.cur.Workspace
+	if dir == "" {
+		cw.toast("该会话没有工作区", mcore.SeverityWarning)
+		return
+	}
+	sha := findCheckpointCommit(dir, msgID)
+	if sha == "" {
+		cw.toast("该回复没有 checkpoint", mcore.SeverityWarning)
+		return
+	}
+	if err := resetToCheckpoint(dir, sha); err != nil {
+		cw.toast("回退失败："+err.Error(), mcore.SeverityError)
+		return
+	}
+	cw.toast("已回退到该 checkpoint", mcore.SeveritySuccess)
+	cw.invalidate()
+}
+
 func (cw *ChatWindow) turnFor(msg models.Message) (models.Turn, bool) {
 	if cw.cur == nil {
 		return models.Turn{}, false

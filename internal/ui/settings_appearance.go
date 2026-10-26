@@ -157,6 +157,24 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 		}
 		mgo.Text(c, "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行（自动启用托盘图标）。").
 			FontSize(small).TextColor(k.TextMuted)
+		mgo.Text(c, "Agent Checkpoint（实验）").FontWeight(600)
+		level := 0
+		switch cw.cfg.AgentCheckpoint {
+		case "turn":
+			level = 1
+		case "batch":
+			level = 2
+		}
+		kit.SegmentedControl(c, &level, []kit.Segment{
+			{Label: "关闭"}, {Label: "每轮回复"}, {Label: "工具批次"},
+		}, kit.SegmentedControlOptions{Label: "Agent Checkpoint", Equal: true})
+		want := []string{"off", "turn", "batch"}[level]
+		if cw.cfg.AgentCheckpoint != want {
+			cw.cfg.AgentCheckpoint = want
+			cw.saveSystemSettings()
+		}
+		mgo.Text(c, "实验特性：ACP Agent 改动文件后自动提交为 checkpoint，对话中可「回退到此点」。默认关闭，可能随版本调整。").
+			FontSize(small).TextColor(k.TextMuted)
 		mgo.Text(c, "更新").FontWeight(600)
 		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if kit.Button(c, "检查更新", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
