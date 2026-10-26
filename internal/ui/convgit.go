@@ -6,7 +6,10 @@
 package ui
 
 import (
+	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -21,6 +24,13 @@ type Project struct {
 	Main string
 	// Worktrees lists every working tree of the repository, main first.
 	Worktrees []string
+	// Branches are the repository's local branches, for picking one to check
+	// out in a new working tree.
+	Branches []string
+	// TreeBranches maps each working tree path to the branch it has checked
+	// out, "" when detached, so the dialog can tell a taken branch from a
+	// free one.
+	TreeBranches map[string]string
 }
 
 // convGitInfo is one workspace's git summary for a conversation row.
@@ -33,6 +43,9 @@ type convGitInfo struct {
 	// Modified, Added, Deleted and Untracked break the change count down by
 	// status, for the hover card's analysis line.
 	Modified, Added, Deleted, Untracked int
+	// DiffAdded and DiffDeleted are the added and deleted line counts of the
+	// working tree against HEAD, shown colored on the conversation row.
+	DiffAdded, DiffDeleted int
 }
 
 // convGitState is the per-workspace summary cache and its in-flight loads.
@@ -101,15 +114,18 @@ func readConvGit(ws string) *convGitInfo {
 		return nil
 	}
 	// The worktree list heads with the main tree, so it gives the project's
-	// identity and every tree that belongs to it.
+	// identity, every tree that belongs to it, and the branch each tree has
+	// checked out.
 	ts := gitWorktrees(ws)
 	if len(ts) == 0 {
 		return nil
 	}
-	project := &Project{Main: ts[0].Path}
+	project := &Project{Main: ts[0].Path, Branches: gitBranchNames(ws), TreeBranches: map[string]string{}}
 	for _, t := range ts {
 		project.Worktrees = append(project.Worktrees, t.Path)
+		project.TreeBranches[t.Path] = t.Branch
 	}
+	stat := gitDiffStat(ws)
 	var modified, added, deleted, untracked int
 	files := gitChangedFiles(ws)
 	for _, f := range files {
@@ -124,9 +140,20 @@ func readConvGit(ws string) *convGitInfo {
 			modified++
 		}
 	}
+	// git diff --numstat only counts tracked files, so untracked ones are
+	// added by their own line count: a new file contributes its lines to +N.
+	for _, f := range files {
+		if f.Status != kit.GitUntracked {
+			continue
+		}
+		if data, err := os.ReadFile(filepath.Join(ws, f.Path)); err == nil && len(data) > 0 {
+			stat[0] += bytes.Count(data, []byte("\n"))
+		}
+	}
 	return &convGitInfo{
 		Branch: branch, Changes: len(files), Project: project,
 		Modified: modified, Added: added, Deleted: deleted, Untracked: untracked,
+		DiffAdded: stat[0], DiffDeleted: stat[1],
 	}
 }
 
@@ -155,8 +182,8 @@ func (cw *ChatWindow) convGitGroup(ws string) string {
 	return ws
 }
 
-// convGitSubtitle is the second line of a conversation row: its workspace's
-// branch and change count, or empty when the workspace is not a repository.
+// convGitSubtitle is the branch name of a conversation's workspace, shown on
+// its second line; the colored line counts ride beside it.
 func (cw *ChatWindow) convGitSubtitle(ws string) string {
 	if ws == "" {
 		return ""
@@ -167,10 +194,22 @@ func (cw *ChatWindow) convGitSubtitle(ws string) string {
 	if info == nil {
 		return ""
 	}
-	if info.Changes == 0 {
-		return info.Branch
+	return info.Branch
+}
+
+// convGitDiff is a workspace's added and deleted line counts against HEAD,
+// shown colored as "+N -M" on the conversation row.
+func (cw *ChatWindow) convGitDiff(ws string) (added, deleted int) {
+	if ws == "" {
+		return
 	}
-	return fmt.Sprintf("%s · %d 个变更", info.Branch, info.Changes)
+	cw.convGit.mu.Lock()
+	info := cw.convGit.info[ws]
+	cw.convGit.mu.Unlock()
+	if info == nil {
+		return
+	}
+	return info.DiffAdded, info.DiffDeleted
 }
 
 // convGitAnalysis breaks a workspace's changes down by status, for the hover

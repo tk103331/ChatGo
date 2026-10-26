@@ -3,6 +3,7 @@ package kit
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -298,9 +299,11 @@ type ChatConversation struct {
 	ID, Title string
 	Updated   time.Time
 	// Subtitle is a second, muted line under the title; empty keeps the row
-	// to one line. The sidebar uses it for the workspace's git branch and
-	// change count.
+	// to one line. The sidebar uses it for the workspace's git branch.
 	Subtitle string
+	// DiffAdded and DiffDeleted are the workspace's line counts against HEAD,
+	// shown colored beside the subtitle.
+	DiffAdded, DiffDeleted int
 }
 
 // ConversationStatus is a conversation's runtime phase, shown as a light
@@ -386,11 +389,21 @@ func ConversationItem(c *mgo.Context, conv *ChatConversation, opts ConversationI
 					return
 				}
 				// A subtitle makes the row two lines: the status light, title
-				// and time on the first, the subtitle under them.
+				// and time on the first, the subtitle under them. The added
+				// and deleted line counts ride the second line, in the diff's
+				// colors.
 				mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
 					conversationItemMainRow(c, k, opts, title, conv, today)
-					mgo.Text(c, conv.Subtitle).FontSize(uikit.FontSize(c, theme.CaptionSize)).
-						TextColor(k.TextMuted).SingleLine().Ellipsis("…")
+					mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+						mgo.Text(c, conv.Subtitle).FontSize(uikit.FontSize(c, theme.CaptionSize)).
+							TextColor(k.TextMuted).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
+						if conv.DiffAdded > 0 || conv.DiffDeleted > 0 {
+							mgo.Text(c, "+"+strconv.Itoa(conv.DiffAdded)).Font(theme.MonoFont).
+								FontSize(uikit.FontSize(c, theme.CaptionSize)).TextColor(k.Success).Shrink(0)
+							mgo.Text(c, "-"+strconv.Itoa(conv.DiffDeleted)).Font(theme.MonoFont).
+								FontSize(uikit.FontSize(c, theme.CaptionSize)).TextColor(k.Danger).Shrink(0)
+						}
+					})
 				})
 			})
 			if !main.IsDisabled() {

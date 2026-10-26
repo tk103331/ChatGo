@@ -234,25 +234,19 @@ func (cw *ChatWindow) centerTabButton(c *mgo.Context, pane, i int, action *cente
 }
 
 // centerTabTitle is the label a tab shows. A chat tab is named after its
-// conversation's agent, so a plain agent and an ACP one are told apart by
-// name as well as by icon.
+// conversation's title, read from the loaded conversation list so a rename
+// shows on the tab at once; the fallback is the title the tab was created
+// with.
 func (cw *ChatWindow) centerTabTitle(tab *centerTab) string {
 	if tab.Kind != centerChat {
 		return tab.Title
 	}
-	return agentTabName(tab.Agent)
-}
-
-// agentTabName names a chat tab after its conversation's agent.
-func agentTabName(agent string) string {
-	switch {
-	case strings.HasPrefix(agent, "acp:"):
-		return strings.TrimPrefix(agent, "acp:")
-	case strings.HasPrefix(agent, "agent:"):
-		return strings.TrimPrefix(agent, "agent:")
-	default:
-		return chatAgentName
+	for _, conv := range cw.convs {
+		if conv.ID == tab.ConvID {
+			return conv.Title
+		}
 	}
+	return tab.Title
 }
 
 // centerTabIcon draws a tab's leading mark. A chat tab reuses the agent
@@ -754,7 +748,7 @@ func (cw *ChatWindow) focusConvTab(conv *models.Conversation) {
 		return
 	}
 	cw.openCenterTab(0, &centerTab{
-		Kind: centerChat, ID: id, Title: agentTabName(conv.Agent),
+		Kind: centerChat, ID: id, Title: conv.Title,
 		ConvID: conv.ID, Agent: conv.Agent,
 	})
 }
