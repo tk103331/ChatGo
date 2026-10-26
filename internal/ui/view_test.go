@@ -229,6 +229,10 @@ func TestMCPMarketEmptyResultRenders(t *testing.T) {
 }
 
 func TestSkillPageRenders(t *testing.T) {
+	// Loading the skill page auto-enables every skill it finds and saves the
+	// config, so the home directory must be a temp one or the test overwrites
+	// the developer's own ~/.chatgo/config.yaml.
+	isolateHome(t)
 	cw := testWindow()
 	cw.section = sectionSkill
 	img := mgo.Render(cw.view, 1280, 820, 1)

@@ -206,6 +206,7 @@ func (cw *ChatWindow) gitPanel(c *mgo.Context) {
 			if name, ok := sel.Created(); ok {
 				cw.createBranch(name)
 			}
+			cw.worktreeSelector(c)
 			mgo.Spacer(c)
 			if kit.Button(c, "刷新", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 				cw.loadGit(cw.workspace)

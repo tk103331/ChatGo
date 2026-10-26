@@ -136,6 +136,14 @@ type convRow struct {
 
 // conversationList shows saved conversations grouped by workspace.
 func (cw *ChatWindow) conversationList(c *mgo.Context) {
+	// Each row carries its workspace's git summary, and every workspace in
+	// the list groups under its project's main tree. A workspace with no
+	// conversation yet — one set from the worktree panel — still needs its
+	// summary loaded, or it would fall back to its own path and split off
+	// from the project.
+	for _, ws := range cw.workspaces() {
+		cw.ensureConvGit(ws)
+	}
 	rows := cw.groupedConvRows()
 	cw.convList.Key = func(i int) any {
 		if rows[i].header {
@@ -161,36 +169,41 @@ func (cw *ChatWindow) conversationList(c *mgo.Context) {
 }
 
 func (cw *ChatWindow) groupedConvRows() []convRow {
+	// Conversations group under the main working tree of their workspace's
+	// repository, so every linked tree's sessions sit together.
 	groups := map[string][]int{}
 	order := []string{}
 	seen := map[string]bool{}
 	for i, conv := range cw.convs {
-		ws := conv.Workspace
-		if !seen[ws] {
-			seen[ws] = true
-			order = append(order, ws)
+		g := cw.convGitGroup(conv.Workspace)
+		if !seen[g] {
+			seen[g] = true
+			order = append(order, g)
 		}
-		groups[ws] = append(groups[ws], i)
+		groups[g] = append(groups[g], i)
 	}
 	var list []string
 	taken := map[string]bool{}
 	for _, ws := range cw.workspaces() {
-		list = append(list, ws)
-		taken[ws] = true
+		g := cw.convGitGroup(ws)
+		if !taken[g] {
+			list = append(list, g)
+			taken[g] = true
+		}
 	}
-	for _, ws := range order {
-		if !taken[ws] {
-			list = append(list, ws)
-			taken[ws] = true
+	for _, g := range order {
+		if !taken[g] {
+			list = append(list, g)
+			taken[g] = true
 		}
 	}
 	var rows []convRow
-	for _, ws := range list {
-		rows = append(rows, convRow{header: true, ws: ws})
-		if cw.wsCollapsed[ws] {
+	for _, g := range list {
+		rows = append(rows, convRow{header: true, ws: g})
+		if cw.wsCollapsed[g] {
 			continue
 		}
-		for _, i := range groups[ws] {
+		for _, i := range groups[g] {
 			rows = append(rows, convRow{index: i})
 		}
 	}
@@ -214,6 +227,17 @@ func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
 		mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.Accent).Shrink(0)
 		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(700).TextColor(k.Text).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(ws)
+		// A Git project's header offers worktrees beside the new-chat action:
+		// create a working tree of the project or open one as the workspace.
+		if cw.workspaceIsProject(ws) {
+			wtBtn := mcore.IconAction(c, icons.Must("git-fork"), "新建/打开 Worktree")
+			wtOpen := mgo.Local(wtBtn, "wt:"+ws, func() bool { return false })
+			if wtBtn.Clicked() {
+				cw.bumpConvGit(ws)
+				*wtOpen = true
+			}
+			cw.projectWorktreeDialog(c, ws, wtOpen)
+		}
 		plus := mcore.IconAction(c, icons.Must("plus"), "新建会话")
 		open := mgo.Local(plus, "agents", func() bool { return false })
 		if plus.Clicked() {
@@ -258,7 +282,10 @@ func workspaceTitle(ws string) string {
 // convRow renders one conversation with open, rename, export and delete actions.
 func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	conv := cw.convs[i]
-	mc := kit.ChatConversation{ID: conv.ID, Title: conv.Title, Updated: convLast(conv)}
+	mc := kit.ChatConversation{
+		ID: conv.ID, Title: conv.Title, Updated: convLast(conv),
+		Subtitle: cw.convGitSubtitle(conv.Workspace),
+	}
 	selected := cw.cur != nil && cw.cur.ID == conv.ID
 	var v kit.ConversationItemView
 	mgo.Row(c).FillWidth().Margin(0, 0, 0, mcore.Density(c).Unit()*3).AlignItems(mgo.Center).Children(func() {
@@ -268,6 +295,7 @@ func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 				Selected: selected, Status: cw.convStatusOf(conv.ID),
 			})
 		})
+		cw.convHoverCard(c, v.Element, conv)
 	})
 	switch {
 	case v.Opened:
@@ -280,6 +308,45 @@ func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
 	case v.Deleted:
 		cw.askDeleteConversation(conv.ID, conv.Title)
 	}
+}
+
+// convHoverCard is the card shown beside a conversation while the pointer
+// rests on its row: the title, the branch and change count, the change
+// breakdown, the directory and whether the workspace is the main working tree
+// of its project.
+func (cw *ChatWindow) convHoverCard(c *mgo.Context, item mgo.Element, conv models.Conversation) {
+	if !item.Valid() {
+		return
+	}
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.TooltipBase(c, item, func(tip mgo.Element) {
+		tip.AttachTo(item, mgo.AnchorEnd, mgo.AnchorStart).Margin(0, 0, 0, u*2)
+		tip.MaxWidth(360).Padding(u*2, u*3).Gap(u).Background(k.Surface).
+			Border(mtheme.BorderWidth, k.Border).Radius(mtheme.PopupRadius).
+			Shadow(0, 6, 18, 0, mgo.RGBA(0, 0, 0, 0.16))
+		tip.Children(func() {
+			mgo.Text(c, conv.Title).FontWeight(600).SingleLine().Ellipsis("…")
+			if sub := cw.convGitSubtitle(conv.Workspace); sub != "" {
+				mgo.Text(c, sub).FontSize(caption).TextColor(k.Accent).SingleLine().Ellipsis("…")
+			}
+			if conv.Workspace == "" {
+				return
+			}
+			mgo.Text(c, "分析："+cw.convGitAnalysis(conv.Workspace)).
+				FontSize(caption).TextColor(k.TextMuted)
+			mgo.Text(c, conv.Workspace).Font(mtheme.MonoFont).FontSize(caption).
+				TextColor(k.TextMuted).SingleLine().Ellipsis("…")
+			label := "工作树"
+			if cw.convGitMain(conv.Workspace) {
+				label = "主工作树"
+			}
+			mgo.Text(c, label).FontSize(caption).TextColor(k.Accent).Padding(0, u/2).
+				Radius(mtheme.ControlRadius).Border(mtheme.BorderWidth, k.Border).
+				AlignSelf(mgo.Start).SingleLine().Shrink(0)
+		})
+	})
 }
 
 // convStatusOf reports the conversation's runtime phase: a waiting permission

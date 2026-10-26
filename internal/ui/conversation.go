@@ -98,6 +98,9 @@ func (cw *ChatWindow) selectConversation(id string) {
 	cw.applyConversationModel(conv)
 	cw.focusConvTab(conv)
 	cw.msgList.ScrollToEnd()
+	// Refreshing the summary when a conversation is opened keeps its row
+	// current with commits and checkouts made since the list was drawn.
+	cw.bumpConvGit(conv.Workspace)
 }
 
 // applyConversationModel restores the model the conversation last used, so

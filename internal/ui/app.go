@@ -101,6 +101,14 @@ type ChatWindow struct {
 	// panel's so neither disturbs the other.
 	gg gitGraphState
 
+	// wt is the Worktree tab's own repository state, kept apart from the Git
+	// panel's for the same reason.
+	wt worktreeState
+
+	// convGit is the cached git summary each conversation row shows under its
+	// title.
+	convGit convGitState
+
 	// search is the Code Search tab's query and results.
 	search codeSearchState
 
@@ -281,6 +289,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		avatarPNG:      map[string]*mgo.Bitmap{},
 		iconCache:      map[string]iconImage{},
 		autoRunning:    map[string]bool{},
+		convGit:        newConvGitState(),
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd
