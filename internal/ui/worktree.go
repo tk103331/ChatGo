@@ -105,27 +105,26 @@ func (cw *ChatWindow) worktreeForm(c *mgo.Context) {
 		Border(mtheme.BorderWidth, k.Border).Radius(mtheme.CardRadius).Children(func() {
 		mgo.Text(c, "新建工作树").FontWeight(600).Shrink(0)
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.End).Children(func() {
-			branch := kit.TextInput(c, &cw.wt.branch, kit.TextInputOptions{
-				Label: "分支", Placeholder: "分支名", Disabled: cw.wt.busy,
-			})
-			branch.Element.Grow(1).MinWidth(0)
+			// The branch is picked from a searchable dropdown that can also
+			// create a new branch, so a name is never mistyped.
+			sel := kit.BranchSelector(c, &cw.wt.branch, cw.wtBranchList(),
+				kit.BranchSelectorOptions{AllowCreate: true, Disabled: cw.wt.busy, Key: "wtform"})
+			if sel.Changed() {
+				cw.wt.newBranch = false
+			}
+			if name, ok := sel.Created(); ok {
+				cw.wt.branch = name
+				cw.wt.newBranch = true
+			}
+			sel.Element.Grow(1).MinWidth(0)
 			name := kit.TextInput(c, &cw.wt.name, kit.TextInputOptions{
 				Label: "目录名", Placeholder: "留空则用分支名", Disabled: cw.wt.busy,
 			})
 			name.Element.Grow(1).MinWidth(0)
 		})
-		newBranch := cw.wt.newBranch
-		if mgo.Checkbox(c, &newBranch, "创建新分支").Changed() {
-			cw.wt.newBranch = newBranch
-		}
-		// The target is shown before anything is created, so the directory a
-		// tree lands in is never a surprise.
 		if target := cw.worktreeFormTarget(); target != "" {
 			mgo.Text(c, "将创建于 "+target).Font(mtheme.MonoFont).FontSize(caption).
 				TextColor(k.TextMuted).SingleLine().Ellipsis("…").Tooltip(target)
-		}
-		if !cw.wt.newBranch && len(cw.wt.branches) > 0 {
-			cw.worktreeBranchChoices(c)
 		}
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
 			mgo.Spacer(c)
@@ -143,6 +142,12 @@ func (cw *ChatWindow) worktreeForm(c *mgo.Context) {
 	})
 }
 
+// wtBranchList turns the Worktree tab's branch names into the selector's
+// branch list.
+func (cw *ChatWindow) wtBranchList() []kit.Branch {
+	return branchList(cw.wt.branches)
+}
+
 // worktreeFormTarget is where the form would create its working tree, or ""
 // when no branch has been typed yet.
 func (cw *ChatWindow) worktreeFormTarget() string {
@@ -154,36 +159,6 @@ func (cw *ChatWindow) worktreeFormTarget() string {
 		return ""
 	}
 	return defaultWorktreePath(cw.wt.dir, name)
-}
-
-// worktreeBranchChoices offers the branches not yet checked out anywhere, so
-// an existing branch can be picked rather than typed.
-func (cw *ChatWindow) worktreeBranchChoices(c *mgo.Context) {
-	u := mcore.Density(c).Unit()
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	k := mcore.Tokens(c)
-	var free []string
-	for _, b := range cw.wt.branches {
-		if !cw.worktreeBranchTaken(b) {
-			free = append(free, b)
-		}
-	}
-	if len(free) == 0 {
-		mgo.Text(c, "所有分支都已被工作树签出，请勾选「创建新分支」").
-			FontSize(caption).TextColor(k.TextMuted).MaxLines(2)
-		return
-	}
-	mgo.Row(c).FillWidth().Wrap().Gap(u / 2).Children(func() {
-		for _, b := range free {
-			b := b
-			chip := kit.Button(c, b, kit.ButtonOptions{
-				Variant: kit.Outline, Icon: icons.Must("git-branch"), Disabled: cw.wt.busy,
-			})
-			if chip.Clicked() {
-				cw.wt.branch = b
-			}
-		}
-	})
 }
 
 // worktreeSearch filters the list by path or branch.

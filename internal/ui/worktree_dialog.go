@@ -51,26 +51,50 @@ func (cw *ChatWindow) projectWorktreeDialog(c *mgo.Context, ws string, open *boo
 	}, func() {
 		mgo.Column(c).Gap(u * 2).Children(func() {
 			mgo.Text(c, "新建工作树").FontWeight(600).Shrink(0)
-			in := kit.TextInput(c, branch, kit.TextInputOptions{
-				Label: "分支", Placeholder: "分支名",
+			mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.End).Children(func() {
+				sel := kit.BranchSelector(c, branch, cw.dialogBranchList(ws),
+					kit.BranchSelectorOptions{AllowCreate: true, Key: "wtf:" + ws})
+				if sel.Changed() {
+					*newBranch = false
+				}
+				if name, ok := sel.Created(); ok {
+					*branch = name
+					*newBranch = true
+				}
+				sel.Element.Grow(1).MinWidth(0)
+				dir := kit.TextInput(c, name, kit.TextInputOptions{
+					Label: "目录名", Placeholder: "留空则用分支名",
+				})
+				dir.Element.Grow(1).MinWidth(0)
 			})
-			in.Element.FillWidth()
-			dir := kit.TextInput(c, name, kit.TextInputOptions{
-				Label: "目录名", Placeholder: "留空则用分支名",
-			})
-			dir.Element.FillWidth()
-			nb := *newBranch
-			if mgo.Checkbox(c, &nb, "创建新分支").Changed() {
-				*newBranch = nb
-			}
 			if target := cw.worktreeDialogTarget(ws, *name, *branch); target != "" {
 				mgo.Text(c, "将创建于 "+target).Font(mtheme.MonoFont).FontSize(caption).
 					TextColor(k.TextMuted).SingleLine().Ellipsis("…").Tooltip(target)
 			}
+			mgo.Divider(c)
 			mgo.Text(c, "打开已有工作树").FontWeight(600).Shrink(0)
 			cw.worktreeOpenList(c, ws, open)
 		})
 	})
+}
+
+// dialogBranchList turns a project's branch names into the selector's branch
+// list.
+func (cw *ChatWindow) dialogBranchList(ws string) []kit.Branch {
+	p := cw.convGitProject(ws)
+	if p == nil {
+		return nil
+	}
+	return branchList(p.Branches)
+}
+
+// branchList turns branch names into the selector's list.
+func branchList(names []string) []kit.Branch {
+	out := make([]kit.Branch, 0, len(names))
+	for _, n := range names {
+		out = append(out, kit.Branch{Name: n})
+	}
+	return out
 }
 
 // worktreeDialogTarget is where the dialog would create its tree, or "" when
@@ -99,6 +123,9 @@ func (cw *ChatWindow) worktreeOpenList(c *mgo.Context, ws string, dialogOpen *bo
 	}
 	for _, path := range p.Worktrees {
 		label := worktreeLabel(path)
+		if b := p.TreeBranches[path]; b != "" {
+			label = b + " · " + label
+		}
 		if path == p.Main {
 			label = "主工作树 · " + label
 		}

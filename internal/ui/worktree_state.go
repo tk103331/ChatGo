@@ -260,14 +260,3 @@ func (cw *ChatWindow) worktreeVisible() []worktreeInfo {
 	}
 	return out
 }
-
-// worktreeBranchTaken reports whether a branch is already checked out in some
-// working tree, which is what git refuses a second time.
-func (cw *ChatWindow) worktreeBranchTaken(branch string) bool {
-	for _, w := range cw.wt.trees {
-		if w.Branch != "" && w.Branch == branch {
-			return true
-		}
-	}
-	return false
-}
