@@ -21,8 +21,10 @@ func (cw *ChatWindow) addWorktree(name, branch string, newBranch bool) {
 
 // addWorktreeIn creates a working tree of the repository at dir, whatever
 // panel asked for it. The checks read the repository itself, so a dialog
-// outside the Worktree tab does not depend on that tab's state.
-func (cw *ChatWindow) addWorktreeIn(dir, name, branch string, newBranch bool) {
+// outside the Worktree tab does not depend on that tab's state. An optional
+// onDone runs on the main thread once the tree exists, for a caller that
+// builds a session on it.
+func (cw *ChatWindow) addWorktreeIn(dir, name, branch string, newBranch bool, onDone ...func(path string)) {
 	if dir == "" {
 		return
 	}
@@ -74,6 +76,9 @@ func (cw *ChatWindow) addWorktreeIn(dir, name, branch string, newBranch bool) {
 			cw.wt.formOpen, cw.wt.name, cw.wt.branch = false, "", ""
 			cw.wt.newBranch = false
 			cw.toast("已创建工作树 "+path, mcore.SeveritySuccess)
+			if len(onDone) > 0 && onDone[0] != nil {
+				onDone[0](path)
+			}
 			// The new tree changes both the Worktree tab and the conversation
 			// list's project, so both reload.
 			cw.loadWorktrees()

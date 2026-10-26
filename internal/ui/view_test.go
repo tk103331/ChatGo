@@ -1174,3 +1174,30 @@ func TestColorThemesRecolorAccentAndSurfaces(t *testing.T) {
 		}
 	}
 }
+
+// The four selector buttons in the composer — model, tools, MCP and skills —
+// render the same way: an icon and a text label, so they read as one family
+// rather than a bordered model trigger beside three bare icon toggles.
+func TestComposerSelectorsAreConsistent(t *testing.T) {
+	cw := testWindow()
+	cw.cfg.BuiltinTools = []config.BuiltinTool{{Name: "search", Type: "web_search", Enabled: true}}
+	cw.cfg.MCPServers = []config.MCPServer{{Name: "files", Command: "node", Enabled: true}}
+	cw.skills.loaded = true
+	cw.skills.list = []skill{{ID: "s1", Name: "DeepFocus", Description: "focus"}}
+	cw.cfg.SkillsEnabled = []string{"s1"}
+	cw.mode = modeChat
+	cw.cur = &models.Conversation{ID: "c1", Title: "t", Provider: "OpenAI"}
+	cw.convs = []models.Conversation{*cw.cur}
+	cw.focusConvTab(cw.cur)
+
+	tr := mgo.NewTester(cw.view, 1000, 700)
+	for range 5 {
+		tr.Frame()
+	}
+	texts := tr.Texts()
+	for _, want := range []string{"OpenAI · gpt-4", "工具 (1)", "MCP (1)", "Skills (1)"} {
+		if !containsText(texts, want) {
+			t.Fatalf("the composer lacks the %q selector: %v", want, texts)
+		}
+	}
+}

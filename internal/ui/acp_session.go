@@ -27,6 +27,13 @@ type acpState struct {
 	convObj    map[string]*models.Conversation
 	starting   map[string]bool
 
+	// greeting marks the sessions whose CLI has not been prompted yet. An
+	// adapter such as PiAgent announces itself in that window — its name,
+	// version and the skills and extensions it loaded — as plain agent text
+	// before the user has said anything, which would otherwise become a
+	// stray assistant message ahead of every real reply.
+	greeting map[acp.SessionId]bool
+
 	channelSess  map[acp.SessionId]bool
 	channelReply map[acp.SessionId]*strings.Builder
 	toolStart    map[string]time.Time
@@ -42,6 +49,7 @@ func newACPState() acpState {
 		convBySess:   map[acp.SessionId]string{},
 		convObj:      map[string]*models.Conversation{},
 		starting:     map[string]bool{},
+		greeting:     map[acp.SessionId]bool{},
 		channelSess:  map[acp.SessionId]bool{},
 		channelReply: map[acp.SessionId]*strings.Builder{},
 		toolStart:    map[string]time.Time{},
@@ -254,6 +262,11 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 			SessionId: rt.sessionID,
 			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 		})
+		// The greeting window closes with the first prompt, so anything the
+		// CLI sends from here on belongs to the reply.
+		cw.acp.mu.Lock()
+		delete(cw.acp.greeting, rt.sessionID)
+		cw.acp.mu.Unlock()
 		cw.postMain(func() {
 			if perr != nil && conv.Messages[idx].Content == "" {
 				conv.Messages[idx].Content = "⚠️ " + perr.Error()
@@ -357,6 +370,9 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 	cw.acp.mu.Lock()
 	cw.acp.convs[conv.ID] = rt
 	cw.acp.convBySess[rt.sessionID] = conv.ID
+	// The session is fresh: anything the CLI sends before the first prompt is
+	// a greeting, dropped until that prompt clears the mark.
+	cw.acp.greeting[rt.sessionID] = true
 	cw.acp.mu.Unlock()
 	cw.acpApplySaved(rt, conv)
 	cw.invalidate()
@@ -384,6 +400,7 @@ func (cw *ChatWindow) acpReap(rt *acpConv) {
 	}
 	if rt.sessionID != "" {
 		delete(cw.acp.convBySess, rt.sessionID)
+		delete(cw.acp.greeting, rt.sessionID)
 	}
 	cw.acp.mu.Unlock()
 	cw.invalidate()

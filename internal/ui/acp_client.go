@@ -128,10 +128,18 @@ func (a acpClient) SessionUpdate(ctx context.Context, n acp.SessionNotification)
 	}
 	if upd.kind == "text" {
 		a.cw.acp.mu.Lock()
-		if b := a.cw.acp.channelReply[sess]; b != nil {
+		greeting := a.cw.acp.greeting[sess]
+		b := a.cw.acp.channelReply[sess]
+		a.cw.acp.mu.Unlock()
+		// An adapter's self-introduction arrives before the first prompt;
+		// writing it to the conversation, or to a channel reply, would show a
+		// message nobody asked for.
+		if greeting {
+			return nil
+		}
+		if b != nil {
 			b.WriteString(upd.text)
 		}
-		a.cw.acp.mu.Unlock()
 	}
 	a.cw.postMain(func() {
 		a.cw.acp.mu.Lock()

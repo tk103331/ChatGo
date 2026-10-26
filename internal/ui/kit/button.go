@@ -22,7 +22,10 @@ const (
 type ButtonOptions struct {
 	Variant ButtonVariant
 	// Icon goes before the label.
-	Icon     *mgo.SVG
+	Icon *mgo.SVG
+	// Leading draws a custom mark before the label, for a logo or avatar an
+	// Icon cannot carry; it replaces Icon when both are set.
+	Leading  func()
 	Loading  bool
 	Disabled bool
 	// Label names an icon-only button for assistive technology; required
@@ -54,9 +57,12 @@ func Button(c *mgo.Context, label string, opts ButtonOptions) mgo.Element {
 	}
 	fg := variantLook(b, k, opts.Variant, opts.Disabled)
 	b.Children(func() {
-		if opts.Loading {
+		switch {
+		case opts.Loading:
 			uikit.Spinner(c, uikit.SpinnerOptions{Size: buttonIconSize, Color: fg})
-		} else if opts.Icon != nil {
+		case opts.Leading != nil:
+			opts.Leading()
+		case opts.Icon != nil:
 			mgo.Icon(c, opts.Icon).Size(buttonIconSize, buttonIconSize)
 		}
 		if label != "" {

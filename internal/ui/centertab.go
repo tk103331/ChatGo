@@ -289,6 +289,8 @@ func centerTabIconName(tab *centerTab) string {
 		return "pencil"
 	case centerCodeSearch:
 		return "search"
+	case centerCreate:
+		return "message-square"
 	case centerText:
 		if isMarkdownFile(tab.Path) {
 			return "eye"
@@ -354,40 +356,12 @@ func (cw *ChatWindow) newTabChoices(c *mgo.Context, anchor mgo.Element, open *bo
 		*open = false
 		run(pane)
 	}
-	stage := mgo.Local(anchor, "chatgo.center.newtab.stage", func() int { return 0 })
-	if !*open || pane != chatPaneIndex {
-		*stage = 0
-	}
-	newAgentConv := func(agent string) {
-		*stage = 0
-		*open = false
-		cw.newConversationIn(cw.workspace, agent)
-	}
-	title := "新建标签"
-	if *stage == 1 {
-		title = "Agent 会话"
-	}
-	kit.Popover(c, anchor, open, kit.PopoverOptions{Title: title, Width: 220}, func() {
-		if *stage == 1 {
-			menuItem(c, iconLeading(c, "chevron-left"), "返回", func() { *stage = 0 })
-			menuItem(c, iconLeading(c, chatAgentIcon), chatAgentName, func() { newAgentConv("") })
-			for _, a := range cw.cfg.Agents {
-				name := a.Name
-				menuItem(c, cw.agentLeading(c, name), name, func() { newAgentConv("agent:" + name) })
-			}
-			for _, a := range cw.cfg.ACPAgents {
-				if a.Disabled {
-					continue
-				}
-				name := a.Name
-				menuItem(c, logoLeading(c, name), name, func() { newAgentConv("acp:" + name) })
-			}
-			return
-		}
-		// A chat tab only opens in the leftmost pane, so its menu entry
-		// belongs to that pane's new-tab menu alone.
+	kit.Popover(c, anchor, open, kit.PopoverOptions{Title: "新建标签", Width: 220}, func() {
+		// Agent opens the create tab, where the agent itself is chosen along
+		// with the project and worktree; a chat tab only lives in the
+		// leftmost pane, so the entry belongs to that pane's menu alone.
 		if pane == chatPaneIndex {
-			menuItem(c, iconLeading(c, "bot"), "Agent 会话", func() { *stage = 1 })
+			menuItem(c, iconLeading(c, chatAgentIcon), "Agent", func() { pick(func(int) { cw.openCreateTab() }) })
 		}
 		menuItem(c, iconLeading(c, "search"), "CodeSearch", func() { pick(cw.openCodeSearchTab) })
 		menuItem(c, iconLeading(c, "terminal"), "Terminal", func() { pick(cw.openTerminalTab) })
@@ -458,6 +432,8 @@ func (cw *ChatWindow) centerTabBody(c *mgo.Context, tab *centerTab) {
 		cw.centerEditorBody(c, tab)
 	case centerCodeSearch:
 		cw.codeSearchBody(c)
+	case centerCreate:
+		cw.createBody(c)
 	case centerCommit:
 		if tab.Commit != nil {
 			cw.commitDiffView(c, tab.Commit)
