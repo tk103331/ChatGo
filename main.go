@@ -39,6 +39,7 @@ func main() {
 			{Role: mygo.RoleEditMenu},
 			{Role: mygo.RoleWindowMenu},
 		}))
+		cw.StartUpdateChecker()
 		cw.Show()
 	})
 	if err := mygo.App.Run(); err != nil {

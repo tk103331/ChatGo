@@ -75,6 +75,9 @@ type ChatWindow struct {
 
 	rightPanel bool
 	rightTab   int
+	// updateVer is a newer release found by the background checker, shown
+	// as a tray menu entry; empty means no update is known.
+	updateVer  string
 	leftHidden bool
 	leftW      float32
 
