@@ -149,6 +149,14 @@ func (cw *ChatWindow) openTerminalTabIn(pane int, dir string) {
 	go cw.startTerm(tb)
 }
 
+// openTerminalInTree opens a terminal in tree's directory, switching the
+// workspace to the tree first when it is not the active one, so the terminal
+// and the rest of the center area always share one directory.
+func (cw *ChatWindow) openTerminalInTree(tree string) {
+	cw.bringWorkspace(tree)
+	cw.openTerminalTabIn(cw.center.focus, tree)
+}
+
 // openWebTabIn opens a blank web view as a center tab in the given pane.
 func (cw *ChatWindow) openWebTabIn(pane int) {
 	if _, err := cw.newWebTabIn(pane, "", ""); err != nil {

@@ -657,6 +657,18 @@ func (cw *ChatWindow) forceCloseCenterTab(pane int, tab *centerTab) {
 	cw.invalidate()
 }
 
+// resetCenterTabs closes every tab of the center, releasing what they own, so
+// the center can show a conversation of another project alone instead of next
+// to the tabs of the project being left.
+func (cw *ChatWindow) resetCenterTabs() {
+	for _, pi := range cw.center.visiblePanes() {
+		p := &cw.center.panes[pi]
+		for _, t := range append([]*centerTab(nil), p.tabs...) {
+			cw.forceCloseCenterTab(pi, t)
+		}
+	}
+}
+
 // closeConvTabs closes every chat tab showing a conversation, as when the
 // conversation itself is deleted.
 func (cw *ChatWindow) closeConvTabs(id string) {
@@ -742,7 +754,7 @@ func (cw *ChatWindow) attachConvTab(tab *centerTab) {
 	cw.cur = conv
 	cw.mode = modeChat
 	if conv.Workspace != "" {
-		cw.workspace = conv.Workspace
+		cw.pointAtWorkspace(conv.Workspace)
 	}
 	cw.applyConversationAgent(conv)
 	cw.applyConversationModel(conv)

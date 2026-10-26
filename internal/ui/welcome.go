@@ -79,7 +79,14 @@ func (cw *ChatWindow) homeSelectors(c *mgo.Context) {
 		}
 		label("项目")
 		if len(wsOpts) > 0 {
-			if kit.Select(c, &cw.workspace, wsOpts, kit.SelectOptions{Label: "项目", Placeholder: "选择项目"}).Changed() && cw.currentAgent == "" {
+			// Bind a copy so the workspace is still the old one when the pick
+			// lands: pointAtWorkspace needs it to adopt the center state of
+			// the workspace being left.
+			picked := cw.workspace
+			if kit.Select(c, &picked, wsOpts, kit.SelectOptions{Label: "项目", Placeholder: "选择项目"}).Changed() && cw.currentAgent == "" {
+				if picked != "" && picked != cw.workspace {
+					cw.pointAtWorkspace(picked)
+				}
 				cw.saveChatSelection()
 			}
 		}

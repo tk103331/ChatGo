@@ -2,6 +2,7 @@ package ui
 
 import (
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -57,7 +58,12 @@ func (cw *ChatWindow) pickWorkspace() {
 		if err != nil || len(paths) == 0 {
 			return
 		}
-		cw.postMain(func() { cw.addWorkspace(paths[0]) })
+		cw.postMain(func() {
+			cw.addWorkspace(paths[0])
+			// A directory picked here becomes the active project at once, and
+			// with it the center tabs and git surfaces of that directory.
+			cw.pointAtWorkspace(paths[0])
+		})
 	}()
 }
 
@@ -130,8 +136,16 @@ func snippet(text, q string) string {
 
 type convRow struct {
 	header bool
-	ws     string
-	index  int
+	// sub marks a working tree's own header under its project's, indented so
+	// the project keeps one group while each tree stays apart; first then
+	// says it is the project's main tree, drawn right under the project.
+	sub   bool
+	first bool
+	ws    string
+	// key names the header's collapse state, which differs from ws for the
+	// first tree of a labelled project.
+	key   string
+	index int
 }
 
 // conversationList shows saved conversations grouped by workspace.
@@ -147,6 +161,11 @@ func (cw *ChatWindow) conversationList(c *mgo.Context) {
 	rows := cw.groupedConvRows()
 	cw.convList.Key = func(i int) any {
 		if rows[i].header {
+			// A tree's header shares its path with the project's own header
+			// when the tree is the main one, so the kind is part of the key.
+			if rows[i].sub {
+				return "wt:" + rows[i].ws
+			}
 			return "w:" + rows[i].ws
 		}
 		return cw.convs[rows[i].index].ID
@@ -161,7 +180,7 @@ func (cw *ChatWindow) conversationList(c *mgo.Context) {
 	mgo.List(c, &cw.convList, len(rows), func(i int) {
 		r := rows[i]
 		if r.header {
-			cw.workspaceHeader(c, r.ws)
+			cw.workspaceHeaderOf(c, r)
 			return
 		}
 		cw.convRow(c, r.index)
@@ -203,36 +222,115 @@ func (cw *ChatWindow) groupedConvRows() []convRow {
 		if cw.wsCollapsed[g] {
 			continue
 		}
+		// A project's working trees are its own directories, so each tree
+		// holding sessions gets a header of its own under the project; a
+		// tree with none is not listed, and a project with a single tree
+		// keeps its sessions directly under its own header.
+		members := map[string][]int{}
 		for _, i := range groups[g] {
-			rows = append(rows, convRow{index: i})
+			ws := cw.convs[i].Workspace
+			members[ws] = append(members[ws], i)
+		}
+		trees := cw.groupTrees(g, members)
+		labelled := len(trees) > 1
+		for ti, t := range trees {
+			if labelled {
+				key := cw.treeCollapseKey(t, ti)
+				rows = append(rows, convRow{header: true, ws: t, sub: true, first: ti == 0, key: key})
+				if cw.wsCollapsed[key] {
+					continue
+				}
+			}
+			for _, i := range members[t] {
+				rows = append(rows, convRow{index: i})
+			}
 		}
 	}
 	return rows
 }
 
-// workspaceHeader shows a workspace row with new-conversation and remove actions.
-func (cw *ChatWindow) workspaceHeader(c *mgo.Context, ws string) {
+// groupTrees lists the working trees that hold sessions of the project keyed
+// by g: the project's main tree first when it has any, then every other tree
+// in the order its first session appears in the list.
+func (cw *ChatWindow) groupTrees(g string, members map[string][]int) []string {
+	var trees []string
+	if len(members[g]) > 0 {
+		trees = append(trees, g)
+	}
+	seen := map[string]bool{g: true}
+	for _, i := range sortedConvIndices(members) {
+		ws := cw.convs[i].Workspace
+		if ws == "" || seen[ws] {
+			continue
+		}
+		seen[ws] = true
+		trees = append(trees, ws)
+	}
+	return trees
+}
+
+// sortedConvIndices lists the conversation indices of members by position, so
+// the trees come out in the order their first session is listed.
+func sortedConvIndices(members map[string][]int) []int {
+	var out []int
+	for _, idx := range members {
+		out = append(out, idx...)
+	}
+	sort.Ints(out)
+	return out
+}
+
+// treeCollapseKey names a tree header's collapse state. The main tree's header
+// sits right under the project's, which is keyed by the same path, so the
+// first tree of a labelled project takes a key of its own.
+func (cw *ChatWindow) treeCollapseKey(ws string, rank int) string {
+	if rank == 0 {
+		return "tree:" + ws
+	}
+	return ws
+}
+
+// workspaceHeaderOf shows a workspace row with new-conversation and remove
+// actions. A sub row is one working tree of the project above it: it keeps a
+// folder mark of its own, indented, so the trees stay apart under the one
+// project header.
+func (cw *ChatWindow) workspaceHeaderOf(c *mgo.Context, r convRow) {
+	ws, sub := r.ws, r.sub
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	chev := "chevron-down"
-	if cw.wsCollapsed[ws] {
+	if cw.wsCollapsed[r.key] {
 		chev = "chevron-right"
 	}
-	mgo.Row(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()*1.2).Padding(u, u).Gap(u).
-		AlignItems(mgo.Center).Background(k.Background).Children(func() {
+	mark := "folder"
+	markColor := k.Accent
+	weight := 700
+	if sub {
+		mark = "git-branch"
+		markColor = k.TextMuted
+		weight = 500
+	}
+	row := mgo.Row(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()*1.2).Padding(u, u).Gap(u).
+		AlignItems(mgo.Center).Background(k.Background)
+	if sub {
+		row = row.Padding(u, u, u*3, u)
+	}
+	row.Children(func() {
 		if mcore.IconAction(c, icons.Must(chev), "折叠/展开工作区").Clicked() {
-			cw.wsCollapsed[ws] = !cw.wsCollapsed[ws]
+			cw.wsCollapsed[r.key] = !cw.wsCollapsed[r.key]
 		}
-		mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.Accent).Shrink(0)
-		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(700).TextColor(k.Text).
+		mgo.Icon(c, icons.Must(mark)).Size(14, 14).TextColor(markColor).Shrink(0)
+		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(weight).TextColor(k.Text).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(ws)
 		// The header's one action opens the create tab with this project
 		// preselected; worktrees are chosen there rather than here.
 		if mcore.IconAction(c, icons.Must("plus"), "新建会话").Clicked() {
 			cw.openCreateTabIn(ws)
 		}
-		if containsStr(cw.cfg.Workspaces, ws) {
+		// Removing is a project's action: a tree is managed from the Worktree
+		// tab, which knows whether it can be dropped.
+		if !sub && containsStr(cw.cfg.Workspaces, ws) {
 			if mcore.IconAction(c, icons.Must("x"), "移除工作区").Clicked() {
 				cw.removeWorkspace(ws)
 			}

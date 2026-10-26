@@ -305,7 +305,7 @@ func (cw *ChatWindow) worktreeActions(c *mgo.Context, w worktreeInfo, current bo
 				Variant: kit.Ghost, Icon: icons.Must("terminal"), Disabled: w.Prunable,
 			})
 			if term.Clicked() {
-				cw.openTerminalTabIn(cw.center.focus, w.Path)
+				cw.openTerminalInTree(w.Path)
 			}
 		}
 		mgo.Spacer(c)

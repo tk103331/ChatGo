@@ -317,6 +317,9 @@ func TestCodeSearchTabRenders(t *testing.T) {
 	cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: wd}
 	cw.convs = []models.Conversation{*cw.cur}
 	cw.search.query = "func"
+	// The results belong to the workspace they were searched in; binding the
+	// tab to another directory drops them.
+	cw.search.ws = wd
 	cw.search.results = []searchHit{{Path: wd + "/chat.go", Line: 1, Text: "func x()"}}
 	cw.openCodeSearchTab(0)
 	img := mgo.Render(cw.view, 1400, 900, 1)

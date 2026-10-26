@@ -192,6 +192,50 @@ func worktreeError(out string, err error) string {
 	return err.Error()
 }
 
+// pointAtWorkspace moves the whole window onto ws: the workspace itself, its
+// saved center tabs, the conversation grouping, the file tree, the Git panel,
+// the Worktree tab and the GitGraph tab. Every path that changes the working
+// directory — opening a conversation, applying an agent with its own
+// workspace, choosing a working tree, picking a project from home — routes
+// through it, so no surface is left pointing at the previous directory.
+func (cw *ChatWindow) pointAtWorkspace(ws string) {
+	if ws == "" {
+		return
+	}
+	// The center always binds, even when ws already is the workspace: the
+	// window's first center is unbound, and leaving it that way means the
+	// window's pointer is not in centerStates, so a later switch stores it
+	// again and a reopened tab set is lost.
+	cw.switchCenterState(ws)
+	if ws == cw.workspace && ws == cw.gitFor {
+		return
+	}
+	cw.workspace = ws
+	// The Git panel is declared to follow the workspace on the very next
+	// frame, so the mark is set here too; otherwise a panel left pointing at
+	// another directory could be taken for one already showing this one.
+	cw.gitFor = ws
+	if cw.window != nil || cw.dispatch != nil {
+		// Before the first Show no frame can receive their results, so the
+		// loads would mark their dir fields done with nothing ever landing;
+		// the panels then reload by themselves on the first visible frame.
+		cw.ensureConvGit(ws)
+		cw.resetWorktreeState(ws)
+		cw.resetGraphState(ws)
+		cw.refreshGitPanel(ws)
+	}
+	cw.invalidate()
+}
+
+// bringWorkspace moves the workspace to dir when a center action targets a
+// directory other than the active one, so a newly opened center tab and every
+// already open one keep sharing a single workspace.
+func (cw *ChatWindow) bringWorkspace(dir string) {
+	if dir != "" && dir != cw.workspace {
+		cw.pointAtWorkspace(dir)
+	}
+}
+
 // openWorktreeWorkspace makes a working tree the current workspace, so its
 // sessions, tabs, terminals and tools all run in that directory.
 //
@@ -210,15 +254,12 @@ func (cw *ChatWindow) openWorktreeWorkspace(path string) {
 	}
 	reopen := cw.focusCenterTab("worktree") != nil
 	pane := cw.center.focus
-	cw.switchCenterState(path)
+	cw.pointAtWorkspace(path)
+	// Make the tree a known workspace, so it shows up in the project list.
 	cw.addWorkspace(path)
-	// Load the tree's summary now, so the conversation list groups it under
-	// the project's main tree instead of showing a lone group of its own.
-	cw.ensureConvGit(path)
 	if reopen {
 		cw.openWorktreeTab(pane)
 	}
-	cw.refreshGitPanel(path)
 	cw.invalidate()
 }
 
@@ -244,10 +285,13 @@ func (cw *ChatWindow) forgetWorktreeWorkspace(path string) {
 	}
 	reopen := cw.focusCenterTab("worktree") != nil
 	pane := cw.center.focus
-	cw.switchCenterState(fallback)
-	cw.workspace = fallback
+	cw.pointAtWorkspace(fallback)
+	if cw.workspace == path {
+		cw.workspace = ""
+		cw.switchCenterState("")
+		cw.invalidate()
+	}
 	if reopen {
 		cw.openWorktreeTab(pane)
 	}
-	cw.refreshGitPanel(fallback)
 }
