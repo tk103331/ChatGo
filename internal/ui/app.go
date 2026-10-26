@@ -112,6 +112,9 @@ type ChatWindow struct {
 	// title.
 	convGit convGitState
 
+	// rtk caches whether the rtk CLI is installed, probed in the background.
+	rtk rtkState
+
 	// create is the "新会话" tab: choose an agent, project, worktree and
 	// branch, then type a message that creates the conversation.
 	create createState
