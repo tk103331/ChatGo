@@ -19,6 +19,7 @@ A simple cross-platform AI chat client built with Go and [MyGo](https://github.c
 - 📚 **Skills** - Scans local SKILL directories, with per-agent selection and search
 - 📖 **Knowledge Bases** - Index local text documents into a pure-Go SQLite FTS5 store and retrieve them offline; agents search them with the `knowledge_search` tool
 - 🗂️ **Workspaces & Panels** - Sessions grouped by workspace and collapsible; resizable chat / preview / file panels with a multi-tab file preview and a Git diff panel
+- 🌲 **Git Worktrees** - Manage every working tree of a repository: create one (checking out an existing branch or creating a new one), lock and unlock, remove, prune stale records, and make any tree the current workspace so each agent works in its own tree without stepping on the others
 - ⌨️ **Terminal** - Multi-tab bottom terminal (Ghostty VT)
 - 💬 **Streaming Output** - Real-time streaming responses with Markdown rendering
 - 💾 **Persistence** - Config and chat history live under `~/.chatgo`
@@ -196,6 +197,31 @@ Toggle built-in tools and whole MCP servers, and pick Skills, from the composer;
 
 The title bar toggles the session list, the file tree and the terminal. Double-click a file for a tabbed preview (code, image, SVG, diff); the terminal supports multiple tabs.
 
+### Git Worktrees
+
+**New tab → Worktree** in the center area opens the worktree panel, which
+lists every working tree of the current repository and marks the main tree,
+the current workspace, and any detached, locked or prunable one.
+
+- **Create**: a branch name is all that is needed; an empty directory name
+  follows the branch. Tick *创建新分支* to create the branch at HEAD, otherwise
+  an existing branch is checked out — a branch already checked out in another
+  tree is refused, as git itself refuses it
+- **Set as workspace**: makes the tree the current workspace, so sessions,
+  tabs, terminals and file tools all run in that directory; every workspace
+  keeps its own set of center tabs
+- **Lock / unlock**: a locked tree is never pruned, and its reason is shown on
+  the card
+- **Remove / prune**: removal asks first; a record whose directory is gone is
+  dropped with *清理* (`git worktree prune`)
+
+Once a repository has more than one working tree, a worktree selector appears
+beside the branch selector in the Git panel.
+
+New trees are created under `~/.chatgo/worktrees/<repo>/<name>`, so they never
+show up in the repository's own status, and a `/` in a branch name is
+flattened into a single directory level.
+
 ## 🛠️ Tech Stack
 
 - **Go 1.27.1+** - Main programming language
@@ -222,6 +248,9 @@ ChatGo/
 │       ├── welcome.go       # Home page
 │       ├── chat.go          # Chat composer and toolbar
 │       ├── chatpanel.go     # File tree, preview tabs and Git panel
+│       ├── worktree.go      # Worktree panel and the worktree selector
+│       ├── worktree_state.go # Reading a repository's linked working trees
+│       ├── worktree_ops.go  # Creating, removing, locking and pruning them
 │       ├── sidebar.go       # Workspace-grouped session list
 │       ├── message.go       # Message rows and actions
 │       ├── agents.go        # Agent management and editor
