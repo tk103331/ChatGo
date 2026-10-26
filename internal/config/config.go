@@ -31,7 +31,10 @@ type Config struct {
 	// AgentCheckpoint auto-commits an agent's file changes as checkpoints:
 	// "off" (default) disables it, "turn" commits once per completed reply,
 	// "batch" once per finished tool-call batch. Experimental.
-	AgentCheckpoint string     `yaml:"agent_checkpoint,omitempty"`
+	AgentCheckpoint string `yaml:"agent_checkpoint,omitempty"`
+	// RTKEnabled routes command output through the rtk CLI to shrink what
+	// the model reads. Off by default; turning it on needs rtk on PATH.
+	RTKEnabled      bool       `yaml:"rtk_enabled,omitempty"`
 	Workspaces      []string   `yaml:"workspaces,omitempty"`
 	SkillsEnabled   []string   `yaml:"skills_enabled,omitempty"`
 	Chat            Selection  `yaml:"chat,omitempty"`

@@ -112,6 +112,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "渠道", Panel: func() { cw.channelTab(c) }},
 			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
+			{Label: "实验", Panel: func() { cw.experimentalTab(c) }},
 			{Label: "系统", Panel: func() { cw.systemTab(c) }},
 		}, kit.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)

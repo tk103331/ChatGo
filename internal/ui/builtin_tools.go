@@ -100,7 +100,22 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) 
 			if in.Command == "" {
 				in.Command = strings.TrimSpace(args)
 			}
-			out, err := runCommand(ctx, in.Command, allowed, root)
+			cmd := in.Command
+			// The allow list gates the command the model asked for, before
+			// any rewrite: rtk turns it into "rtk <cmd>", whose first word
+			// would not be in the list.
+			if err := checkCommandAllowed(cmd, allowed); err != nil {
+				return "", err
+			}
+			if cw.cfg.RTKEnabled {
+				if rewritten, blocked := cw.rtkRewrite(cmd); blocked {
+					return "RTK 已阻止该命令：" + rewritten, nil
+				} else if rewritten != "" {
+					cmd = rewritten
+				}
+			}
+			log.Printf("[builtin] commandline command=%q rewritten=%q", in.Command, cmd)
+			out, err := runCommand(ctx, cmd, nil, root)
 			log.Printf("[builtin] commandline command=%q out=%q err=%v", in.Command, out, err)
 			return out, err
 		}
@@ -291,18 +306,31 @@ func httpRequest(ctx context.Context, method, url, headers, body string, timeout
 	return fmt.Sprintf("HTTP %d\n\n%s", resp.StatusCode, strings.TrimSpace(string(data))), nil
 }
 
+// checkCommandAllowed rejects a command whose program is not in the allow
+// list, or passes it when the list is empty, wildcarded, or the program has
+// no base name.
+func checkCommandAllowed(command string, allowed []string) error {
+	if len(allowed) == 0 || containsStr(allowed, "*") {
+		return nil
+	}
+	first := command
+	if i := strings.IndexAny(first, " \t"); i >= 0 {
+		first = first[:i]
+	}
+	if !containsStr(allowed, filepath.Base(first)) {
+		return fmt.Errorf("命令 %q 不在允许列表（%s）", first, strings.Join(allowed, ", "))
+	}
+	return nil
+}
+
 // runCommand runs a shell command when its program is in the allow list.
 func runCommand(ctx context.Context, command string, allowed []string, dir string) (string, error) {
 	command = strings.TrimSpace(command)
 	if command == "" {
 		return "", fmt.Errorf("缺少必填参数 command")
 	}
-	first := command
-	if i := strings.IndexAny(first, " \t"); i >= 0 {
-		first = first[:i]
-	}
-	if len(allowed) > 0 && !containsStr(allowed, "*") && !containsStr(allowed, filepath.Base(first)) {
-		return "", fmt.Errorf("命令 %q 不在允许列表（%s）", first, strings.Join(allowed, ", "))
+	if err := checkCommandAllowed(command, allowed); err != nil {
+		return "", err
 	}
 	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
