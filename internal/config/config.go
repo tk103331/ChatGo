@@ -58,6 +58,9 @@ type Channel struct {
 	ConvIDs    []string      `yaml:"conversation_ids,omitempty"`
 	ActiveConv int           `yaml:"active_conv,omitempty"`
 	Tools      []ChannelTool `yaml:"tools,omitempty"`
+	// Options carries a platform's extra credential fields, which differ per
+	// channel type: Slack's app-level token, Discord's guild allow-list.
+	Options map[string]string `yaml:"options,omitempty"`
 }
 
 // ChannelTool is a tool available only to messages from a specific channel.
@@ -767,12 +770,22 @@ func ensureDefaultACPAgents(existing []ACPConnection) []ACPConnection {
 	return out
 }
 
-// defaultChannels returns the shipped channel presets: feishu and wechat,
-// both disabled until the user configures credentials.
+// DefaultChannelsForTest exposes the shipped presets to tests that check every
+// platform has a driver.
+func DefaultChannelsForTest() []Channel { return defaultChannels() }
+
+// defaultChannels returns the shipped channel presets, all disabled until the
+// user configures credentials. Each preset names the platform it speaks so the
+// settings card can show the fields that platform needs.
 func defaultChannels() []Channel {
 	return []Channel{
 		{ID: "feishu-default", Type: "feishu", Name: "飞书", Enabled: false},
 		{ID: "wechat-default", Type: "wechat", Name: "微信", Enabled: false},
+		{ID: "telegram-default", Type: "telegram", Name: "Telegram", Enabled: false},
+		{ID: "dingtalk-default", Type: "dingtalk", Name: "钉钉", Enabled: false},
+		{ID: "slack-default", Type: "slack", Name: "Slack", Enabled: false},
+		{ID: "discord-default", Type: "discord", Name: "Discord", Enabled: false},
+		{ID: "wecom-default", Type: "wecom", Name: "企业微信", Enabled: false},
 	}
 }
 
@@ -815,6 +828,16 @@ func GetChannelToolTypes(channelType string) []string {
 		return []string{"feishu_send_message", "feishu_send_card"}
 	case "wechat":
 		return []string{"wechat_send_message"}
+	case "telegram":
+		return []string{"telegram_send_message"}
+	case "dingtalk":
+		return []string{"dingtalk_send_message"}
+	case "slack":
+		return []string{"slack_send_message"}
+	case "discord":
+		return []string{"discord_send_message"}
+	case "wecom":
+		return []string{"wecom_send_message"}
 	}
 	return nil
 }
@@ -827,6 +850,16 @@ func GetChannelToolDisplayName(toolType string) string {
 		return "飞书发卡片"
 	case "wechat_send_message":
 		return "微信发消息"
+	case "telegram_send_message":
+		return "Telegram 发消息"
+	case "dingtalk_send_message":
+		return "钉钉发消息"
+	case "slack_send_message":
+		return "Slack 发消息"
+	case "discord_send_message":
+		return "Discord 发消息"
+	case "wecom_send_message":
+		return "企业微信发消息"
 	}
 	return toolType
 }
@@ -839,6 +872,16 @@ func GetChannelToolDescription(toolType string) string {
 		return "向当前飞书会话发送交互卡片（JSON 格式，自动使用消息来源会话）。需要渠道配置的飞书应用具有 im:message:send_as_bot 权限。"
 	case "wechat_send_message":
 		return "向当前微信用户发送文本消息（自动使用消息来源用户）。使用渠道配置的 iLink Bot 凭证。"
+	case "telegram_send_message":
+		return "向当前 Telegram 会话发送文本消息（自动使用消息来源会话）。使用渠道配置的 Bot Token。"
+	case "dingtalk_send_message":
+		return "向当前钉钉会话发送 Markdown 消息（自动使用消息来源会话的 sessionWebhook）。"
+	case "slack_send_message":
+		return "向当前 Slack 频道发送消息（自动使用消息来源频道）。需要 chat:write 权限。"
+	case "discord_send_message":
+		return "向当前 Discord 频道发送消息（自动使用消息来源频道）。"
+	case "wecom_send_message":
+		return "向当前企业微信会话发送 Markdown 消息（自动使用消息来源会话）。"
 	}
 	return toolType
 }
@@ -849,6 +892,16 @@ func GetChannelToolConfigFields(toolType string) []string {
 		return []string{"default_chat_id"}
 	case "wechat_send_message":
 		return []string{"default_to_user"}
+	case "telegram_send_message":
+		return []string{"default_chat_id"}
+	case "dingtalk_send_message":
+		return []string{"default_chat_id"}
+	case "slack_send_message":
+		return []string{"default_chat_id"}
+	case "discord_send_message":
+		return []string{"default_chat_id"}
+	case "wecom_send_message":
+		return []string{"default_chat_id"}
 	}
 	return nil
 }

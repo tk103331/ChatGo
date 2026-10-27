@@ -238,17 +238,9 @@ type ChatWindow struct {
 	trayMenuKeyCached string
 	quitting          bool
 
-	channelMu      sync.Mutex
-	channelRunning bool
-	channelCancel  context.CancelFunc
-	channelState   feishuConnState
-	channelNote    string
-
-	wechatMu      sync.Mutex
-	wechatRunning bool
-	wechatCancel  context.CancelFunc
-	wechatState   feishuConnState
-	wechatNote    string
+	// channels owns every IM connection; each configured channel gets its
+	// own driver instance, so several of one platform can run at once.
+	channels *channelManager
 
 	idMu  sync.Mutex
 	idSeq uint64
@@ -301,6 +293,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		iconCache:      map[string]iconImage{},
 		autoRunning:    map[string]bool{},
 		convGit:        newConvGitState(),
+		channels:       newChannelManager(),
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd
@@ -318,8 +311,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.applyAgent("")
 	go cw.startMCP()
 	go cw.autoTaskLoop()
-	go cw.startFeishuChannel()
-	go cw.startWechatChannel()
+	go cw.startChannels()
 	return cw, nil
 }
 

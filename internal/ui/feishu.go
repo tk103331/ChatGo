@@ -14,129 +14,11 @@ import (
 	"chatgo/internal/llm"
 	"chatgo/pkg/models"
 
-	mcore "chatgo/internal/ui/uikit"
 	acp "github.com/coder/acp-go-sdk"
 	mgo "github.com/egoist/mygo/ui"
-	lark "github.com/larksuite/oapi-sdk-go/v3"
-	"github.com/larksuite/oapi-sdk-go/v3/channel"
-	"github.com/larksuite/oapi-sdk-go/v3/channel/types"
-	"github.com/larksuite/oapi-sdk-go/v3/event/dispatcher"
 	"github.com/larksuite/oapi-sdk-go/v3/scene/registration"
-	larkim "github.com/larksuite/oapi-sdk-go/v3/service/im/v1"
-	larkws "github.com/larksuite/oapi-sdk-go/v3/ws"
 	qrcode "github.com/skip2/go-qrcode"
 )
-
-type feishuConnState int
-
-const (
-	feishuStopped feishuConnState = iota
-	feishuConnecting
-	feishuConnected
-	feishuReconnecting
-	feishuError
-)
-
-func (cw *ChatWindow) setChannelState(state feishuConnState, note string) {
-	cw.channelMu.Lock()
-	cw.channelState = state
-	cw.channelNote = note
-	cw.channelMu.Unlock()
-	cw.postMain(func() { cw.invalidate() })
-}
-
-func (cw *ChatWindow) feishuStatus() (feishuConnState, string) {
-	cw.channelMu.Lock()
-	defer cw.channelMu.Unlock()
-	return cw.channelState, cw.channelNote
-}
-
-func (cw *ChatWindow) startFeishuChannel() {
-	cw.channelMu.Lock()
-	if cw.channelRunning {
-		cw.channelMu.Unlock()
-		return
-	}
-	cw.channelMu.Unlock()
-
-	var conf *config.Channel
-	for i := range cw.cfg.Channels {
-		if cw.cfg.Channels[i].Type == "feishu" && cw.cfg.Channels[i].Enabled {
-			conf = &cw.cfg.Channels[i]
-			break
-		}
-	}
-	if conf == nil {
-		return
-	}
-
-	appID, appSecret, channelID := conf.AppID, conf.AppSecret, conf.ID
-	client := lark.NewClient(appID, appSecret)
-	wsClient := larkws.NewClient(appID, appSecret, larkws.WithEventHandler(dispatcher.NewEventDispatcher("", "")), larkws.WithAutoReconnect(true))
-	ch := channel.NewChannel(client, wsClient)
-
-	ch.OnMessage(func(_ context.Context, msg *types.NormalizedMessage) error {
-		cw.feishuLogf("收到消息: chatType=%q mentioned=%v text=%q chatID=%q", msg.ChatType, msg.MentionedBot, msg.Content, msg.ChatID)
-		if !msg.MentionedBot && msg.ChatType != "p2p" {
-			cw.feishuLogf("消息被过滤（非私聊且未@机器人）")
-			return nil
-		}
-		text := strings.TrimSpace(msg.Content)
-		if text == "" {
-			cw.feishuLogf("消息内容为空，跳过")
-			return nil
-		}
-		cw.notifyChannelMessage(channelID, text)
-		feishuReaction(client, msg.MessageID, "Typing")
-		cw.runChannelAgent(channelID, text, &channelMsgContext{ChatID: msg.ChatID}, func(reply string) {
-			_, _ = ch.Send(context.Background(), &types.SendInput{
-				ChatID:         msg.ChatID,
-				Markdown:       reply,
-				ReplyMessageID: msg.MessageID,
-			})
-		})
-		return nil
-	})
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cw.channelMu.Lock()
-	cw.channelRunning = true
-	cw.channelCancel = cancel
-	cw.channelMu.Unlock()
-	cw.setChannelState(feishuConnecting, "正在连接…")
-
-	ch.OnReady(func() { cw.setChannelState(feishuConnected, "长连接已建立") })
-	ch.OnReconnecting(func() { cw.setChannelState(feishuReconnecting, "网络中断，重连中…") })
-	ch.OnReconnected(func() { cw.setChannelState(feishuConnected, "重连成功") })
-	ch.OnDisconnected(func() { cw.setChannelState(feishuStopped, "连接已断开") })
-	ch.OnError(func(err error) { cw.setChannelState(feishuError, err.Error()) })
-
-	go func() {
-		err := ch.Start(ctx)
-		cw.channelMu.Lock()
-		cw.channelRunning = false
-		cw.channelCancel = nil
-		cw.channelMu.Unlock()
-		if err != nil {
-			cw.setChannelState(feishuError, err.Error())
-			cw.toast("飞书连接结束: "+err.Error(), mcore.SeverityError)
-		} else {
-			cw.setChannelState(feishuStopped, "未连接")
-		}
-	}()
-}
-
-func (cw *ChatWindow) stopFeishuChannel() {
-	cw.channelMu.Lock()
-	cancel := cw.channelCancel
-	cw.channelRunning = false
-	cw.channelCancel = nil
-	cw.channelMu.Unlock()
-	if cancel != nil {
-		cancel()
-	}
-	cw.setChannelState(feishuStopped, "未连接")
-}
 
 func (cw *ChatWindow) runChannelAgent(channelID, text string, msgCtx *channelMsgContext, done func(string)) {
 	if reply, handled := cw.channelCommand(channelID, text); handled {
@@ -309,23 +191,6 @@ func (cw *ChatWindow) notifyChannelMessage(channelID, text string) {
 		cw.notifyUser(agent+" · "+name, notifyPreview(text))
 		return struct{}{}
 	})
-}
-
-// feishuReaction adds an emoji reaction to a Feishu message as an
-// acknowledgement that it was received.
-func feishuReaction(client *lark.Client, messageID, emoji string) {
-	go func() {
-		req := larkim.NewCreateMessageReactionReqBuilder().
-			MessageId(messageID).
-			Body(larkim.NewCreateMessageReactionReqBodyBuilder().
-				ReactionType(larkim.NewEmojiBuilder().EmojiType(emoji).Build()).
-				Build()).
-			Build()
-		_, err := client.Im.V1.MessageReaction.Create(context.Background(), req)
-		if err != nil {
-			return
-		}
-	}()
 }
 
 func (cw *ChatWindow) channelConvTitle(ch config.Channel, n int) string {
@@ -594,7 +459,7 @@ func (cw *ChatWindow) startFeishuRegister() {
 			OnQRCode: func(info *registration.QRCodeInfo) {
 				url := info.URL
 				cw.postMain(func() {
-					if bmp := feishuQRBitmap(url); bmp != nil {
+					if bmp := qrBitmap(url); bmp != nil {
 						f.qr = bmp
 					}
 					f.qrTip = "请用飞书 App 扫码授权创建应用（10 分钟内有效）"
@@ -628,7 +493,8 @@ func (cw *ChatWindow) startFeishuRegister() {
 	}()
 }
 
-func feishuQRBitmap(url string) *mgo.Bitmap {
+// qrBitmap renders a URL as a QR code image.
+func qrBitmap(url string) *mgo.Bitmap {
 	png, err := qrcode.Encode(url, qrcode.Medium, 320)
 	if err != nil {
 		return nil

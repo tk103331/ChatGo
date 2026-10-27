@@ -27,7 +27,8 @@ func channelToolParams(toolType string) map[string]*schema.ParameterInfo {
 		return map[string]*schema.ParameterInfo{
 			"card": {Type: schema.String, Desc: "飞书交互卡片 JSON", Required: true},
 		}
-	case "wechat_send_message":
+	case "wechat_send_message", "telegram_send_message", "dingtalk_send_message",
+		"slack_send_message", "discord_send_message", "wecom_send_message":
 		return map[string]*schema.ParameterInfo{
 			"text": {Type: schema.String, Desc: "消息文本", Required: true},
 		}
@@ -41,7 +42,7 @@ type channelMsgContext struct {
 	ContextToken string
 }
 
-func channelToolHandler(ch *config.Channel, t *config.ChannelTool, msgCtx *channelMsgContext) func(context.Context, string) (string, error) {
+func (cw *ChatWindow) channelToolHandler(ch *config.Channel, t *config.ChannelTool, msgCtx *channelMsgContext) func(context.Context, string) (string, error) {
 	switch t.Type {
 	case "feishu_send_message":
 		return func(_ context.Context, args string) (string, error) {
@@ -119,10 +120,73 @@ func channelToolHandler(ch *config.Channel, t *config.ChannelTool, msgCtx *chann
 			}
 			return "已发送", nil
 		}
+	case "telegram_send_message", "dingtalk_send_message", "slack_send_message",
+		"discord_send_message", "wecom_send_message":
+		return func(ctx context.Context, args string) (string, error) {
+			var in struct {
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal([]byte(args), &in); err != nil {
+				return "", fmt.Errorf("参数解析失败: %w", err)
+			}
+			if strings.TrimSpace(in.Text) == "" {
+				return "", fmt.Errorf("缺少必填参数 text")
+			}
+			target := strings.TrimSpace(t.Config["default_chat_id"])
+			if msgCtx != nil && msgCtx.ChatID != "" {
+				target = strings.TrimSpace(msgCtx.ChatID)
+			}
+			if target == "" {
+				return "", fmt.Errorf("缺少会话 ID（当前消息未携带且未配置 default_chat_id）")
+			}
+			return cw.sendViaChannel(ctx, ch, t.Type, target, msgCtx, in.Text)
+		}
 	}
 	return func(context.Context, string) (string, error) {
 		return "渠道工具 " + t.Type + " 暂未实现", nil
 	}
+}
+
+// sendViaChannel sends text through the running driver of the channel the
+// message came from, so a tool never needs the platform's credentials twice.
+func (cw *ChatWindow) sendViaChannel(ctx context.Context, ch *config.Channel, toolType, target string, msgCtx *channelMsgContext, text string) (string, error) {
+	driver := cw.channelDriver(ch.ID)
+	if driver == nil {
+		return "", fmt.Errorf("渠道 %s 未连接，无法发送", ch.Name)
+	}
+	// A platform that only accepts a reply quoting the inbound frame is
+	// handled here, the same way the reply path does.
+	if replyToken := replyTokenOf(msgCtx); replyToken != "" {
+		if d, ok := driver.(interface {
+			SendToWebhook(context.Context, string, string) error
+		}); ok {
+			if err := d.SendToWebhook(ctx, replyToken, text); err != nil {
+				return "", err
+			}
+			return "已发送", nil
+		}
+		if d, ok := driver.(interface {
+			SendReply(context.Context, string, string, string) error
+		}); ok {
+			if err := d.SendReply(ctx, target, replyToken, text); err != nil {
+				return "", err
+			}
+			return "已发送", nil
+		}
+	}
+	if err := driver.Send(ctx, target, text); err != nil {
+		return "", err
+	}
+	return "已发送", nil
+}
+
+// replyTokenOf is the inbound frame token a reply must quote, when the driver
+// recorded one.
+func replyTokenOf(msgCtx *channelMsgContext) string {
+	if msgCtx == nil {
+		return ""
+	}
+	return strings.TrimSpace(msgCtx.ContextToken)
 }
 
 func feishuSendMsg(appID, appSecret, chatID, msgType, content string) error {
@@ -161,7 +225,7 @@ func (cw *ChatWindow) buildChannelTools(ch *config.Channel, msgCtx *channelMsgCo
 			Name:        t.Type,
 			Description: config.GetChannelToolDescription(t.Type),
 			Parameters:  channelToolParams(t.Type),
-			Handler:     channelToolHandler(ch, t, msgCtx),
+			Handler:     cw.channelToolHandler(ch, t, msgCtx),
 		}
 		tools = append(tools, llm.ObserveTool(newBuiltinToolWrapper(def)))
 	}
