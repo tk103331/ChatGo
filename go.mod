@@ -4,6 +4,7 @@ go 1.27.1
 
 require (
 	github.com/Calcium-Ion/moejs v0.1.0-alpha.6
+	github.com/bwmarrin/discordgo v0.29.0
 	github.com/cloudwego/eino v0.7.21
 	github.com/cloudwego/eino-ext/components/model/claude v0.1.13
 	github.com/cloudwego/eino-ext/components/model/deepseek v0.1.2
@@ -20,12 +21,15 @@ require (
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.13
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/egoist/mygo v0.6.3
+	github.com/gorilla/websocket v1.5.3
 	github.com/issue9/identicon v1.2.1
 	github.com/larksuite/oapi-sdk-go/v3 v3.12.0
 	github.com/mark3labs/mcp-go v1.2.1
+	github.com/open-dingtalk/dingtalk-stream-sdk-go v0.9.1
 	github.com/openai/openai-go v1.12.0
 	github.com/pelletier/go-toml/v2 v2.2.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+	github.com/slack-go/slack v0.31.0
 	google.golang.org/genai v1.36.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.61.0
@@ -87,7 +91,6 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.3.4 // indirect
 	github.com/googleapis/gax-go/v2 v2.13.0 // indirect
 	github.com/goph/emperror v0.17.2 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.9 // indirect

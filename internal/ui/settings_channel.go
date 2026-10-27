@@ -1,8 +1,10 @@
 package ui
 
 import (
-	"chatgo/internal/config"
 	"strings"
+
+	"chatgo/internal/channel"
+	"chatgo/internal/config"
 
 	mgo "github.com/egoist/mygo/ui"
 
@@ -47,25 +49,34 @@ func (cw *ChatWindow) channelCard(c *mgo.Context, i int) {
 				icon := "message-square"
 				mgo.Icon(c, icons.Must(icon)).Size(18, 18).TextColor(k.Text).Shrink(0)
 				mgo.Text(c, ch.Name).FontWeight(600).Shrink(0)
-				if ch.Type == "feishu" {
-					state, note := cw.feishuStatus()
-					st, label := feishuStatusView(state, note)
-					kit.StatusIndicator(c, st, kit.StatusIndicatorOptions{})
-					mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
-				} else if ch.Type == "wechat" {
-					state, note := cw.wechatStatus()
-					st, label := wechatStatusView(state, note)
-					kit.StatusIndicator(c, st, kit.StatusIndicatorOptions{})
-					mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
-				}
+				// The platform is named on the card so two channels of one
+				// kind stay tellable apart.
+				mgo.Text(c, channelTypeName(ch.Type)).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+					TextColor(k.TextMuted).Shrink(0)
+				state, note := cw.channelStatus(ch.ID)
+				st, label := channelStatusView(state, note)
+				kit.StatusIndicator(c, st, kit.StatusIndicatorOptions{})
+				mgo.Text(c, label).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := ch.Enabled
 				if mgo.Switch(c, &en).Changed() {
+					if en {
+						// Turning a channel on without its credentials would
+						// only produce a connection error on every frame.
+						if msg := channelConfigError(cw.cfg.Channels[i]); msg != "" {
+							cw.fail(msg)
+							return
+						}
+					}
 					cw.cfg.Channels[i].Enabled = en
 					cw.settings.channel.enabled = en
 					_ = config.SaveConfig(cw.cfg)
-					cw.restartChannels()
+					if en {
+						cw.startChannel(cw.cfg.Channels[i])
+					} else {
+						cw.stopChannel(cw.cfg.Channels[i].ID)
+					}
 				}
 				if mcore.IconAction(c, icons.Must("chevron-down"), "展开").Clicked() {
 					if expanded {
@@ -83,18 +94,20 @@ func (cw *ChatWindow) channelCard(c *mgo.Context, i int) {
 	})
 }
 
-func feishuStatusView(state feishuConnState, note string) (kit.Status, string) {
-	switch state {
-	case feishuConnected:
-		return kit.StatusSuccess, "已连接 · " + note
-	case feishuConnecting:
-		return kit.StatusBusy, "正在连接…"
-	case feishuReconnecting:
-		return kit.StatusBusy, "重连中…"
-	case feishuError:
-		return kit.StatusError, "连接失败：" + note
+// channelStatusView maps a driver state to the card's indicator and label.
+// The words come from channel.Summarize, so every platform describes the same
+// condition identically.
+func channelStatusView(state channel.State, detail string) (kit.Status, string) {
+	summary := channel.Summarize(state, detail)
+	switch summary.State {
+	case channel.StateConnected:
+		return kit.StatusSuccess, summary.String()
+	case channel.StateConnecting, channel.StateReconnecting:
+		return kit.StatusBusy, summary.String()
+	case channel.StateError:
+		return kit.StatusError, summary.String()
 	default:
-		return kit.StatusOffline, "未连接"
+		return kit.StatusOffline, summary.String()
 	}
 }
 
@@ -104,43 +117,7 @@ func (cw *ChatWindow) channelFormFields(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
 		kit.TextInput(c, &f.name, kit.TextInputOptions{Label: "名称", Placeholder: "渠道名称", ReadOnly: true})
-		if f.typ == "wechat" {
-			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				if kit.Button(c, "扫码登录微信", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
-					cw.startWechatLogin()
-				}
-				if f.scanning {
-					mgo.Text(c, "等待微信扫码…").TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-				}
-			})
-			if f.appID != "" {
-				kit.TextInput(c, &f.appID, kit.TextInputOptions{Label: "Bot ID", Placeholder: "iLink Bot ID（扫码后自动填入）"})
-			}
-			if f.appSecret != "" {
-				kit.PasswordInput(c, &f.appSecret, kit.PasswordInputOptions{Label: "Bot Token", Placeholder: "iLink Bot Token（扫码后自动填入）"})
-			}
-			mgo.Text(c, "提示：点击「扫码登录微信」，用微信扫码授权后凭证自动填入。").
-				TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		} else {
-			kit.TextInput(c, &f.appID, kit.TextInputOptions{Label: "AppID", Placeholder: "飞书应用 App ID"})
-			kit.PasswordInput(c, &f.appSecret, kit.PasswordInputOptions{Label: "AppSecret", Placeholder: "飞书应用 App Secret"})
-			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				if kit.Button(c, "扫码创建应用", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
-					cw.startFeishuRegister()
-				}
-				if f.scanning {
-					mgo.Text(c, "等待飞书扫码授权…").TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-				}
-			})
-			mgo.Text(c, "提示：请在飞书开发者后台 → 事件与回调 → 订阅方式，选择「使用长连接接收事件/回调」，并添加事件 im.message.receive_v1。").
-				TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		}
-		if f.qr != nil {
-			mgo.Image(c, f.qr).Size(220, 220)
-		}
-		if f.qrTip != "" {
-			mgo.Text(c, f.qrTip).TextColor(mcore.Tokens(c).TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		}
+		cw.channelCredentialFields(c)
 		agentOpts := []kit.SelectOption[string]{{Value: "", Label: chatAgentName}}
 		for _, a := range cw.cfg.Agents {
 			agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
@@ -208,10 +185,14 @@ func (cw *ChatWindow) loadChannelForm(i int) {
 			tools[j].Config[k] = v
 		}
 	}
+	opts := map[string]string{}
+	for k, v := range ch.Options {
+		opts[k] = v
+	}
 	cw.settings.channel = channelForm{
 		editing: i, name: ch.Name, typ: ch.Type, agent: ch.Agent, workspace: ch.Workspace,
 		appID: ch.AppID, appSecret: ch.AppSecret, baseURL: ch.BaseURL, enabled: ch.Enabled,
-		tools: tools,
+		tools: tools, options: opts,
 	}
 }
 
@@ -225,7 +206,7 @@ func (cw *ChatWindow) saveChannel() {
 	if typ == "" {
 		typ = "feishu"
 	}
-	ch := config.Channel{Type: typ, Name: f.name, Agent: f.agent, Workspace: strings.TrimSpace(f.workspace), AppID: f.appID, AppSecret: f.appSecret, BaseURL: strings.TrimSpace(f.baseURL), Enabled: f.enabled}
+	ch := config.Channel{Type: typ, Name: f.name, Agent: f.agent, Workspace: strings.TrimSpace(f.workspace), AppID: f.appID, AppSecret: f.appSecret, BaseURL: strings.TrimSpace(f.baseURL), Enabled: f.enabled, Options: f.options}
 	if f.editing >= 0 && f.editing < len(cw.cfg.Channels) {
 		old := cw.cfg.Channels[f.editing]
 		ch.ID = old.ID
@@ -242,17 +223,8 @@ func (cw *ChatWindow) saveChannel() {
 	}
 	_ = config.SaveConfig(cw.cfg)
 	cw.toast("已保存渠道 "+ch.Name, mcore.SeveritySuccess)
-	cw.restartChannels()
-}
-
-func (cw *ChatWindow) applyChannel() {
-	f := &cw.settings.channel
-	if f.editing < 0 || f.editing >= len(cw.cfg.Channels) {
-		return
-	}
-	cw.cfg.Channels[f.editing].Enabled = f.enabled
-	_ = config.SaveConfig(cw.cfg)
-	cw.restartChannels()
+	// Only this channel reconnects; the others keep their connections.
+	cw.reloadChannel(ch.ID)
 }
 
 func (cw *ChatWindow) deleteChannel() {
@@ -261,20 +233,15 @@ func (cw *ChatWindow) deleteChannel() {
 		return
 	}
 	idx := f.editing
+	id := cw.cfg.Channels[idx].ID
 	name := cw.cfg.Channels[idx].Name
 	cw.askConfirm("删除渠道", "确定删除「"+name+"」？", func() {
 		cw.cfg.Channels = append(cw.cfg.Channels[:idx], cw.cfg.Channels[idx+1:]...)
 		_ = config.SaveConfig(cw.cfg)
 		cw.clearChannelForm()
-		cw.restartChannels()
+		// Only the deleted channel goes down; the rest stay connected.
+		cw.stopChannel(id)
 	})
-}
-
-func (cw *ChatWindow) restartChannels() {
-	cw.stopFeishuChannel()
-	cw.stopWechatChannel()
-	cw.startFeishuChannel()
-	cw.startWechatChannel()
 }
 
 // mcpStatus maps a server's state to an indicator status and a note.
@@ -306,4 +273,126 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 		})
 	})
 	cw.acpCatalogDialog(c)
+}
+
+// channelCredentialFields draws the credential inputs a platform needs. The
+// first two fields map to AppID and AppSecret; any further ones live in the
+// channel's Options map, so a platform with more than a token pair needs no
+// new form code.
+func (cw *ChatWindow) channelCredentialFields(c *mgo.Context) {
+	f := &cw.settings.channel
+	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
+	fields := channelFields(f.typ)
+	for i, field := range fields {
+		var val *string
+		switch i {
+		case 0:
+			val = &f.appID
+		case 1:
+			val = &f.appSecret
+		default:
+			if f.options == nil {
+				f.options = map[string]string{}
+			}
+			v := f.options[field.Key]
+			val = &v
+			defer func(key, v string) {
+				if f.options == nil {
+					f.options = map[string]string{}
+				}
+				f.options[key] = v
+			}(field.Key, v)
+		}
+		if field.Secret {
+			kit.PasswordInput(c, val, kit.PasswordInputOptions{Label: field.Label, Placeholder: field.Placeholder})
+			continue
+		}
+		kit.TextInput(c, val, kit.TextInputOptions{Label: field.Label, Placeholder: field.Placeholder})
+	}
+	// The two platforms with a sign-in flow keep their buttons; every other
+	// platform just takes the pasted credentials.
+	switch f.typ {
+	case "wechat":
+		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if kit.Button(c, "扫码登录微信", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
+				cw.startWechatLogin()
+			}
+			if f.scanning {
+				mgo.Text(c, "等待微信扫码…").TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+			}
+		})
+	case "feishu":
+		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if kit.Button(c, "扫码创建应用", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("globe"), Disabled: f.scanning}).Clicked() {
+				cw.startFeishuRegister()
+			}
+			if f.scanning {
+				mgo.Text(c, "等待飞书扫码授权…").TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+			}
+		})
+	}
+	cw.channelQuickButtons(c, f.typ)
+	cw.channelQuickCode(c)
+	cw.channelQuickNotice(c)
+	for _, field := range fields {
+		if field.Hint != "" {
+			mgo.Text(c, field.Hint).TextColor(k.TextMuted).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		}
+	}
+	cw.channelSetupGuide(c, f.typ)
+}
+
+// channelSetupGuide draws where a platform's console lives and which
+// permissions the connection needs, so the form is usable without leaving the
+// app to read the platform's documentation.
+func (cw *ChatWindow) channelSetupGuide(c *mgo.Context, typ string) {
+	setup := channelSetupFor(typ)
+	if len(setup.Console) == 0 && len(setup.Permissions) == 0 {
+		return
+	}
+	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Column(c).FillWidth().Gap(u).Padding(u * 2).Background(k.Surface).
+		Radius(mtheme.ControlRadius).Children(func() {
+		if len(setup.Console) > 0 {
+			mgo.Text(c, "后台管理页面").FontWeight(600).FontSize(caption)
+			for _, entry := range setup.Console {
+				cw.channelConsoleRow(c, entry)
+			}
+		}
+		if len(setup.Permissions) > 0 {
+			if len(setup.Console) > 0 {
+				mgo.Box(c).FillWidth().Height(1).Background(k.Border)
+			}
+			mgo.Text(c, "需要开通的权限与配置").FontWeight(600).FontSize(caption)
+			for _, entry := range setup.Permissions {
+				cw.channelConsoleRow(c, entry)
+			}
+		}
+	})
+}
+
+// channelConsoleRow is one guide entry: a label, an optional button that opens
+// the console page, and the detail under it.
+func (cw *ChatWindow) channelConsoleRow(c *mgo.Context, entry channelConsole) {
+	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Column(c).FillWidth().Gap(2).Children(func() {
+		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+			mgo.Icon(c, icons.Must("circle-check")).Size(12, 12).TextColor(k.TextMuted).Shrink(0)
+			mgo.Text(c, entry.Label).FontSize(caption).FontWeight(500).
+				Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			if entry.URL != "" {
+				if kit.Button(c, "打开", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+					c.OpenURL(entry.URL)
+				}
+			}
+		})
+		if entry.Detail != "" {
+			mgo.Text(c, entry.Detail).FontSize(caption).TextColor(k.TextMuted)
+		}
+	})
 }

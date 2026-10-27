@@ -35,7 +35,13 @@ type channelForm struct {
 	scanning  bool
 	qr        *mgo.Bitmap
 	qrTip     string
-	tools     []config.ChannelTool
+	// qrNotice is a warning the user must read before scanning, shown above
+	// the code.
+	qrNotice string
+	tools    []config.ChannelTool
+	// options holds a platform's extra credential fields, which do not fit
+	// the AppID/AppSecret pair — Slack's app token, for instance.
+	options map[string]string
 }
 
 type shortcutForm struct {
