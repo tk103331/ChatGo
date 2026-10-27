@@ -542,3 +542,244 @@ func TestGroupedConvRowsLabelsEachTree(t *testing.T) {
 		t.Fatalf("collapsing the main tree must hide only its own session, got %v", titles)
 	}
 }
+
+// Collapsing a project hides its sessions, and the chevron toggle must write
+// the same key the row builder reads: a project header folds under its own
+// group path, exactly like the "wt:" keys the tree headers use.
+func TestProjectHeaderCollapsesUnderItsOwnKey(t *testing.T) {
+	dir := newTestRepo(t)
+	wt := filepath.Join(filepath.Dir(dir), "wt-collapse")
+	if out, err := gitRun(dir, "worktree", "add", "-b", "coll", wt); err != nil {
+		t.Fatalf("worktree add: %v: %s", err, out)
+	}
+	cw := testWindow()
+	cw.wsCollapsed = map[string]bool{}
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "main", Workspace: dir},
+		{ID: "c2", Title: "linked", Workspace: wt},
+	}
+	cw.convGit = newConvGitState()
+	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir}}
+	cw.convGit.info[wt] = &convGitInfo{Project: &Project{Main: dir}}
+
+	rows := cw.groupedConvRows()
+	if len(rows) != 5 {
+		t.Fatalf("project + two tree headers + two sessions expected, got %d rows", len(rows))
+	}
+	proj := rows[0]
+	if !proj.header || proj.sub || proj.key == "" {
+		t.Fatalf("the project header must carry its own collapse key: %+v", proj)
+	}
+	// The header's toggle target is the same key the builder checks, so the
+	// two agree by construction.
+	cw.wsCollapsed[proj.key] = true
+	if got := cw.groupedConvRows(); len(got) != 1 {
+		t.Fatalf("collapsing the project left %d rows, want just its header", len(got))
+	}
+	cw.wsCollapsed[proj.key] = false
+	if got := cw.groupedConvRows(); len(got) != 5 {
+		t.Fatalf("expanding the project did not restore its rows: %d", len(got))
+	}
+}
+
+// A single-tree project folds under its own path too, which is the common
+// case where no tree headers exist at all.
+func TestSingleTreeProjectCollapses(t *testing.T) {
+	dir := newTestRepo(t)
+	cw := testWindow()
+	cw.wsCollapsed = map[string]bool{}
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "main", Workspace: dir},
+	}
+	cw.convGit = newConvGitState()
+	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir}}
+
+	rows := cw.groupedConvRows()
+	if len(rows) != 2 {
+		t.Fatalf("header + one session expected, got %d rows", len(rows))
+	}
+	if rows[0].key != dir {
+		t.Fatalf("the project header folds under %q, want %q", rows[0].key, dir)
+	}
+	cw.wsCollapsed[rows[0].key] = true
+	if got := cw.groupedConvRows(); len(got) != 1 {
+		t.Fatalf("collapsing a single-tree project left %d rows", len(got))
+	}
+}
+
+// A working tree is named by the branch it has checked out, not by its
+// directory: the main tree's directory is the project's own, so a path would
+// print the project's name twice in a row.
+func TestWorktreeHeaderNamesTheBranch(t *testing.T) {
+	dir := newTestRepo(t)
+	cw := testWindow()
+	cw.convGit = newConvGitState()
+	cw.convGit.info[dir] = &convGitInfo{Branch: "main", Project: &Project{Main: dir}}
+
+	if got := cw.worktreeHeaderLabel(dir); got != "main" {
+		t.Fatalf("the tree header reads %q, want its branch %q", got, "main")
+	}
+	// Before the summary loads there is no branch to show, so the directory
+	// stands in rather than leaving the row blank.
+	cw.convGit = newConvGitState()
+	if got := cw.worktreeHeaderLabel(dir); got != filepath.Base(dir) {
+		t.Fatalf("without a summary the header reads %q, want the directory", got)
+	}
+}
+
+// A session under a labelled tree leaves the branch out, since the header
+// above it already says which branch it is.
+func TestSessionRowDropsBranchUnderLabelledTree(t *testing.T) {
+	dir := newTestRepo(t)
+	wt := filepath.Join(filepath.Dir(dir), "wt-branchdup")
+	if out, err := gitRun(dir, "worktree", "add", "-b", "dup", wt); err != nil {
+		t.Fatalf("worktree add: %v: %s", err, out)
+	}
+	cw := testWindow()
+	cw.wsCollapsed = map[string]bool{}
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "main", Workspace: dir},
+		{ID: "c2", Title: "linked", Workspace: wt},
+	}
+	cw.convGit = newConvGitState()
+	cw.convGit.info[dir] = &convGitInfo{Branch: "main", Project: &Project{Main: dir}}
+	cw.convGit.info[wt] = &convGitInfo{Branch: "dup", Project: &Project{Main: dir}}
+
+	for _, r := range cw.groupedConvRows() {
+		if r.header {
+			continue
+		}
+		if !r.branchShown {
+			t.Fatalf("a session under a labelled tree must know its branch is already shown: %+v", r)
+		}
+	}
+
+	// A project with a single tree has no tree header, so its sessions keep
+	// showing the branch themselves.
+	cw.convs = []models.Conversation{{ID: "c1", Title: "main", Workspace: dir}}
+	for _, r := range cw.groupedConvRows() {
+		if r.header {
+			continue
+		}
+		if r.branchShown {
+			t.Fatalf("a session with no tree header above it must show its branch: %+v", r)
+		}
+	}
+}
+
+// The change counts belong to the working tree, so a tree header carries them
+// and the sessions under it do not repeat them.
+func TestWorktreeHeaderCarriesChangeSummary(t *testing.T) {
+	dir := newTestRepo(t)
+	wt := filepath.Join(filepath.Dir(dir), "wt-diffsum")
+	if out, err := gitRun(dir, "worktree", "add", "-b", "diffsum", wt); err != nil {
+		t.Fatalf("worktree add: %v: %s", err, out)
+	}
+	cw := testWindow()
+	cw.wsCollapsed = map[string]bool{}
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "main", Workspace: dir},
+		{ID: "c2", Title: "linked", Workspace: wt},
+	}
+	cw.convGit = newConvGitState()
+	cw.convGit.info[dir] = &convGitInfo{
+		Branch: "main", DiffAdded: 4600, DiffDeleted: 416, Project: &Project{Main: dir},
+	}
+	cw.convGit.info[wt] = &convGitInfo{
+		Branch: "diffsum", DiffAdded: 12, DiffDeleted: 3, Project: &Project{Main: dir},
+	}
+
+	// Each tree reports its own counts, which is what the header draws.
+	if a, d := cw.convGitDiff(dir); a != 4600 || d != 416 {
+		t.Fatalf("the main tree reports +%d -%d", a, d)
+	}
+	if a, d := cw.convGitDiff(wt); a != 12 || d != 3 {
+		t.Fatalf("the linked tree reports +%d -%d", a, d)
+	}
+	// Every session sits under a labelled tree, so none of them repeats the
+	// counts the header already shows.
+	for _, r := range cw.groupedConvRows() {
+		if !r.header && !r.branchShown {
+			t.Fatalf("a session under a tree header must drop the counts: %+v", r)
+		}
+	}
+}
+
+// The sidebar abbreviates counts the way the conversation rows always have.
+func TestShortLineCount(t *testing.T) {
+	cases := map[int]string{0: "0", 999: "999", 1000: "1.0k", 4600: "4.6k", 438800: "438.8k", 2_500_000: "2.5m"}
+	for in, want := range cases {
+		if got := shortLineCount(in); got != want {
+			t.Errorf("shortLineCount(%d) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// The sidebar's order is fixed: projects keep the order they were configured
+// in and trees the order git reports, so neither running a session nor
+// switching projects moves a group. A list that reorders itself under the
+// pointer is what this guards against.
+func TestSidebarOrderIgnoresActivity(t *testing.T) {
+	projA := newTestRepo(t)
+	projB := newTestRepo(t)
+	wtB := filepath.Join(filepath.Dir(projB), "wt-order")
+	if out, err := gitRun(projB, "worktree", "add", "-b", "ordered", wtB); err != nil {
+		t.Fatalf("worktree add: %v: %s", err, out)
+	}
+	now := time.Now()
+	cw := testWindow()
+	cw.wsCollapsed = map[string]bool{}
+	cw.cfg.Workspaces = []string{projA, projB}
+	cw.convGit = newConvGitState()
+	cw.convGit.info[projA] = &convGitInfo{Branch: "main", Project: &Project{Main: projA, Worktrees: []string{projA}}}
+	cw.convGit.info[projB] = &convGitInfo{Branch: "main", Project: &Project{Main: projB, Worktrees: []string{projB, wtB}}}
+	cw.convGit.info[wtB] = &convGitInfo{Branch: "ordered", Project: &Project{Main: projB, Worktrees: []string{projB, wtB}}}
+
+	// B's linked tree has the newest session, A's the oldest; the order must
+	// not follow that.
+	cw.convs = []models.Conversation{
+		{ID: "newest", Title: "n", Workspace: wtB, CreatedAt: now},
+		{ID: "mid", Title: "m", Workspace: projB, CreatedAt: now.Add(-time.Hour)},
+		{ID: "oldest", Title: "o", Workspace: projA, CreatedAt: now.Add(-2 * time.Hour)},
+	}
+	// A has one tree, so it draws only its project header; B has two, so its
+	// project header is followed by a header per tree, main first.
+	want := []string{projA, projB, projB, wtB}
+	if got := headerOrder(cw.groupedConvRows()); !equalStrings(got, want) {
+		t.Fatalf("headers are %v, want the configured order %v", got, want)
+	}
+
+	// A gains the newest session and the workspace moves to B's tree, while
+	// every tree keeps a session of its own. Neither changes the order.
+	cw.convs = append(cw.convs, models.Conversation{
+		ID: "freshest", Title: "f", Workspace: projA, CreatedAt: now.Add(time.Hour),
+	})
+	cw.workspace = wtB
+	if got := headerOrder(cw.groupedConvRows()); !equalStrings(got, want) {
+		t.Fatalf("activity reordered the sidebar to %v, want %v", got, want)
+	}
+}
+
+// headerOrder lists every header's path, projects and trees alike, in the
+// order the list draws them.
+func headerOrder(rows []convRow) []string {
+	var out []string
+	for _, r := range rows {
+		if r.header {
+			out = append(out, r.ws)
+		}
+	}
+	return out
+}
+
+func equalStrings(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
