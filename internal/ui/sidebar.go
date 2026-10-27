@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"fmt"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/egoist/mygo"
@@ -144,8 +146,11 @@ type convRow struct {
 	ws    string
 	// key names the header's collapse state, which differs from ws for the
 	// first tree of a labelled project.
-	key   string
-	index int
+	key string
+	// branchShown marks a session whose branch its group header already
+	// names, so the row leaves it out.
+	branchShown bool
+	index       int
 }
 
 // conversationList shows saved conversations grouped by workspace.
@@ -183,7 +188,7 @@ func (cw *ChatWindow) conversationList(c *mgo.Context) {
 			cw.workspaceHeaderOf(c, r)
 			return
 		}
-		cw.convRow(c, r.index)
+		cw.convRow(c, r.index, r.branchShown)
 	}).Grow(1).MinHeight(0).Padding(0, 10, 0, 0)
 }
 
@@ -201,15 +206,20 @@ func (cw *ChatWindow) groupedConvRows() []convRow {
 		}
 		groups[g] = append(groups[g], i)
 	}
+	// Projects keep the order they were added to the configuration, so the
+	// sidebar stays where the user left it: neither switching projects nor
+	// running a session moves a group up the list.
 	var list []string
 	taken := map[string]bool{}
-	for _, ws := range cw.workspaces() {
+	for _, ws := range cw.cfg.Workspaces {
 		g := cw.convGitGroup(ws)
-		if !taken[g] {
+		if g != "" && !taken[g] {
 			list = append(list, g)
 			taken[g] = true
 		}
 	}
+	// A project holding sessions but absent from the configuration — opened
+	// once and never saved — follows, in the order its sessions are listed.
 	for _, g := range order {
 		if !taken[g] {
 			list = append(list, g)
@@ -218,7 +228,11 @@ func (cw *ChatWindow) groupedConvRows() []convRow {
 	}
 	var rows []convRow
 	for _, g := range list {
-		rows = append(rows, convRow{header: true, ws: g})
+		// The project header's collapse state lives under the group key: the
+		// header toggles cw.wsCollapsed[key], so the same key must be what the
+		// row below checks, or clicking the chevron writes one key and the
+		// list reads another and nothing folds.
+		rows = append(rows, convRow{header: true, ws: g, key: g})
 		if cw.wsCollapsed[g] {
 			continue
 		}
@@ -242,7 +256,7 @@ func (cw *ChatWindow) groupedConvRows() []convRow {
 				}
 			}
 			for _, i := range members[t] {
-				rows = append(rows, convRow{index: i})
+				rows = append(rows, convRow{index: i, branchShown: labelled})
 			}
 		}
 	}
@@ -250,34 +264,41 @@ func (cw *ChatWindow) groupedConvRows() []convRow {
 }
 
 // groupTrees lists the working trees that hold sessions of the project keyed
-// by g: the project's main tree first when it has any, then every other tree
-// in the order its first session appears in the list.
+// by g, in the order git reports them — the main tree first, then the linked
+// ones as they were created. The order is deliberately independent of when a
+// session last ran, so a tree does not jump up the sidebar just because it
+// was used; its place stays where the user learned to find it.
 func (cw *ChatWindow) groupTrees(g string, members map[string][]int) []string {
 	var trees []string
-	if len(members[g]) > 0 {
-		trees = append(trees, g)
+	seen := map[string]bool{}
+	for _, t := range cw.projectWorktrees(g) {
+		if len(members[t]) == 0 || seen[t] {
+			continue
+		}
+		seen[t] = true
+		trees = append(trees, t)
 	}
-	seen := map[string]bool{g: true}
-	for _, i := range sortedConvIndices(members) {
-		ws := cw.convs[i].Workspace
+	// A tree git no longer reports — one removed behind the app's back —
+	// still has sessions to show, so it follows in path order.
+	var rest []string
+	for ws := range members {
 		if ws == "" || seen[ws] {
 			continue
 		}
-		seen[ws] = true
-		trees = append(trees, ws)
+		rest = append(rest, ws)
 	}
-	return trees
+	sort.Strings(rest)
+	return append(trees, rest...)
 }
 
-// sortedConvIndices lists the conversation indices of members by position, so
-// the trees come out in the order their first session is listed.
-func sortedConvIndices(members map[string][]int) []int {
-	var out []int
-	for _, idx := range members {
-		out = append(out, idx...)
+// projectWorktrees is the tree list git reported for the project, with its
+// main tree first. It falls back to the group path alone before the summary
+// has loaded.
+func (cw *ChatWindow) projectWorktrees(g string) []string {
+	if p := cw.convGitProject(g); p != nil && len(p.Worktrees) > 0 {
+		return p.Worktrees
 	}
-	sort.Ints(out)
-	return out
+	return []string{g}
 }
 
 // treeCollapseKey names a tree header's collapse state. The main tree's header
@@ -290,10 +311,12 @@ func (cw *ChatWindow) treeCollapseKey(ws string, rank int) string {
 	return ws
 }
 
-// workspaceHeaderOf shows a workspace row with new-conversation and remove
-// actions. A sub row is one working tree of the project above it: it keeps a
-// folder mark of its own, indented, so the trees stay apart under the one
-// project header.
+// workspaceHeaderOf shows a workspace row with a new-conversation action.
+//
+// A project is named by its directory and marked with an accent folder. A
+// working tree under it is named by the branch it has checked out, not by its
+// directory: the main tree's directory is the project's own, so showing the
+// path would repeat the project's name on the line below it.
 func (cw *ChatWindow) workspaceHeaderOf(c *mgo.Context, r convRow) {
 	ws, sub := r.ws, r.sub
 	k := mcore.Tokens(c)
@@ -303,39 +326,82 @@ func (cw *ChatWindow) workspaceHeaderOf(c *mgo.Context, r convRow) {
 	if cw.wsCollapsed[r.key] {
 		chev = "chevron-right"
 	}
-	mark := "folder"
-	markColor := k.Accent
-	weight := 700
 	if sub {
-		mark = "git-branch"
-		markColor = k.TextMuted
-		weight = 500
+		cw.worktreeHeaderRow(c, r, chev)
+		return
 	}
-	row := mgo.Row(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()*1.2).Padding(u, u).Gap(u).
-		AlignItems(mgo.Center).Background(k.Background)
-	if sub {
-		row = row.Padding(u, u, u*3, u)
-	}
-	row.Children(func() {
-		if mcore.IconAction(c, icons.Must(chev), "折叠/展开工作区").Clicked() {
+	mgo.Row(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()*1.1).Padding(u/2, u).Gap(u / 2).
+		AlignItems(mgo.Center).Children(func() {
+		if mcore.IconAction(c, icons.Must(chev), "折叠/展开项目").Clicked() {
 			cw.wsCollapsed[r.key] = !cw.wsCollapsed[r.key]
 		}
-		mgo.Icon(c, icons.Must(mark)).Size(14, 14).TextColor(markColor).Shrink(0)
-		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(weight).TextColor(k.Text).
+		mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.Accent).Shrink(0)
+		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(700).TextColor(k.Text).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(ws)
-		// The header's one action opens the create tab with this project
-		// preselected; worktrees are chosen there rather than here.
 		if mcore.IconAction(c, icons.Must("plus"), "新建会话").Clicked() {
 			cw.openCreateTabIn(ws)
 		}
-		// Removing is a project's action: a tree is managed from the Worktree
-		// tab, which knows whether it can be dropped.
-		if !sub && containsStr(cw.cfg.Workspaces, ws) {
-			if mcore.IconAction(c, icons.Must("x"), "移除工作区").Clicked() {
-				cw.removeWorkspace(ws)
-			}
+	})
+}
+
+// worktreeHeaderRow draws one working tree under its project: the branch it
+// has checked out, indented and muted, so a project with several trees reads
+// as one group split by branch.
+func (cw *ChatWindow) worktreeHeaderRow(c *mgo.Context, r convRow, chev string) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Row(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).Padding(0, u, 0, u*3).Gap(u / 2).
+		AlignItems(mgo.Center).Children(func() {
+		if mcore.IconAction(c, icons.Must(chev), "折叠/展开工作树").Clicked() {
+			cw.wsCollapsed[r.key] = !cw.wsCollapsed[r.key]
+		}
+		mgo.Icon(c, icons.Must("git-branch")).Size(12, 12).TextColor(k.TextMuted).Shrink(0)
+		mgo.Text(c, cw.worktreeHeaderLabel(r.ws)).FontSize(caption).TextColor(k.TextMuted).
+			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(r.ws)
+		// The change counts belong to the tree, not to each session in it, so
+		// they are summarised once here.
+		cw.worktreeDiffSummary(c, r.ws)
+		if mcore.IconAction(c, icons.Must("plus"), "新建会话").Clicked() {
+			cw.openCreateTabIn(r.ws)
 		}
 	})
+}
+
+// worktreeDiffSummary shows a tree's uncommitted line counts, drawn only when
+// the tree has changes.
+func (cw *ChatWindow) worktreeDiffSummary(c *mgo.Context, ws string) {
+	added, deleted := cw.convGitDiff(ws)
+	if added == 0 && deleted == 0 {
+		return
+	}
+	k := mcore.Tokens(c)
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Text(c, "+"+shortLineCount(added)).Font(mtheme.MonoFont).
+		FontSize(caption).TextColor(k.Success).Shrink(0)
+	mgo.Text(c, "-"+shortLineCount(deleted)).Font(mtheme.MonoFont).
+		FontSize(caption).TextColor(k.Danger).Shrink(0)
+}
+
+// shortLineCount abbreviates a line count the way the conversation rows do,
+// so the sidebar reads the same whichever row carries the counts.
+func shortLineCount(n int) string {
+	switch {
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1fm", float64(n)/1_000_000)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1fk", float64(n)/1_000)
+	}
+	return strconv.Itoa(n)
+}
+
+// worktreeHeaderLabel is the branch a tree has checked out, falling back to
+// the directory when the summary has not loaded yet.
+func (cw *ChatWindow) worktreeHeaderLabel(ws string) string {
+	if branch := cw.convGitSubtitle(ws); branch != "" {
+		return branch
+	}
+	return workspaceTitle(ws)
 }
 
 func workspaceTitle(ws string) string {
@@ -349,14 +415,20 @@ func workspaceTitle(ws string) string {
 }
 
 // convRow renders one conversation with open, rename, export and delete actions.
-func (cw *ChatWindow) convRow(c *mgo.Context, i int) {
+func (cw *ChatWindow) convRow(c *mgo.Context, i int, branchShown bool) {
 	conv := cw.convs[i]
+	branch := cw.convGitSubtitle(conv.Workspace)
 	added, deleted := cw.convGitDiff(conv.Workspace)
-	subtitle := cw.convGitSubtitle(conv.Workspace)
+	subtitle := branch
+	// A tree header above the row already names the branch and summarises the
+	// tree's changes, so the row drops both rather than saying them twice.
+	if branchShown {
+		subtitle, added, deleted = "", 0, 0
+	}
 	mc := kit.ChatConversation{
 		ID: conv.ID, Title: conv.Title, Updated: convLast(conv),
 		Subtitle: subtitle, DiffAdded: added, DiffDeleted: deleted,
-		Workspace: conv.Workspace, Branch: subtitle,
+		Workspace: conv.Workspace, Branch: branch,
 	}
 	selected := cw.cur != nil && cw.cur.ID == conv.ID
 	var v kit.ConversationItemView
