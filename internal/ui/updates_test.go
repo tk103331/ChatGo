@@ -49,3 +49,35 @@ func menuLabels(items []*mygo.MenuItem) []string {
 	}
 	return out
 }
+
+// mygo.Updater.Check reports an up-to-date app as a nil update with no
+// error, which must not be dereferenced: doing so crashed every launch of
+// a packaged build, since an installed app is usually on the latest version.
+func TestApplyUpdateWithNoUpdateAvailable(t *testing.T) {
+	cw := testWindow()
+	cw.dispatch = func(fn func()) { fn() }
+	cw.applyUpdate(nil)
+	if cw.updateVer != "" {
+		t.Fatalf("a nil update set updateVer to %q", cw.updateVer)
+	}
+}
+
+// An update the user has since installed stops being reported, which clears
+// the tray prompt left over from it.
+func TestApplyUpdateClearsInstalledUpdate(t *testing.T) {
+	cw := testWindow()
+	cw.dispatch = func(fn func()) { fn() }
+	cw.applyUpdate(&mygo.Update{Version: "9.9.9"})
+	if cw.updateVer != "9.9.9" {
+		t.Fatalf("updateVer is %q, want 9.9.9", cw.updateVer)
+	}
+	cw.applyUpdate(nil)
+	if cw.updateVer != "" {
+		t.Fatalf("updateVer is %q after the update went away, want empty", cw.updateVer)
+	}
+	for _, label := range menuLabels(cw.buildTrayMenu().Items()) {
+		if strings.HasPrefix(label, "发现新版本") {
+			t.Fatalf("the tray menu still prompts for an installed update: %q", label)
+		}
+	}
+}
