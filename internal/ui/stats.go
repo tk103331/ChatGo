@@ -279,6 +279,12 @@ func (cw *ChatWindow) statsModelChart(c *mgo.Context, sum statsSummary) {
 		for _, m := range sum.models {
 			top = max(top, m.value)
 		}
+		// A model that ran but consumed no tokens still appears here, with a
+		// zero value; its bar must not divide by zero, which would hand the
+		// layout a NaN width and blank the whole page.
+		if top == 0 {
+			top = 1
+		}
 		for _, m := range sum.models {
 			frac := float32(m.value) / float32(top) * 100
 			mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {

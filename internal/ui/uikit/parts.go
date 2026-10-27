@@ -165,3 +165,24 @@ func spinnerMark(c *mgo.Context, label string, size float32, color mgo.Color, st
 		}
 	})
 }
+
+// TooltipEnd shows a tooltip beside anchor on its trailing side instead of
+// above it. The navigation rail sits against the window's edge, where a tip
+// placed above is cramped and one placed to the side has the whole content
+// area to open into.
+func TooltipEnd(c *mgo.Context, anchor mgo.Element, text string) {
+	if text == "" {
+		return
+	}
+	k := Tokens(c)
+	u := Density(c).Unit()
+	mgo.TooltipBase(c, anchor, func(tip mgo.Element) {
+		tip.AttachTo(anchor, mgo.AnchorEnd, mgo.AnchorStart).MarginStart(u)
+		tip.Padding(u/2, u).Radius(theme.ControlRadius).
+			Background(k.Surface).Border(theme.BorderWidth, k.Border)
+		tip.Children(func() {
+			mgo.Text(c, text).FontSize(FontSize(c, theme.CaptionSize)).
+				TextColor(k.Text).NoWrap()
+		})
+	})
+}

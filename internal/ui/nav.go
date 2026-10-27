@@ -42,7 +42,9 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 		cw.navItem(c, "统计", "chart-column", sectionStats)
 		mgo.Spacer(c)
 		label := "外观：" + themeModeLabel(cw.themeMode)
-		if mcore.IconAction(c, icons.Must(themeModeIcon(cw.themeMode)), label).Tooltip(label).Clicked() {
+		mode := mcore.IconAction(c, icons.Must(themeModeIcon(cw.themeMode)), label)
+		mcore.TooltipEnd(c, mode, label)
+		if mode.Clicked() {
 			cw.cycleTheme()
 		}
 		cw.navItem(c, "设置", "settings", sectionSettings)
@@ -51,7 +53,7 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 
 func (cw *ChatWindow) navItem(c *mgo.Context, label, icon string, section navSection) {
 	k := mcore.Tokens(c)
-	b := mgo.ButtonBase(c).Size(navItemSize, navItemSize).Shrink(0).Radius(mtheme.ControlRadius).Label(label).Tooltip(label)
+	b := mgo.ButtonBase(c).Size(navItemSize, navItemSize).Shrink(0).Radius(mtheme.ControlRadius).Label(label)
 	if cw.section == section {
 		b.Background(k.Selection).TextColor(k.Text)
 	} else {
@@ -61,6 +63,7 @@ func (cw *ChatWindow) navItem(c *mgo.Context, label, icon string, section navSec
 		}
 	}
 	b.Children(func() { mgo.Icon(c, icons.Must(icon)).Size(20, 20) })
+	mcore.TooltipEnd(c, b, label)
 	if b.Clicked() {
 		cw.goSection(section)
 	}
@@ -73,7 +76,7 @@ func (cw *ChatWindow) navItemSVG(c *mgo.Context, label string, svg *mgo.SVG, sec
 		return
 	}
 	k := mcore.Tokens(c)
-	b := mgo.ButtonBase(c).Size(navItemSize, navItemSize).Shrink(0).Radius(mtheme.ControlRadius).Label(label).Tooltip(label)
+	b := mgo.ButtonBase(c).Size(navItemSize, navItemSize).Shrink(0).Radius(mtheme.ControlRadius).Label(label)
 	fg := k.TextMuted
 	if cw.section == section {
 		b.Background(k.Selection)
@@ -83,6 +86,7 @@ func (cw *ChatWindow) navItemSVG(c *mgo.Context, label string, svg *mgo.SVG, sec
 		fg = k.Text
 	}
 	b.Children(func() { mgo.Icon(c, svg).Size(20, 20).TextColor(fg) })
+	mcore.TooltipEnd(c, b, label)
 	if b.Clicked() {
 		cw.goSection(section)
 	}

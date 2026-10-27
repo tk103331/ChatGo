@@ -1205,3 +1205,26 @@ func TestComposerSelectorsAreConsistent(t *testing.T) {
 		}
 	}
 }
+
+// A model that ran without reporting token counts still lands in the model
+// list with a zero value. Its share bar must not divide by zero: a NaN width
+// would blank the whole stats page on a real window, where the layout engine
+// cannot take a non-finite size the way the headless tester can.
+func TestStatsModelZeroShareRenders(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionStats
+	cw.convs = []models.Conversation{
+		{ID: "c1", Title: "A",
+			Turns: []models.Turn{{Model: "MiniMax-M3", StartedAt: time.Now()}}},
+	}
+	img := mgo.Render(cw.view, 1000, 800, 1)
+	if img == nil {
+		t.Fatal("stats page with a zero-token model returned a nil frame")
+	}
+	// The aggregate itself must keep the zero model, and the share must stay
+	// finite: the division is what the fix protects.
+	sum := cw.computeStats()
+	if len(sum.models) != 1 || sum.models[0].name != "MiniMax-M3" {
+		t.Fatalf("the zero-token model was dropped: %+v", sum.models)
+	}
+}
