@@ -39,8 +39,22 @@ func (cw *ChatWindow) checkForUpdate() {
 	if err != nil {
 		return
 	}
+	cw.applyUpdate(up)
+}
+
+// applyUpdate records the result of a check. A nil update means the app is
+// up to date, which clears a prompt left over from an update the user has
+// since installed.
+func (cw *ChatWindow) applyUpdate(up *mygo.Update) {
+	ver := ""
+	if up != nil {
+		ver = up.Version
+	}
 	cw.postMain(func() {
-		cw.updateVer = up.Version
+		if cw.updateVer == ver {
+			return
+		}
+		cw.updateVer = ver
 		cw.updateTrayMenu()
 		cw.invalidate()
 	})
