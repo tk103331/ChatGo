@@ -30,6 +30,20 @@ type Segment struct {
 	ToolCall *ToolCall `json:"tool_call,omitempty"`
 }
 
+// Author kinds. A message's AuthorKind says what produced it, which a group
+// conversation needs in order to tell a human apart from an assistant when
+// several assistants share one conversation.
+const (
+	AuthorKindHuman  = "human"
+	AuthorKindAgent  = "agent"
+	AuthorKindSystem = "system"
+)
+
+// AuthorHuman is the AuthorID of the person using the app. Agents are
+// identified by the conversation's own agent reference ("agent:Name",
+// "acp:Name", "app:Name"), so the two namespaces never collide.
+const AuthorHuman = "human"
+
 // Message represents a single message in a conversation
 type Message struct {
 	ID        string     `json:"id"`
@@ -39,6 +53,74 @@ type Message struct {
 	Segments  []Segment  `json:"segments,omitempty"`  // Ordered blocks for multi-step replies
 	Timestamp time.Time  `json:"timestamp"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // Tool calls made by this message
+
+	// AuthorID identifies who wrote this message: AuthorHuman for the person,
+	// or an agent reference ("agent:Name", "acp:Name", "app:Name") for an
+	// assistant. Role alone cannot carry this, because a group conversation
+	// has several assistants and they all write with Role "assistant".
+	//
+	// Empty on messages written before authorship existed. Read it through
+	// Author(), which falls back to Role so an old conversation keeps
+	// rendering and keeps replaying exactly as it did.
+	AuthorID string `json:"author_id,omitempty"`
+	// AuthorName is the display name, shown on the bubble and prefixed onto
+	// the content when a group conversation is sent to a model.
+	AuthorName string `json:"author_name,omitempty"`
+	// AuthorKind is one of the AuthorKind constants.
+	AuthorKind string `json:"author_kind,omitempty"`
+
+	// Seq orders messages within a conversation, monotonically and without
+	// reuse. A group conversation needs a stable "which message is newer"
+	// that survives edits and regeneration, which an index into Messages
+	// cannot give: regenerating truncates the slice and reuses indices.
+	//
+	// Zero on messages written before sequencing existed. Conversation.NextSeq
+	// is likewise zero there, so AssignSeq starts numbering from 1 on the
+	// first new message and old messages simply sort before every new one.
+	Seq int `json:"seq,omitempty"`
+
+	// QuoteID is the message this one replies to, empty for a message that
+	// quotes nothing. A group conversation interleaves several threads, so
+	// a reply needs to name what it answers rather than rely on adjacency.
+	QuoteID string `json:"quote_id,omitempty"`
+}
+
+// Author reports who wrote the message, falling back to Role for a message
+// stored before authorship was recorded. A legacy assistant message returns
+// an empty id: which agent wrote it was never recorded per-message, because
+// the conversation held exactly one agent at the time.
+func (m Message) Author() (id, kind string) {
+	if m.AuthorID != "" {
+		kind = m.AuthorKind
+		if kind == "" {
+			kind = legacyKindOf(m.Role)
+		}
+		return m.AuthorID, kind
+	}
+	return legacyAuthorOf(m.Role)
+}
+
+// IsHuman reports a message written by the person, by authorship when it is
+// recorded and by Role otherwise.
+func (m Message) IsHuman() bool {
+	_, kind := m.Author()
+	return kind == AuthorKindHuman
+}
+
+func legacyAuthorOf(role string) (id, kind string) {
+	switch role {
+	case "user":
+		return AuthorHuman, AuthorKindHuman
+	case "system":
+		return "", AuthorKindSystem
+	default:
+		return "", AuthorKindAgent
+	}
+}
+
+func legacyKindOf(role string) string {
+	_, kind := legacyAuthorOf(role)
+	return kind
 }
 
 // Turn is one request/reply round of a conversation: the user's input and the
@@ -79,6 +161,54 @@ type Conversation struct {
 	// TaskStatus is the last auto-task run's outcome on this conversation:
 	// "success" or "failed", empty for a conversation without a run.
 	TaskStatus string `json:"task_status,omitempty"`
+
+	// NextSeq is the sequence number AssignSeq hands to the next message.
+	// Zero on a conversation stored before sequencing existed, which makes
+	// numbering start at 1 and sorts every legacy message before every new
+	// one.
+	NextSeq int `json:"next_seq,omitempty"`
+
+	// RoomID names the group room this conversation belongs to, empty for a
+	// one-to-one conversation. A room conversation is listed on the room's
+	// own page, never in the chat session list, the same way a scheduled
+	// task's conversation is kept out of it by TaskID.
+	RoomID string `json:"room_id,omitempty"`
+}
+
+// IsRoom reports a conversation that belongs to a group room.
+func (c *Conversation) IsRoom() bool { return c.RoomID != "" }
+
+// AssignSeq stamps a message with the conversation's next sequence number.
+// Numbers are never reused, so truncating Messages for a regeneration cannot
+// make a new message compare as older than one it replaced.
+func (c *Conversation) AssignSeq(m *Message) {
+	if c.NextSeq < 1 {
+		c.NextSeq = 1
+	}
+	m.Seq = c.NextSeq
+	c.NextSeq++
+}
+
+// NewHumanMessage builds a sequenced message authored by the person.
+func (c *Conversation) NewHumanMessage(id, content string, at time.Time) Message {
+	m := Message{
+		ID: id, Role: "user", Content: content, Timestamp: at,
+		AuthorID: AuthorHuman, AuthorKind: AuthorKindHuman,
+	}
+	c.AssignSeq(&m)
+	return m
+}
+
+// NewAgentMessage builds a sequenced, empty reply attributed to agentID, the
+// conversation-agent reference ("agent:Name", "acp:Name", "app:Name", or ""
+// for the built-in chat). name is the display name shown on the bubble.
+func (c *Conversation) NewAgentMessage(id, agentID, name string, at time.Time) Message {
+	m := Message{
+		ID: id, Role: "assistant", Timestamp: at,
+		AuthorID: agentID, AuthorName: name, AuthorKind: AuthorKindAgent,
+	}
+	c.AssignSeq(&m)
+	return m
 }
 
 // ConversationManager manages conversation storage

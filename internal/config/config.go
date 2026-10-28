@@ -41,6 +41,131 @@ type Config struct {
 	ChatInitialized bool       `yaml:"chat_initialized,omitempty"`
 	AutoTasks       []AutoTask `yaml:"auto_tasks,omitempty"`
 	Channels        []Channel  `yaml:"channels,omitempty"`
+	Rooms           []Room     `yaml:"rooms,omitempty"`
+}
+
+// Room is a group conversation several agents share with the user. It is not
+// a ProviderGroup: that routes one request across providers and only ever
+// yields one answer, while a room has many members who each answer in their
+// own voice.
+type Room struct {
+	ID   string `yaml:"id"`
+	Name string `yaml:"name"`
+	// Workspace is the directory every member's file and command tools run
+	// in, so a room is bound to one project.
+	Workspace string       `yaml:"workspace,omitempty"`
+	Members   []RoomMember `yaml:"members,omitempty"`
+	// ConvID is the room's conversation, created on first use and reused,
+	// because a room is a standing place rather than a one-off session.
+	ConvID string `yaml:"conversation_id,omitempty"`
+	// Activation decides which members speak on a turn; see RoomActivation.
+	Activation string `yaml:"activation,omitempty"`
+	// AllowSelfResponses lets the member who spoke last speak again on the
+	// next turn. Off by default, which is what keeps one talkative agent
+	// from answering itself in a loop.
+	AllowSelfResponses bool `yaml:"allow_self_responses,omitempty"`
+	// Master is the model reference ("provider::model", or "group::" for a
+	// provider group) that moderates under ActivationMaster; empty uses the
+	// window's current model.
+	Master string `yaml:"master,omitempty"`
+	// KBID is the room's knowledge base, created on first use. Every spoken
+	// message is archived there, so members and the moderator can recall
+	// history beyond the context window.
+	KBID string `yaml:"kb_id,omitempty"`
+}
+
+// RoomMember is one agent in a room.
+type RoomMember struct {
+	// Agent is the agent reference, in the same form a conversation stores:
+	// "agent:Name" for a custom agent, "acp:Name" for a coding CLI.
+	Agent string `yaml:"agent"`
+	// Name overrides the display name inside this room; empty uses the
+	// agent's own name.
+	Name string `yaml:"name,omitempty"`
+	// Muted keeps a member in the room without ever waking it.
+	Muted bool `yaml:"muted,omitempty"`
+	// Talkativeness is the percent chance (1-100) the member speaks on a
+	// turn under ActivationNatural. Zero means the default of 50, so rooms
+	// saved before the field existed keep behaving the same.
+	Talkativeness int `yaml:"talkativeness,omitempty"`
+}
+
+// RoomActivation values decide which members speak on a turn.
+const (
+	// ActivationAll has every member speak, in roster order. The default:
+	// a room is usually assembled to hear each member's own view.
+	ActivationAll = "all"
+	// ActivationNatural has the members named in the message speak, plus
+	// each other member by a talkativeness dice roll. SillyTavern's NATURAL.
+	ActivationNatural = "natural"
+	// ActivationPooled has one member speak per turn, preferring those who
+	// have not spoken since the user's last message. SillyTavern's POOLED.
+	ActivationPooled = "pooled"
+	// ActivationMention has only the members named in the message speak.
+	ActivationMention = "mention"
+	// ActivationMaster asks the current model, as a moderator, to pick the
+	// members and their order for each turn. AutoGen's selector route.
+	ActivationMaster = "master"
+)
+
+// RoomActivations lists the selectable strategies.
+func RoomActivations() []string {
+	return []string{ActivationAll, ActivationNatural, ActivationPooled, ActivationMention, ActivationMaster}
+}
+
+// ActivationName is the human label of an activation strategy.
+func ActivationName(a string) string {
+	switch a {
+	case ActivationNatural:
+		return "自然发言（提及+话痨度）"
+	case ActivationPooled:
+		return "轮流发言（每轮一人）"
+	case ActivationMention:
+		return "仅被提及的成员"
+	case ActivationMaster:
+		return "Master 路由（模型主持）"
+	default:
+		return "全部成员"
+	}
+}
+
+// EffectiveActivation is the room's strategy, defaulting to ActivationAll.
+func (r Room) EffectiveActivation() string {
+	switch r.Activation {
+	case ActivationNatural, ActivationPooled, ActivationMention, ActivationMaster:
+		return r.Activation
+	}
+	return ActivationAll
+}
+
+// EffectiveTalkativeness is the member's speak chance in percent, with the
+// zero value meaning the 50% default rather than never speaking.
+func (m RoomMember) EffectiveTalkativeness() int {
+	if m.Talkativeness < 1 || m.Talkativeness > 100 {
+		return 50
+	}
+	return m.Talkativeness
+}
+
+// ActiveMembers are the members a turn may wake: those not muted.
+func (r Room) ActiveMembers() []RoomMember {
+	out := make([]RoomMember, 0, len(r.Members))
+	for _, m := range r.Members {
+		if !m.Muted && strings.TrimSpace(m.Agent) != "" {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// FindRoom returns the room with the given id.
+func (c *Config) FindRoom(id string) (Room, bool) {
+	for _, r := range c.Rooms {
+		if r.ID == id {
+			return r, true
+		}
+	}
+	return Room{}, false
 }
 
 // Channel is an IM channel configuration that can trigger Agent execution.

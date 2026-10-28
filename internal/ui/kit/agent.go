@@ -177,6 +177,9 @@ type ToolCallCardOptions struct {
 	OpenArgs, OpenResult bool
 	// Still stops the running animation.
 	Still bool
+	// Flat drops the card frame, so the call reads as part of the message
+	// text rather than as a box inside it.
+	Flat bool
 }
 
 type toolCallCardState struct{ args, result bool }
@@ -189,9 +192,12 @@ func ToolCallCard(c *mgo.Context, call ToolCall, opts ToolCallCardOptions) Choic
 	k := uikit.Tokens(c)
 	u := uikit.Unit(c)
 	var r ChoiceResult
-	r.Element = mgo.Column(c).Shrink(0).Padding(u*2).Gap(u).Radius(theme.CardRadius).
-		Background(k.Surface).Border(theme.BorderWidth, k.Border).
+	r.Element = mgo.Column(c).Shrink(0).Gap(u).
 		Role(mgo.RoleGroup).Label(call.Name + ", " + agentWord(call.State))
+	if !opts.Flat {
+		r.Element.Padding(u*2).Radius(theme.CardRadius).
+			Background(k.Surface).Border(theme.BorderWidth, k.Border)
+	}
 	st := mgo.Local(r.Element, "chatgo.toolcall", func() toolCallCardState {
 		return toolCallCardState{opts.OpenArgs, opts.OpenResult}
 	})

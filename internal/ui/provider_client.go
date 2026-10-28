@@ -384,9 +384,9 @@ func (cw *ChatWindow) agentToolsAndPrompt() ([]tool.BaseTool, string) {
 	return einoTools, systemPrompt
 }
 
-// setSetupError records why no model client could be built. It is kept apart
-// from cw.status so a model problem is shown next to the composer and the model
-// settings, instead of on whatever settings tab happens to be open.
+// setSetupError records why no model client could be built. It is shown next
+// to the composer and on the model settings, instead of on whatever settings
+// tab happens to be open.
 func (cw *ChatWindow) setSetupError(msg string) {
 	cw.setupErr = msg
 }

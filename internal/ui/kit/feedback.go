@@ -20,6 +20,10 @@ type ToastMessage struct {
 	Message  string
 	// Duration is ToastDuration when zero; errors then stay until closed.
 	Duration time.Duration
+	// Action, when set, is a button in the toast that runs OnAction and
+	// closes it: the way a long message offers its details elsewhere.
+	Action   string
+	OnAction func()
 }
 
 // life is how long m stays, or zero to stay until closed.
@@ -101,10 +105,15 @@ func toastCard(c *mgo.Context, k *mgo.Theme, u, width float32, m ToastMessage) b
 	card.Draw(func(p *mgo.Painter, r mgo.Rect) {
 		p.Fill(mgo.Rect{X: r.X, Y: r.Y + theme.PopupRadius, W: 3, H: r.H - 2*theme.PopupRadius}, tone, 0)
 	})
-	closed := false
+	closed, acted := false, false
 	card.Children(func() {
 		mgo.Icon(c, icon).Size(20, 20).TextColor(tone)
 		mgo.Text(c, m.Message).TextColor(k.Text).Grow(1).Shrink(1).LineHeight(theme.LineHeight)
+		if m.Action != "" {
+			if Button(c, m.Action, ButtonOptions{Variant: Ghost}).Clicked() {
+				acted = true
+			}
+		}
 		x := Button(c, "", ButtonOptions{Variant: Ghost, Icon: icons.Must("x"), Label: "关闭"})
 		x.TextColor(k.TextMuted).Padding(0, u)
 		if x.Clicked() {
@@ -113,6 +122,12 @@ func toastCard(c *mgo.Context, k *mgo.Theme, u, width float32, m ToastMessage) b
 	})
 	if card.Shortcut(0, mgo.KeyEscape) {
 		closed = true
+	}
+	if acted {
+		if m.OnAction != nil {
+			m.OnAction()
+		}
+		return true
 	}
 	return closed
 }

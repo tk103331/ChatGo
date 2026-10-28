@@ -26,9 +26,6 @@ func (cw *ChatWindow) homeView(c *mgo.Context) {
 	if view.Example != "" {
 		cw.draft = view.Example
 	}
-	if cw.status != "" {
-		mgo.Text(c, cw.status).TextColor(k.Danger).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-	}
 }
 
 func (cw *ChatWindow) welcome(c *mgo.Context) kit.CapabilityCardsView {

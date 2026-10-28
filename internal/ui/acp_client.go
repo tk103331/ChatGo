@@ -28,6 +28,9 @@ type acpUpdate struct {
 	args   string
 	result string
 	status string
+	// kindOf is the tool category the adapter reports (read, edit, execute,
+	// ...), shown on the tool row and used to pick its icon.
+	kindOf string
 }
 
 func parseACPUpdate(u acp.SessionUpdate) (acpUpdate, bool) {
@@ -48,6 +51,7 @@ func parseACPUpdate(u acp.SessionUpdate) (acpUpdate, bool) {
 			args:   acpArgsJSON(u.ToolCall.RawInput),
 			result: acpContentText(u.ToolCall.Content),
 			status: string(u.ToolCall.Status),
+			kindOf: string(u.ToolCall.Kind),
 		}, true
 	case u.ToolCallUpdate != nil:
 		title := ""
@@ -58,6 +62,10 @@ func parseACPUpdate(u acp.SessionUpdate) (acpUpdate, bool) {
 		if u.ToolCallUpdate.Status != nil {
 			status = string(*u.ToolCallUpdate.Status)
 		}
+		kindOf := ""
+		if u.ToolCallUpdate.Kind != nil {
+			kindOf = string(*u.ToolCallUpdate.Kind)
+		}
 		return acpUpdate{
 			kind:   "tool",
 			id:     string(u.ToolCallUpdate.ToolCallId),
@@ -65,6 +73,7 @@ func parseACPUpdate(u acp.SessionUpdate) (acpUpdate, bool) {
 			args:   acpArgsJSON(u.ToolCallUpdate.RawInput),
 			result: acpContentText(u.ToolCallUpdate.Content),
 			status: status,
+			kindOf: kindOf,
 		}, true
 	}
 	return acpUpdate{}, false
@@ -183,7 +192,8 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 	}
 	n := len(conv.Messages)
 	if n == 0 || conv.Messages[n-1].Role != "assistant" {
-		conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Timestamp: time.Now()})
+		conv.Messages = append(conv.Messages,
+			conv.NewAgentMessage(cw.newID(), conv.Agent, authorNameOf(conv.Agent), time.Now()))
 	}
 	last := &conv.Messages[len(conv.Messages)-1]
 	switch upd.kind {
@@ -210,6 +220,12 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 					if upd.status != "" {
 						tc.Status = upd.status
 					}
+					if upd.kindOf != "" {
+						if tc.Metadata == nil {
+							tc.Metadata = map[string]interface{}{}
+						}
+						tc.Metadata["acp_kind"] = upd.kindOf
+					}
 					if upd.status == string(acp.ToolCallStatusFailed) {
 						tc.Error = "failed"
 					}
@@ -227,6 +243,9 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 			return
 		}
 		tc := models.ToolCall{ID: upd.id, Name: upd.name, Arguments: upd.args, Result: upd.result, Status: upd.status}
+		if upd.kindOf != "" {
+			tc.Metadata = map[string]interface{}{"acp_kind": upd.kindOf}
+		}
 		if upd.status == string(acp.ToolCallStatusFailed) {
 			tc.Error = "failed"
 		}

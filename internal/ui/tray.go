@@ -27,7 +27,7 @@ func (cw *ChatWindow) syncTray() {
 				ToolTip:        "ChatGo",
 			})
 			if err != nil {
-				cw.status = "托盘图标创建失败: " + err.Error()
+				cw.toastErrorDetail("托盘图标创建失败", err.Error())
 			} else {
 				cw.tray = tray
 				tray.OnClick(func() { cw.openNormal() })

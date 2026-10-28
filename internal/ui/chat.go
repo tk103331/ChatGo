@@ -15,7 +15,6 @@ import (
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
-	acp "github.com/coder/acp-go-sdk"
 )
 
 // chatView lays out the sidebar, the tabbed center area and the file panel.
@@ -105,7 +104,6 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 				cw.acpControls(c)
 				return
 			}
-			cw.agentSelector(c)
 			cw.modelSelector(c)
 			cw.toolMenu(c)
 			cw.mcpMenu(c)
@@ -119,7 +117,7 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 						FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(mcore.Tokens(c).TextMuted)
 				})
 			}
-			streaming := cw.streaming && cw.cur != nil && cw.streamingConvID == cw.cur.ID
+			streaming := cw.streamingCur()
 			r := kit.SendButton(c, kit.SendButtonOptions{
 				Streaming: streaming,
 				Disabled:  initializing || strings.TrimSpace(cw.draft) == "",
@@ -139,10 +137,6 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 		cw.sendDraft()
 	}
 	cw.modelSetupNotice(c)
-	if cw.status != "" {
-		k := mcore.Tokens(c)
-		mgo.Text(c, cw.status).TextColor(k.Danger).FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-	}
 }
 
 // modelSetupNotice explains a model configuration problem under the composer
@@ -223,53 +217,6 @@ func (cw *ChatWindow) providerForRef(ref string) config.Provider {
 	return config.Provider{}
 }
 
-// acpControls shows the ACP session's modes and configuration options.
-func (cw *ChatWindow) acpControls(c *mgo.Context) {
-	if cw.cur == nil {
-		return
-	}
-	rt := cw.acpRuntimeFor(cw.cur.ID)
-	if rt == nil {
-		return
-	}
-	u := mcore.Density(c).Unit()
-	skipModes := acpConfigCoversModes(rt.configs)
-	mgo.Row(c).Gap(u * 2).Wrap().AlignItems(mgo.End).Children(func() {
-		if len(rt.modes) > 0 && !skipModes {
-			opts := make([]kit.SelectOption[string], 0, len(rt.modes))
-			for _, m := range rt.modes {
-				opts = append(opts, kit.SelectOption[string]{Value: string(m.Id), Label: m.Name})
-			}
-			sel := string(rt.modeID)
-			r := kit.Select(c, &sel, opts, kit.SelectOptions{})
-			r.Element.Width(110)
-			if r.Changed() {
-				cw.acpSetMode(rt, acp.SessionModeId(sel))
-			}
-		}
-		for _, opt := range rt.configs {
-			switch {
-			case opt.Select != nil:
-				s := opt.Select
-				sel := string(s.CurrentValue)
-				r := kit.Select(c, &sel, acpSelectOptions(s.Options), kit.SelectOptions{})
-				r.Element.Width(140)
-				if r.Changed() {
-					s.CurrentValue = acp.SessionConfigValueId(sel)
-					cw.acpSetConfigValue(rt, s.Id, acp.SessionConfigValueId(sel))
-				}
-			case opt.Boolean != nil:
-				b := opt.Boolean
-				val := b.CurrentValue
-				if mgo.Switch(c, &val).Label(b.Name).Changed() {
-					b.CurrentValue = val
-					cw.acpSetConfigBool(rt, b.Id, val)
-				}
-			}
-		}
-	})
-}
-
 // toolMenu toggles the builtin tools in a popover.
 func (cw *ChatWindow) toolMenu(c *mgo.Context) {
 	cw.toolPopover(c, "tools", "工具", "sliders-horizontal", "工具", "builtin:")
@@ -334,10 +281,11 @@ func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title,
 		items = append(items, selectItem{ID: mt.ID, Title: mt.Label, Desc: mt.Desc})
 	}
 	changed := false
-	kit.Popover(c, b, open, kit.PopoverOptions{Title: title, Width: 360, MaxHeight: u * 88, Up: true}, func() {
-		changed = selectList(c, query, "搜索"+buttonLabel, items,
-			cw.toolEnabled,
-			func(id string, on bool) { cw.toolOn[id] = on })
+	pinned, body := selectListSplit(c, query, "搜索"+buttonLabel, items,
+		cw.toolEnabled,
+		func(id string, on bool) { cw.toolOn[id] = on })
+	kit.Popover(c, b, open, kit.PopoverOptions{Label: title, MaxHeight: u * 88, Header: pinned}, func() {
+		changed = body()
 	})
 	if changed {
 		if cw.currentAgent == "" {

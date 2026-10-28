@@ -127,7 +127,6 @@ func (cw *ChatWindow) saveBuiltin() {
 	}
 	cw.cfg.BuiltinTools[f.editing] = t
 	_ = config.SaveConfig(cw.cfg)
-	cw.status = ""
 	cw.toast("已保存工具配置", mcore.SeveritySuccess)
 	cw.clientDirty.Store(true)
 }

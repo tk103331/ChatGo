@@ -171,7 +171,7 @@ func (cw *ChatWindow) loadWebTarget(v *mygo.WebView, src string) {
 		return
 	}
 	if err := p.LoadURL(src); err != nil {
-		cw.status = "加载失败：" + err.Error()
+		cw.toastErrorDetail("加载失败", err.Error())
 	}
 }
 

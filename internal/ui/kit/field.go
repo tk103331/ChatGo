@@ -112,7 +112,10 @@ func SearchInput(c *mgo.Context, value *string, opts SearchInputOptions) InputRe
 	if value == nil {
 		panic("kit: SearchInput needs a value")
 	}
-	in := mgo.SearchField(c, value).Placeholder(opts.Placeholder).Disabled(opts.Disabled)
+	// The bare search field is shorter than a text input; match the control
+	// height so a search box lines up with the buttons beside it.
+	in := mgo.SearchField(c, value).Placeholder(opts.Placeholder).Disabled(opts.Disabled).
+		MinHeight(uikit.Density(c).ControlHeight())
 	if opts.Label != "" {
 		in.Label(opts.Label)
 	}

@@ -11,6 +11,7 @@ import (
 	"chatgo/internal/llm"
 	"chatgo/pkg/models"
 
+	"github.com/cloudwego/eino/components/tool"
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
@@ -607,7 +608,7 @@ func (cw *ChatWindow) startAutoTask(i int) {
 		_ = config.SaveConfig(cw.cfg)
 		return
 	}
-	conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "user", Content: t.Prompt, Timestamp: time.Now()})
+	conv.Messages = append(conv.Messages, conv.NewHumanMessage(cw.newID(), t.Prompt, time.Now()))
 	msgs := buildMessages(conv, len(conv.Messages))
 	if sys := cw.taskSystemPrompt(t.Agent); sys != "" {
 		msgs = append([]llm.ChatMessage{{Role: "system", Content: sys}}, msgs...)
@@ -657,7 +658,9 @@ func (cw *ChatWindow) startAutoTask(i int) {
 				cw.cfg.AutoTasks[i].LastNote = "成功"
 				conv.TaskStatus = "success"
 			}
-			conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Content: reply, Reasoning: reasoning, Timestamp: time.Now()})
+			m := conv.NewAgentMessage(cw.newID(), t.Agent, authorNameOf(t.Agent), time.Now())
+			m.Content, m.Reasoning = reply, reasoning
+			conv.Messages = append(conv.Messages, m)
 			_ = cw.convManager.SaveConversation(conv)
 			cw.cfg.AutoTasks[i].LastRun = time.Now()
 			cw.autoRunning[t.ID] = false
@@ -705,7 +708,7 @@ func (cw *ChatWindow) taskClient(agent, workspace string) (*llm.Client, *llm.Rea
 	return cw.taskClientWithChannel(agent, workspace, nil, nil)
 }
 
-func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
+func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext, extra ...tool.BaseTool) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
 	provName, model, sys, ws, toolIDs := cw.taskAgentSpec(agent)
 	root := workspace
 	if root == "" {
@@ -724,6 +727,7 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 		if ch != nil {
 			einoTools = combineTools(einoTools, cw.buildChannelTools(ch, msgCtx))
 		}
+		einoTools = combineTools(einoTools, extra)
 		if len(einoTools) > 0 {
 			rc, err := llm.NewGroupReactClient(g, cw.cfg.Providers, einoTools, &llm.ReactAgentConfig{MaxStep: cw.cfg.ReactAgentMaxStep, SystemPrompt: sys})
 			if err == nil {
@@ -755,6 +759,7 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 	if ch != nil {
 		einoTools = combineTools(einoTools, cw.buildChannelTools(ch, msgCtx))
 	}
+	einoTools = combineTools(einoTools, extra)
 	if len(einoTools) > 0 {
 		rc, err := llm.NewReactClientWithEinoTools(p, einoTools, &llm.ReactAgentConfig{MaxStep: cw.cfg.ReactAgentMaxStep, SystemPrompt: sys})
 		if err != nil {

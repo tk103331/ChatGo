@@ -516,7 +516,7 @@ func (cw *ChatWindow) convStatusOf(convID string) kit.ConversationStatus {
 	if waiting {
 		return kit.ConvWaiting
 	}
-	if cw.streaming && cw.streamingConvID == convID {
+	if cw.streamingConv(convID) {
 		return kit.ConvRunning
 	}
 	for _, t := range cw.cfg.AutoTasks {
