@@ -111,6 +111,14 @@ func (cw *ChatWindow) createBody(c *mgo.Context) {
 // measure on a wide pane.
 const createWidth float32 = 760
 
+// createPickerWidth keeps the agent, project and worktree pickers wide
+// enough for a full name, rather than shrinking to their shortest value.
+const createPickerWidth float32 = 180
+
+// createPickerHeight makes the three pickers taller than a plain button, so
+// they read as the page's main inputs rather than as toolbar buttons.
+const createPickerHeight float32 = 38
+
 // createAgentSelect chooses the agent that runs the new conversation.
 func (cw *ChatWindow) createAgentSelect(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
@@ -131,7 +139,7 @@ func (cw *ChatWindow) createAgentSelect(c *mgo.Context) {
 		}
 		name := a.Name
 		opts = append(opts, kit.SearchSelectOption[string]{
-			Value: "acp:" + name, Label: name, Note: "ACP", Leading: logoLeading(c, name),
+			Value: "acp:" + name, Label: name, Leading: logoLeading(c, name),
 		})
 	}
 	mgo.Column(c).Shrink(0).Gap(u).Children(func() {
@@ -139,6 +147,7 @@ func (cw *ChatWindow) createAgentSelect(c *mgo.Context) {
 			Label("新会话 Agent")
 		kit.SearchSelect(c, &cw.create.agent, opts, kit.SearchSelectOptions[string]{
 			Label: "Agent", Placeholder: "选择 Agent", SearchPlaceholder: "搜索 Agent",
+			MinWidth: createPickerWidth, MinHeight: createPickerHeight,
 		})
 	})
 }
@@ -165,6 +174,7 @@ func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context) {
 			sel := kit.SearchSelect(c, &cw.create.ws, opts, kit.SearchSelectOptions[string]{
 				Label: "项目", Placeholder: "选择项目",
 				SearchPlaceholder: "搜索项目", Empty: "没有项目，可先新增",
+				MinWidth: createPickerWidth, MinHeight: createPickerHeight,
 			})
 			if mcore.IconAction(c, icons.Must("folder"), "新增项目").Tooltip("新增项目").Clicked() {
 				// The new directory becomes the chosen project, exactly like
@@ -234,6 +244,7 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context) {
 		kit.SearchSelect(c, &cw.create.wt, opts, kit.SearchSelectOptions[string]{
 			Label: "工作树", Placeholder: "选择工作树",
 			SearchPlaceholder: "搜索工作树", Empty: "此项目没有工作树",
+			MinWidth: createPickerWidth, MinHeight: createPickerHeight,
 		})
 	})
 }
@@ -299,27 +310,17 @@ func (cw *ChatWindow) createComposer(c *mgo.Context) {
 // conversation's own footer.
 func (cw *ChatWindow) createACPInfo(c *mgo.Context) {
 	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	conn := cw.acpConnectionOf(cw.create.agent)
 	if conn == nil {
 		return
 	}
-	mgo.Column(c).Gap(u).Children(func() {
-		mgo.Text(c, "ACP 连接").FontSize(caption).FontWeight(600).TextColor(k.TextMuted)
-		row := func(label, value string) {
-			if value == "" {
-				return
-			}
-			mgo.Text(c, label+"："+value).Font(mtheme.MonoFont).FontSize(caption).
-				TextColor(k.TextMuted).SingleLine().Ellipsis("…").MaxLines(1)
-		}
-		row("命令", strings.TrimSpace(conn.Command+" "+strings.Join(conn.Args, " ")))
-		row("目录", conn.Cwd)
-		for k, v := range conn.Env {
-			row("环境 "+k, v)
-		}
-	})
+	cmd := strings.TrimSpace(conn.Command + " " + strings.Join(conn.Args, " "))
+	if cmd == "" {
+		return
+	}
+	mgo.Text(c, "命令："+cmd).Font(mtheme.MonoFont).FontSize(caption).
+		TextColor(k.TextMuted).SingleLine().Ellipsis("…").MaxLines(1)
 }
 
 // acpConnectionOf looks up the ACP connection an agent id names.

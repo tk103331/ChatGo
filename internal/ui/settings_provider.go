@@ -261,7 +261,6 @@ func (cw *ChatWindow) clearProviderForm() {
 
 func (cw *ChatWindow) saveProvider() {
 	if cw.persistProvider() {
-		cw.status = ""
 		cw.toast("已保存模型 "+cw.settings.prov.name, mcore.SeveritySuccess)
 	}
 }

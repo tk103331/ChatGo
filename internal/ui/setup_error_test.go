@@ -33,8 +33,8 @@ func TestModelSetupErrorStaysOutOfUnrelatedTabs(t *testing.T) {
 			t.Fatalf("the message leaks SDK wording %q: %s", leak, msg)
 		}
 	}
-	if cw.status != "" {
-		t.Fatalf("a model problem must not land in cw.status, got %q", cw.status)
+	if cw.setupErr == "" {
+		t.Fatal("a model problem must be recorded on setupErr")
 	}
 
 	// The shortcut tab renders only its own failures.

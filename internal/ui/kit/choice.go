@@ -159,6 +159,9 @@ type SearchSelectOptions[T comparable] struct {
 	Disabled    bool
 	// MinWidth is the trigger's minimum width in DIPs; zero grows freely.
 	MinWidth float32
+	// MinHeight is the trigger's minimum height in DIPs; zero uses the
+	// standard control height.
+	MinHeight float32
 }
 
 // SearchSelectResult is a built SearchSelect and its events.
@@ -209,6 +212,9 @@ func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOpt
 	}
 	if o.MinWidth > 0 {
 		trigger.MinWidth(o.MinWidth)
+	}
+	if o.MinHeight > 0 {
+		trigger.MinHeight(o.MinHeight)
 	}
 	r.Element = trigger
 	if trigger.Clicked() {

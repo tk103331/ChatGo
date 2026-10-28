@@ -245,11 +245,11 @@ func (cw *ChatWindow) acpApplyUsage(conv *models.Conversation, replyID string, r
 // acpChatStart runs one turn of a conversation through its ACP coding CLI.
 
 func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, idx int, text string) {
+	replyID := conv.Messages[idx].ID
 	conn, ok := cw.findACPConn(connName)
 	if !ok {
 		conv.Messages[idx].Content = "⚠️ 未找到 ACP 连接：" + connName
-		cw.streaming = false
-		cw.streamingConvID = ""
+		cw.endStream(replyID)
 		return
 	}
 	cw.acp.convObj[conv.ID] = conv
@@ -258,8 +258,7 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 		if err != nil {
 			cw.postMain(func() {
 				conv.Messages[idx].Content = "⚠️ " + err.Error()
-				cw.streaming = false
-				cw.streamingConvID = ""
+				cw.endStream(replyID)
 				_ = cw.convManager.SaveConversation(conv)
 			})
 			return
@@ -282,8 +281,7 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 				t.Assistant = conv.Messages[idx].Content
 				t.EndedAt = time.Now()
 			}
-			cw.streaming = false
-			cw.streamingConvID = ""
+			cw.endStream(replyID)
 			conv.UpdatedAt = time.Now()
 			_ = cw.convManager.SaveConversation(conv)
 			cw.reloadConvs()
@@ -534,7 +532,9 @@ func (cw *ChatWindow) acpWarmup(conv *models.Conversation) {
 	cw.acp.convObj[conv.ID] = conv
 	go func() {
 		if _, err := cw.acpEnsureSession(conv, conn); err != nil {
-			cw.postMain(func() { cw.status = "ACP 会话启动失败：" + err.Error() })
+			cw.postMain(func() {
+				cw.toastErrorDetail("ACP 会话启动失败", err.Error())
+			})
 		}
 	}()
 }

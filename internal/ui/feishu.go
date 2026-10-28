@@ -59,7 +59,7 @@ func (cw *ChatWindow) channelSpec(channelID string) *channelSpec {
 }
 
 func (cw *ChatWindow) runChannelLLMAgent(conv *models.Conversation, agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext, text string, done func(string)) {
-	conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "user", Content: text, Timestamp: time.Now()})
+	conv.Messages = append(conv.Messages, conv.NewHumanMessage(cw.newID(), text, time.Now()))
 	msgs := buildMessages(conv, len(conv.Messages))
 	if sys := cw.taskSystemPrompt(agent); sys != "" {
 		msgs = append([]llm.ChatMessage{{Role: "system", Content: sys}}, msgs...)
@@ -104,7 +104,9 @@ func (cw *ChatWindow) runChannelLLMAgent(conv *models.Conversation, agent, works
 			reply = "⚠️ " + runErr.Error()
 		}
 		cw.postMain(func() {
-			conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "assistant", Content: reply, Timestamp: time.Now()})
+			m := conv.NewAgentMessage(cw.newID(), agent, authorNameOf(agent), time.Now())
+			m.Content = reply
+			conv.Messages = append(conv.Messages, m)
 			_ = cw.convManager.SaveConversation(conv)
 			cw.reloadConvs()
 			cw.invalidate()
@@ -127,7 +129,7 @@ func (cw *ChatWindow) runChannelACPAgent(conv *models.Conversation, connName, wo
 		} else if workspace != "" {
 			conv.Workspace = workspace
 		}
-		conv.Messages = append(conv.Messages, models.Message{ID: cw.newID(), Role: "user", Content: text, Timestamp: time.Now()})
+		conv.Messages = append(conv.Messages, conv.NewHumanMessage(cw.newID(), text, time.Now()))
 		cw.acp.mu.Lock()
 		cw.acp.convObj[conv.ID] = conv
 		cw.acp.mu.Unlock()

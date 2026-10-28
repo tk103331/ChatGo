@@ -448,7 +448,6 @@ func (cw *ChatWindow) saveMCP() bool {
 		f.editing = len(cw.cfg.MCPServers) - 1
 	}
 	_ = config.SaveConfig(cw.cfg)
-	cw.status = ""
 	cw.toast("已保存 MCP 服务器 "+s.Name, mcore.SeveritySuccess)
 	cw.clientDirty.Store(true)
 	return true

@@ -90,44 +90,63 @@ func selectRow(c *mgo.Context, item selectItem, checked bool, onToggle func(bool
 	})
 }
 
-// selectList renders a searchable two-line selection list with bulk actions.
-// isOn reads an item's state and setOn writes it; both are called with the
-// item's ID. It reports whether anything changed this frame.
-func selectList(c *mgo.Context, query *string, placeholder string, items []selectItem,
-	isOn func(id string) bool, setOn func(id string, on bool)) bool {
+// selectList splits a searchable two-line selection list into a pinned part
+// and a scrolling part. The pinned part carries the search field and bulk
+// actions, so they stay put while the entries scroll; the body reports
+// whether anything changed this frame. isOn reads an item's state and setOn
+// writes it; both are called with the item's ID.
+func selectListSplit(c *mgo.Context, query *string, placeholder string, items []selectItem,
+	isOn func(id string) bool, setOn func(id string, on bool)) (func(), func() bool) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
 	changed := false
-	mgo.Column(c).FillWidth().MinWidth(0).Gap(u * 2).Children(func() {
-		agentSearch(c, query, placeholder).Height(mcore.Density(c).ControlHeight() - 6)
-		shown := filterSelectItems(items, *query)
-		on := 0
-		for _, it := range shown {
-			if isOn(it.ID) {
-				on++
-			}
-		}
-		all, none := selectListHeader(c, on, len(shown))
-		if all || none {
+	pinned := func() {
+		mgo.Column(c).FillWidth().MinWidth(0).Gap(u * 2).Children(func() {
+			agentSearch(c, query, placeholder)
+			shown := filterSelectItems(items, *query)
+			on := 0
 			for _, it := range shown {
-				setOn(it.ID, all)
+				if isOn(it.ID) {
+					on++
+				}
 			}
-			changed = true
-		}
-		if len(shown) == 0 {
-			mgo.Text(c, "没有匹配的项").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
-				TextColor(k.TextMuted)
-			return
-		}
-		for _, it := range shown {
-			it := it
-			selectRow(c, it, isOn(it.ID), func(v bool) {
-				setOn(it.ID, v)
+			all, none := selectListHeader(c, on, len(shown))
+			if all || none {
+				for _, it := range shown {
+					setOn(it.ID, all)
+				}
 				changed = true
-			})
-		}
-	})
-	return changed
+			}
+		})
+	}
+	body := func() bool {
+		shown := filterSelectItems(items, *query)
+		mgo.Column(c).FillWidth().MinWidth(0).Gap(u).Children(func() {
+			if len(shown) == 0 {
+				mgo.Text(c, "没有匹配的项").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+					TextColor(k.TextMuted)
+				return
+			}
+			for _, it := range shown {
+				it := it
+				selectRow(c, it, isOn(it.ID), func(v bool) {
+					setOn(it.ID, v)
+					changed = true
+				})
+			}
+		})
+		return changed
+	}
+	return pinned, body
+}
+
+// selectList renders the whole list in one container, for a place that
+// scrolls as a whole rather than pinning its search field.
+func selectList(c *mgo.Context, query *string, placeholder string, items []selectItem,
+	isOn func(id string) bool, setOn func(id string, on bool)) bool {
+	pinned, body := selectListSplit(c, query, placeholder, items, isOn, setOn)
+	pinned()
+	return body()
 }
 
 // filterSelectItems narrows items to those matching query by title or detail.
@@ -160,7 +179,7 @@ func selectListGrouped(c *mgo.Context, query *string, placeholder string, items 
 	k := mcore.Tokens(c)
 	changed := false
 	mgo.Column(c).FillWidth().MinWidth(0).Gap(u * 2).Children(func() {
-		agentSearch(c, query, placeholder).Height(mcore.Density(c).ControlHeight() - 6)
+		agentSearch(c, query, placeholder)
 		shown := filterSelectItems(items, *query)
 		on := 0
 		for _, it := range shown {

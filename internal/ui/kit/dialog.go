@@ -198,6 +198,9 @@ type PopoverOptions struct {
 	MaxHeight float32
 	// Up places the panel above the anchor even when there is room below.
 	Up bool
+	// Header builds content pinned above the scroll area, so a search field
+	// stays put while the list below scrolls.
+	Header func()
 }
 
 // Popover shows content below anchor, or above it, inside the window while
@@ -235,6 +238,9 @@ func Popover(c *mgo.Context, anchor mgo.Element, open *bool, opts PopoverOptions
 		if opts.Title != "" {
 			mgo.Text(c, opts.Title).
 				FontSize(uikit.FontSize(c, theme.BodySize+2)).FontWeight(600).Shrink(0)
+		}
+		if opts.Header != nil {
+			opts.Header()
 		}
 		mgo.Scroll(c).Shrink(1).Children(content)
 	})

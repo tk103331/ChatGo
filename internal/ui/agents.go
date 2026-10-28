@@ -466,29 +466,6 @@ func (cw *ChatWindow) deleteAgentAt(i int) {
 }
 
 // agentSelector chooses an agent preset for the current conversation.
-func (cw *ChatWindow) agentSelector(c *mgo.Context) {
-	if len(cw.cfg.Agents) == 0 {
-		return
-	}
-	opts := make([]kit.SelectOption[string], 0, len(cw.cfg.Agents)+1)
-	opts = append(opts, kit.SelectOption[string]{Value: "", Label: chatAgentName})
-	for _, a := range cw.cfg.Agents {
-		opts = append(opts, kit.SelectOption[string]{Value: a.Name, Label: a.Name})
-	}
-	r := kit.Select(c, &cw.currentAgent, opts, kit.SelectOptions{Label: "Agent"})
-	if r.Changed() {
-		cw.applyAgent(cw.currentAgent)
-		if cw.cur != nil {
-			if cw.currentAgent == "" {
-				cw.cur.Agent = ""
-			} else {
-				cw.cur.Agent = "agent:" + cw.currentAgent
-			}
-			_ = cw.convManager.SaveConversation(cw.cur)
-		}
-	}
-}
-
 // applyAgent applies an agent's provider, mode, prompt and tools as an
 // explicit choice, moving the window to the agent's own workspace.
 func (cw *ChatWindow) applyAgent(name string) {

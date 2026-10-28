@@ -182,6 +182,5 @@ func (cw *ChatWindow) askDeleteConversation(id, title string) {
 // acpTab configures the ACP connections used by ACP agents.
 
 func (cw *ChatWindow) fail(msg string) {
-	cw.status = msg
-	cw.toast(msg, mcore.SeverityError)
+	cw.toastErrorDetail("操作失败", msg)
 }

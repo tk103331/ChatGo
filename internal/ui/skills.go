@@ -490,10 +490,11 @@ func (cw *ChatWindow) skillMenu(c *mgo.Context) {
 		items = append(items, selectItem{ID: id, Title: s.Name, Desc: s.Description})
 	}
 	changed := false
-	kit.Popover(c, b, open, kit.PopoverOptions{Title: "Skills", Width: 360, MaxHeight: mcore.Density(c).Unit() * 88, Up: true}, func() {
-		changed = selectList(c, &cw.skills.menuQuery, "搜索 Skill", items,
-			cw.skillRuntime,
-			func(id string, on bool) { cw.skillOn[id] = on })
+	pinned, body := selectListSplit(c, &cw.skills.menuQuery, "搜索 Skill", items,
+		cw.skillRuntime,
+		func(id string, on bool) { cw.skillOn[id] = on })
+	kit.Popover(c, b, open, kit.PopoverOptions{Label: "Skills", MaxHeight: mcore.Density(c).Unit() * 88, Header: pinned}, func() {
+		changed = body()
 	})
 	if changed {
 		if cw.currentAgent == "" {

@@ -65,7 +65,7 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 	name, model := cw.defaultTarget()
 	conv, err := cw.convManager.CreateConversation(defaultTitle, name, model)
 	if err != nil {
-		cw.status = "创建会话失败: " + err.Error()
+		cw.toastErrorDetail("创建会话失败", err.Error())
 		return
 	}
 	conv.Workspace = ws
@@ -154,11 +154,11 @@ func (cw *ChatWindow) sendDraft() {
 	}
 	conv := cw.cur
 	now := time.Now()
-	user := models.Message{ID: cw.newID(), Role: "user", Content: text, Timestamp: now}
+	user := conv.NewHumanMessage(cw.newID(), text, now)
 	conv.Messages = append(conv.Messages, user)
 	conv.UpdatedAt = now
 	idx := len(conv.Messages)
-	reply := models.Message{ID: cw.newID(), Role: "assistant", Timestamp: now}
+	reply := conv.NewAgentMessage(cw.newID(), conv.Agent, authorNameOf(conv.Agent), now)
 	conv.Messages = append(conv.Messages, reply)
 	turn := models.Turn{
 		ID:         cw.newID(),
@@ -180,17 +180,17 @@ func (cw *ChatWindow) sendDraft() {
 	}
 	_ = cw.convManager.SaveConversation(conv)
 	cw.msgList.ScrollToEnd()
-	cw.streaming = true
-	cw.streamingConvID = conv.ID
-	cw.invalidate()
 	if strings.HasPrefix(conv.Agent, "acp:") {
+		cw.beginStream(conv.ID, reply.ID, nil)
+		cw.invalidate()
 		cw.reloadConvs()
 		cw.acpChatStart(conv, strings.TrimPrefix(conv.Agent, "acp:"), idx, text)
 		return
 	}
 	msgs := cw.chatMessages(conv, idx)
 	ctx, cancel := context.WithCancel(context.Background())
-	cw.streamCancel = cancel
+	cw.beginStream(conv.ID, reply.ID, cancel)
+	cw.invalidate()
 	go cw.runStream(ctx, conv, idx, msgs)
 }
 
@@ -209,7 +209,6 @@ func (cw *ChatWindow) applyConversationAgent(conv *models.Conversation) {
 		cw.applyApp(strings.TrimPrefix(conv.Agent, "app:"))
 	case strings.HasPrefix(conv.Agent, "acp:"):
 		cw.llmClient, cw.reactClient = nil, nil
-		cw.status = ""
 		cw.acpWarmup(conv)
 	default:
 		cw.restoreAgent("")
@@ -243,7 +242,7 @@ func (cw *ChatWindow) newAppConversation(id string) {
 	name, model := cw.defaultTarget()
 	conv, err := cw.convManager.CreateConversation(a.Title, name, model)
 	if err != nil {
-		cw.status = "创建应用会话失败: " + err.Error()
+		cw.toastErrorDetail("创建应用会话失败", err.Error())
 		return
 	}
 	conv.Agent = "app:" + id
@@ -334,9 +333,7 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 			t.Assistant = conv.Messages[idx].Content
 			t.EndedAt = time.Now()
 		}
-		cw.streaming = false
-		cw.streamingConvID = ""
-		cw.streamCancel = nil
+		cw.endStream(conv.Messages[idx].ID)
 		conv.UpdatedAt = time.Now()
 		_ = cw.convManager.SaveConversation(conv)
 		cw.reloadConvs()
@@ -475,13 +472,15 @@ func cleanTitle(s string) string {
 	return strings.TrimSpace(string(r))
 }
 
-// stopStreaming cancels the reply being generated.
+// stopStreaming cancels the replies being generated in the conversation on
+// screen. A reply running in another conversation is left alone, the way it
+// already survived switching away from it.
 
 func (cw *ChatWindow) stopStreaming() {
-	if cw.streamCancel != nil {
-		cw.streamCancel()
-		cw.streamCancel = nil
+	if cw.cur == nil {
+		return
 	}
+	cw.cancelConvStreams(cw.cur.ID)
 }
 
 // appendSegmentText appends streamed text to the last matching segment, or

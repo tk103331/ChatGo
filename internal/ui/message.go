@@ -16,56 +16,101 @@ import (
 	"chatgo/pkg/models"
 )
 
-// messageRow renders one message: header, tool calls, content and actions.
+// messageRow renders one message as a flat, frameless row - the same
+// immersive layout the rooms use - with the human on the right and the
+// assistant on the left, actions appearing under the body on hover.
 func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 	if cw.editingIdx == i {
 		cw.editMessage(c, i, msg)
 		return
 	}
-	streaming := cw.streaming && cw.cur != nil && cw.streamingConvID == cw.cur.ID &&
-		i == len(cw.cur.Messages)-1 && msg.Role == "assistant"
+	streaming := cw.streamingMsg(msg.ID)
 	role := roleOf(msg)
-	opts := kit.MessageBubbleOptions{MaxWidth: 900}
-	if role == kit.MessageAssistant {
-		opts.Avatar = cw.agentAvatar(c)
+	u := mcore.Density(c).Unit()
+	user := role == kit.MessageUser
+	avatar := func() {
+		mgo.Box(c).Shrink(0).Children(func() {
+			if user {
+				cw.roomUserMark(c, 24)
+			} else {
+				cw.agentAvatar(c)()
+			}
+		})
 	}
-	kit.MessageBubble(c, role, opts, func() {
-		model := ""
-		if msg.Role == "assistant" {
-			model = cw.turnModelLabel(msg)
+	row := mgo.Row(c).FillWidth().Gap(u*2).AlignItems(mgo.Start).
+		Padding(u, u*2).Role(mgo.RoleGroup).Label(msg.Role)
+	if user {
+		row.Justify(mgo.End)
+	}
+	row.Children(func() {
+		if !user {
+			avatar()
 		}
-		kit.MessageHeader(c, kit.MessageHeaderOptions{Model: model, Time: msg.Timestamp})
-		if len(msg.Segments) > 0 {
-			cw.messageSegments(c, msg, streaming)
+		col := mgo.Column(c).MinWidth(0).Gap(u)
+		if user {
+			col.AlignItems(mgo.End).MaxWidth(720).Shrink(1)
 		} else {
-			cw.messageLegacy(c, msg, streaming)
+			col.Grow(1)
 		}
-		cw.messageActions(c, i, msg, streaming)
+		col.Children(func() {
+			mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+				mgo.Text(c, cw.messageNameLabel(msg, role)).FontWeight(600).SingleLine().
+					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+				if user {
+					mgo.Text(c, "我").FontWeight(600).SingleLine().
+						FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+				}
+				mgo.Text(c, msg.Timestamp.Format("15:04")).SingleLine().
+					FontFeatures("tnum").TextColor(mcore.Tokens(c).TextMuted).
+					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+			})
+			if len(msg.Segments) > 0 {
+				cw.messageSegments(c, msg, streaming)
+			} else {
+				cw.messageLegacy(c, msg, streaming)
+			}
+			// The actions row stands at a fixed height so the message never
+			// jumps when the icons appear on hover. Rewinding to a
+			// checkpoint stays visible without hover, because it is a
+			// destructive action users must be able to find.
+			cw.messageActions(c, i, msg, streaming, row.Hovered())
+		})
+		if user {
+			avatar()
+		}
 	})
+}
+
+// messageNameLabel names the speaker of an assistant or system message.
+func (cw *ChatWindow) messageNameLabel(msg models.Message, role kit.MessageRole) string {
+	if msg.AuthorName != "" {
+		return msg.AuthorName
+	}
+	if role == kit.MessageAssistant {
+		if m := cw.turnModelLabel(msg); m != "" {
+			return m
+		}
+		return "助手"
+	}
+	return msg.Role
 }
 
 // messageSegments renders an assistant reply's ordered blocks: a thinking
 // block, text, or a run of tool calls, each in the order the model produced
 // them, so a multi-step ReAct turn stays thinking, tool, text, thinking, tool.
 func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, streaming bool) {
-	toolIdx := 0
 	for i := 0; i < len(msg.Segments); {
 		seg := msg.Segments[i]
 		switch seg.Kind {
 		case "reasoning":
 			open := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:%d", msg.ID, i), func() bool { return false })
-			cw.reasoningBlock(c, open, seg.Text)
+			cw.reasoningBlock(c, open, seg.Text, streaming && i == len(msg.Segments)-1)
 			i++
 		case "tool":
-			var calls []models.ToolCall
-			for i < len(msg.Segments) && msg.Segments[i].Kind == "tool" {
-				if tc := msg.Segments[i].ToolCall; tc != nil {
-					calls = append(calls, *tc)
-				}
-				i++
+			if tc := msg.Segments[i].ToolCall; tc != nil {
+				cw.toolCalls(c, msg, []models.ToolCall{*tc})
 			}
-			cw.toolCallsGroup(c, msg, calls, toolIdx)
-			toolIdx++
+			i++
 		case "text":
 			if strings.TrimSpace(seg.Text) != "" {
 				kit.MarkdownView(c, seg.Text)
@@ -84,10 +129,10 @@ func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, stream
 func (cw *ChatWindow) messageLegacy(c *mgo.Context, msg models.Message, streaming bool) {
 	if msg.Role == "assistant" && strings.TrimSpace(msg.Reasoning) != "" {
 		open := mgo.Local(c.Root(), "reason:"+msg.ID, func() bool { return false })
-		cw.reasoningBlock(c, open, msg.Reasoning)
+		cw.reasoningBlock(c, open, msg.Reasoning, streaming)
 	}
 	if len(msg.ToolCalls) > 0 {
-		cw.toolCallsGroup(c, msg, msg.ToolCalls, 0)
+		cw.toolCalls(c, msg, msg.ToolCalls)
 	}
 	switch {
 	case strings.TrimSpace(msg.Content) != "":
@@ -111,20 +156,77 @@ func (cw *ChatWindow) emptySegments(msg models.Message) bool {
 	return true
 }
 
-// reasoningBlock shows the model's thinking process as a collapsed block.
-func (cw *ChatWindow) reasoningBlock(c *mgo.Context, open *bool, reasoning string) {
-	kit.Collapsible(c, open, kit.CollapsibleOptions{Title: "思考过程"}, func() {
-		mgo.Text(c, reasoning).TextColor(mcore.Tokens(c).TextMuted).
-			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+// reasoningBlock shows the model's thinking as a fold, with the same icon
+// behaviour as a tool row: a brain mark at rest, the fold arrow under the
+// pointer, and the arrow kept once open so the way back is always visible.
+func (cw *ChatWindow) reasoningBlock(c *mgo.Context, open *bool, reasoning string, live bool) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	b := mgo.ButtonBase(c).FillWidth().Justify(mgo.Start).Gap(u*2).AlignItems(mgo.Center).
+		Padding(u/2, u/2).Radius(mtheme.ControlRadius).
+		Role(mgo.RoleGroup).Label("思考过程")
+	if b.Hovered() {
+		b.Background(k.SurfaceHover)
+	}
+	b.Children(func() {
+		if b.Hovered() || *open {
+			name := "chevron-right"
+			if *open {
+				name = "chevron-down"
+			}
+			mgo.Icon(c, icons.Must(name)).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
+		} else {
+			mgo.Icon(c, icons.Must("brain")).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
+		}
+		mgo.Text(c, "思考过程").FontSize(caption).TextColor(k.TextMuted)
+		if live {
+			// The reasoning segment is still growing: the title marks it
+			// with a spinner so an all-thinking stream does not look stalled.
+			mcore.Spinner(c, mcore.SpinnerOptions{Size: 10})
+		}
 	})
+	if b.Clicked() {
+		*open = !*open
+	}
+	if *open {
+		// A framed body sets the thinking apart from the reply itself; the
+		// height cap keeps a long trace from pushing the answer away.
+		mgo.Scroll(c).FillWidth().Shrink(0).MaxHeight(caption * 1.6 * toolDetailLines).
+			Children(func() {
+				mgo.Column(c).FillWidth().Padding(u).Radius(mtheme.ControlRadius).
+					Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Children(func() {
+					mgo.Row(c).FillWidth().Justify(mgo.End).Children(func() {
+						if mcore.IconAction(c, icons.Must("copy"), "复制思考过程").Clicked() {
+							c.WriteClipboard(reasoning)
+							cw.toast("已复制", mcore.SeveritySuccess)
+						}
+					})
+					mgo.Text(c, reasoning).TextColor(k.TextMuted).FontSize(caption).
+						LineHeight(1.3)
+				})
+			})
+	}
 }
 
-func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, streaming bool) {
+func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, streaming, reveal bool) {
 	if streaming {
 		return
 	}
 	u := mcore.Density(c).Unit()
-	mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+	mgo.Row(c).Gap(u).MinHeight(mcore.Density(c).ControlHeight()).AlignItems(mgo.Center).Children(func() {
+		if !reveal {
+			// Without hover only the destructive rewind stays, so a
+			// checkpoint is never hidden from the user who needs it.
+			if cw.checkpointEnabled() && msg.Role == "assistant" && msg.ID != "" {
+				if mcore.IconAction(c, icons.Must("history"), "回退到此点").Tooltip("回退到此点").Clicked() {
+					cw.askConfirmAs("回退到此点",
+						"将把代码回退到该回复完成时的 checkpoint。此回复之后的所有改动都会丢失，且不可撤销。",
+						"回退", func() { cw.revertToMessage(msg.ID) })
+				}
+			}
+			return
+		}
 		if mcore.IconAction(c, icons.Must("copy"), "复制").Tooltip("复制").Clicked() {
 			c.WriteClipboard(msg.Content)
 			cw.toast("已复制到剪贴板", mcore.SeveritySuccess)
@@ -215,40 +317,11 @@ func roleOf(msg models.Message) kit.MessageRole {
 	}
 }
 
-func (cw *ChatWindow) toolCallsGroup(c *mgo.Context, msg models.Message, calls []models.ToolCall, groupIdx int) {
-	items := toolCallsForGroup(msg, calls, groupIdx)
-	if len(items) == 0 {
-		return
-	}
-	open := mgo.Local(c.Root(), fmt.Sprintf("toolgroup:%s:%d", msg.ID, groupIdx), func() bool { return false })
-	kit.ToolCallGroup(c, open, items, kit.ToolCallGroupOptions{})
-}
-
-func toolCallsForGroup(msg models.Message, calls []models.ToolCall, groupIdx int) []kit.ToolCall {
-	used := make(map[string]bool, len(calls))
-	out := make([]kit.ToolCall, 0, len(calls))
-	for i, tc := range calls {
-		if tc.Name == "" {
-			continue
-		}
-		id := tc.ID
-		if id == "" || used[id] {
-			id = fmt.Sprintf("%s-%d-%d", msg.ID, groupIdx, i)
-		}
-		used[id] = true
-		state := kit.AgentRunning
-		switch {
-		case tc.Error != "" || tc.Status == "failed":
-			state = kit.AgentFailed
-		case tc.Status == "completed" || tc.Status == "" && tc.Result != "":
-			state = kit.AgentDone
-		}
-		out = append(out, kit.ToolCall{
-			ID: id, Name: tc.Name, Args: tc.Arguments, Result: tc.Result, Error: tc.Error,
-			State: state, Duration: time.Duration(tc.DurationMs) * time.Millisecond,
-		})
-	}
-	return out
+// toolCalls renders a message's tool calls, one row each: merging them
+// under a "N 次工具调用" group hides which tool did what, which a long ReAct
+// turn needs when it is being followed.
+func (cw *ChatWindow) toolCalls(c *mgo.Context, msg models.Message, calls []models.ToolCall) {
+	cw.toolCallRows(c, msg, calls)
 }
 
 func truncate(s string, n int) string {
@@ -293,8 +366,11 @@ func (cw *ChatWindow) regenerate(i int) {
 	prev := conv.Messages[i]
 	t := turnOf(conv, prev.ID)
 	conv.Messages = conv.Messages[:i]
-	reply := models.Message{
-		ID: cw.newID(), Role: "assistant", Timestamp: time.Now(),
+	// The replaced reply's author stands: regenerating asks the same agent
+	// again, not whichever one the window happens to have selected now.
+	reply := conv.NewAgentMessage(cw.newID(), prev.AuthorID, prev.AuthorName, time.Now())
+	if reply.AuthorName == "" {
+		reply.AuthorID, reply.AuthorName = conv.Agent, authorNameOf(conv.Agent)
 	}
 	conv.Messages = append(conv.Messages, reply)
 	if t != nil {
@@ -326,7 +402,7 @@ func (cw *ChatWindow) resendFrom(i int) {
 	}
 	conv := cw.cur
 	prev := conv.Messages[i-1]
-	reply := models.Message{ID: cw.newID(), Role: "assistant", Timestamp: time.Now()}
+	reply := conv.NewAgentMessage(cw.newID(), conv.Agent, authorNameOf(conv.Agent), time.Now())
 	conv.Messages = append(conv.Messages, reply)
 	cw.appendTurn(conv, prev, reply)
 	cw.streamFrom(conv, i)
@@ -346,19 +422,20 @@ func (cw *ChatWindow) appendTurn(conv *models.Conversation, userMsg, reply model
 }
 
 func (cw *ChatWindow) streamFrom(conv *models.Conversation, i int) {
-	cw.streaming = true
-	cw.streamingConvID = conv.ID
-	cw.invalidate()
+	replyID := conv.Messages[i].ID
 	cw.msgList.ScrollToEnd()
 	if strings.HasPrefix(conv.Agent, "acp:") {
+		cw.beginStream(conv.ID, replyID, nil)
+		cw.invalidate()
 		_ = cw.convManager.SaveConversation(conv)
 		cw.acpChatStart(conv, strings.TrimPrefix(conv.Agent, "acp:"), i, lastUserText(conv, i))
 		return
 	}
-	cw.applyTurnModelFor(conv, conv.Messages[i].ID)
+	cw.applyTurnModelFor(conv, replyID)
 	msgs := cw.chatMessages(conv, i)
 	ctx, cancel := context.WithCancel(context.Background())
-	cw.streamCancel = cancel
+	cw.beginStream(conv.ID, replyID, cancel)
+	cw.invalidate()
 	go cw.runStream(ctx, conv, i, msgs)
 }
 

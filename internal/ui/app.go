@@ -6,7 +6,6 @@
 package ui
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"sort"
@@ -162,21 +161,27 @@ type ChatWindow struct {
 	groupClient *llm.GroupClient
 	groupReact  *llm.GroupReactClient
 
-	streaming bool
-	// streamingConvID is the conversation the running reply belongs to,
-	// which stays executing while another conversation is shown.
-	streamingConvID string
-	streamCancel    context.CancelFunc
+	// streams holds the replies being written right now, keyed by the id of
+	// the message each one fills in. A map rather than one slot because a
+	// group conversation has several agents answering the same turn, and
+	// each needs its own cancel. A reply stays here while another
+	// conversation is shown, so switching away never stops it.
+	streams map[string]*streamState
 
 	toolOn  map[string]bool
 	skillOn map[string]bool
 
-	status string
 	// setupErr explains why no model client exists; it is shown in the
 	// composer and on the model settings, not on every settings tab.
 	setupErr      string
 	toastText     string
 	toastSeverity mcore.Severity
+	toastAction   string
+	toastActionFn func()
+	// errDetail is the full text behind a toast's "查看详情"; empty hides
+	// the dialog.
+	errDetail     string
+	errDetailOpen bool
 
 	themeMode  mcore.Mode
 	colorTheme mtheme.Theme
@@ -198,9 +203,12 @@ type ChatWindow struct {
 	autoTaskEditorOpen bool
 	autoForm           autoForm
 	autoRunning        map[string]bool
-	autoConvsOpen      bool
-	autoConvsTaskID    string
-	autoConvs          []models.Conversation
+
+	autoConvsOpen   bool
+	autoConvsTaskID string
+	autoConvs       []models.Conversation
+
+	room roomState
 
 	avatarMu  sync.Mutex
 	avatarPNG map[string]*mgo.Bitmap
@@ -292,6 +300,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		avatarPNG:      map[string]*mgo.Bitmap{},
 		iconCache:      map[string]iconImage{},
 		autoRunning:    map[string]bool{},
+		streams:        map[string]*streamState{},
 		convGit:        newConvGitState(),
 		channels:       newChannelManager(),
 	}
@@ -355,7 +364,7 @@ func (cw *ChatWindow) Show() {
 }
 
 // applyQuickShortcut registers the configured accelerator, replacing any
-// previous one, and reports a failure through the status line.
+// previous one, and reports a failure as a toast.
 
 func (cw *ChatWindow) applyQuickShortcut() {
 	acc := cw.quickChatShortcut()
@@ -419,6 +428,7 @@ func (cw *ChatWindow) view(c *mgo.Context) {
 	cw.acpPermissionDialog(c)
 	cw.flushToast(c)
 	kit.Toaster(c)
+	cw.errorDetailDialog(c)
 }
 
 // quickView is the focused chat: only the message area and composer, with a
@@ -581,9 +591,13 @@ func (cw *ChatWindow) reloadConvs() {
 	})
 	var normal, tasks []models.Conversation
 	for _, conv := range all {
-		if conv.TaskID == "" {
+		switch {
+		case conv.IsRoom():
+			// A room conversation belongs to its room's page, not the
+			// session list.
+		case conv.TaskID == "":
 			normal = append(normal, conv)
-		} else {
+		default:
 			tasks = append(tasks, conv)
 		}
 	}
