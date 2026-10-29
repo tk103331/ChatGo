@@ -14,6 +14,9 @@ type DialogOptions struct {
 	Description string
 	// Width is 440 DIPs when zero; the window always bounds it.
 	Width float32
+	// MaxHeight caps the panel in DIPs; zero uses the room below the window
+	// edge. A long list then scrolls inside a shorter panel.
+	MaxHeight float32
 	// Actions builds the footer, usually buttons, aligned to the end.
 	Actions func()
 	// KeepOnBackdrop ignores clicks on the backdrop.
@@ -22,6 +25,9 @@ type DialogOptions struct {
 	KeepOnEscape bool
 	// HideClose removes the close button from the header.
 	HideClose bool
+	// Header builds content pinned above the scrolling body, so a search
+	// field stays put while a long list scrolls.
+	Header func()
 }
 
 // Dialog shows a modal dialog while *open is true, trapping and then
@@ -43,12 +49,15 @@ func Dialog(c *mgo.Context, open *bool, opts DialogOptions, content func()) mgo.
 		backClicked = back.Clicked()
 		p := uikit.OverlayEnter(c, panel)
 		back.Background(uikit.OverlayScrim(k).Alpha(p)).Padding(16)
-		dialogPanel(c, panel, opts.Width, p)
+		dialogPanel(c, panel, opts.Width, opts.MaxHeight, p)
 		panel.Label(opts.Title)
 		if opts.Description != "" {
 			panel.Description(opts.Description)
 		}
 		closed = dialogHeader(c, opts.Title, !opts.HideClose)
+		if opts.Header != nil {
+			opts.Header()
+		}
 		// Description and content scroll together so the actions keep their room.
 		mgo.Scroll(c).Shrink(1).Gap(u * 3).Children(func() {
 			if opts.Description != "" {
@@ -76,14 +85,18 @@ func Dialog(c *mgo.Context, open *bool, opts DialogOptions, content func()) mgo.
 }
 
 // dialogPanel styles a centered dialog panel at entrance progress p.
-func dialogPanel(c *mgo.Context, panel mgo.Element, width float32, p float32) {
+func dialogPanel(c *mgo.Context, panel mgo.Element, width, maxHeight, p float32) {
 	u := uikit.Unit(c)
 	if width == 0 {
 		width = 440
 	}
 	w, h := c.Size()
+	limit := h - 32
+	if maxHeight > 0 && maxHeight < limit {
+		limit = maxHeight
+	}
 	uikit.OverlayStyle(c, panel, p)
-	panel.Width(width).MaxWidth(w-32).MaxHeight(h-32).Padding(u*6).Gap(u*3).
+	panel.Width(width).MaxWidth(w-32).MaxHeight(limit).Padding(u*6).Gap(u*3).
 		Margin(8*(1-p), 0, 0, 0)
 }
 
@@ -145,7 +158,7 @@ func AlertDialog(c *mgo.Context, open *bool, opts AlertDialogOptions) AlertDialo
 		backClicked = back.Clicked()
 		p := uikit.OverlayEnter(c, panel)
 		back.Background(uikit.OverlayScrim(k).Alpha(p)).Padding(16)
-		dialogPanel(c, panel, 420, p)
+		dialogPanel(c, panel, 420, 0, p)
 		panel.Role(mgo.RoleAlertDialog).Label(opts.Title).Description(opts.Description)
 		mgo.Row(c).Gap(u * 3).AlignItems(mgo.Start).Shrink(0).Children(func() {
 			mgo.Icon(c, icons.Must("triangle-alert")).Size(22, 22).

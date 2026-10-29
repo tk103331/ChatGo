@@ -279,9 +279,12 @@ func (cw *ChatWindow) roomMessageRow(c *mgo.Context, msg models.Message) {
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			})
 			cw.roomQuotePreview(c, msg.QuoteID)
-			if streaming {
+			switch {
+			case streaming:
 				cw.roomStreamingLine(c, msg)
-			} else {
+			case roomIsError(msg):
+				cw.roomErrorBlock(c, msg)
+			default:
 				cw.roomFinalText(c, msg)
 			}
 			// The actions row always occupies its height, so the message
@@ -819,4 +822,68 @@ func roomQuoteContext(content, reasoning string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// roomIsError reports a message that carries a failure rather than an answer.
+func roomIsError(msg models.Message) bool {
+	return strings.HasPrefix(strings.TrimSpace(msg.Content), "⚠️")
+}
+
+// roomErrorSummary is the one-line reading of an error: the message an
+// upstream returned when it names one, otherwise the first line, shortened.
+// A long protocol error belongs behind the fold, not across the room.
+func roomErrorSummary(content string) string {
+	t := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(content), "⚠️"))
+	t = strings.TrimSpace(t)
+	if i := strings.Index(t, "message: "); i >= 0 {
+		t = t[i+len("message: "):]
+	}
+	if i := strings.Index(t, " (request_id"); i >= 0 {
+		t = t[:i]
+	}
+	for _, line := range strings.Split(t, "\n") {
+		if s := strings.TrimSpace(line); s != "" {
+			t = s
+			break
+		}
+	}
+	if r := []rune(t); len(r) > 80 {
+		t = string(r[:80]) + "…"
+	}
+	return t
+}
+
+// roomErrorBlock draws a failed reply as a fold: a red one-line summary and,
+// under it, the full error in a framed scrollable block that can be copied.
+func (cw *ChatWindow) roomErrorBlock(c *mgo.Context, msg models.Message) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	open := mgo.Local(c.Root(), "roomerr:"+msg.ID, func() bool { return false })
+	b := mgo.ButtonBase(c).FillWidth().Gap(u*2).AlignItems(mgo.Center).
+		Padding(u/2, u/2).Radius(mtheme.ControlRadius).
+		Role(mgo.RoleGroup).Label("生成失败：" + roomErrorSummary(msg.Content))
+	if b.Hovered() {
+		b.Background(k.SurfaceHover)
+	}
+	b.Children(func() {
+		if b.Hovered() || *open {
+			name := "chevron-right"
+			if *open {
+				name = "chevron-down"
+			}
+			mgo.Icon(c, icons.Must(name)).Size(14, 14).Shrink(0).TextColor(k.Danger)
+		} else {
+			mgo.Icon(c, icons.Must("circle-alert")).Size(14, 14).
+				Shrink(0).TextColor(k.Danger)
+		}
+		mgo.Text(c, "生成失败："+roomErrorSummary(msg.Content)).Grow(1).MinWidth(0).
+			SingleLine().Ellipsis("…").FontSize(caption).TextColor(k.Danger)
+	})
+	if b.Clicked() {
+		*open = !*open
+	}
+	if *open {
+		cw.toolDetailBlock(c, "错误详情", strings.TrimSpace(msg.Content), true)
+	}
 }

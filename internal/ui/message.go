@@ -64,9 +64,12 @@ func (cw *ChatWindow) messageRow(c *mgo.Context, i int, msg models.Message) {
 					FontFeatures("tnum").TextColor(mcore.Tokens(c).TextMuted).
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			})
-			if len(msg.Segments) > 0 {
+			switch {
+			case roomIsError(msg):
+				cw.roomErrorBlock(c, msg)
+			case len(msg.Segments) > 0:
 				cw.messageSegments(c, msg, streaming)
-			} else {
+			default:
 				cw.messageLegacy(c, msg, streaming)
 			}
 			// The actions row stands at a fixed height so the message never

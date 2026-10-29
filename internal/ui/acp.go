@@ -54,6 +54,7 @@ func acpCatalog() []acpCatalogEntry {
 		{Name: "Goose", Command: "goose", Description: "Block Goose AI Agent", Homepage: "https://block.github.io/goose/"},
 		{Name: "QwenCode", Command: "qwen", Description: "阿里通义灵码 Qwen Code", Homepage: "https://github.com/QwenLM/qwen-code"},
 		{Name: "KimiCLI", Command: "kimi", Description: "月之暗面 Kimi CLI", Homepage: "https://github.com/MoonshotAI/kimi-cli"},
+		{Name: "PiG", Command: "pig-acp", Description: "PiG — Pi 的 Go 实现（需先 pig install npm:@pi-in-go/pigpen-acp 并 pig acp install 构建 pig-acp）", Homepage: "https://pi-in-go.dev"},
 		{Name: "Cline", Command: "npx", Args: []string{"-y", "@cline/cline-acp-adapter"}, Description: "Cline AI 助手", Homepage: "https://cline.bot"},
 		{Name: "Dockercagent", Command: "cagent", Description: "Docker cagent", Homepage: "https://github.com/docker/cagent"},
 		{Name: "FactoryDroid", Command: "droid", Description: "Factory Droid", Homepage: "https://factory.ai"},

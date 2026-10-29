@@ -175,43 +175,60 @@ func containsFold(s, lowerNeedle string) bool {
 // same name offered by two agents.
 func selectListGrouped(c *mgo.Context, query *string, placeholder string, items []selectItem,
 	groupOf map[string]string, isOn func(id string) bool, setOn func(id string, on bool)) bool {
+	pinned, body := selectListGroupedSplit(c, query, placeholder, items, groupOf, isOn, setOn)
+	pinned()
+	return body()
+}
+
+// selectListGroupedSplit is selectListGrouped with the search field and bulk
+// actions apart from the scrolling entries, for a dialog that pins them.
+func selectListGroupedSplit(c *mgo.Context, query *string, placeholder string, items []selectItem,
+	groupOf map[string]string, isOn func(id string) bool, setOn func(id string, on bool)) (func(), func() bool) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
 	changed := false
-	mgo.Column(c).FillWidth().MinWidth(0).Gap(u * 2).Children(func() {
-		agentSearch(c, query, placeholder)
-		shown := filterSelectItems(items, *query)
-		on := 0
-		for _, it := range shown {
-			if isOn(it.ID) {
-				on++
-			}
-		}
-		all, none := selectListHeader(c, on, len(shown))
-		if all || none {
+	pinned := func() {
+		mgo.Column(c).FillWidth().MinWidth(0).Gap(u * 2).Children(func() {
+			agentSearch(c, query, placeholder)
+			shown := filterSelectItems(items, *query)
+			on := 0
 			for _, it := range shown {
-				setOn(it.ID, all)
+				if isOn(it.ID) {
+					on++
+				}
 			}
-			changed = true
-		}
-		if len(shown) == 0 {
-			mgo.Text(c, "没有匹配的项").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
-				TextColor(k.TextMuted)
-			return
-		}
-		last := ""
-		for _, it := range shown {
-			it := it
-			if g := groupOf[it.ID]; g != last {
-				last = g
-				mgo.Text(c, g).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
-					FontWeight(600).TextColor(k.TextMuted).Padding(u, 0, 0, 0)
-			}
-			selectRow(c, it, isOn(it.ID), func(v bool) {
-				setOn(it.ID, v)
+			all, none := selectListHeader(c, on, len(shown))
+			if all || none {
+				for _, it := range shown {
+					setOn(it.ID, all)
+				}
 				changed = true
-			})
-		}
-	})
-	return changed
+			}
+		})
+	}
+	body := func() bool {
+		shown := filterSelectItems(items, *query)
+		mgo.Column(c).FillWidth().MinWidth(0).Gap(u).Children(func() {
+			if len(shown) == 0 {
+				mgo.Text(c, "没有匹配的项").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+					TextColor(k.TextMuted)
+				return
+			}
+			last := ""
+			for _, it := range shown {
+				it := it
+				if g := groupOf[it.ID]; g != last {
+					last = g
+					mgo.Text(c, g).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+						FontWeight(600).TextColor(k.TextMuted).Padding(u, 0, 0, 0)
+				}
+				selectRow(c, it, isOn(it.ID), func(v bool) {
+					setOn(it.ID, v)
+					changed = true
+				})
+			}
+		})
+		return changed
+	}
+	return pinned, body
 }

@@ -54,3 +54,24 @@ func TestACPToolKind(t *testing.T) {
 		t.Fatalf("a call without metadata has no kind, got %q", got)
 	}
 }
+
+// TestACPShutdownClearsSessions checks the quit hook drops every slot, so a
+// reap afterwards finds nothing and no CLI is left tracked.
+func TestACPShutdownClearsSessions(t *testing.T) {
+	cw := testWindow()
+	rt1 := &acpConv{key: "c1", sessionID: "s1"}
+	rt2 := &acpConv{key: "c2\x00acp:claude", sessionID: "s2"}
+	cw.acp.convs["c1"] = rt1
+	cw.acp.convs["c2\x00acp:claude"] = rt2
+	cw.acp.convBySess["s1"] = "c1"
+	cw.acp.convBySess["s2"] = "c2\x00acp:claude"
+
+	cw.acpShutdown()
+
+	if len(cw.acp.convs) != 0 {
+		t.Fatalf("every session slot should be gone, got %d", len(cw.acp.convs))
+	}
+	if len(cw.acp.convBySess) != 0 {
+		t.Fatalf("session ids should be dropped too, got %d", len(cw.acp.convBySess))
+	}
+}

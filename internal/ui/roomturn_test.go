@@ -295,23 +295,26 @@ func TestLegacyMessagesKeepWorking(t *testing.T) {
 	}
 }
 
-// TestRoomCandidatesExcludeACP guards the roster against ACP agents: they are
-// coding CLIs that taskAgentSpec cannot resolve, so adding one would quietly
-// answer with the built-in chat model instead of the CLI the user picked.
-func TestRoomCandidatesExcludeACP(t *testing.T) {
+// TestRoomCandidatesIncludeACP checks both kinds join a room: a custom agent
+// through its own client, an ACP agent through its coding CLI. A disabled ACP
+// connection stays out.
+func TestRoomCandidatesIncludeACP(t *testing.T) {
 	cw := testWindow()
 	cw.cfg.Agents = []config.AgentDef{{Name: "架构师"}}
-	cw.cfg.ACPAgents = []config.ACPConnection{{Name: "claude-code"}}
+	cw.cfg.ACPAgents = []config.ACPConnection{
+		{Name: "claude-code"},
+		{Name: "off", Disabled: true},
+	}
 
 	got := cw.roomCandidates(&roomForm{})
-
-	for _, ref := range got {
-		if strings.HasPrefix(ref, "acp:") {
-			t.Errorf("an ACP agent must not be offered as a room member: %q", ref)
-		}
+	want := map[string]bool{"agent:架构师": true, "acp:claude-code": true}
+	if len(got) != len(want) {
+		t.Fatalf("both kinds should be offered, got %v", got)
 	}
-	if len(got) != 1 || got[0] != "agent:架构师" {
-		t.Fatalf("custom agents should still be offered, got %v", got)
+	for _, ref := range got {
+		if !want[ref] {
+			t.Fatalf("unexpected candidate %q (a disabled ACP connection must stay out)", ref)
+		}
 	}
 }
 
@@ -1026,5 +1029,68 @@ func TestRoomQuoteSummary(t *testing.T) {
 	}
 	if got := roomQuoteSummary(models.Message{}); got != "（无文字内容）" {
 		t.Fatalf("an empty message needs a placeholder, got %q", got)
+	}
+}
+
+// TestRoomACPSessionKey checks each ACP member of a room gets its own
+// session slot, so two coding CLIs never share one process.
+func TestRoomACPSessionKey(t *testing.T) {
+	a := roomACPSessionKey("c1", "acp:claude-code")
+	b := roomACPSessionKey("c1", "acp:opencode")
+	if a == b {
+		t.Fatal("two members of one conversation must not share a session slot")
+	}
+	if a == "c1" {
+		t.Fatal("a member's slot must differ from the plain conversation slot")
+	}
+	if roomACPSessionKey("c2", "acp:claude-code") == a {
+		t.Fatal("slots must be per conversation too")
+	}
+}
+
+// TestRoomACPText checks the prompt an ACP member receives: its identity, the
+// other members' words, and the silence token.
+func TestRoomACPText(t *testing.T) {
+	cw := testWindow()
+	conv := roomConvWith()
+	conv.Messages = append(conv.Messages, humanMsg(conv, "评审一下方案"))
+	conv.Messages = append(conv.Messages, agentMsg(conv, "agent:架构师", "架构师", "我觉得可以"))
+
+	got := cw.roomACPText(conv, config.RoomMember{Agent: "acp:claude-code", Name: "Claude"})
+	for _, want := range []string{"Claude", "评审一下方案", "架构师", "我觉得可以", roomPassToken} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the ACP prompt should carry %q, got %q", want, got)
+		}
+	}
+}
+
+// TestRoomErrorSummary checks a long upstream error is reduced to the part a
+// reader needs, with the request id and the protocol wrapper dropped.
+func TestRoomErrorSummary(t *testing.T) {
+	full := "⚠️ failed to create stream: [NodeRunError] error, status code: 400, " +
+		"status: 400 Bad Request, message: Qiniu: Model is disabled: deepseek/v4 " +
+		"(request_id: chatcmpl-08450cbfe5c94b38ac6a09783a00ea57)\nnode path: [chat]"
+	got := roomErrorSummary(full)
+	if got != "Qiniu: Model is disabled: deepseek/v4" {
+		t.Fatalf("the summary should keep the upstream message only, got %q", got)
+	}
+
+	if got := roomErrorSummary("⚠️ 网络连接失败\n第二行"); got != "网络连接失败" {
+		t.Fatalf("without a message field the first line wins, got %q", got)
+	}
+
+	long := "⚠️ " + strings.Repeat("很长的错误", 40)
+	if r := []rune(roomErrorSummary(long)); len(r) > 81 {
+		t.Fatalf("a long summary should be truncated, got %d runes", len(r))
+	}
+}
+
+// TestRoomIsError checks only a failure marker counts as an error message.
+func TestRoomIsError(t *testing.T) {
+	if !roomIsError(models.Message{Content: "⚠️ 失败"}) {
+		t.Fatal("a message starting with the warning mark is an error")
+	}
+	if roomIsError(models.Message{Content: "正常回复"}) {
+		t.Fatal("a normal reply is not an error")
 	}
 }

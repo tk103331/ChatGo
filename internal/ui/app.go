@@ -354,7 +354,12 @@ func (cw *ChatWindow) Show() {
 		e.PreventDefault()
 		w.Hide()
 	})
-	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) { cw.quitting = true })
+	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
+		cw.quitting = true
+		// Kill the coding CLIs here: a child that ignores the parent's death
+		// would otherwise linger after the window is gone.
+		cw.acpShutdown()
+	})
 	mygo.App.OnWillQuit(func(e *mygo.QuitEvent) { cw.quitting = false })
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
 		if !hasVisibleWindows {

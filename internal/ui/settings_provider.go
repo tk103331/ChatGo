@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"context"
 	"fmt"
+	"strconv"
 	"strings"
+	"time"
 
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
@@ -186,6 +189,9 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 			m := m
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				mgo.Text(c, m).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+				if r, ok := f.probeResults[m]; ok {
+					cw.probeMark(c, r)
+				}
 				if mcore.IconAction(c, icons.Must("x"), "移除模型").Clicked() {
 					f.models = removeStr(f.models, m)
 					changed = true
@@ -206,6 +212,12 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 			}
 		})
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if kit.Button(c, "测试模型", kit.ButtonOptions{
+				Variant: kit.Secondary, Icon: icons.Must("globe"),
+				Loading: f.testing, Disabled: f.testing,
+			}).Clicked() {
+				cw.testProvider()
+			}
 			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.saveProvider()
 			}
@@ -217,6 +229,97 @@ func (cw *ChatWindow) providerFormFields(c *mgo.Context) {
 	if changed && f.editing >= 0 {
 		cw.persistProvider()
 	}
+}
+
+// testProvider probes every model the form lists, one request each, so a
+// wrong key, URL or a model the upstream has disabled is found before the
+// provider is saved. It uses the form's own values, not the saved ones.
+func (cw *ChatWindow) testProvider() {
+	f := &cw.settings.prov
+	if f.testing {
+		return
+	}
+	if len(f.models) == 0 {
+		cw.fail("请先添加至少一个模型")
+		return
+	}
+	p := config.Provider{
+		Name: f.name, Type: f.typ, APIType: f.apiType,
+		APIKey: f.apiKey, BaseURL: f.baseURL,
+		Models:  append([]string(nil), f.models...),
+		Enabled: true,
+	}
+	f.testing = true
+	f.probeResults = nil
+	cw.invalidate()
+	go func() {
+		results := cw.probeModels(p)
+		cw.postMain(func() {
+			f.testing = false
+			f.probeResults = results
+			failed := 0
+			var detail strings.Builder
+			for _, m := range p.Models {
+				r := results[m]
+				if r.ok {
+					detail.WriteString("✓ " + m + "\n")
+					continue
+				}
+				failed++
+				detail.WriteString("✗ " + m + "：" + r.err + "\n")
+			}
+			if failed == 0 {
+				cw.toast("连接正常："+p.Name+" 的 "+strconv.Itoa(len(p.Models))+" 个模型全部可用",
+					mcore.SeveritySuccess)
+			} else {
+				cw.toastErrorDetail(
+					"连接失败："+p.Name+" 有 "+strconv.Itoa(failed)+" 个模型不可用",
+					strings.TrimSpace(detail.String()))
+			}
+			cw.invalidate()
+		})
+	}()
+}
+
+// probeModels sends one minimal message per model and reports each result.
+func (cw *ChatWindow) probeModels(p config.Provider) map[string]modelProbe {
+	out := make(map[string]modelProbe, len(p.Models))
+	for _, m := range p.Models {
+		out[m] = cw.probeModel(p, m)
+	}
+	return out
+}
+
+// probeModel tries one model, reporting the failure text when it fails.
+func (cw *ChatWindow) probeModel(p config.Provider, model string) modelProbe {
+	one := p
+	one.Model = model
+	one.Models = []string{model}
+	client, err := llm.NewClient(one)
+	if err != nil {
+		return modelProbe{err: err.Error()}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	resp, err := client.ChatNonBlocking(ctx, []llm.ChatMessage{{Role: "user", Content: "ping"}})
+	if err != nil {
+		return modelProbe{err: err.Error()}
+	}
+	if resp == nil || (strings.TrimSpace(resp.Content) == "" && strings.TrimSpace(resp.Reasoning) == "") {
+		return modelProbe{err: "模型没有返回内容"}
+	}
+	return modelProbe{ok: true}
+}
+
+// probeMark shows one model's probe result beside its name.
+func (cw *ChatWindow) probeMark(c *mgo.Context, r modelProbe) {
+	k := mcore.Tokens(c)
+	if r.ok {
+		mgo.Icon(c, icons.Must("circle-check")).Size(14, 14).Shrink(0).TextColor(k.Success)
+		return
+	}
+	mgo.Icon(c, icons.Must("circle-alert")).Size(14, 14).Shrink(0).
+		TextColor(k.Danger).Tooltip(roomErrorSummary(r.err))
 }
 
 // providerFormCanList reports whether the provider being edited could be

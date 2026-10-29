@@ -371,7 +371,7 @@ func (cw *ChatWindow) roomMemberFields(c *mgo.Context, f *roomForm) {
 			mgo.Text(c, "还没有可用的 Agent，先到「Agent」页创建。").
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 		} else {
-			mgo.Text(c, "已加入全部可用 Agent。ACP Agent 暂不支持入群。").
+			mgo.Text(c, "已加入全部可用 Agent。").
 				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
 		}
 	})
@@ -383,13 +383,20 @@ func (cw *ChatWindow) roomCandidates(f *roomForm) []string {
 	for _, m := range f.members {
 		taken[m.Agent] = true
 	}
-	// Only custom agents can join. An ACP agent is a coding CLI driven over
-	// a session protocol, which taskAgentSpec cannot resolve: it would fall
-	// through to the built-in chat and answer with a plain model instead of
-	// the CLI the user picked.
-	out := make([]string, 0, len(cw.cfg.Agents))
+	// Both kinds join: a custom agent answers through its own client, and
+	// an ACP agent answers through its coding CLI, each in its own session
+	// slot so several CLIs can share one room.
+	out := make([]string, 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents))
 	for _, a := range cw.cfg.Agents {
 		if ref := "agent:" + a.Name; !taken[ref] {
+			out = append(out, ref)
+		}
+	}
+	for _, a := range cw.cfg.ACPAgents {
+		if a.Disabled {
+			continue
+		}
+		if ref := "acp:" + a.Name; !taken[ref] {
 			out = append(out, ref)
 		}
 	}

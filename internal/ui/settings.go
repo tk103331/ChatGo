@@ -60,6 +60,18 @@ type providerForm struct {
 	newModel string
 	enabled  bool
 	preset   bool
+	// testing marks a connectivity probe in flight, so the button spins and
+	// a second click cannot start another.
+	testing bool
+	// probeResults is the last per-model probe: one entry per model that was
+	// tried, so a disabled model is named instead of failing the whole check.
+	probeResults map[string]modelProbe
+}
+
+// modelProbe is one model's connectivity result.
+type modelProbe struct {
+	ok  bool
+	err string
 }
 
 type groupForm struct {
