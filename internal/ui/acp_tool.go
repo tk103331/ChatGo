@@ -156,12 +156,17 @@ func (cw *ChatWindow) toolRow(c *mgo.Context, tc models.ToolCall, kind, label, s
 }
 
 // acpToolState marks a call's run: running, failed, or done with its
-// duration.
+// duration. An ACP adapter reports its own status; a built-in call reports
+// nothing until it finishes, so an empty call with no result yet is still
+// running.
 func (cw *ChatWindow) acpToolState(c *mgo.Context, tc models.ToolCall) {
 	k := mcore.Tokens(c)
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	running := tc.Status == string(acp.ToolCallStatusInProgress) ||
+		tc.Status == string(acp.ToolCallStatusPending) ||
+		(tc.Status == "" && tc.Error == "" && tc.Result == "" && tc.DurationMs == 0)
 	switch {
-	case tc.Status == string(acp.ToolCallStatusInProgress):
+	case running:
 		mcore.Spinner(c, mcore.SpinnerOptions{Size: 10})
 	case tc.Error != "" || tc.Status == string(acp.ToolCallStatusFailed):
 		mgo.Text(c, "失败").Shrink(0).SingleLine().FontSize(caption).TextColor(k.Danger)

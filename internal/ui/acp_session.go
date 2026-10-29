@@ -61,10 +61,14 @@ type acpConv struct {
 	conn      *acp.ClientSideConnection
 	sessionID acp.SessionId
 	convID    string
-	modes     []acp.SessionMode
-	modeID    acp.SessionModeId
-	configs   []acp.SessionConfigOption
-	commands  []acp.AvailableCommand
+	// key is the session slot: convID for a normal conversation, and a
+	// per-member key for a room, where one conversation hosts several
+	// coding CLIs at once.
+	key      string
+	modes    []acp.SessionMode
+	modeID   acp.SessionModeId
+	configs  []acp.SessionConfigOption
+	commands []acp.AvailableCommand
 
 	// batch holds the tool calls still running in the current batch and the
 	// batch's titles; a batch ends when the map empties, which is the
@@ -76,7 +80,7 @@ type acpConv struct {
 // acpPersist stores a mode/config choice on the conversation so it survives a restart.
 
 func (cw *ChatWindow) acpPersist(rt *acpConv, key, value string) {
-	conv := cw.acp.convObj[rt.convID]
+	conv := cw.acp.convObj[rt.key]
 	if conv == nil {
 		return
 	}
@@ -338,21 +342,28 @@ func toolsOfTurn(conv *models.Conversation, msgID string) []string {
 }
 
 func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.ACPConnection) (*acpConv, error) {
+	return cw.acpEnsureSessionAt(conv, conn, conv.ID)
+}
+
+// acpEnsureSessionAt starts (or reuses) the session in one slot. A room
+// gives each ACP member its own slot, so two coding CLIs in one conversation
+// do not share a process.
+func (cw *ChatWindow) acpEnsureSessionAt(conv *models.Conversation, conn config.ACPConnection, key string) (*acpConv, error) {
 	cw.acp.mu.Lock()
-	if rt := cw.acp.convs[conv.ID]; rt != nil {
+	if rt := cw.acp.convs[key]; rt != nil {
 		cw.acp.mu.Unlock()
 		return rt, nil
 	}
-	if cw.acp.starting[conv.ID] {
+	if cw.acp.starting[key] {
 		cw.acp.mu.Unlock()
 		return nil, fmt.Errorf("ACP 会话正在建立")
 	}
-	cw.acp.starting[conv.ID] = true
+	cw.acp.starting[key] = true
 	cw.acp.mu.Unlock()
 	cw.invalidate()
 	defer func() {
 		cw.acp.mu.Lock()
-		delete(cw.acp.starting, conv.ID)
+		delete(cw.acp.starting, key)
 		cw.acp.mu.Unlock()
 	}()
 
@@ -386,7 +397,7 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	rt := &acpConv{cmd: cmd, convID: conv.ID, batch: map[string]bool{}}
+	rt := &acpConv{cmd: cmd, convID: conv.ID, key: key, batch: map[string]bool{}}
 	go func() {
 		_ = cmd.Wait()
 		cw.acpReap(rt)
@@ -419,8 +430,8 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 		rt.modeID = resp.Modes.CurrentModeId
 	}
 	cw.acp.mu.Lock()
-	cw.acp.convs[conv.ID] = rt
-	cw.acp.convBySess[rt.sessionID] = conv.ID
+	cw.acp.convs[key] = rt
+	cw.acp.convBySess[rt.sessionID] = key
 	// The session is fresh: anything the CLI sends before the first prompt is
 	// a greeting, dropped until that prompt clears the mark.
 	cw.acp.greeting[rt.sessionID] = true
@@ -446,8 +457,8 @@ func (cw *ChatWindow) acpKillProcess(rt *acpConv) {
 
 func (cw *ChatWindow) acpReap(rt *acpConv) {
 	cw.acp.mu.Lock()
-	if cur := cw.acp.convs[rt.convID]; cur == rt {
-		delete(cw.acp.convs, rt.convID)
+	if cur := cw.acp.convs[rt.key]; cur == rt {
+		delete(cw.acp.convs, rt.key)
 	}
 	if rt.sessionID != "" {
 		delete(cw.acp.convBySess, rt.sessionID)
@@ -555,16 +566,40 @@ func (cw *ChatWindow) acpCloseConn(name string) {
 	}
 }
 
-func (cw *ChatWindow) acpConvClose(convID string) {
+// acpShutdown kills every live session, so no coding CLI outlives the app.
+// The quit hook calls it once; the reap goroutine then finds the slot already
+// gone and does nothing.
+func (cw *ChatWindow) acpShutdown() {
 	cw.acp.mu.Lock()
-	rt := cw.acp.convs[convID]
-	delete(cw.acp.convs, convID)
-	if rt != nil {
+	rts := make([]*acpConv, 0, len(cw.acp.convs))
+	for key, rt := range cw.acp.convs {
+		rts = append(rts, rt)
+		delete(cw.acp.convs, key)
 		delete(cw.acp.convBySess, rt.sessionID)
 	}
 	cw.acp.mu.Unlock()
+	for _, rt := range rts {
+		cw.acpKillProcess(rt)
+	}
+}
+
+func (cw *ChatWindow) acpConvClose(convID string) {
+	cw.acp.mu.Lock()
+	// A room hosts one slot per ACP member, so close every slot of the
+	// conversation rather than only the plain one.
+	var doomed []*acpConv
+	for key, rt := range cw.acp.convs {
+		if rt.convID != convID {
+			continue
+		}
+		doomed = append(doomed, rt)
+		delete(cw.acp.convs, key)
+		delete(cw.acp.convBySess, rt.sessionID)
+		delete(cw.acp.convObj, key)
+	}
+	cw.acp.mu.Unlock()
 	delete(cw.acp.convObj, convID)
-	if rt != nil {
+	for _, rt := range doomed {
 		cw.acpKillProcess(rt)
 	}
 }

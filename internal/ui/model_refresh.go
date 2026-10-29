@@ -104,10 +104,20 @@ func (cw *ChatWindow) modelRefreshDialog(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	items := cw.modelRefreshItems()
+	pinned, body := selectListGroupedSplit(c, &st.query, "搜索模型", items, nil,
+		func(id string) bool { return st.chosen[id] },
+		func(id string, on bool) { st.chosen[id] = on })
 	kit.Dialog(c, &st.open, kit.DialogOptions{
 		Title:       "获取模型列表",
 		Description: modelRefreshHint(st),
 		Width:       680,
+		MaxHeight:   520,
+		Header: func() {
+			if !st.loading && len(st.found) > 0 {
+				pinned()
+			}
+		},
 		Actions: func() {
 			if kit.Button(c, "取消", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 				st.open = false
@@ -136,11 +146,7 @@ func (cw *ChatWindow) modelRefreshDialog(c *mgo.Context) {
 				mgo.Text(c, "该服务商没有返回任何模型。").FontSize(caption).TextColor(k.TextMuted)
 				return
 			}
-			items := cw.modelRefreshItems()
-			changed := selectListGrouped(c, &st.query, "搜索模型", items, nil,
-				func(id string) bool { return st.chosen[id] },
-				func(id string, on bool) { st.chosen[id] = on })
-			if changed {
+			if body() {
 				c.Invalidate()
 			}
 		})

@@ -352,6 +352,10 @@ func (cw *ChatWindow) takeRoomHandoff(r config.Room, spoken map[string]bool) []c
 // runRoomMember generates one member's reply and blocks until it is done, so
 // the next member reads a conversation that already contains it.
 func (cw *ChatWindow) runRoomMember(ctx context.Context, r config.Room, conv *models.Conversation, m config.RoomMember) {
+	if strings.HasPrefix(m.Agent, "acp:") {
+		cw.runRoomACPMember(ctx, r, conv, m)
+		return
+	}
 	name := roomMemberName(m)
 	client, react, groupClient, groupReact, err := cw.roomMemberClient(r, m)
 	if err != nil {

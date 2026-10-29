@@ -81,7 +81,8 @@ func ACPIconKey(name string) string {
 		return "qoder"
 	case strings.Contains(low, "deepseek"):
 		return "deepseek"
-	case strings.Contains(low, "piagent") || strings.Contains(low, "pi-acp"):
+	case strings.Contains(low, "piagent") || strings.Contains(low, "pi-acp") ||
+		low == "pig" || strings.HasPrefix(low, "pig-"):
 		return "pi"
 	case strings.Contains(low, "ohmypi") || strings.Contains(low, "oh-my-pi") || low == "omp":
 		return "omp"
