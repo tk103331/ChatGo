@@ -81,8 +81,9 @@ func ACPIconKey(name string) string {
 		return "qoder"
 	case strings.Contains(low, "deepseek"):
 		return "deepseek"
-	case strings.Contains(low, "piagent") || strings.Contains(low, "pi-acp") ||
-		low == "pig" || strings.HasPrefix(low, "pig-"):
+	case low == "pig" || strings.HasPrefix(low, "pig-"):
+		return "pig"
+	case strings.Contains(low, "piagent") || strings.Contains(low, "pi-acp"):
 		return "pi"
 	case strings.Contains(low, "ohmypi") || strings.Contains(low, "oh-my-pi") || low == "omp":
 		return "omp"
@@ -96,10 +97,14 @@ var claudeLogoPNG []byte
 //go:embed opencode.png
 var opencodeLogoPNG []byte
 
+//go:embed pig.png
+var pigLogoPNG []byte
+
 var (
 	logoOnce   sync.Once
 	logoClaude *mgo.Bitmap
 	logoOpen   *mgo.Bitmap
+	logoPig    *mgo.Bitmap
 )
 
 // ACPLogo returns the official bitmap logo of a known ACP agent by name.
@@ -107,6 +112,7 @@ func ACPLogo(name string) *mgo.Bitmap {
 	logoOnce.Do(func() {
 		logoClaude, _ = mgo.DecodeBitmap(claudeLogoPNG)
 		logoOpen, _ = mgo.DecodeBitmap(opencodeLogoPNG)
+		logoPig, _ = mgo.DecodeBitmap(pigLogoPNG)
 	})
 	low := strings.ToLower(name)
 	switch {
@@ -114,6 +120,8 @@ func ACPLogo(name string) *mgo.Bitmap {
 		return logoClaude
 	case strings.Contains(low, "opencode"):
 		return logoOpen
+	case low == "pig" || strings.HasPrefix(low, "pig-"):
+		return logoPig
 	}
 	return nil
 }
