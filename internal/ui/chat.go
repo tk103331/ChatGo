@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"strconv"
 	"strings"
 	"time"
 
@@ -108,9 +107,7 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 				return
 			}
 			cw.modelSelector(c)
-			cw.toolMenu(c)
-			cw.mcpMenu(c)
-			cw.skillMenu(c)
+			cw.toolsMenu(c)
 		},
 		Actions: func() {
 			if initializing {
@@ -218,83 +215,4 @@ func (cw *ChatWindow) providerForRef(ref string) config.Provider {
 		return p
 	}
 	return config.Provider{}
-}
-
-// toolMenu toggles the builtin tools in a popover.
-func (cw *ChatWindow) toolMenu(c *mgo.Context) {
-	cw.toolPopover(c, "tools", "工具", "sliders-horizontal", "工具", "builtin:")
-}
-
-// mcpMenu toggles the MCP servers in a popover, separate from builtin tools.
-func (cw *ChatWindow) mcpMenu(c *mgo.Context) {
-	cw.toolPopover(c, "mcp", "MCP", "layout-grid", "MCP 服务器", "mcp:")
-}
-
-// toolPopover builds a button and popover listing the tools whose IDs begin
-// with prefix, keeping the builtin and MCP controls independent.
-func (cw *ChatWindow) toolPopover(c *mgo.Context, key, buttonLabel, icon, title, prefix string) {
-	var list []toolMeta
-	for _, mt := range cw.toolMetas() {
-		if strings.HasPrefix(mt.ID, prefix) {
-			list = append(list, mt)
-		}
-	}
-	btnIcon := icons.Must(icon)
-	if prefix == "mcp:" {
-		if svg := assets.MCPLogo(); svg != nil {
-			btnIcon = svg
-		}
-	}
-	if len(list) == 0 {
-		// A configure fallback, styled like the model selector's own.
-		if kit.Button(c, "配置"+buttonLabel, kit.ButtonOptions{Variant: kit.Outline, Icon: btnIcon}).Clicked() {
-			if prefix == "mcp:" {
-				cw.goConfigure(sectionMCP)
-			} else {
-				cw.settings.tab = 1
-				cw.goConfigure(sectionSettings)
-			}
-		}
-		return
-	}
-	u := mcore.Density(c).Unit()
-	on := 0
-	for _, mt := range list {
-		if cw.toolEnabled(mt.ID) {
-			on++
-		}
-	}
-	label := buttonLabel
-	if on > 0 {
-		label = buttonLabel + " (" + strconv.Itoa(on) + ")"
-	}
-	// The same secondary trigger as the model selector, so the four select
-	// buttons in the composer read as one family.
-	b := kit.Button(c, label, kit.ButtonOptions{Variant: kit.Secondary, Icon: btnIcon})
-	open := mgo.Local(b, key, func() bool { return false })
-	if b.Clicked() {
-		*open = !*open
-	}
-	query := &cw.toolQuery
-	if prefix == "mcp:" {
-		query = &cw.mcpQuery
-	}
-	items := make([]selectItem, 0, len(list))
-	for _, mt := range list {
-		items = append(items, selectItem{ID: mt.ID, Title: mt.Label, Desc: mt.Desc})
-	}
-	changed := false
-	pinned, body := selectListSplit(c, query, "搜索"+buttonLabel, items,
-		cw.toolEnabled,
-		func(id string, on bool) { cw.toolOn[id] = on })
-	kit.Popover(c, b, open, kit.PopoverOptions{Label: title, MaxHeight: u * 88, Header: pinned}, func() {
-		changed = body()
-	})
-	if changed {
-		if cw.currentAgent == "" {
-			cw.saveChatSelection()
-		}
-		cw.clientDirty.Store(true)
-		c.Invalidate()
-	}
 }

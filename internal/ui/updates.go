@@ -15,8 +15,8 @@ import (
 const updateCheckInterval = 30 * time.Minute
 
 // StartUpdateChecker turns the plugin's automatic pop-up checks off and
-// starts the app's quieter timer: a found update shows as a tray menu entry
-// until the user clicks it to open the update window.
+// starts the app's quieter timer: a found update shows in the title bar and
+// tray menu until the user clicks it to open the update window.
 func (cw *ChatWindow) StartUpdateChecker() {
 	updater.SetAutomaticChecks(false)
 	go func() {
@@ -40,6 +40,10 @@ func (cw *ChatWindow) checkForUpdate() {
 		return
 	}
 	cw.applyUpdate(up)
+}
+
+func (cw *ChatWindow) openUpdateWindow() {
+	updater.CheckForUpdates()
 }
 
 // applyUpdate records the result of a check. A nil update means the app is

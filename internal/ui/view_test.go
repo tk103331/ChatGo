@@ -1179,9 +1179,8 @@ func TestColorThemesRecolorAccentAndSurfaces(t *testing.T) {
 	}
 }
 
-// The four selector buttons in the composer — model, tools, MCP and skills —
-// render the same way: an icon and a text label, so they read as one family
-// rather than a bordered model trigger beside three bare icon toggles.
+// The composer keeps the model selector on its own and gathers the builtin
+// tools, MCP servers and skills under one searchable, tabbed control.
 func TestComposerSelectorsAreConsistent(t *testing.T) {
 	cw := testWindow()
 	cw.cfg.BuiltinTools = []config.BuiltinTool{{Name: "search", Type: "web_search", Enabled: true}}
@@ -1199,10 +1198,37 @@ func TestComposerSelectorsAreConsistent(t *testing.T) {
 		tr.Frame()
 	}
 	texts := tr.Texts()
-	for _, want := range []string{"OpenAI · gpt-4", "工具 (1)", "MCP (1)", "Skills (1)"} {
-		if !containsText(texts, want) {
-			t.Fatalf("the composer lacks the %q selector: %v", want, texts)
+	if !containsText(texts, "OpenAI · gpt-4") {
+		t.Fatalf("the composer lacks the model selector: %v", texts)
+	}
+	if err := tr.Click("工具与技能"); err != nil {
+		t.Fatalf("open the tool tabs: %v", err)
+	}
+	for range 4 {
+		tr.Frame()
+	}
+	for _, want := range []string{"工具 (1)", "MCP (1)", "Skills (1)", "搜索工具"} {
+		if !containsText(tr.Texts(), want) {
+			t.Fatalf("the tool tabs lack %q: %v", want, tr.Texts())
 		}
+	}
+	if err := tr.Click("MCP (1)"); err != nil {
+		t.Fatalf("switch to MCP: %v", err)
+	}
+	for range 3 {
+		tr.Frame()
+	}
+	if !containsText(tr.Texts(), "搜索 MCP 服务器") {
+		t.Fatalf("the MCP tab lacks its search: %v", tr.Texts())
+	}
+	if err := tr.Click("Skills (1)"); err != nil {
+		t.Fatalf("switch to Skills: %v", err)
+	}
+	for range 3 {
+		tr.Frame()
+	}
+	if !containsText(tr.Texts(), "搜索 Skill") {
+		t.Fatalf("the Skills tab lacks its search: %v", tr.Texts())
 	}
 }
 

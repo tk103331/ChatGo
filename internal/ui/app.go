@@ -75,7 +75,7 @@ type ChatWindow struct {
 	rightPanel bool
 	rightTab   int
 	// updateVer is a newer release found by the background checker, shown
-	// as a tray menu entry; empty means no update is known.
+	// in the title bar and tray menu; empty means no update is known.
 	updateVer  string
 	leftHidden bool
 	leftW      float32
@@ -130,7 +130,6 @@ type ChatWindow struct {
 
 	currentAgent string
 	systemPrompt string
-	homeAgent    string
 
 	convs       []models.Conversation
 	taskConvs   []models.Conversation
@@ -558,6 +557,15 @@ func (cw *ChatWindow) titleBar(c *mgo.Context) {
 		mgo.Icon(c, assets.BrandMark()).Size(16, 16).TextColor(k.Accent)
 		mgo.Text(c, cw.windowTitle()).FontSize(mcore.FontSize(c, mtheme.BodySize)).FontWeight(600).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		if cw.updateVer != "" {
+			b := kit.Button(c, "新版本 v"+cw.updateVer, kit.ButtonOptions{
+				Variant: kit.Outline, Icon: icons.Must("arrow-down"),
+			})
+			b.Height(navItemSize-12).Shrink(0).Padding(0, u).Radius(mtheme.ControlRadius)
+			if b.Clicked() {
+				cw.openUpdateWindow()
+			}
+		}
 		if cw.section == sectionChat {
 			if mcore.IconAction(c, icons.Must("panel-left"), "会话列表").Clicked() {
 				cw.leftHidden = !cw.leftHidden

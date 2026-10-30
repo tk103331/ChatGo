@@ -91,19 +91,27 @@ func (cw *ChatWindow) createBody(c *mgo.Context) {
 				FontWeight(600).Shrink(0)
 			mgo.Text(c, "选择 Agent、项目与工作树，输入消息后回车创建会话。").FontSize(caption).
 				TextColor(k.TextMuted).Shrink(0)
-			// Every picker is a sibling of the same row, aligned at the top
-			// so their labels line up however tall a picker grows.
-			mgo.Row(c).FillWidth().Shrink(0).Gap(u * 2).AlignItems(mgo.Start).
-				Wrap().Children(func() {
-				cw.createAgentSelect(c)
-				cw.createWorkspaceSelect(c)
-				cw.createWorktreeSelect(c)
-				if cw.create.wt == createNewWorktree {
-					cw.createBranchSelect(c)
-				}
-			})
+			cw.createSelectors(c, "新会话")
 			cw.createComposer(c)
 		})
+	})
+}
+
+// createSelectors lays out the agent, project, worktree and branch pickers as
+// one wrapping row. The home page reuses it, so starting a session asks for
+// the same things in the same place wherever it begins.
+func (cw *ChatWindow) createSelectors(c *mgo.Context, scope string) {
+	u := mcore.Density(c).Unit()
+	// Every picker is a sibling of the same row, aligned at the top so their
+	// labels line up however tall a picker grows.
+	mgo.Row(c).FillWidth().Shrink(0).Gap(u * 2).AlignItems(mgo.Start).
+		Wrap().Children(func() {
+		cw.createAgentSelect(c, scope)
+		cw.createWorkspaceSelect(c, scope)
+		cw.createWorktreeSelect(c, scope)
+		if cw.create.wt == createNewWorktree {
+			cw.createBranchSelect(c, scope)
+		}
 	})
 }
 
@@ -119,7 +127,7 @@ const createPickerWidth float32 = 180
 const createPickerHeight float32 = 32
 
 // createAgentSelect chooses the agent that runs the new conversation.
-func (cw *ChatWindow) createAgentSelect(c *mgo.Context) {
+func (cw *ChatWindow) createAgentSelect(c *mgo.Context, scope string) {
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	opts := make([]kit.SearchSelectOption[string], 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+1)
@@ -143,23 +151,43 @@ func (cw *ChatWindow) createAgentSelect(c *mgo.Context) {
 	}
 	mgo.Column(c).Shrink(0).Gap(u).Children(func() {
 		mgo.Text(c, "Agent").FontSize(caption).TextColor(mcore.Tokens(c).TextMuted).
-			Label("新会话 Agent")
-		kit.SearchSelect(c, &cw.create.agent, opts, kit.SearchSelectOptions[string]{
+			Label(scope + " Agent")
+		sel := kit.SearchSelect(c, &cw.create.agent, opts, kit.SearchSelectOptions[string]{
 			Label: "Agent", Placeholder: "选择 Agent", SearchPlaceholder: "搜索 Agent",
 			MinWidth: createPickerWidth, MinHeight: createPickerHeight,
 		})
+		sel.Element.Justify(mgo.Start)
 	})
+}
+
+func (cw *ChatWindow) projectWorkspaces() []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, ws := range cw.workspaces() {
+		cw.ensureConvGit(ws)
+		main := cw.convGitGroup(ws)
+		if main == "" || seen[main] {
+			continue
+		}
+		seen[main] = true
+		out = append(out, main)
+	}
+	return out
 }
 
 // createWorkspaceSelect chooses the project, with a button beside it that
 // picks a new directory. Picking another project drops the worktree chosen
 // for the old one and defaults to the new project's main tree, so the tree
 // below never belongs to a different project.
-func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context) {
+func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context, scope string) {
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	opts := make([]kit.SearchSelectOption[string], 0, len(cw.workspaces()))
-	for _, ws := range cw.workspaces() {
+	projects := cw.projectWorkspaces()
+	if p := cw.convGitProject(cw.create.ws); p != nil && p.Main != "" {
+		cw.create.ws = p.Main
+	}
+	opts := make([]kit.SearchSelectOption[string], 0, len(projects))
+	for _, ws := range projects {
 		name := filepath.Base(ws)
 		if name == "" || name == "." || name == string(filepath.Separator) {
 			name = ws
@@ -168,13 +196,14 @@ func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context) {
 	}
 	mgo.Column(c).Shrink(0).Gap(u).Children(func() {
 		mgo.Text(c, "项目").FontSize(caption).TextColor(mcore.Tokens(c).TextMuted).
-			Label("新会话 项目")
+			Label(scope + " 项目")
 		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
 			sel := kit.SearchSelect(c, &cw.create.ws, opts, kit.SearchSelectOptions[string]{
 				Label: "项目", Placeholder: "选择项目",
 				SearchPlaceholder: "搜索项目", Empty: "没有项目，可先新增",
 				MinWidth: createPickerWidth, MinHeight: createPickerHeight,
 			})
+			sel.Element.Justify(mgo.Start)
 			if mcore.IconAction(c, icons.Must("folder"), "新增项目").Tooltip("新增项目").Clicked() {
 				// The new directory becomes the chosen project, exactly like
 				// picking it from the dropdown: the worktree resets to the
@@ -204,7 +233,7 @@ func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context) {
 // "新建 worktree" option that opens the branch picker. Each entry is only the
 // branch, the main tree marked [主]: the project is already chosen above, and
 // the branch is what tells the trees apart.
-func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context) {
+func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context, scope string) {
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	k := mcore.Tokens(c)
@@ -239,12 +268,13 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context) {
 	}
 	mgo.Column(c).Shrink(0).Gap(u).Children(func() {
 		mgo.Text(c, "工作树").FontSize(caption).TextColor(k.TextMuted).
-			Label("新会话 工作树")
-		kit.SearchSelect(c, &cw.create.wt, opts, kit.SearchSelectOptions[string]{
+			Label(scope + " 工作树")
+		sel := kit.SearchSelect(c, &cw.create.wt, opts, kit.SearchSelectOptions[string]{
 			Label: "工作树", Placeholder: "选择工作树",
 			SearchPlaceholder: "搜索工作树", Empty: "此项目没有工作树",
 			MinWidth: createPickerWidth, MinHeight: createPickerHeight,
 		})
+		sel.Element.Justify(mgo.Start)
 	})
 }
 
@@ -252,7 +282,7 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context) {
 // branch, the main tree marked [主], since the project is already chosen
 // createBranchSelect chooses the branch of a new worktree, searchable and
 // able to create a new branch, the same picker the worktree panel uses.
-func (cw *ChatWindow) createBranchSelect(c *mgo.Context) {
+func (cw *ChatWindow) createBranchSelect(c *mgo.Context, scope string) {
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	p := cw.convGitProject(cw.create.ws)
@@ -262,9 +292,10 @@ func (cw *ChatWindow) createBranchSelect(c *mgo.Context) {
 	}
 	mgo.Column(c).Shrink(0).Gap(u).Children(func() {
 		mgo.Text(c, "分支").FontSize(caption).TextColor(mcore.Tokens(c).TextMuted).
-			Label("新会话 分支")
+			Label(scope + " 分支")
 		sel := kit.BranchSelector(c, &cw.create.branch, branches,
 			kit.BranchSelectorOptions{AllowCreate: true, Key: "create", MinHeight: createPickerHeight})
+		sel.Element.Justify(mgo.Start)
 		if sel.Changed() {
 			cw.create.newBranch = false
 		}
@@ -278,8 +309,14 @@ func (cw *ChatWindow) createBranchSelect(c *mgo.Context) {
 // createComposer is the central input; its footer holds the agent-specific
 // controls, and Enter starts the conversation.
 func (cw *ChatWindow) createComposer(c *mgo.Context) {
+	cw.startComposer(c, "输入消息，Enter 创建会话并发送", cw.startFromCreate)
+}
+
+// startComposer is the composer shared by the "新会话" tab and the home page:
+// the agent's model and tool controls sit in its footer and Enter runs start.
+func (cw *ChatWindow) startComposer(c *mgo.Context, placeholder string, start func()) {
 	in := composer(c, &cw.draft, composerOptions{
-		Placeholder: "输入消息，Enter 创建会话并发送",
+		Placeholder: placeholder,
 		MaxHeight:   180,
 		Tools: func() {
 			if cw.createIsACP() {
@@ -287,20 +324,18 @@ func (cw *ChatWindow) createComposer(c *mgo.Context) {
 				return
 			}
 			cw.modelSelector(c)
-			cw.toolMenu(c)
-			cw.mcpMenu(c)
-			cw.skillMenu(c)
+			cw.toolsMenu(c)
 		},
 		Actions: func() {
 			r := kit.SendButton(c, kit.SendButtonOptions{Disabled: strings.TrimSpace(cw.draft) == ""})
 			if r.Sent() {
-				cw.startFromCreate()
+				start()
 			}
 		},
 	})
 	in.Element.FillWidth().Shrink(0)
 	if in.Submitted() {
-		cw.startFromCreate()
+		start()
 	}
 }
 
@@ -356,7 +391,11 @@ func (cw *ChatWindow) startFromCreate() {
 		})
 		return
 	}
-	cw.finishCreate(cw.create.wt)
+	wt := cw.create.wt
+	if wt == "" {
+		wt = ws
+	}
+	cw.finishCreate(wt)
 }
 
 // finishCreate closes the tab and starts the conversation in ws.

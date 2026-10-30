@@ -106,8 +106,10 @@ func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, stream
 		seg := msg.Segments[i]
 		switch seg.Kind {
 		case "reasoning":
-			open := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:%d", msg.ID, i), func() bool { return false })
-			cw.reasoningBlock(c, open, seg.Text, streaming && i == len(msg.Segments)-1)
+			live := streaming && i == len(msg.Segments)-1
+			fold := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:%d", msg.ID, i), func() reasoningFold { return reasoningFold{} })
+			fold.follow(live)
+			cw.reasoningBlock(c, &fold.open, seg.Text, live)
 			i++
 		case "tool":
 			if tc := msg.Segments[i].ToolCall; tc != nil {
@@ -131,8 +133,9 @@ func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, stream
 // messageLegacy renders a message that predates segments.
 func (cw *ChatWindow) messageLegacy(c *mgo.Context, msg models.Message, streaming bool) {
 	if msg.Role == "assistant" && strings.TrimSpace(msg.Reasoning) != "" {
-		open := mgo.Local(c.Root(), "reason:"+msg.ID, func() bool { return false })
-		cw.reasoningBlock(c, open, msg.Reasoning, streaming)
+		fold := mgo.Local(c.Root(), "reason:"+msg.ID, func() reasoningFold { return reasoningFold{} })
+		fold.follow(streaming)
+		cw.reasoningBlock(c, &fold.open, msg.Reasoning, streaming)
 	}
 	if len(msg.ToolCalls) > 0 {
 		cw.toolCalls(c, msg, msg.ToolCalls)
@@ -157,6 +160,18 @@ func (cw *ChatWindow) emptySegments(msg models.Message) bool {
 		}
 	}
 	return true
+}
+
+type reasoningFold struct {
+	open bool
+	live bool
+}
+
+func (f *reasoningFold) follow(live bool) {
+	if live != f.live {
+		f.open = live
+	}
+	f.live = live
 }
 
 // reasoningBlock shows the model's thinking as a fold, with the same icon

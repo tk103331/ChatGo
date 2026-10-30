@@ -36,6 +36,19 @@ func TestCreateTabPreselectsProject(t *testing.T) {
 	}
 }
 
+func TestProjectWorkspacesOnlyListsMainTrees(t *testing.T) {
+	dir := t.TempDir()
+	wt := filepath.Join(t.TempDir(), "linked")
+	cw := worktreeWindow(t, wt)
+	cw.cfg.Workspaces = []string{dir, wt}
+	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir, Worktrees: []string{dir, wt}}}
+	cw.convGit.info[wt] = &convGitInfo{Project: &Project{Main: dir, Worktrees: []string{dir, wt}}}
+	got := cw.projectWorkspaces()
+	if len(got) != 1 || got[0] != dir {
+		t.Fatalf("project workspaces are %v, want the main tree %q only", got, dir)
+	}
+}
+
 // Picking "新建 worktree" shows the branch picker; picking a branch back
 // there is fed to the create flow.
 func TestCreateTabNewWorktreeShowsBranch(t *testing.T) {
@@ -317,6 +330,33 @@ func TestCreateAgentPickerIsSearchableWithIcons(t *testing.T) {
 	for _, want := range []string{"Helper", "PiAgent", "搜索 Agent"} {
 		if !containsText(tr.Texts(), want) {
 			t.Fatalf("the agent dropdown lacks %q: %v", want, tr.Texts())
+		}
+	}
+}
+
+// The home page reuses the "新会话" tab's pickers and composer, including the
+// agent button that opens a searchable popover.
+func TestHomeMatchesCreateTab(t *testing.T) {
+	dir := newTestRepo(t)
+	cw := worktreeWindow(t, dir)
+	cw.mode = modeHome
+	cw.cfg.Agents = []config.AgentDef{{Name: "Helper"}}
+	cw.cfg.ACPAgents = []config.ACPConnection{{Name: "PiAgent", Command: "pi"}}
+	tr := cw.tester(1000, 700, "工作树")
+	for _, want := range []string{"Agent", "项目", "工作树", "OpenAI · gpt-4", "发送"} {
+		if !tr.HasText(want) {
+			t.Fatalf("the home page lacks %q; texts: %v", want, tr.Texts())
+		}
+	}
+	if err := tr.Click(chatAgentName); err != nil {
+		t.Fatalf("open the agent search: %v", err)
+	}
+	for range 4 {
+		tr.Frame()
+	}
+	for _, want := range []string{"Helper", "PiAgent", "搜索 Agent"} {
+		if !tr.HasText(want) {
+			t.Fatalf("the agent search lacks %q; texts: %v", want, tr.Texts())
 		}
 	}
 }

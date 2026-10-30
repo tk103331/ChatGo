@@ -1,9 +1,6 @@
 package ui
 
 import (
-	"path/filepath"
-	"strings"
-
 	"chatgo/internal/ui/assets"
 	"chatgo/pkg/models"
 
@@ -15,104 +12,40 @@ import (
 	mcore "chatgo/internal/ui/uikit"
 )
 
-// homeView is the welcome page: capability cards, the composer and recent chats.
+// homeView is the welcome page: capability cards, the same agent, project and
+// worktree pickers the "新会话" tab uses, the composer and recent chats.
 func (cw *ChatWindow) homeView(c *mgo.Context) {
+	if cw.create.ws == "" {
+		cw.create.ws = cw.workspace
+	}
 	k := mcore.Tokens(c)
-	var view kit.CapabilityCardsView
-	mgo.Column(c).Fill().Justify(mgo.Center).AlignItems(mgo.Center).Gap(mcore.Density(c).Unit() * 3).Children(func() {
-		mgo.Icon(c, assets.BrandMark()).Size(72, 72).TextColor(k.Accent)
-		view = cw.welcome(c)
-	})
-	if view.Example != "" {
-		cw.draft = view.Example
-	}
-}
-
-func (cw *ChatWindow) welcome(c *mgo.Context) kit.CapabilityCardsView {
-	return kit.WelcomeScreen(c, kit.WelcomeScreenOptions{
-		Greeting: "ChatGo",
-		Subtitle: "基于 MyGo 原生 UI 的 AI 对话客户端",
-		Cards: []kit.CapabilityCard{
-			{Title: "多模型", Description: "OpenAI、Claude、Gemini 等主流模型", Icon: icons.Must("bot"), Examples: []string{"用一句话介绍你自己"}},
-			{Title: "Agents 工具", Description: "内置工具与 MCP 服务器，按需自动调用", Icon: icons.Must("terminal"), Examples: []string{"帮我看看这个项目有哪些文件"}},
-			{Title: "多会话", Description: "会话自动保存，支持搜索、重命名与导出", Icon: icons.Must("message-square"), Examples: []string{"写一个 Go 的快速排序"}},
-		},
-		Prompts: func() {
-			in := composer(c, &cw.draft, composerOptions{
-				Placeholder: "输入消息，Enter 开始对话",
-				MaxHeight:   160,
-				Tools:       func() { cw.homeSelectors(c) },
-				Actions: func() {
-					r := kit.SendButton(c, kit.SendButtonOptions{Disabled: strings.TrimSpace(cw.draft) == ""})
-					if r.Sent() {
-						cw.startFromHome()
-					}
-				},
-			})
-			in.Element.FillWidth()
-			if in.Submitted() {
-				cw.startFromHome()
-			}
-			cw.recentConversations(c)
-		},
-	})
-}
-
-// homeSelectors chooses the workspace and agent for a chat started from home.
-func (cw *ChatWindow) homeSelectors(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
-	label := func(text string) {
-		mgo.Text(c, text).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
-			TextColor(mcore.Tokens(c).TextMuted).Shrink(0)
-	}
-	mgo.Row(c).Gap(u * 3).AlignItems(mgo.Center).Children(func() {
-		wsOpts := make([]kit.SelectOption[string], 0, len(cw.workspaces()))
-		for _, ws := range cw.workspaces() {
-			name := filepath.Base(ws)
-			if name == "" || name == "." || name == string(filepath.Separator) {
-				name = ws
-			}
-			wsOpts = append(wsOpts, kit.SelectOption[string]{Value: ws, Label: name})
-		}
-		label("项目")
-		if len(wsOpts) > 0 {
-			// Bind a copy so the workspace is still the old one when the pick
-			// lands: pointAtWorkspace needs it to adopt the center state of
-			// the workspace being left.
-			picked := cw.workspace
-			if kit.Select(c, &picked, wsOpts, kit.SelectOptions{Label: "项目", Placeholder: "选择项目"}).Changed() && cw.currentAgent == "" {
-				if picked != "" && picked != cw.workspace {
-					cw.pointAtWorkspace(picked)
-				}
-				cw.saveChatSelection()
-			}
-		}
-		if mcore.IconAction(c, icons.Must("plus"), "新建项目").Tooltip("新建项目").Clicked() {
-			cw.pickWorkspace()
-		}
-		agOpts := make([]kit.SelectOption[string], 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+1)
-		agOpts = append(agOpts, kit.SelectOption[string]{Value: "", Label: chatAgentName})
-		for _, a := range cw.cfg.Agents {
-			agOpts = append(agOpts, kit.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
-		}
-		for _, a := range cw.cfg.ACPAgents {
-			if a.Disabled {
-				continue
-			}
-			agOpts = append(agOpts, kit.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
-		}
-		label("Agent")
-		kit.Select(c, &cw.homeAgent, agOpts, kit.SelectOptions{Label: "Agent", Placeholder: "选择 Agent"})
+	var example string
+	mgo.Scroll(c).Fill().Children(func() {
+		mgo.Column(c).FillWidth().AlignItems(mgo.Stretch).Children(func() {
+			mgo.Column(c).FillWidth().MaxWidth(createWidth).AlignSelf(mgo.Center).
+				AlignItems(mgo.Center).Gap(u*3).Padding(u*6, u*4).Children(func() {
+				mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+					mgo.Icon(c, assets.BrandMark()).Size(56, 56).TextColor(k.Accent)
+					mgo.Text(c, "ChatGo").FontSize(mcore.FontSize(c, mtheme.H1Size)).
+						FontWeight(600).TextColor(k.Text)
+				})
+				view := kit.CapabilityCards(c, []kit.CapabilityCard{
+					{Title: "多模型", Description: "OpenAI、Claude、Gemini 等主流模型", Icon: icons.Must("bot"), Examples: []string{"用一句话介绍你自己"}},
+					{Title: "Agents 工具", Description: "内置工具与 MCP 服务器，按需自动调用", Icon: icons.Must("terminal"), Examples: []string{"帮我看看这个项目有哪些文件"}},
+					{Title: "多会话", Description: "会话自动保存，支持搜索、重命名与导出", Icon: icons.Must("message-square"), Examples: []string{"写一个 Go 的快速排序"}},
+				}, kit.CapabilityCardsOptions{Columns: 3})
+				view.Element.FillWidth()
+				example = view.Example
+				cw.createSelectors(c, "首页")
+				cw.startComposer(c, "输入消息，Enter 开始对话", cw.startFromCreate)
+				cw.recentConversations(c)
+			})
+		})
 	})
-}
-
-// startFromHome creates a conversation and sends whatever is in the composer.
-func (cw *ChatWindow) startFromHome() {
-	if strings.TrimSpace(cw.draft) == "" {
-		return
+	if example != "" {
+		cw.draft = example
 	}
-	cw.newConversationIn(cw.workspace, cw.homeAgent)
-	cw.sendDraft()
 }
 
 // recentConversations lists the ten most recent saved conversations in a
@@ -126,7 +59,7 @@ func (cw *ChatWindow) recentConversations(c *mgo.Context) {
 	mgo.Column(c).FillWidth().Gap(u * 1.5).Children(func() {
 		mgo.Text(c, "最近会话").FontWeight(600).TextColor(k.TextMuted).
 			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
-		mgo.Scroll(c).MaxHeight(mcore.Density(c).ControlHeight() * 9).Children(func() {
+		mgo.Scroll(c).FillWidth().MaxHeight(mcore.Density(c).ControlHeight() * 9).Children(func() {
 			mgo.Column(c).FillWidth().Gap(u * 1.5).Children(func() {
 				for i, conv := range cw.convs {
 					if i >= 10 {

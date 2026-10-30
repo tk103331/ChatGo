@@ -452,59 +452,6 @@ func (cw *ChatWindow) skillPrompt() string {
 	return strings.Join(parts, "\n\n")
 }
 
-// skillMenu chooses the skills active for the current agent.
-func (cw *ChatWindow) skillMenu(c *mgo.Context) {
-	ids := cw.visibleSkillIDs()
-	if len(ids) == 0 || cw.cur == nil {
-		if cw.cur != nil {
-			if kit.Button(c, "配置 Skill", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
-				cw.goConfigure(sectionSkill)
-			}
-		}
-		return
-	}
-	count := 0
-	for _, id := range ids {
-		if cw.skillRuntime(id) {
-			count++
-		}
-	}
-	label := "Skills"
-	if count > 0 {
-		label = "Skills (" + strconv.Itoa(count) + ")"
-	}
-	// The same secondary trigger as the model and tool selectors.
-	b := kit.Button(c, label, kit.ButtonOptions{
-		Variant: kit.Secondary, Icon: icons.Must("brain"),
-	})
-	open := mgo.Local(b, "skills", func() bool { return false })
-	if b.Clicked() {
-		*open = !*open
-	}
-	items := make([]selectItem, 0, len(ids))
-	for _, id := range ids {
-		s := cw.skillByID(id)
-		if s == nil {
-			continue
-		}
-		items = append(items, selectItem{ID: id, Title: s.Name, Desc: s.Description})
-	}
-	changed := false
-	pinned, body := selectListSplit(c, &cw.skills.menuQuery, "搜索 Skill", items,
-		cw.skillRuntime,
-		func(id string, on bool) { cw.skillOn[id] = on })
-	kit.Popover(c, b, open, kit.PopoverOptions{Label: "Skills", MaxHeight: mcore.Density(c).Unit() * 88, Header: pinned}, func() {
-		changed = body()
-	})
-	if changed {
-		if cw.currentAgent == "" {
-			cw.saveChatSelection()
-		}
-		cw.clientDirty.Store(true)
-		c.Invalidate()
-	}
-}
-
 // skillByID returns the loaded skill with the given ID.
 func (cw *ChatWindow) skillByID(id string) *skill {
 	if !cw.skills.loaded {
