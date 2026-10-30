@@ -403,7 +403,7 @@ func (cw *ChatWindow) finishCreate(ws string) {
 	if ws == "" {
 		return
 	}
-	for pi := range cw.center.visiblePanes() {
+	for _, pi := range cw.center.visiblePanes() {
 		p := &cw.center.panes[pi]
 		for i := range p.tabs {
 			if p.tabs[i].Kind == centerCreate {

@@ -577,7 +577,7 @@ func TestWorktreeSelectorHiddenOutsideRepo(t *testing.T) {
 func TestWorktreeTabRendersWithOtherTabs(t *testing.T) {
 	dir := newTestRepo(t)
 	cw := worktreeWindow(t, dir)
-	cw.setLayout(layoutCols)
+	cw.splitPane(0, splitRight)
 	cw.openWorktreeTab(1)
 	cw.openCenterTab(1, &centerTab{Kind: centerGitGraph, ID: "gitgraph", Title: "GitGraph"})
 	cw.waitWorktrees()

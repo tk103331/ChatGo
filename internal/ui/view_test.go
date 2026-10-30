@@ -35,8 +35,15 @@ func testWindow() *ChatWindow {
 		toolOn:     map[string]bool{},
 		editingIdx: -1,
 		acp:        newACPState(),
-		center:     &centerState{},
+		center:     newCenterState(),
 	}
+}
+
+// splitTestPanes builds the three-pane tree the old 左一右二 layout drew:
+// pane 1 to pane 0's right, and pane 2 below pane 1.
+func splitTestPanes(cw *ChatWindow) {
+	cw.splitPane(0, splitRight)
+	cw.splitPane(1, splitDown)
 }
 
 func TestHomeViewRenders(t *testing.T) {
@@ -260,13 +267,13 @@ func TestPreviewClose(t *testing.T) {
 		t.Fatalf("click close: %v", err)
 	}
 	tr.Frame()
-	// The pinned Chat tab and the remaining file tab survive.
+	// The Chat tab and the remaining file tab survive.
 	tabs := cw.center.panes[0].tabs
 	if len(tabs) != 2 {
 		t.Fatalf("expected 2 tabs, got %d", len(tabs))
 	}
 	if tabs[0].Kind != centerChat {
-		t.Fatalf("expected the Chat tab to stay pinned first, got %q", tabs[0].Kind)
+		t.Fatalf("expected the Chat tab first, got %q", tabs[0].Kind)
 	}
 }
 
@@ -335,7 +342,7 @@ func TestCodeSearchTabRenders(t *testing.T) {
 	}
 }
 
-// Rendering a pane with several tab kinds must not panic// Rendering a pane with several tab kinds must not panic: the strip draws
+// Rendering a pane with several tab kinds must not panic: the strip draws
 // every tab before applying any close it collected, so a context menu action
 // can never shift the slice under the drawing loop.
 func TestRenderMixedTabs(t *testing.T) {
@@ -346,7 +353,7 @@ func TestRenderMixedTabs(t *testing.T) {
 	cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: wd,
 		Messages: []models.Message{{ID: "u", Role: "user", Content: "hi"}}}
 	cw.convs = []models.Conversation{*cw.cur}
-	cw.setLayout(layoutLeftWide)
+	splitTestPanes(cw)
 	cw.openPreview(wd + "/chat.go")
 	cw.openPreview(wd + "/nav.go")
 	cw.openCenterTab(1, &centerTab{Kind: centerDiff, Title: "a.go (diff)",
@@ -402,44 +409,88 @@ func TestChatTabTitleFollowsConversation(t *testing.T) {
 	}
 }
 
-// Every layout renders.
-func TestCenterLayoutsRender(t *testing.T) {
+// Every split tree renders, from one pane to the most the area allows.
+func TestCenterSplitsRender(t *testing.T) {
 	wd, _ := os.Getwd()
-	for _, l := range []centerLayout{layoutSingle, layoutCols, layoutLeftWide} {
+	builds := []func(*ChatWindow){
+		func(*ChatWindow) {},
+		func(cw *ChatWindow) { cw.splitPane(0, splitRight) },
+		splitTestPanes,
+		func(cw *ChatWindow) {
+			splitTestPanes(cw)
+			cw.splitPane(0, splitDown)
+		},
+	}
+	for i, build := range builds {
 		cw := testWindow()
 		cw.mode = modeChat
 		cw.workspace = wd
 		cw.cur = &models.Conversation{ID: "c", Title: "t", Workspace: wd}
 		cw.convs = []models.Conversation{*cw.cur}
-		cw.setLayout(l)
+		build(cw)
 		img := mgo.Render(cw.view, 1400, 900, 1)
 		if img == nil || img.Bounds().Dx() != 1400 {
-			t.Fatalf("layout %d render failed: %v", l, img)
+			t.Fatalf("split %d render failed: %v", i, img)
 		}
 	}
 }
 
-// Each layout shows the number of panes it is named for.
-func TestCenterLayoutPaneCounts(t *testing.T) {
-	cases := []struct {
-		layout centerLayout
-		want   int
-	}{
-		{layoutSingle, 1},
-		{layoutCols, 2},
-		{layoutLeftWide, 3},
+// A split gives the area one more pane, with no upper bound.
+func TestSplitPaneCounts(t *testing.T) {
+	cw := testWindow()
+	if got := cw.center.paneCount(); got != 1 {
+		t.Fatalf("a fresh center draws one pane, got %d", got)
 	}
-	for _, tc := range cases {
-		if got := tc.layout.paneCount(); got != tc.want {
-			t.Fatalf("layout %d: want %d panes, got %d", tc.layout, tc.want, got)
+	const want = 8
+	for n := 2; n <= want; n++ {
+		cw.splitPane(0, splitRight)
+		if got := cw.center.paneCount(); got != n {
+			t.Fatalf("after a split want %d panes, got %d", n, got)
 		}
 	}
 }
 
-// The three-pane layout keeps its tabs apart, one strip per pane.
+// A split right puts the new pane beside the split one; a split down puts it
+// below, and the leaves keep their drawing order.
+func TestSplitDirectionsShapeTheTree(t *testing.T) {
+	cw := testWindow()
+	cw.splitPane(0, splitRight)
+	if cw.center.root.dir != splitRight {
+		t.Fatal("向右分栏 must split the area side by side")
+	}
+	if got := cw.center.visiblePanes(); len(got) != 2 || got[0] != 0 || got[1] != 1 {
+		t.Fatalf("want leaves 0 then 1, got %v", got)
+	}
+	cw.splitPane(1, splitDown)
+	if cw.center.root.second.dir != splitDown {
+		t.Fatal("向下分栏 must stack the new pane below the split one")
+	}
+	if got := cw.center.visiblePanes(); len(got) != 3 || got[2] != 2 {
+		t.Fatalf("want leaves 0, 1, 2, got %v", got)
+	}
+}
+
+// A new pane starts empty and selected pane-wise, offering its new-tab button.
+func TestNewPanesStartEmpty(t *testing.T) {
+	cw := testWindow()
+	splitTestPanes(cw)
+	for i := 1; i < cw.center.paneCount(); i++ {
+		if n := len(cw.center.panes[i].tabs); n != 0 {
+			t.Fatalf("pane %d should start empty, got %d tabs", i, n)
+		}
+		if cw.center.panes[i].sel != -1 {
+			t.Fatalf("empty pane %d should have no selection", i)
+		}
+	}
+	if cw.center.focus != 2 {
+		t.Fatalf("the last split should take the focus, got %d", cw.center.focus)
+	}
+}
+
+// The three-pane tree keeps its tabs apart, one strip per pane.
 func TestThreePaneTabsStayPerPane(t *testing.T) {
 	cw := testWindow()
-	cw.setLayout(layoutLeftWide)
+	splitTestPanes(cw)
 	cw.openCenterTab(1, &centerTab{Kind: centerText, Title: "x"})
 	cw.openCenterTab(2, &centerTab{Kind: centerText, Title: "y"})
 	counts := [3]int{}
@@ -451,133 +502,29 @@ func TestThreePaneTabsStayPerPane(t *testing.T) {
 	}
 }
 
-// Shrinking a three-pane layout into one keeps every tab.
-func TestCollapseThreePaneLayout(t *testing.T) {
-	cw := testWindow()
-	cw.setLayout(layoutLeftWide)
-	cw.openCenterTab(1, &centerTab{Kind: centerText, Title: "x"})
-	cw.openCenterTab(2, &centerTab{Kind: centerText, Title: "y"})
-	cw.setLayout(layoutSingle)
-	if n := len(cw.center.panes[0].tabs); n != 2 {
-		t.Fatalf("expected both tabs folded into pane 0, got %d", n)
-	}
-}
-
-// Shrinking keeps every pane the new layout still draws at its index, and
-// folds only the dropped ones into the pane now covering their region.
-func TestCollapseFoldsDroppedPanes(t *testing.T) {
-	cases := []struct {
-		from, to centerLayout
-		fromPane int
-		wantPane int
-	}{
-		// Two columns drops the right column's lower pane into the pane
-		// above it.
-		{layoutLeftWide, layoutCols, 2, 1},
-		// One column drops both extra panes into pane 0.
-		{layoutLeftWide, layoutSingle, 1, 0},
-		{layoutLeftWide, layoutSingle, 2, 0},
-		{layoutCols, layoutSingle, 1, 0},
-	}
-	for _, tc := range cases {
-		cw := testWindow()
-		cw.setLayout(tc.from)
-		moved := cw.openCenterTab(tc.fromPane, &centerTab{Kind: centerText, Title: "m"})
-		cw.setLayout(tc.to)
-		pane, _ := cw.paneHoldingTab(moved)
-		if pane != tc.wantPane {
-			t.Fatalf("%d->%d from %d: want pane %d, got %d",
-				tc.from, tc.to, tc.fromPane, tc.wantPane, pane)
-		}
-		if len(cw.center.panes[tc.fromPane].tabs) != 0 {
-			t.Fatalf("%d->%d: dropped pane %d still holds tabs", tc.from, tc.to, tc.fromPane)
+// The two split marks are embedded, since Must panics on a missing icon.
+func TestSplitIconsExist(t *testing.T) {
+	for _, name := range []string{"columns-2", "rows-2"} {
+		if _, ok := icons.Get(name); !ok {
+			t.Fatalf("the split action needs the %q icon", name)
 		}
 	}
 }
 
-// A pane the shrinking layout keeps does not lose its tabs.
-func TestCollapseKeepsVisiblePanesInPlace(t *testing.T) {
+// A tab dropped on another pane's strip moves there even after its index in
+// the source pane changed.
+func TestDropMovesDraggedTabByValue(t *testing.T) {
 	cw := testWindow()
-	cw.setLayout(layoutLeftWide)
-	kept := cw.openCenterTab(1, &centerTab{Kind: centerText, Title: "kept"})
-	cw.setLayout(layoutCols)
-	pane, _ := cw.paneHoldingTab(kept)
+	cw.splitPane(0, splitRight)
+	tab := cw.openCenterTab(0, &centerTab{ID: "t", Kind: centerText, Title: "t"})
+	cw.openCenterTab(0, &centerTab{ID: "later", Kind: centerText, Title: "later"})
+	cw.moveDraggedTab(1, centerTabDrag{tab: tab})
+	pane, _ := cw.paneHoldingTab(tab)
 	if pane != 1 {
-		t.Fatalf("a drawn pane must keep its tabs, want 1, got %d", pane)
+		t.Fatalf("the dragged tab should land in pane 1, got %d", pane)
 	}
-}
-
-// The layout switcher belongs to the leftmost pane, whatever it shows, and to
-// no other pane.
-func TestLayoutMenuOnLeftPaneOnly(t *testing.T) {
-	cw := testWindow()
-	cw.setLayout(layoutCols)
-	if !cw.showLayoutMenu(0) {
-		t.Fatal("the left pane must carry the switcher")
-	}
-	if cw.showLayoutMenu(1) {
-		t.Fatal("no other pane may carry the switcher")
-	}
-	// Covering the Chat tab with another panel keeps the switcher, which is
-	// how a layout can still be changed while reading a file.
-	cw.openCenterTab(0, &centerTab{Kind: centerText, Title: "f"})
-	if !cw.showLayoutMenu(0) {
-		t.Fatal("the switcher must survive a non-Chat tab taking the pane")
-	}
-	if cw.center.panes[0].active().Kind != centerText {
-		t.Fatal("the test needs a non-Chat tab to be active")
-	}
-}
-
-// The layout icons match the shape they name: the leading pane must be the
-// tall one for "left one, right two".
-func TestLayoutIconsMatchTheirShape(t *testing.T) {
-	// layout-panel-left is the tall rect on the left and the two small ones on
-	// the right, which is what 左一右二 draws.
-	if got := layoutIcon(layoutLeftWide); got != "layout-panel-left" {
-		t.Fatalf("layoutLeftWide wants the tall-left mark, got %q", got)
-	}
-	if got := layoutIcon(layoutCols); got != "columns-2" {
-		t.Fatalf("layoutCols wants the two-column mark, got %q", got)
-	}
-	if got := layoutIcon(layoutSingle); got != "square" {
-		t.Fatalf("layoutSingle wants the single mark, got %q", got)
-	}
-	for _, l := range []centerLayout{layoutSingle, layoutCols, layoutLeftWide} {
-		if _, ok := icons.Get(layoutIcon(l)); !ok {
-			t.Fatalf("layout %d names a missing icon %q", l, layoutIcon(l))
-		}
-	}
-}
-
-// Every layout draws the switcher's pane on the left.
-func TestLayoutSwitcherPaneIsLeftmost(t *testing.T) {
-	for _, l := range []centerLayout{layoutSingle, layoutCols, layoutLeftWide} {
-		cw := testWindow()
-		cw.setLayout(l)
-		if !cw.showLayoutMenu(chatPaneIndex) {
-			t.Fatalf("layout %d: the leftmost pane must carry the switcher", l)
-		}
-	}
-}
-
-// Every layout with extra panes opens them empty, each offering a new tab.
-func TestNewPanesStartEmpty(t *testing.T) {
-	for _, l := range []centerLayout{layoutCols, layoutLeftWide} {
-		cw := testWindow()
-		cw.setLayout(l)
-		for i := 1; i < l.paneCount(); i++ {
-			if n := len(cw.center.panes[i].tabs); n != 0 {
-				t.Fatalf("layout %d: pane %d should start empty, got %d tabs", l, i, n)
-			}
-			if cw.center.panes[i].sel != -1 {
-				t.Fatalf("layout %d: empty pane %d should have no selection", l, i)
-			}
-		}
-		img := mgo.Render(cw.view, 1400, 900, 1)
-		if img == nil {
-			t.Fatalf("layout %d: empty panes failed to render", l)
-		}
+	if len(cw.center.panes[0].tabs) != 1 {
+		t.Fatalf("the source pane should keep its other tab, got %d", len(cw.center.panes[0].tabs))
 	}
 }
 
@@ -680,7 +627,6 @@ func TestGitHistoryPagePaginates(t *testing.T) {
 	}
 }
 
-// The layout switcher stays on the leftmost pane.
 // Opening the GitGraph tab leaves the Git panel's state untouched, and the
 // panel leaves the graph's alone.
 func TestGitGraphStateIsIsolated(t *testing.T) {
@@ -872,19 +818,63 @@ func TestOpenPreviewReusesTab(t *testing.T) {
 	}
 }
 
-// A tab moves between panes, and the pinned Chat tab refuses to move.
+// Closing a pane with tabs asks first, then closes the pane and its tabs.
+func TestClosePaneWithTabsAsksFirst(t *testing.T) {
+	cw := testWindow()
+	cw.splitPane(0, splitRight)
+	tab := cw.openCenterTab(1, &centerTab{ID: "t", Kind: centerText, Title: "x"})
+	cw.closePane(1)
+	if !cw.confirm.open {
+		t.Fatal("closing a pane with tabs must ask first")
+	}
+	if !cw.center.hasPane(1) {
+		t.Fatal("the pane must stay open until the prompt is confirmed")
+	}
+	cw.confirm.action()
+	if cw.center.hasPane(1) {
+		t.Fatal("the confirmed pane should close")
+	}
+	if pane, _ := cw.paneHoldingTab(tab); pane != -1 {
+		t.Fatalf("the pane's tab should close too, still in pane %d", pane)
+	}
+}
+
+// A pane without tabs closes without a prompt, and the last pane never closes.
+func TestCloseEmptyPaneClosesImmediately(t *testing.T) {
+	cw := testWindow()
+	cw.splitPane(0, splitRight)
+	cw.closePane(1)
+	if cw.confirm.open {
+		t.Fatal("an empty pane should close without a prompt")
+	}
+	if cw.center.hasPane(1) {
+		t.Fatal("the empty pane should close")
+	}
+	if got := cw.center.visiblePanes(); len(got) != 1 || got[0] != 0 {
+		t.Fatalf("want only pane 0 to remain, got %v", got)
+	}
+	if cw.center.focus != 0 {
+		t.Fatalf("closing the focused pane must focus a survivor, got %d", cw.center.focus)
+	}
+	cw.closePane(0)
+	if !cw.center.hasPane(0) {
+		t.Fatal("the last pane must stay open")
+	}
+}
+
+// A tab moves between panes, including a chat tab.
 func TestMoveCenterTab(t *testing.T) {
 	cw := testWindow()
-	cw.setLayout(layoutCols)
+	cw.splitPane(0, splitRight)
 	cw.openCenterTab(0, &centerTab{ID: "t1", Kind: centerText, Title: "a.go"})
 	cw.openCenterTab(0, &centerTab{ID: "c1", Kind: centerChat, Title: "Chat"})
-	cw.moveCenterTab(0, 1, 1)
-	if len(cw.center.panes[1].tabs) != 1 {
+	cw.moveCenterTab(0, 0, 1)
+	if len(cw.center.panes[1].tabs) != 1 || cw.center.panes[1].tabs[0].ID != "t1" {
 		t.Fatalf("expected the file tab to land in pane 1")
 	}
 	cw.moveCenterTab(0, 0, 1)
-	if len(cw.center.panes[1].tabs) != 1 {
-		t.Fatalf("a chat tab must not leave the leftmost pane")
+	if len(cw.center.panes[1].tabs) != 2 || cw.center.panes[1].tabs[1].ID != "c1" {
+		t.Fatalf("expected the chat tab to move to pane 1")
 	}
 }
 

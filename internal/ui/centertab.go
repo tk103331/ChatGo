@@ -84,12 +84,16 @@ func (t *centerTab) closable() bool { return true }
 // centerPaneView draws one pane: its tab strip and the active tab's body.
 func (cw *ChatWindow) centerPaneView(c *mgo.Context, idx int) {
 	k := mcore.Tokens(c)
+	cw.center.ensurePane(idx)
 	p := &cw.center.panes[idx]
 	p.clampSel()
 	focused := cw.center.focus == idx
 	box := mgo.Column(c).Fill().MinWidth(0).MinHeight(0).AlignItems(mgo.Stretch).
 		Background(k.Background)
-	if cw.center.layout != layoutSingle {
+	if r := box.Bounds(); r.W > 0 && r.H > 0 {
+		cw.center.paneW[idx], cw.center.paneH[idx] = r.W, r.H
+	}
+	if cw.center.paneCount() > 1 {
 		// A focused pane is marked by its border, so the new-tab menu's
 		// target is never in doubt.
 		border := k.Border
@@ -134,28 +138,39 @@ func (cw *ChatWindow) centerEmpty(c *mgo.Context, idx int) {
 	})
 }
 
-// centerTabStrip draws a pane's tabs, its new-tab menu and, on the focused
-// pane, the layout switcher.
+// centerTabDrag is a tab being dragged between panes' strips.
+type centerTabDrag struct {
+	tab *centerTab
+}
+
 // centerTabAction is a change to a pane's tabs deferred until the strip has
 // drawn every tab, so a context menu action never mutates the slice while the
 // strip iterates it.
 type centerTabAction struct {
 	// close is the tab to close, -1 when none; closeOthers keeps this tab and
-	// closes the rest; moveFrom and moveTo move it to another pane.
+	// closes the rest; moveFrom and moveTo move it to another pane; movedDrag
+	// is a tab dropped on this pane's strip.
 	close       int
 	closeOthers int
 	moveFrom    int
 	moveTo      int
+	movedDrag   *centerTabDrag
 }
 
+// centerTabStrip draws a pane's tabs, its new-tab menu, its split actions and
+// the target for tabs dragged out of another pane.
 func (cw *ChatWindow) centerTabStrip(c *mgo.Context, idx int) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	p := &cw.center.panes[idx]
 	action := centerTabAction{close: -1, closeOthers: -1, moveFrom: -1, moveTo: -1}
-	mgo.Row(c).FillWidth().Shrink(0).MinWidth(0).Padding(u, u*2).Gap(u).
+	strip := mgo.Row(c).FillWidth().Shrink(0).MinWidth(0).Padding(u, u*2).Gap(u).
 		AlignItems(mgo.Center).Background(k.Surface).
-		BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border).Children(func() {
+		BorderWidth(0, 0, mtheme.BorderWidth, 0).BorderColor(k.Border)
+	if _, over := mgo.DragOver[centerTabDrag](strip); over {
+		strip.Background(k.Selection)
+	}
+	strip.Children(func() {
 		mgo.ScrollHorizontal(c).Grow(1).MinWidth(0).Children(func() {
 			mgo.Row(c).Gap(u).Children(func() {
 				for i := range p.tabs {
@@ -164,30 +179,53 @@ func (cw *ChatWindow) centerTabStrip(c *mgo.Context, idx int) {
 			})
 		})
 		cw.newTabMenu(c, idx)
-		if cw.showLayoutMenu(idx) {
-			cw.layoutMenu(c)
-		}
+		cw.splitButtons(c, idx)
+		cw.paneCloseButton(c, idx)
 	})
+	if drag, ok := mgo.Drop[centerTabDrag](strip); ok {
+		action.movedDrag = &drag
+	}
 	// The actions run after the loop, when the slice is not being walked.
 	switch {
 	case action.close >= 0:
 		cw.closeCenterTab(idx, action.close)
 	case action.closeOthers >= 0:
 		cw.closeOtherCenterTabs(idx, action.closeOthers)
+	case action.movedDrag != nil:
+		cw.moveDraggedTab(idx, *action.movedDrag)
 	case action.moveTo >= 0:
 		cw.moveCenterTab(idx, action.moveFrom, action.moveTo)
 	}
 }
 
-// showLayoutMenu reports whether the pane carries the layout switcher. Only
-// the Chat pane does, so switching layouts reads as a property of the
-// conversation rather than of whichever pane happens to be focused.
-// showLayoutMenu reports whether the pane carries the layout switcher. The
-// switcher belongs to the leftmost pane, whichever tab it happens to show, so
-// it stays reachable after the Chat tab is covered by a file, a terminal or
-// any other panel.
-func (cw *ChatWindow) showLayoutMenu(idx int) bool {
-	return idx == chatPaneIndex
+// splitButtons are a pane's two split actions, adding a pane to its right or
+// below it.
+func (cw *ChatWindow) splitButtons(c *mgo.Context, pane int) {
+	if mcore.IconAction(c, icons.Must("columns-2"), "向右分栏").Tooltip("向右分栏").Clicked() {
+		cw.splitPane(pane, splitRight)
+	}
+	if mcore.IconAction(c, icons.Must("rows-2"), "向下分栏").Tooltip("向下分栏").Clicked() {
+		cw.splitPane(pane, splitDown)
+	}
+}
+
+// paneCloseButton closes a pane, leaving one pane always open.
+func (cw *ChatWindow) paneCloseButton(c *mgo.Context, pane int) {
+	if cw.center.paneCount() <= 1 {
+		return
+	}
+	if mcore.IconAction(c, icons.Must("x"), "关闭窗格").Tooltip("关闭窗格").Clicked() {
+		cw.closePane(pane)
+	}
+}
+
+// moveDraggedTab moves a tab dropped on another pane's strip into that pane.
+func (cw *ChatWindow) moveDraggedTab(to int, drag centerTabDrag) {
+	from, i := cw.paneHoldingTab(drag.tab)
+	if from < 0 || from == to {
+		return
+	}
+	cw.moveCenterTab(from, i, to)
 }
 
 // centerTabButton draws one tab, recording any close or move the strip must
@@ -207,6 +245,7 @@ func (cw *ChatWindow) centerTabButton(c *mgo.Context, pane, i int, action *cente
 	title := cw.centerTabTitle(tab)
 	b := mgo.ButtonBase(c).Row().Shrink(0).MinHeight(mcore.Density(c).ControlHeight()).
 		Padding(u, u*2).Gap(u).AlignItems(mgo.Center).Radius(mtheme.ControlRadius).Label(title)
+	b.Drag(centerTabDrag{tab: tab})
 	active := i == p.sel
 	switch {
 	case active:
@@ -324,10 +363,6 @@ func (cw *ChatWindow) centerTabContextMenu(c *mgo.Context, target mgo.Element, p
 			if target == pane {
 				continue
 			}
-			// A chat tab may only move back to the leftmost pane.
-			if tab.Kind == centerChat && target != chatPaneIndex {
-				continue
-			}
 			label := "移动到窗格 " + itoa(target+1)
 			if m.Item(label, kit.PopupMenuItemOptions{}) {
 				action.moveFrom, action.moveTo = i, target
@@ -358,11 +393,8 @@ func (cw *ChatWindow) newTabChoices(c *mgo.Context, anchor mgo.Element, open *bo
 	}
 	kit.Popover(c, anchor, open, kit.PopoverOptions{Title: "新建标签", Width: 220}, func() {
 		// Agent opens the create tab, where the agent itself is chosen along
-		// with the project and worktree; a chat tab only lives in the
-		// leftmost pane, so the entry belongs to that pane's menu alone.
-		if pane == chatPaneIndex {
-			menuItem(c, iconLeading(c, chatAgentIcon), "Agent", func() { pick(func(int) { cw.openCreateTab() }) })
-		}
+		// with the project and worktree.
+		menuItem(c, iconLeading(c, chatAgentIcon), "Agent", func() { pick(func(int) { cw.openCreateTab() }) })
 		menuItem(c, iconLeading(c, "search"), "CodeSearch", func() { pick(cw.openCodeSearchTab) })
 		menuItem(c, iconLeading(c, "terminal"), "Terminal", func() { pick(cw.openTerminalTab) })
 		menuItem(c, iconLeading(c, "globe"), "WebView", func() { pick(cw.openWebTabIn) })
@@ -370,48 +402,6 @@ func (cw *ChatWindow) newTabChoices(c *mgo.Context, anchor mgo.Element, open *bo
 		menuItem(c, iconLeading(c, "git-fork"), "Worktree", func() { pick(cw.openWorktreeTab) })
 		menuItem(c, iconLeading(c, "pencil"), "Editor", func() { pick(cw.openEditorTabPick) })
 	})
-}
-
-// layoutMenu switches the center area between its layouts.
-func (cw *ChatWindow) layoutMenu(c *mgo.Context) {
-	btn := mcore.IconAction(c, icons.Must(layoutIcon(cw.center.layout)), "分屏布局").Tooltip("分屏布局")
-	open := mgo.Local(btn, "chatgo.center.layout", func() bool { return false })
-	if btn.Clicked() {
-		*open = !*open
-	}
-	pick := func(l centerLayout) {
-		*open = false
-		cw.setLayout(l)
-	}
-	kit.Popover(c, btn, open, kit.PopoverOptions{Title: "分屏布局", Width: 240}, func() {
-		for _, l := range []centerLayout{layoutSingle, layoutCols, layoutLeftWide} {
-			menuItem(c, iconLeading(c, layoutIcon(l)), layoutLabel(l), func() { pick(l) })
-		}
-	})
-}
-
-// layoutIcon is the mark naming a layout.
-func layoutIcon(l centerLayout) string {
-	switch l {
-	case layoutCols:
-		return "columns-2"
-	case layoutLeftWide:
-		return "layout-panel-left"
-	default:
-		return "square"
-	}
-}
-
-// layoutLabel names a layout in the menu.
-func layoutLabel(l centerLayout) string {
-	switch l {
-	case layoutCols:
-		return "两列"
-	case layoutLeftWide:
-		return "左一右二"
-	default:
-		return "单列"
-	}
 }
 
 // centerTabBody draws the active tab's content.
@@ -577,20 +567,11 @@ func (cw *ChatWindow) centerWebBody(c *mgo.Context, tab *centerTab) {
 
 // openCenterTab adds a tab to a pane and selects it, focusing that pane.
 func (cw *ChatWindow) openCenterTab(pane int, tab *centerTab) *centerTab {
-	// A chat tab always lives in the leftmost pane, first in its strip, so
-	// the conversation sits where it is expected whatever else is open.
-	if tab.Kind == centerChat {
-		pane = chatPaneIndex
-		p := &cw.center.panes[pane]
-		p.tabs = append([]*centerTab{tab}, p.tabs...)
-		p.sel = 0
-		cw.center.focus = pane
-		cw.invalidate()
-		return tab
-	}
-	if pane < 0 || pane >= cw.center.layout.paneCount() {
+	cw.center.ensureRoot()
+	if !cw.center.hasPane(pane) {
 		pane = cw.center.focus
 	}
+	cw.center.ensurePane(pane)
 	p := &cw.center.panes[pane]
 	p.tabs = append(p.tabs, tab)
 	p.sel = len(p.tabs) - 1
@@ -602,7 +583,7 @@ func (cw *ChatWindow) openCenterTab(pane int, tab *centerTab) *centerTab {
 // focusCenterTab selects the tab with the given ID in any pane, and reports
 // whether it found one.
 func (cw *ChatWindow) focusCenterTab(id string) *centerTab {
-	for pi := range cw.center.visiblePanes() {
+	for _, pi := range cw.center.visiblePanes() {
 		p := &cw.center.panes[pi]
 		for i, t := range p.tabs {
 			if t.ID != id {
@@ -617,9 +598,46 @@ func (cw *ChatWindow) focusCenterTab(id string) *centerTab {
 	return nil
 }
 
+// closePane closes a pane, asking first when it still holds tabs.
+func (cw *ChatWindow) closePane(pane int) {
+	if !cw.center.hasPane(pane) || cw.center.paneCount() <= 1 {
+		return
+	}
+	if n := len(cw.center.panes[pane].tabs); n > 0 {
+		cw.askConfirm("关闭窗格", "该窗格还有 "+itoa(n)+" 个标签，关闭窗格会一并关闭它们，未保存的修改将丢失。", func() {
+			cw.forceClosePane(pane)
+		})
+		return
+	}
+	cw.forceClosePane(pane)
+}
+
+// forceClosePane closes a pane and its tabs without asking.
+func (cw *ChatWindow) forceClosePane(pane int) {
+	if !cw.center.hasPane(pane) || cw.center.paneCount() <= 1 {
+		return
+	}
+	p := &cw.center.panes[pane]
+	for _, tab := range append([]*centerTab(nil), p.tabs...) {
+		cw.forceCloseCenterTab(pane, tab)
+	}
+	p.tabs = nil
+	p.sel = -1
+	if pane < len(cw.center.paneW) {
+		cw.center.paneW[pane], cw.center.paneH[pane] = 0, 0
+	}
+	cw.center.root = removePaneNode(cw.center.root, pane)
+	if cw.center.focus == pane {
+		if visible := cw.center.visiblePanes(); len(visible) > 0 {
+			cw.center.focus = visible[0]
+		}
+	}
+	cw.invalidate()
+}
+
 // closeCenterTab closes a pane's tab, releasing whatever it owns.
 func (cw *ChatWindow) closeCenterTab(pane, i int) {
-	if pane < 0 || pane >= maxPanes {
+	if !cw.center.hasPane(pane) {
 		return
 	}
 	p := &cw.center.panes[pane]
@@ -689,7 +707,7 @@ func (cw *ChatWindow) closeOtherCenterTabs(pane, i int) {
 
 // moveCenterTab moves a tab from one pane to another.
 func (cw *ChatWindow) moveCenterTab(from, i, to int) {
-	if from == to || to < 0 || to >= cw.center.layout.paneCount() {
+	if from == to || !cw.center.hasPane(to) {
 		return
 	}
 	src := &cw.center.panes[from]
@@ -698,10 +716,6 @@ func (cw *ChatWindow) moveCenterTab(from, i, to int) {
 	}
 	tab := src.tabs[i]
 	if !tab.closable() {
-		return
-	}
-	// A chat tab never leaves the leftmost pane.
-	if tab.Kind == centerChat && to != chatPaneIndex {
 		return
 	}
 	src.tabs = append(src.tabs[:i], src.tabs[i+1:]...)
@@ -714,7 +728,7 @@ func (cw *ChatWindow) moveCenterTab(from, i, to int) {
 }
 
 // focusConvTab brings a conversation's own tab to the front, opening it in
-// pane 0 when it is not open yet.
+// the focused pane when it is not open yet.
 func (cw *ChatWindow) focusConvTab(conv *models.Conversation) {
 	if conv == nil {
 		return
@@ -723,7 +737,7 @@ func (cw *ChatWindow) focusConvTab(conv *models.Conversation) {
 	if t := cw.focusCenterTab(id); t != nil {
 		return
 	}
-	cw.openCenterTab(0, &centerTab{
+	cw.openCenterTab(cw.center.focus, &centerTab{
 		Kind: centerChat, ID: id, Title: conv.Title,
 		ConvID: conv.ID, Agent: conv.Agent,
 	})

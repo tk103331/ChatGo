@@ -1,11 +1,11 @@
 // Center tabs: the chat message area and every opened file, diff, terminal,
 // web page, Git graph and editor live in one tabbed, splittable center area.
 //
-// The area holds up to four panes, each with its own tab strip. Pane 0 always
-// owns the Chat tab, which is pinned first and cannot be closed; the Chat tab
-// follows the current conversation's agent, so its icon and name tell a plain
-// agent from an ACP one. Other tabs are created by the new-tab menu or opened
-// from the left panel's file tree and Git panel.
+// The area holds any number of panes, each with its own tab strip. A tab lives
+// in one pane and may be dragged to another; the Chat tab follows its
+// conversation's agent, so its icon and name tell a plain agent from an ACP
+// one. Tabs are created by the new-tab menu or opened from the left panel's
+// file tree and Git panel.
 package ui
 
 import (
@@ -16,7 +16,7 @@ import (
 type centerKind string
 
 const (
-	// centerChat is the pinned conversation tab of pane 0.
+	// centerChat is a conversation tab, free to live in any pane.
 	centerChat centerKind = "chat"
 	// centerText is a file's source, read-only.
 	centerText centerKind = "text"
@@ -45,36 +45,92 @@ const (
 	centerCreate centerKind = "create"
 )
 
-// centerLayout is how the center area divides itself into panes.
-type centerLayout int
+// centerSplitDir is how a split node lays its two children out.
+type centerSplitDir int
 
 const (
-	// layoutSingle is one pane filling the area.
-	layoutSingle centerLayout = iota
-	// layoutCols is two panes side by side.
-	layoutCols
-	// layoutLeftWide is one pane down the left, two stacked on the right.
-	layoutLeftWide
+	// splitRight puts the children side by side, the second on the right.
+	splitRight centerSplitDir = iota
+	// splitDown stacks the children, the second below the first.
+	splitDown
 )
 
-// paneCount is how many panes the layout shows.
-func (l centerLayout) paneCount() int {
-	switch l {
-	case layoutCols:
-		return 2
-	case layoutLeftWide:
-		return 3
-	default:
-		return 1
-	}
+// centerNode is one node of the center area's split tree: a leaf drawing a
+// pane, or a split drawing two children around a draggable divider.
+type centerNode struct {
+	// pane is the pane a leaf draws, and -1 for a split.
+	pane int
+	// dir is how a split arranges its children; size is the first child's
+	// size in DIPs, which the divider moves.
+	dir  centerSplitDir
+	size float32
+	// first and second are the split's children, in that order.
+	first, second *centerNode
 }
 
-// maxPanes is the most panes any layout has, and so the length of the pane
-// array: the layout decides how many of them are drawn.
-const maxPanes = 4
+// newCenterNode returns a leaf drawing pane.
+func newCenterNode(pane int) *centerNode { return &centerNode{pane: pane} }
 
-// chatPaneIndex is the pane that owns the pinned Chat tab.
-const chatPaneIndex = 0
+// splitPaneNode turns the leaf drawing pane into a split of that leaf and a
+// new leaf, and returns the new leaf, or nil when the tree has no such leaf.
+func splitPaneNode(n *centerNode, pane int, dir centerSplitDir, size float32) *centerNode {
+	if n == nil {
+		return nil
+	}
+	if n.pane == pane {
+		first := *n
+		second := newCenterNode(-1)
+		*n = centerNode{pane: -1, dir: dir, size: size, first: &first, second: second}
+		return second
+	}
+	if n.pane >= 0 {
+		return nil
+	}
+	if got := splitPaneNode(n.first, pane, dir, size); got != nil {
+		return got
+	}
+	return splitPaneNode(n.second, pane, dir, size)
+}
+
+// removePaneNode returns the tree without the leaf drawing pane.
+func removePaneNode(n *centerNode, pane int) *centerNode {
+	if n == nil || n.pane >= 0 {
+		return n
+	}
+	if n.first != nil && n.first.pane == pane {
+		return n.second
+	}
+	if n.second != nil && n.second.pane == pane {
+		return n.first
+	}
+	n.first = removePaneNode(n.first, pane)
+	n.second = removePaneNode(n.second, pane)
+	return n
+}
+
+// paneInTree reports whether the leaf drawing pane is in the tree.
+func paneInTree(n *centerNode, pane int) bool {
+	if n == nil {
+		return false
+	}
+	if n.pane >= 0 {
+		return n.pane == pane
+	}
+	return paneInTree(n.first, pane) || paneInTree(n.second, pane)
+}
+
+// walkPanes visits the leaves in the order they are drawn.
+func walkPanes(n *centerNode, visit func(int)) {
+	if n == nil {
+		return
+	}
+	if n.pane >= 0 {
+		visit(n.pane)
+		return
+	}
+	walkPanes(n.first, visit)
+	walkPanes(n.second, visit)
+}
 
 // centerPane is one pane of the center area: its tabs and which is active.
 type centerPane struct {
@@ -82,17 +138,44 @@ type centerPane struct {
 	sel  int
 }
 
-// centerState is the whole center area: its panes, the focused one, the
-// layout and the divider positions.
+// centerState is the whole center area: its panes, the focused one, the split
+// tree that arranges them and the size the last frame had.
 type centerState struct {
-	panes  [maxPanes]centerPane
-	focus  int
-	layout centerLayout
-	// colW splits the left column from the right one, and gridRight the
-	// right column's own two rows.
-	colW, gridRight float32
+	panes []centerPane
+	focus int
+	// root is the split tree of the area; a nil root is a single pane 0.
+	root *centerNode
+	// viewW and viewH are the last frame's content size, and paneW and paneH
+	// each pane's size, so a new split starts near half the pane it splits.
+	viewW, viewH float32
+	paneW, paneH []float32
 	// seq names new tabs.
 	seq int
+}
+
+// newCenterState is a center area holding one empty pane.
+func newCenterState() *centerState {
+	return &centerState{root: newCenterNode(0), panes: []centerPane{{sel: -1}}}
+}
+
+// ensureRoot gives a state made without a tree its first leaf.
+func (s *centerState) ensureRoot() {
+	if s.root == nil {
+		s.root = newCenterNode(0)
+	}
+	s.ensurePane(0)
+	s.panes[0].clampSel()
+}
+
+// ensurePane grows the pane and size slices so pane is indexable.
+func (s *centerState) ensurePane(pane int) {
+	for len(s.panes) <= pane {
+		s.panes = append(s.panes, centerPane{sel: -1})
+	}
+	for len(s.paneW) <= pane {
+		s.paneW = append(s.paneW, 0)
+		s.paneH = append(s.paneH, 0)
+	}
 }
 
 // activeTab is the focused pane's active tab, or nil.
@@ -130,74 +213,76 @@ func (p *centerPane) indexOf(tab *centerTab) int {
 	return -1
 }
 
-// visiblePanes are the panes the layout draws, in order.
+// visiblePanes are the panes the tree draws, in order.
 func (s *centerState) visiblePanes() []int {
-	n := s.layout.paneCount()
-	out := make([]int, 0, n)
-	for i := range n {
-		out = append(out, i)
-	}
+	out := make([]int, 0, len(s.panes))
+	walkPanes(s.root, func(pane int) { out = append(out, pane) })
 	return out
 }
 
-// collapseHiddenPanes moves the tabs of panes the layout no longer shows into
-// the surviving pane nearest to where they were drawn, so shrinking the layout
-// never loses a tab and keeps each one as close to its old place as it can.
-func (s *centerState) collapseHiddenPanes() {
-	n := s.layout.paneCount()
-	for i := n; i < maxPanes; i++ {
-		if len(s.panes[i].tabs) > 0 {
-			target := nearestVisiblePane(s.layout, i)
-			s.panes[target].tabs = append(s.panes[target].tabs, s.panes[i].tabs...)
-		}
-		s.panes[i] = centerPane{sel: -1}
-	}
-	// A pane the layout adds has never held a tab, and one that just gave its
-	// tabs away may point past its new end; clamping settles both.
+// paneCount is how many panes the tree draws.
+func (s *centerState) paneCount() int {
+	n := 0
+	walkPanes(s.root, func(int) { n++ })
+	return n
+}
+
+// hasPane reports whether the tree draws pane.
+func (s *centerState) hasPane(pane int) bool {
+	return pane >= 0 && paneInTree(s.root, pane)
+}
+
+// freePane is the smallest pane index the tree does not draw, growing the
+// array when every index is taken.
+func (s *centerState) freePane() int {
 	for i := range s.panes {
-		s.panes[i].clampSel()
-	}
-	if s.focus >= n {
-		s.focus = nearestVisiblePane(s.layout, s.focus)
-	}
-}
-
-// paneNeighbours records, per layout, which drawn pane each hidden pane folds
-// into. Panes keep their index whenever the layout still draws them, so only
-// the indices at or past paneCount are folded away; they go to the pane that
-// now covers the region they last occupied.
-var paneNeighbours = map[centerLayout]map[int]int{
-	// One pane covers the whole area.
-	layoutSingle: {1: 0, 2: 0},
-	// Left and right columns: the second column's lower pane folds up into
-	// the pane above it.
-	layoutCols: {2: 1},
-	// With one pane down the left, only pane 2 can be dropped, and it joins
-	// the right column's top.
-	layoutLeftWide: {},
-}
-
-// nearestVisiblePane is the drawn pane a hidden one folds into under the
-// layout, or the same index when it is already visible.
-func nearestVisiblePane(l centerLayout, i int) int {
-	if i < l.paneCount() {
-		return i
-	}
-	if m, ok := paneNeighbours[l]; ok {
-		if target, ok := m[i]; ok {
-			return target
+		if !paneInTree(s.root, i) {
+			return i
 		}
 	}
-	return max(l.paneCount()-1, 0)
+	return len(s.panes)
 }
 
-// setLayout switches the layout, folding away the panes it drops.
-func (cw *ChatWindow) setLayout(l centerLayout) {
-	cw.center.layout = l
-	// collapseHiddenPanes normalises every pane's selection, so panes the new
-	// layout adds start with none and panes that lost tabs point at a
-	// remaining one.
-	cw.center.collapseHiddenPanes()
+// splitSize is a new split's first-child size in DIPs: about half the pane it
+// splits, so both halves are usable at once.
+func (s *centerState) splitSize(pane int, dir centerSplitDir) float32 {
+	var w, h float32
+	if pane >= 0 && pane < len(s.paneW) {
+		w, h = s.paneW[pane], s.paneH[pane]
+	}
+	if w <= 0 {
+		w = s.viewW
+	}
+	if h <= 0 {
+		h = s.viewH
+	}
+	if w <= 0 {
+		w = 1200
+	}
+	if h <= 0 {
+		h = 800
+	}
+	if dir == splitDown {
+		return max(80, h/2)
+	}
+	return max(80, w/2)
+}
+
+// splitPane adds an empty pane to the right or below pane, focusing it.
+func (cw *ChatWindow) splitPane(pane int, dir centerSplitDir) {
+	cw.center.ensureRoot()
+	if !cw.center.hasPane(pane) {
+		return
+	}
+	np := cw.center.freePane()
+	leaf := splitPaneNode(cw.center.root, pane, dir, cw.center.splitSize(pane, dir))
+	if leaf == nil {
+		return
+	}
+	leaf.pane = np
+	cw.center.ensurePane(np)
+	cw.center.panes[np] = centerPane{sel: -1}
+	cw.center.focus = np
 	cw.invalidate()
 }
 
@@ -207,32 +292,29 @@ func (cw *ChatWindow) newTabID(prefix string) string {
 	return prefix + ":" + itoa(cw.center.seq)
 }
 
-// centerArea draws the center area: the panes of the current layout.
+// centerArea draws the center area: the panes of the split tree.
 func (cw *ChatWindow) centerArea(c *mgo.Context) {
-	if cw.center.colW == 0 {
-		w, _ := c.Size()
-		cw.center.colW = max(240, w/2)
+	cw.center.ensureRoot()
+	cw.center.viewW, cw.center.viewH = c.Size()
+	cw.centerNodeView(c, cw.center.root)
+}
+
+// centerNodeView draws one node of the split tree.
+func (cw *ChatWindow) centerNodeView(c *mgo.Context, n *centerNode) {
+	if n == nil {
+		return
 	}
-	if cw.center.gridRight == 0 {
-		_, h := c.Size()
-		cw.center.gridRight = max(160, h/2)
+	if n.pane >= 0 {
+		cw.centerPaneView(c, n.pane)
+		return
 	}
-	switch cw.center.layout {
-	case layoutCols:
-		mgo.Split(c, &cw.center.colW,
-			func() { cw.centerPaneView(c, 0) },
-			func() { cw.centerPaneView(c, 1) }).Fill()
-	case layoutLeftWide:
-		mgo.Split(c, &cw.center.colW, func() {
-			cw.centerPaneView(c, 0)
-		}, func() {
-			mgo.SplitVertical(c, &cw.center.gridRight,
-				func() { cw.centerPaneView(c, 1) },
-				func() { cw.centerPaneView(c, 2) }).Fill()
-		}).Fill()
-	default:
-		cw.centerPaneView(c, 0)
+	first := func() { cw.centerNodeView(c, n.first) }
+	second := func() { cw.centerNodeView(c, n.second) }
+	if n.dir == splitDown {
+		mgo.SplitVertical(c, &n.size, first, second).Fill()
+		return
 	}
+	mgo.Split(c, &n.size, first, second).Fill()
 }
 
 // centerStateKey names a workspace's saved center state; the empty workspace
@@ -246,8 +328,8 @@ func centerStateKey(ws string) string {
 
 // switchCenterState points the center area at the state saved under ws,
 // creating an empty one the first time, so every workspace owns its tabs and
-// layout. The center is the state's pointer, not a copy: edits to the open
-// tabs and layout write straight into the workspace's saved state.
+// split tree. The center is the state's pointer, not a copy: edits to the open
+// tabs and splits write straight into the workspace's saved state.
 func (cw *ChatWindow) switchCenterState(ws string) {
 	if cw.centerStates == nil {
 		cw.centerStates = map[string]*centerState{}
@@ -260,7 +342,7 @@ func (cw *ChatWindow) switchCenterState(ws string) {
 	}
 	st := cw.centerStates[centerStateKey(ws)]
 	if st == nil {
-		st = &centerState{}
+		st = newCenterState()
 		cw.centerStates[centerStateKey(ws)] = st
 	}
 	cw.center = st

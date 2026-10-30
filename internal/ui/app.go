@@ -292,7 +292,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		acp:            newACPState(),
 		skills:         newSkillsState(),
 		mcp:            mcpState{},
-		center:         &centerState{},
+		center:         newCenterState(),
 		rightPanel:     false,
 		wsCollapsed:    map[string]bool{},
 		themeMode:      mcore.ParseMode(cfg.ThemeMode),
