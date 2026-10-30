@@ -73,7 +73,7 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 
 // builtinToolHandler returns the executor for a builtin tool, reading its
 // runtime settings from the tool config.
-func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string, conv ...*models.Conversation) func(context.Context, string) (string, error) {
+func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string, env *builtinToolEnv, conv ...*models.Conversation) func(context.Context, string) (string, error) {
 	params := builtinToolParams(tool.Type)
 	keys := make([]string, 0, len(params))
 	for k := range params {
@@ -216,7 +216,7 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string, 
 	case "knowledge_search":
 		return cw.knowledgeSearchTool(tool.Config)
 	case "ask_question":
-		return cw.askQuestionTool()
+		return cw.askQuestionTool(env, conv...)
 	case "update_plan":
 		var target *models.Conversation
 		if len(conv) > 0 {

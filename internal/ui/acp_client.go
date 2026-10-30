@@ -12,7 +12,9 @@ import (
 
 	"chatgo/pkg/models"
 
+	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
+	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
 )
 
@@ -352,11 +354,21 @@ func (a acpClient) RequestPermission(ctx context.Context, p acp.RequestPermissio
 		a.cw.acp.permissionReq = &req
 		a.cw.acp.permissionCh = reply
 		a.cw.acp.permissionShow = true
+		a.cw.invalidate()
+		a.cw.notifyAttention(a.cw.acpConvIDOf(req.SessionId), "Agent 请求权限", acpPermissionTitle(&req))
 	})
 	select {
 	case r := <-reply:
 		return r, nil
 	case <-ctx.Done():
+		a.cw.postMain(func() {
+			if a.cw.acp.permissionCh == reply {
+				a.cw.acp.permissionReq = nil
+				a.cw.acp.permissionCh = nil
+				a.cw.acp.permissionShow = false
+				a.cw.invalidate()
+			}
+		})
 		return acpCancelled(), ctx.Err()
 	}
 }
@@ -419,39 +431,96 @@ func acpCancelled() acp.RequestPermissionResponse {
 	}
 }
 
-// acpPermissionDialog asks the user to allow or deny a tool call.
+func (cw *ChatWindow) acpConvIDOf(sess acp.SessionId) string {
+	cw.acp.mu.Lock()
+	defer cw.acp.mu.Unlock()
+	return cw.acpConvIDOfLocked(sess)
+}
 
-func (cw *ChatWindow) acpPermissionDialog(c *mgo.Context) {
-	if cw.acp.permissionReq == nil {
+// acpConvIDOfLocked is acpConvIDOf for callers already holding acp.mu.
+func (cw *ChatWindow) acpConvIDOfLocked(sess acp.SessionId) string {
+	key := cw.acp.convBySess[sess]
+	if rt := cw.acp.convs[key]; rt != nil {
+		return rt.convID
+	}
+	return key
+}
+
+func acpPermissionTitle(req *acp.RequestPermissionRequest) string {
+	if req.ToolCall.Title != nil {
+		return *req.ToolCall.Title
+	}
+	return "工具调用"
+}
+
+func (cw *ChatWindow) acpPermissionPanel(c *mgo.Context) {
+	req := cw.acp.permissionReq
+	if req == nil || !cw.acp.permissionShow || !cw.acpPermissionVisible(req) {
 		return
 	}
-	req := cw.acp.permissionReq
-	title := "工具调用"
-	if req.ToolCall.Title != nil {
-		title = *req.ToolCall.Title
-	}
-	kit.Dialog(c, &cw.acp.permissionShow, kit.DialogOptions{
-		Title:       "Agent 请求权限",
-		Description: title,
-		Actions: func() {
-			for _, opt := range req.Options {
-				id := opt.OptionId
-				if kit.Button(c, opt.Name, kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
-					cw.resolvePermission(acp.RequestPermissionResponse{
-						Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: id}},
-					})
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+
+	var selected acp.PermissionOptionId
+	denied := false
+	mgo.Column(c).FillWidth().Shrink(0).AlignItems(mgo.Start).Padding(u*2, u*4).Children(func() {
+		mgo.Column(c).FillWidth().Shrink(0).Radius(mtheme.ControlRadius).
+			Background(k.Surface).Border(mtheme.BorderWidth, k.Border).
+			Padding(u * 2).Gap(u).Children(func() {
+			mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
+				mgo.Icon(c, icons.Must("lock")).Size(14, 14).
+					Shrink(0).TextColor(k.Warning)
+				mgo.Text(c, "Agent 请求权限").FontWeight(600).FontSize(caption).Grow(1)
+				if kit.Button(c, "拒绝", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
+					denied = true
 				}
-			}
-			if kit.Button(c, "拒绝", kit.ButtonOptions{Variant: kit.Danger}).Clicked() {
-				cw.resolvePermission(acpCancelled())
-			}
-		},
-	}, func() {
-		mgo.Text(c, "该操作需要你的授权：").TextColor(mcore.Tokens(c).TextMuted)
+			})
+			mgo.Column(c).FillWidth().Gap(u).Padding(u).Radius(mtheme.ControlRadius).
+				Background(k.Background).Border(mtheme.BorderWidth, k.Border).Children(func() {
+				mgo.Text(c, acpPermissionTitle(req)).FontSize(mcore.FontSize(c, mtheme.BodySize)).
+					TextColor(k.Text).LineHeight(1.5)
+				for _, opt := range req.Options {
+					opt := opt
+					icon, color := icons.Must("circle-check"), k.Success
+					switch opt.Kind {
+					case acp.PermissionOptionKindAllowAlways:
+						icon = icons.Must("lock-open")
+					case acp.PermissionOptionKindRejectOnce, acp.PermissionOptionKindRejectAlways:
+						icon, color = icons.Must("circle-x"), k.Warning
+					}
+					b := mgo.ButtonBase(c).FillWidth().Gap(u).AlignItems(mgo.Center).
+						Padding(u/2, u).Radius(mtheme.ControlRadius).
+						Background(k.Surface).Border(mtheme.BorderWidth, k.Border).
+						Label(opt.Name)
+					if b.Hovered() {
+						b.Background(k.SurfaceHover)
+					}
+					b.Children(func() {
+						mgo.Icon(c, icon).Size(14, 14).Shrink(0).TextColor(color)
+						mgo.Text(c, opt.Name).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").
+							FontSize(caption)
+					})
+					if b.Clicked() {
+						selected = opt.OptionId
+					}
+				}
+			})
+		})
 	})
-	if !cw.acp.permissionShow && cw.acp.permissionReq != nil {
+	switch {
+	case denied:
 		cw.resolvePermission(acpCancelled())
+	case selected != "":
+		cw.resolvePermission(acp.RequestPermissionResponse{
+			Outcome: acp.RequestPermissionOutcome{Selected: &acp.RequestPermissionOutcomeSelected{OptionId: selected}},
+		})
 	}
+}
+
+func (cw *ChatWindow) acpPermissionVisible(req *acp.RequestPermissionRequest) bool {
+	convID := cw.acpConvIDOf(req.SessionId)
+	return convID == "" || (cw.cur != nil && cw.cur.ID == convID)
 }
 
 func (cw *ChatWindow) resolvePermission(r acp.RequestPermissionResponse) {

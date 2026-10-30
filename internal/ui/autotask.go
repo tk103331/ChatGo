@@ -704,11 +704,15 @@ func (cw *ChatWindow) ensureTaskConv(task *config.AutoTask) (*models.Conversatio
 }
 
 // taskClient builds a client for an agent without touching the active state.
-func (cw *ChatWindow) taskClient(agent, workspace string) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
-	return cw.taskClientWithChannel(agent, workspace, nil, nil)
+func (cw *ChatWindow) taskClient(agent, workspace string, conv ...*models.Conversation) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
+	var c *models.Conversation
+	if len(conv) > 0 {
+		c = conv[0]
+	}
+	return cw.taskClientWithChannel(agent, workspace, nil, nil, c)
 }
 
-func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext, extra ...tool.BaseTool) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
+func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext, conv *models.Conversation, extra ...tool.BaseTool) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
 	provName, model, sys, ws, toolIDs := cw.taskAgentSpec(agent)
 	root := workspace
 	if root == "" {
@@ -723,7 +727,11 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 				model = ms[0]
 			}
 		}
-		einoTools := cw.buildEinoTools(toolIDs, root)
+		var env *builtinToolEnv
+		if ch != nil {
+			env = &builtinToolEnv{channel: ch, msgCtx: msgCtx}
+		}
+		einoTools := cw.buildEinoToolsEnv(toolIDs, root, conv, env)
 		if ch != nil {
 			einoTools = combineTools(einoTools, cw.buildChannelTools(ch, msgCtx))
 		}
@@ -755,7 +763,11 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 		}
 	}
 	p.Model = model
-	einoTools := cw.buildEinoTools(toolIDs, root)
+	var env *builtinToolEnv
+	if ch != nil {
+		env = &builtinToolEnv{channel: ch, msgCtx: msgCtx}
+	}
+	einoTools := cw.buildEinoToolsEnv(toolIDs, root, conv, env)
 	if ch != nil {
 		einoTools = combineTools(einoTools, cw.buildChannelTools(ch, msgCtx))
 	}

@@ -160,12 +160,15 @@ func (cw *ChatWindow) onChannelInbound(channelID string, in channel.Inbound) {
 	// Feishu channel always has: the user sees the bot picked it up before the
 	// answer is ready. Platforms without a reaction API are skipped silently.
 	cw.reactToChannelMessage(channelID, in, channel.ReactionWorking)
-	cw.runChannelAgent(channelID, text, &channelMsgContext{
+	consumed := cw.runChannelAgent(channelID, text, &channelMsgContext{
 		ChatID: in.ChatID, FromUser: in.FromUser, ContextToken: in.ReplyToken,
 	}, func(reply string) {
 		cw.sendChannelReply(channelID, in, reply)
 		cw.reactToChannelMessage(channelID, in, channel.ReactionDone)
 	})
+	if consumed {
+		cw.reactToChannelMessage(channelID, in, channel.ReactionDone)
+	}
 }
 
 // reactToChannelMessage attaches a state emoji to a received message through

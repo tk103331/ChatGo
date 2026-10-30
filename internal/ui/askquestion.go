@@ -9,10 +9,13 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/config"
 	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
+
+	"chatgo/pkg/models"
 )
 
 // askQuestionTimeout bounds how long a question waits for an answer, so a
@@ -28,11 +31,17 @@ type askQuestionItem struct {
 	answer   string
 }
 
+type builtinToolEnv struct {
+	channel *config.Channel
+	msgCtx  *channelMsgContext
+}
+
 // askQuestion is one pending ask from an agent, blocking its tool call until
 // the user answers or cancels.
 type askQuestion struct {
-	items []*askQuestionItem
-	reply chan string
+	items  []*askQuestionItem
+	reply  chan string
+	convID string
 }
 
 // answered reports whether every question has an answer.
@@ -63,7 +72,11 @@ func (q *askQuestion) result() string {
 // askQuestionTool asks the user one or more questions and returns the
 // answers as the tool result. It is the agent's way to stop and check a
 // decision instead of guessing.
-func (cw *ChatWindow) askQuestionTool() func(context.Context, string) (string, error) {
+func (cw *ChatWindow) askQuestionTool(env *builtinToolEnv, conv ...*models.Conversation) func(context.Context, string) (string, error) {
+	convID := ""
+	if len(conv) > 0 && conv[0] != nil {
+		convID = conv[0].ID
+	}
 	return func(ctx context.Context, args string) (string, error) {
 		var in struct {
 			Questions []struct {
@@ -100,6 +113,10 @@ func (cw *ChatWindow) askQuestionTool() func(context.Context, string) (string, e
 			return "", fmt.Errorf("缺少必填参数 questions")
 		}
 
+		if env != nil && env.channel != nil {
+			return cw.askChannelQuestion(ctx, env, convID, items)
+		}
+
 		if !cw.hasUI() {
 			// Without a window the panel never renders, so waiting would
 			// hang the tool call forever.
@@ -109,8 +126,12 @@ func (cw *ChatWindow) askQuestionTool() func(context.Context, string) (string, e
 		ready := make(chan struct{})
 		cw.postMain(func() {
 			defer close(ready)
-			cw.askQ = &askQuestion{items: items, reply: reply}
+			if convID == "" && cw.cur != nil {
+				convID = cw.cur.ID
+			}
+			cw.askQ = &askQuestion{items: items, reply: reply, convID: convID}
 			cw.invalidate()
+			cw.notifyAttention(convID, "Agent 提问", items[0].question)
 		})
 		<-ready
 
@@ -134,7 +155,7 @@ func (cw *ChatWindow) askQuestionTool() func(context.Context, string) (string, e
 // buttons, and a free-text field for an answer none of them cover.
 func (cw *ChatWindow) askQuestionPanel(c *mgo.Context) {
 	q := cw.askQ
-	if q == nil {
+	if q == nil || (q.convID != "" && (cw.cur == nil || cw.cur.ID != q.convID)) {
 		return
 	}
 	k := mcore.Tokens(c)
@@ -239,4 +260,106 @@ func (cw *ChatWindow) askQuestionPanel(c *mgo.Context) {
 		q.reply <- q.result()
 	}
 	cw.invalidate()
+}
+
+// askChannelQuestion sends the questions through the channel that delivered
+// the message and blocks until its user replies or the timeout expires.
+func (cw *ChatWindow) askChannelQuestion(ctx context.Context, env *builtinToolEnv, convID string, items []*askQuestionItem) (string, error) {
+	if convID == "" {
+		return "", fmt.Errorf("渠道会话缺少会话 ID，无法提问")
+	}
+	key := channelAskKey(env.channel.ID, env.msgCtx)
+	q := &askQuestion{items: items, reply: make(chan string, 1), convID: convID}
+	cw.askMu.Lock()
+	if cw.channelAsks == nil {
+		cw.channelAsks = map[string]*askQuestion{}
+	}
+	cw.channelAsks[key] = q
+	cw.askMu.Unlock()
+	if err := cw.channelSendText(env.channel, env.msgCtx, channelQuestionText(items)); err != nil {
+		cw.dropChannelAsk(key, q)
+		return "", fmt.Errorf("发送提问失败: %w", err)
+	}
+	ctx, cancel := context.WithTimeout(ctx, askQuestionTimeout)
+	defer cancel()
+	select {
+	case answer := <-q.reply:
+		return answer, nil
+	case <-ctx.Done():
+		cw.dropChannelAsk(key, q)
+		return "", fmt.Errorf("提问未获回答")
+	}
+}
+
+func (cw *ChatWindow) dropChannelAsk(key string, q *askQuestion) {
+	cw.askMu.Lock()
+	if cw.channelAsks[key] == q {
+		delete(cw.channelAsks, key)
+	}
+	cw.askMu.Unlock()
+}
+
+// channelAskKey scopes a pending question to the chat that asked it, so two
+// users of one bot never take each other's answer.
+func channelAskKey(channelID string, msgCtx *channelMsgContext) string {
+	chatID := ""
+	if msgCtx != nil {
+		chatID = strings.TrimSpace(msgCtx.ChatID)
+	}
+	return channelID + "\x00" + chatID
+}
+
+// deliverChannelAsk hands a channel message to the question waiting on that
+// chat, and reports whether it took it.
+func (cw *ChatWindow) deliverChannelAsk(channelID string, msgCtx *channelMsgContext, text string) bool {
+	key := channelAskKey(channelID, msgCtx)
+	cw.askMu.Lock()
+	q := cw.channelAsks[key]
+	if q != nil {
+		delete(cw.channelAsks, key)
+	}
+	cw.askMu.Unlock()
+	if q == nil {
+		return false
+	}
+	select {
+	case q.reply <- text:
+	default:
+	}
+	return true
+}
+
+func (cw *ChatWindow) channelAskWaiting(convID string) bool {
+	cw.askMu.Lock()
+	defer cw.askMu.Unlock()
+	for _, q := range cw.channelAsks {
+		if q.convID == convID {
+			return true
+		}
+	}
+	return false
+}
+
+func (cw *ChatWindow) channelSendText(ch *config.Channel, msgCtx *channelMsgContext, text string) error {
+	tool := &config.ChannelTool{Type: ch.Type + "_send_message"}
+	handler := cw.channelToolHandler(ch, tool, msgCtx)
+	_, err := handler(context.Background(), fmt.Sprintf(`{"text":%s}`, mustJSON(text)))
+	return err
+}
+
+func channelQuestionText(items []*askQuestionItem) string {
+	var b strings.Builder
+	b.WriteString("需要你确认：")
+	for i, it := range items {
+		if len(items) == 1 {
+			b.WriteString("\n" + it.question)
+		} else {
+			fmt.Fprintf(&b, "\n%d. %s", i+1, it.question)
+		}
+		if len(it.options) > 0 {
+			b.WriteString("\n选项：" + strings.Join(it.options, " / "))
+		}
+	}
+	b.WriteString("\n\n请直接回复答案。")
+	return b.String()
 }

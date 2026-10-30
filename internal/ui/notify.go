@@ -81,12 +81,77 @@ func (cw *ChatWindow) notifyUser(title, body string) {
 	}
 	if !mygo.NotificationsSupported() {
 		cw.feishuLogf("notifyUser: 系统通知不支持（未打包或权限未授权）")
+		cw.bounceDock()
 		return
 	}
-	_ = mygo.NewNotification(mygo.NotificationOptions{
+	if err := mygo.NewNotification(mygo.NotificationOptions{
 		Title: title,
 		Body:  body,
-	}).Show()
+	}).Show(); err != nil {
+		cw.feishuLogf("notifyUser: 系统通知发送失败: %v", err)
+		cw.bounceDock()
+	}
+}
+
+// notifyAttention reports a pending permission or question that blocks a
+// conversation. The current conversation with a focused window already shows
+// its dialog, so nothing is sent then; otherwise the notice leads back to it.
+func (cw *ChatWindow) notifyAttention(convID, label, detail string) {
+	focused := cw.window != nil && cw.window.IsFocused()
+	viewing := focused && cw.section == sectionChat && cw.mode == modeChat &&
+		convID != "" && cw.cur != nil && cw.cur.ID == convID
+	if viewing {
+		return
+	}
+	title := "会话"
+	if convID != "" {
+		if conv, err := cw.convManager.LoadConversation(convID); err == nil {
+			title = notifySessionTitle(conv)
+		}
+	}
+	body := label
+	if detail != "" {
+		body = label + "：" + detail
+	}
+	body = notifyPreview(body)
+	if !focused {
+		cw.systemNotify(convID, title, body)
+		return
+	}
+	cw.toastWithAction(title+"："+body, mcore.SeverityInfo, "查看", func() {
+		cw.openConversationByID(convID)
+	})
+}
+
+func (cw *ChatWindow) systemNotify(convID, title, body string) {
+	if !mygo.NotificationsSupported() {
+		cw.feishuLogf("systemNotify: 系统通知不支持（未打包或权限未授权）")
+		cw.bounceDock()
+		return
+	}
+	id := ""
+	if convID != "" {
+		id = "chatgo-attention-" + convID
+	}
+	n := mygo.NewNotification(mygo.NotificationOptions{ID: id, Title: title, Body: body})
+	n.OnClick(func() {
+		cw.postMain(func() {
+			if convID != "" {
+				cw.openConversationByID(convID)
+			}
+			if cw.window != nil {
+				cw.window.Show()
+			}
+		})
+	})
+	if err := n.Show(); err != nil {
+		cw.feishuLogf("systemNotify: 系统通知发送失败: %v", err)
+		cw.bounceDock()
+	}
+}
+
+func (cw *ChatWindow) bounceDock() {
+	mygo.App.Dock.Bounce(false)
 }
 
 // notifySessionTitle is the notification title: agent name plus session title.
