@@ -153,7 +153,9 @@ type convRow struct {
 	index       int
 }
 
-// conversationList shows saved conversations grouped by workspace.
+// conversationList shows saved conversations grouped by workspace: every
+// project and each of its working trees is a Collapsible, a tree nested in its
+// project's panel.
 func (cw *ChatWindow) conversationList(c *mgo.Context) {
 	// Each row carries its workspace's git summary, and every workspace in
 	// the list groups under its project's main tree. A workspace with no
@@ -163,36 +165,144 @@ func (cw *ChatWindow) conversationList(c *mgo.Context) {
 	for _, ws := range cw.workspaces() {
 		cw.ensureConvGit(ws)
 	}
-	rows := cw.groupedConvRows()
-	cw.convList.Key = func(i int) any {
-		if rows[i].header {
-			// A tree's header shares its path with the project's own header
-			// when the tree is the main one, so the kind is part of the key.
-			if rows[i].sub {
-				return "wt:" + rows[i].ws
+	groups := splitConvRows(cw.buildConvRows(nil))
+	mgo.Scroll(c).Grow(1).MinHeight(0).Padding(0, 10, 0, 0).Children(func() {
+		u := mcore.Density(c).Unit()
+		k := mcore.Tokens(c)
+		for _, g := range groups {
+			open := !cw.wsCollapsed[g.key]
+			was := open
+			cw.convDisclosure(c, convDisclosureOptions{
+				key: g.key, title: workspaceTitle(g.ws), icon: "folder",
+				indent: u * 3, iconColor: k.Accent, textColor: k.Text, weight: 600,
+				open: &open,
+				content: func() {
+					if len(g.trees) > 0 {
+						for _, t := range g.trees {
+							topen := !cw.wsCollapsed[t.key]
+							twas := topen
+							cw.convDisclosure(c, convDisclosureOptions{
+								key: t.key, title: cw.worktreeHeaderLabel(t.ws), icon: "git-branch",
+								indent: u * 2.5, iconColor: k.TextMuted, textColor: k.TextMuted, weight: 400,
+								open:     &topen,
+								trailing: func() { cw.worktreeDiffSummary(c, t.ws) },
+								content: func() {
+									for _, i := range t.rows {
+										cw.convRow(c, i, true)
+									}
+								},
+							})
+							if topen != twas {
+								cw.wsCollapsed[t.key] = !topen
+							}
+						}
+						return
+					}
+					for _, i := range g.direct {
+						cw.convRow(c, i, false)
+					}
+				},
+			})
+			if open != was {
+				cw.wsCollapsed[g.key] = !open
 			}
-			return "w:" + rows[i].ws
 		}
-		return cw.convs[rows[i].index].ID
+	})
+}
+
+type convDisclosureOptions struct {
+	key       string
+	title     string
+	icon      string
+	indent    float32
+	iconColor mgo.Color
+	textColor mgo.Color
+	weight    int
+	open      *bool
+	trailing  func()
+	content   func()
+}
+
+func (cw *ChatWindow) convDisclosure(c *mgo.Context, opts convDisclosureOptions) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).FillWidth().Shrink(0).Children(func() {
+		p := mgo.CollapsibleBase(c.Key(opts.key), opts.open)
+		tr := p.Trigger.FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
+			AlignItems(mgo.Center).Gap(u).Padding(u*0.5, u).Radius(mtheme.ControlRadius)
+		if tr.Hovered() {
+			tr.Background(k.SurfaceHover)
+		}
+		tr.Children(func() {
+			mgo.Icon(c, icons.Must(opts.icon)).Size(14, 14).TextColor(opts.iconColor).Shrink(0)
+			mgo.Text(c, opts.title).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").
+				FontWeight(opts.weight).TextColor(opts.textColor).Tooltip(opts.title)
+			if opts.trailing != nil {
+				opts.trailing()
+			}
+			arrow := "chevron-right"
+			if *opts.open {
+				arrow = "chevron-down"
+			}
+			mgo.Icon(c, icons.Must(arrow)).Size(14, 14).TextColor(k.TextMuted).Shrink(0)
+		})
+		if panel := p.Panel(opts.content); panel.Valid() {
+			panel.Padding(u*0.5, 0).PaddingStart(opts.indent).Gap(u)
+		}
+	})
+}
+
+// convTreeGroup is one working tree of a project block: the tree's collapse
+// key and the conversations its section holds.
+type convTreeGroup struct {
+	key  string
+	ws   string
+	rows []int
+}
+
+// convProjectGroup is one project block: the project's collapse key and the
+// trees or, for a single-tree project, the conversations directly under it.
+type convProjectGroup struct {
+	key    string
+	ws     string
+	trees  []convTreeGroup
+	direct []int
+}
+
+// splitConvRows folds the flat row list into project blocks, each keeping the
+// tree sections its rows carry.
+func splitConvRows(rows []convRow) []convProjectGroup {
+	var groups []convProjectGroup
+	for _, r := range rows {
+		switch {
+		case r.header && !r.sub:
+			groups = append(groups, convProjectGroup{key: r.key, ws: r.ws})
+		case r.header:
+			if len(groups) == 0 {
+				continue
+			}
+			g := &groups[len(groups)-1]
+			g.trees = append(g.trees, convTreeGroup{key: r.key, ws: r.ws})
+		default:
+			if len(groups) == 0 {
+				continue
+			}
+			g := &groups[len(groups)-1]
+			if n := len(g.trees); n > 0 {
+				g.trees[n-1].rows = append(g.trees[n-1].rows, r.index)
+			} else {
+				g.direct = append(g.direct, r.index)
+			}
+		}
 	}
-	cw.convList.Label = func(i int) string {
-		if rows[i].header {
-			return workspaceTitle(rows[i].ws)
-		}
-		return cw.convs[rows[i].index].Title
-	}
-	cw.convList.Header = func(i int) bool { return false }
-	mgo.List(c, &cw.convList, len(rows), func(i int) {
-		r := rows[i]
-		if r.header {
-			cw.workspaceHeaderOf(c, r)
-			return
-		}
-		cw.convRow(c, r.index, r.branchShown)
-	}).Grow(1).MinHeight(0).Padding(0, 10, 0, 0)
+	return groups
 }
 
 func (cw *ChatWindow) groupedConvRows() []convRow {
+	return cw.buildConvRows(cw.wsCollapsed)
+}
+
+func (cw *ChatWindow) buildConvRows(collapsed map[string]bool) []convRow {
 	// Conversations group under the main working tree of their workspace's
 	// repository, so every linked tree's sessions sit together.
 	groups := map[string][]int{}
@@ -233,25 +343,26 @@ func (cw *ChatWindow) groupedConvRows() []convRow {
 		// row below checks, or clicking the chevron writes one key and the
 		// list reads another and nothing folds.
 		rows = append(rows, convRow{header: true, ws: g, key: g})
-		if cw.wsCollapsed[g] {
+		if collapsed[g] {
 			continue
 		}
 		// A project's working trees are its own directories, so each tree
 		// holding sessions gets a header of its own under the project; a
-		// tree with none is not listed, and a project with a single tree
-		// keeps its sessions directly under its own header.
+		// tree with none is not listed. Every tree is labelled, even the
+		// project's only one, so the sidebar keeps the same shape whether a
+		// project has one working tree or many.
 		members := map[string][]int{}
 		for _, i := range groups[g] {
 			ws := cw.convs[i].Workspace
 			members[ws] = append(members[ws], i)
 		}
 		trees := cw.groupTrees(g, members)
-		labelled := len(trees) > 1
+		labelled := len(trees) > 0
 		for ti, t := range trees {
 			if labelled {
 				key := cw.treeCollapseKey(t, ti)
 				rows = append(rows, convRow{header: true, ws: t, sub: true, first: ti == 0, key: key})
-				if cw.wsCollapsed[key] {
+				if collapsed[key] {
 					continue
 				}
 			}
@@ -311,63 +422,6 @@ func (cw *ChatWindow) treeCollapseKey(ws string, rank int) string {
 	return ws
 }
 
-// workspaceHeaderOf shows a workspace row with a new-conversation action.
-//
-// A project is named by its directory and marked with an accent folder. A
-// working tree under it is named by the branch it has checked out, not by its
-// directory: the main tree's directory is the project's own, so showing the
-// path would repeat the project's name on the line below it.
-func (cw *ChatWindow) workspaceHeaderOf(c *mgo.Context, r convRow) {
-	ws, sub := r.ws, r.sub
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	chev := "chevron-down"
-	if cw.wsCollapsed[r.key] {
-		chev = "chevron-right"
-	}
-	if sub {
-		cw.worktreeHeaderRow(c, r, chev)
-		return
-	}
-	mgo.Row(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()*1.1).Padding(u/2, u).Gap(u / 2).
-		AlignItems(mgo.Center).Children(func() {
-		if mcore.IconAction(c, icons.Must(chev), "折叠/展开项目").Clicked() {
-			cw.wsCollapsed[r.key] = !cw.wsCollapsed[r.key]
-		}
-		mgo.Icon(c, icons.Must("folder")).Size(14, 14).TextColor(k.Accent).Shrink(0)
-		mgo.Text(c, workspaceTitle(ws)).FontSize(caption).FontWeight(700).TextColor(k.Text).
-			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(ws)
-		if mcore.IconAction(c, icons.Must("plus"), "新建会话").Clicked() {
-			cw.openCreateTabIn(ws)
-		}
-	})
-}
-
-// worktreeHeaderRow draws one working tree under its project: the branch it
-// has checked out, indented and muted, so a project with several trees reads
-// as one group split by branch.
-func (cw *ChatWindow) worktreeHeaderRow(c *mgo.Context, r convRow, chev string) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Row(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).Padding(0, u, 0, u*3).Gap(u / 2).
-		AlignItems(mgo.Center).Children(func() {
-		if mcore.IconAction(c, icons.Must(chev), "折叠/展开工作树").Clicked() {
-			cw.wsCollapsed[r.key] = !cw.wsCollapsed[r.key]
-		}
-		mgo.Icon(c, icons.Must("git-branch")).Size(12, 12).TextColor(k.TextMuted).Shrink(0)
-		mgo.Text(c, cw.worktreeHeaderLabel(r.ws)).FontSize(caption).TextColor(k.TextMuted).
-			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(r.ws)
-		// The change counts belong to the tree, not to each session in it, so
-		// they are summarised once here.
-		cw.worktreeDiffSummary(c, r.ws)
-		if mcore.IconAction(c, icons.Must("plus"), "新建会话").Clicked() {
-			cw.openCreateTabIn(r.ws)
-		}
-	})
-}
-
 // worktreeDiffSummary shows a tree's uncommitted line counts, drawn only when
 // the tree has changes.
 func (cw *ChatWindow) worktreeDiffSummary(c *mgo.Context, ws string) {
@@ -376,11 +430,14 @@ func (cw *ChatWindow) worktreeDiffSummary(c *mgo.Context, ws string) {
 		return
 	}
 	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Text(c, "+"+shortLineCount(added)).Font(mtheme.MonoFont).
-		FontSize(caption).TextColor(k.Success).Shrink(0)
-	mgo.Text(c, "-"+shortLineCount(deleted)).Font(mtheme.MonoFont).
-		FontSize(caption).TextColor(k.Danger).Shrink(0)
+	mgo.Row(c).Gap(u / 2).AlignItems(mgo.Center).Children(func() {
+		mgo.Text(c, "+"+shortLineCount(added)).Font(mtheme.MonoFont).
+			FontSize(caption).TextColor(k.Success).Shrink(0)
+		mgo.Text(c, "-"+shortLineCount(deleted)).Font(mtheme.MonoFont).
+			FontSize(caption).TextColor(k.Danger).Shrink(0)
+	})
 }
 
 // shortLineCount abbreviates a line count the way the conversation rows do,
@@ -432,7 +489,7 @@ func (cw *ChatWindow) convRow(c *mgo.Context, i int, branchShown bool) {
 	}
 	selected := cw.cur != nil && cw.cur.ID == conv.ID
 	var v kit.ConversationItemView
-	mgo.Row(c).FillWidth().Margin(0, 0, 0, mcore.Density(c).Unit()*3).AlignItems(mgo.Center).Children(func() {
+	mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
 		cw.convLeading(c, conv, 16)
 		mgo.Box(c).Grow(1).MinWidth(0).Children(func() {
 			v = kit.ConversationItem(c, &mc, kit.ConversationItemOptions{

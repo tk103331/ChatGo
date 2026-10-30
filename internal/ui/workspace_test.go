@@ -265,10 +265,9 @@ func TestSelectConversationSameWorkspaceKeepsTabs(t *testing.T) {
 	}
 }
 
-// Opening a conversation of another project leaves the center with that
-// session's chat tab alone: the previous project's tabs are closed, not
-// carried over.
-func TestSelectConversationOtherWorkspaceResetsTabs(t *testing.T) {
+// Opening a conversation of another project switches to that project's tab
+// set; the previous project's tabs stay with it instead of being carried over.
+func TestSelectConversationOtherWorkspaceSwitchesTabSets(t *testing.T) {
 	projA := newTestRepo(t)
 	projB := newTestRepo(t)
 	cw := worktreeWindow(t, projA)
@@ -293,6 +292,39 @@ func TestSelectConversationOtherWorkspaceResetsTabs(t *testing.T) {
 	// A's tab set is still there for coming back to A.
 	if !containsStr(tabsKinds(cw.centerStates[centerStateKey(projA)]), "text") {
 		t.Fatal("A's tabs were closed while A was not the active project")
+	}
+}
+
+// Conversations of one working tree share that tree's tab group across
+// visits, and each tree keeps a group of its own.
+func TestWorktreeChatTabsStayPerWorktree(t *testing.T) {
+	dir := newTestRepo(t)
+	wt := filepath.Join(filepath.Dir(dir), "wt-chat-tabs")
+	if out, err := gitRun(dir, "worktree", "add", "-b", "chattabs", wt); err != nil {
+		t.Fatalf("worktree add: %v: %s", err, out)
+	}
+	cw := worktreeWindow(t, dir)
+	cm, err := models.NewConversationManagerAt(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cw.convManager = cm
+	mainConv := workspaceConv(t, cm, "main", dir)
+	linkedA := workspaceConv(t, cm, "linked A", wt)
+	linkedB := workspaceConv(t, cm, "linked B", wt)
+	cw.reloadConvs()
+
+	cw.selectConversation(linkedA.ID)
+	cw.selectConversation(mainConv.ID)
+	cw.selectConversation(linkedB.ID)
+	if cw.workspace != wt {
+		t.Fatalf("workspace is %q, want the linked tree %q", cw.workspace, wt)
+	}
+	if ids := chatTabIDs(cw.center); len(ids) != 2 || ids[0] != linkedA.ID || ids[1] != linkedB.ID {
+		t.Fatalf("the linked tree's sessions do not share one tab group: %v", ids)
+	}
+	if ids := chatTabIDs(cw.centerStates[centerStateKey(dir)]); len(ids) != 1 || ids[0] != mainConv.ID {
+		t.Fatalf("the main tree's tab group picked up another tree's sessions: %v", ids)
 	}
 }
 
@@ -350,19 +382,6 @@ func TestGitPanelFollowsSelectedConversation(t *testing.T) {
 	cw.cur = &models.Conversation{ID: "c2", Title: "t2"}
 	if got := cw.selectedDir(); got != projA {
 		t.Fatalf("the panel points at %q, want the workspace %q", got, projA)
-	}
-}
-
-// An empty workspace never counts as the window's own: tabs of the project on
-// screen belong to it, so a session saved without one must not join them.
-func TestKeepTabsOfRejectsAnotherProject(t *testing.T) {
-	projA := newTestRepo(t)
-	cw := worktreeWindow(t, projA)
-	if !cw.keepTabsOf(projA) {
-		t.Fatal("the workspace's own directory must keep its tabs")
-	}
-	if cw.keepTabsOf("") {
-		t.Fatal("a session without a workspace must not join the project's tabs")
 	}
 }
 

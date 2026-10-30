@@ -494,8 +494,8 @@ func TestGroupedConvRowsSkipsTreesWithoutSessions(t *testing.T) {
 			headers = append(headers, r.ws)
 		}
 	}
-	if len(headers) != 1 {
-		t.Fatalf("a single tree needs no header of its own, got %v", headers)
+	if len(headers) != 2 || headers[0] != dir || headers[1] != wt {
+		t.Fatalf("the project and its only filled tree must both be labelled, got %v", headers)
 	}
 }
 
@@ -582,8 +582,8 @@ func TestProjectHeaderCollapsesUnderItsOwnKey(t *testing.T) {
 	}
 }
 
-// A single-tree project folds under its own path too, which is the common
-// case where no tree headers exist at all.
+// A single-tree project still shows that tree, and the project header folds
+// the whole block under its own path.
 func TestSingleTreeProjectCollapses(t *testing.T) {
 	dir := newTestRepo(t)
 	cw := testWindow()
@@ -595,8 +595,11 @@ func TestSingleTreeProjectCollapses(t *testing.T) {
 	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir}}
 
 	rows := cw.groupedConvRows()
-	if len(rows) != 2 {
-		t.Fatalf("header + one session expected, got %d rows", len(rows))
+	if len(rows) != 3 {
+		t.Fatalf("project header + tree header + one session expected, got %d rows", len(rows))
+	}
+	if !rows[1].sub || rows[1].ws != dir {
+		t.Fatalf("the only tree must be labelled under the project: %+v", rows[1])
 	}
 	if rows[0].key != dir {
 		t.Fatalf("the project header folds under %q, want %q", rows[0].key, dir)
@@ -654,16 +657,24 @@ func TestSessionRowDropsBranchUnderLabelledTree(t *testing.T) {
 		}
 	}
 
-	// A project with a single tree has no tree header, so its sessions keep
-	// showing the branch themselves.
+	// A project with a single tree still labels it, so its sessions leave the
+	// branch to the header too.
 	cw.convs = []models.Conversation{{ID: "c1", Title: "main", Workspace: dir}}
+	var singleTree bool
 	for _, r := range cw.groupedConvRows() {
+		if r.header && r.sub {
+			singleTree = true
+			continue
+		}
 		if r.header {
 			continue
 		}
-		if r.branchShown {
-			t.Fatalf("a session with no tree header above it must show its branch: %+v", r)
+		if !r.branchShown {
+			t.Fatalf("a session under a single-tree header must leave the branch to it: %+v", r)
 		}
+	}
+	if !singleTree {
+		t.Fatal("a project with one tree must still show its tree header")
 	}
 }
 

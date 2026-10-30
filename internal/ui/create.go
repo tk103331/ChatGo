@@ -115,9 +115,8 @@ const createWidth float32 = 760
 // enough for a full name, rather than shrinking to their shortest value.
 const createPickerWidth float32 = 180
 
-// createPickerHeight makes the three pickers taller than a plain button, so
-// they read as the page's main inputs rather than as toolbar buttons.
-const createPickerHeight float32 = 38
+// createPickerHeight keeps the four pickers level with one another.
+const createPickerHeight float32 = 32
 
 // createAgentSelect chooses the agent that runs the new conversation.
 func (cw *ChatWindow) createAgentSelect(c *mgo.Context) {
@@ -265,7 +264,7 @@ func (cw *ChatWindow) createBranchSelect(c *mgo.Context) {
 		mgo.Text(c, "分支").FontSize(caption).TextColor(mcore.Tokens(c).TextMuted).
 			Label("新会话 分支")
 		sel := kit.BranchSelector(c, &cw.create.branch, branches,
-			kit.BranchSelectorOptions{AllowCreate: true, Key: "create"})
+			kit.BranchSelectorOptions{AllowCreate: true, Key: "create", MinHeight: createPickerHeight})
 		if sel.Changed() {
 			cw.create.newBranch = false
 		}

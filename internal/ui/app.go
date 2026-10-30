@@ -139,7 +139,6 @@ type ChatWindow struct {
 	wsCollapsed map[string]bool
 
 	homeList  mgo.ListState
-	convList  mgo.ListState
 	msgList   kit.MessageListState
 	knowledge kbState
 	imp       importState
