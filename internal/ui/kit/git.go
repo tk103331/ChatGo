@@ -329,6 +329,9 @@ type BranchSelectorOptions struct {
 	// Key names this selector's open and query state. Two selectors on screen
 	// at once need different keys, or opening one opens both.
 	Key string
+	// MinHeight lifts the trigger above a plain button, so it matches taller
+	// pickers beside it; zero keeps the control height.
+	MinHeight float32
 }
 
 // branchStateKeys names the local state a BranchSelector keeps. The key makes
@@ -373,6 +376,9 @@ func BranchSelector(c *mgo.Context, current *string, branches []Branch, opts Bra
 	trigger := Button(c, label, ButtonOptions{
 		Variant: Secondary, Icon: icons.Must("git-branch"), Disabled: opts.Disabled,
 	})
+	if opts.MinHeight > 0 {
+		trigger.MinHeight(opts.MinHeight)
+	}
 	r.Element = trigger
 	if trigger.Clicked() {
 		*open = !*open
@@ -388,34 +394,36 @@ func BranchSelector(c *mgo.Context, current *string, branches []Branch, opts Bra
 		in.Element.FillWidth()
 		uikit.AutoFocus(c, in.Input)
 		shown := 0
-		mgo.Column(c).FillWidth().Gap(1).Children(func() {
-			for _, b := range branches {
-				if q != "" && !strings.Contains(strings.ToLower(b.Name), q) {
-					continue
+		mgo.Scroll(c).MaxHeight(u * 56).Children(func() {
+			mgo.Column(c).FillWidth().Gap(1).Children(func() {
+				for _, b := range branches {
+					if q != "" && !strings.Contains(strings.ToLower(b.Name), q) {
+						continue
+					}
+					shown++
+					row := gitRow(c, b.Name == *current)
+					row.Label(b.Name)
+					if row.Clicked() && b.Name != *current {
+						*current, r.changed, *open = b.Name, true, false
+					}
+					row.Children(func() {
+						icon := "git-branch"
+						if b.Remote {
+							icon = "globe"
+						}
+						mgo.Icon(c, icons.Must(icon)).Size(14, 14).
+							TextColor(uikit.Tokens(c).TextMuted).Shrink(0)
+						mgo.Text(c, b.Name).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
+						if b.Ahead > 0 || b.Behind > 0 {
+							gitCaption(c, fmt.Sprintf("↑%d ↓%d", b.Ahead, b.Behind))
+						}
+						if b.Current {
+							mgo.Icon(c, icons.Must("check")).Size(14, 14).
+								TextColor(uikit.Tokens(c).Accent).Shrink(0)
+						}
+					})
 				}
-				shown++
-				row := gitRow(c, b.Name == *current)
-				row.Label(b.Name)
-				if row.Clicked() && b.Name != *current {
-					*current, r.changed, *open = b.Name, true, false
-				}
-				row.Children(func() {
-					icon := "git-branch"
-					if b.Remote {
-						icon = "globe"
-					}
-					mgo.Icon(c, icons.Must(icon)).Size(14, 14).
-						TextColor(uikit.Tokens(c).TextMuted).Shrink(0)
-					mgo.Text(c, b.Name).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
-					if b.Ahead > 0 || b.Behind > 0 {
-						gitCaption(c, fmt.Sprintf("↑%d ↓%d", b.Ahead, b.Behind))
-					}
-					if b.Current {
-						mgo.Icon(c, icons.Must("check")).Size(14, 14).
-							TextColor(uikit.Tokens(c).Accent).Shrink(0)
-					}
-				})
-			}
+			})
 		})
 		name := strings.TrimSpace(*query)
 		switch {

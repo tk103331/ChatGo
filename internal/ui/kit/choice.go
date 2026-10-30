@@ -243,7 +243,7 @@ func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOpt
 		uikit.AutoFocus(c, in.Input)
 		shown := 0
 		hasAny := false
-		mgo.Scroll(c).MaxHeight(u * 40).Children(func() {
+		mgo.Scroll(c).MaxHeight(u * 56).Children(func() {
 			mgo.Column(c).FillWidth().Gap(1).Children(func() {
 				for _, opt := range opts {
 					hasAny = true

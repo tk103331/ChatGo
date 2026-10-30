@@ -81,32 +81,23 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 	cw.reloadConvs()
 }
 
-// selectConversation loads a conversation and shows it in chat mode. A
-// conversation of another directory replaces the center's tabs, so the center
-// shows the session that was just clicked and nothing of the project it was
-// left in; one of the same directory joins the tabs already open there.
+// selectConversation loads a conversation and shows it in chat mode. The
+// center switches to the conversation's own working tree, so its tab joins
+// that tree's group; another tree keeps the tabs it had.
 func (cw *ChatWindow) selectConversation(id string) {
 	conv, err := cw.convManager.LoadConversation(id)
 	if err != nil {
 		return
 	}
-	// The workspace comparison must happen before pointAtWorkspace moves the
-	// window, so a conversation of another project is known to replace the
-	// center rather than join it.
-	keep := cw.keepTabsOf(conv.Workspace)
-	cw.openConversation(conv, !keep)
+	cw.openConversation(conv)
 }
 
-// openConversation shows conv, replacing the center's tabs with its own chat
-// tab when keepTabs is false and adding it next to the open ones when true.
-func (cw *ChatWindow) openConversation(conv *models.Conversation, keepTabs bool) {
-	replaces := !keepTabs
+// openConversation shows conv in its working tree's tab group, adding its
+// chat tab next to the sessions already open in that tree.
+func (cw *ChatWindow) openConversation(conv *models.Conversation) {
 	cw.cur = conv
 	cw.mode = modeChat
 	cw.pointAtWorkspace(conv.Workspace)
-	if replaces {
-		cw.resetCenterTabs()
-	}
 	cw.applyConversationAgent(conv)
 	cw.applyConversationModel(conv)
 	cw.focusConvTab(conv)
@@ -114,15 +105,6 @@ func (cw *ChatWindow) openConversation(conv *models.Conversation, keepTabs bool)
 	// Refreshing the summary when a conversation is opened keeps its row
 	// current with commits and checkouts made since the list was drawn.
 	cw.bumpConvGit(conv.Workspace)
-}
-
-// keepTabsOf reports whether opening the conversation with the given
-// workspace keeps the center's open tabs, which it does only while the window
-// already stands in that directory: linked working trees of one project are
-// still different directories, and their tabs — with the Git panel and graph
-// beside them — belong to them.
-func (cw *ChatWindow) keepTabsOf(ws string) bool {
-	return cw.workspace != "" && ws == cw.workspace
 }
 
 // applyConversationModel restores the model the conversation last used, so

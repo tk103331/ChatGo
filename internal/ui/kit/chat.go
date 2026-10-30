@@ -105,7 +105,13 @@ func SendButton(c *mgo.Context, opts SendButtonOptions) SendResult {
 			bg = k.AccentHover
 		}
 		b.Background(bg).TextColor(fg)
-		b.Children(func() { mgo.Icon(c, icons.Must(icon)).Size(16, 16) })
+		b.Children(func() {
+			if opts.Streaming && !b.Hovered() {
+				uikit.Spinner(c, uikit.SpinnerOptions{Size: 16, Color: fg})
+				return
+			}
+			mgo.Icon(c, icons.Must(icon)).Size(16, 16)
+		})
 	})
 	if b.Clicked() && !b.IsDisabled() {
 		r.send, r.stop = !opts.Streaming, opts.Streaming
