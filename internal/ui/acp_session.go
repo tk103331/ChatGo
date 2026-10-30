@@ -25,7 +25,7 @@ type acpState struct {
 	convs      map[string]*acpConv
 	convBySess map[acp.SessionId]string
 	convObj    map[string]*models.Conversation
-	starting   map[string]bool
+	starting   map[string]*acpStart
 
 	// greeting marks the sessions whose CLI has not been prompted yet. An
 	// adapter such as PiAgent announces itself in that window — its name,
@@ -48,12 +48,19 @@ func newACPState() acpState {
 		convs:        map[string]*acpConv{},
 		convBySess:   map[acp.SessionId]string{},
 		convObj:      map[string]*models.Conversation{},
-		starting:     map[string]bool{},
+		starting:     map[string]*acpStart{},
 		greeting:     map[acp.SessionId]bool{},
 		channelSess:  map[acp.SessionId]bool{},
 		channelReply: map[acp.SessionId]*strings.Builder{},
 		toolStart:    map[string]time.Time{},
 	}
+}
+
+// acpStart is one in-flight session start: waiters block on done, then see
+// the same error the starter got.
+type acpStart struct {
+	done chan struct{}
+	err  error
 }
 
 type acpConv struct {
@@ -116,7 +123,8 @@ func (cw *ChatWindow) acpRuntimeFor(convID string) *acpConv {
 func (cw *ChatWindow) acpInitializing(convID string) bool {
 	cw.acp.mu.Lock()
 	defer cw.acp.mu.Unlock()
-	return cw.acp.starting[convID] && cw.acp.convs[convID] == nil
+	_, starting := cw.acp.starting[convID]
+	return starting && cw.acp.convs[convID] == nil
 }
 
 func (cw *ChatWindow) acpSetMode(rt *acpConv, id acp.SessionModeId) {
@@ -348,22 +356,36 @@ func (cw *ChatWindow) acpEnsureSession(conv *models.Conversation, conn config.AC
 // acpEnsureSessionAt starts (or reuses) the session in one slot. A room
 // gives each ACP member its own slot, so two coding CLIs in one conversation
 // do not share a process.
-func (cw *ChatWindow) acpEnsureSessionAt(conv *models.Conversation, conn config.ACPConnection, key string) (*acpConv, error) {
-	cw.acp.mu.Lock()
-	if rt := cw.acp.convs[key]; rt != nil {
+func (cw *ChatWindow) acpEnsureSessionAt(conv *models.Conversation, conn config.ACPConnection, key string) (rt *acpConv, err error) {
+	// A warm-up may already be starting this slot. A message sent in that
+	// window waits for it instead of failing, which is what a user sees as
+	// "the session is still starting" right after opening a conversation.
+	for {
+		cw.acp.mu.Lock()
+		if rt := cw.acp.convs[key]; rt != nil {
+			cw.acp.mu.Unlock()
+			return rt, nil
+		}
+		if w, ok := cw.acp.starting[key]; ok {
+			cw.acp.mu.Unlock()
+			<-w.done
+			if w.err != nil {
+				return nil, w.err
+			}
+			continue
+		}
+		cw.acp.starting[key] = &acpStart{done: make(chan struct{})}
 		cw.acp.mu.Unlock()
-		return rt, nil
+		break
 	}
-	if cw.acp.starting[key] {
-		cw.acp.mu.Unlock()
-		return nil, fmt.Errorf("ACP 会话正在建立")
-	}
-	cw.acp.starting[key] = true
-	cw.acp.mu.Unlock()
 	cw.invalidate()
 	defer func() {
 		cw.acp.mu.Lock()
-		delete(cw.acp.starting, key)
+		if w, ok := cw.acp.starting[key]; ok {
+			w.err = err
+			close(w.done)
+			delete(cw.acp.starting, key)
+		}
 		cw.acp.mu.Unlock()
 	}()
 
@@ -397,7 +419,7 @@ func (cw *ChatWindow) acpEnsureSessionAt(conv *models.Conversation, conn config.
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	rt := &acpConv{cmd: cmd, convID: conv.ID, key: key, batch: map[string]bool{}}
+	rt = &acpConv{cmd: cmd, convID: conv.ID, key: key, batch: map[string]bool{}}
 	go func() {
 		_ = cmd.Wait()
 		cw.acpReap(rt)

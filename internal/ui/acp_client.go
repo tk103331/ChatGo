@@ -31,6 +31,8 @@ type acpUpdate struct {
 	// kindOf is the tool category the adapter reports (read, edit, execute,
 	// ...), shown on the tool row and used to pick its icon.
 	kindOf string
+	// plan is the agent's full execution plan, sent whole on every update.
+	plan []models.PlanEntry
 }
 
 func parseACPUpdate(u acp.SessionUpdate) (acpUpdate, bool) {
@@ -53,6 +55,16 @@ func parseACPUpdate(u acp.SessionUpdate) (acpUpdate, bool) {
 			status: string(u.ToolCall.Status),
 			kindOf: string(u.ToolCall.Kind),
 		}, true
+	case u.Plan != nil:
+		entries := make([]models.PlanEntry, 0, len(u.Plan.Entries))
+		for _, e := range u.Plan.Entries {
+			entries = append(entries, models.PlanEntry{
+				Content:  e.Content,
+				Priority: string(e.Priority),
+				Status:   string(e.Status),
+			})
+		}
+		return acpUpdate{kind: "plan", plan: entries}, true
 	case u.ToolCallUpdate != nil:
 		title := ""
 		if u.ToolCallUpdate.Title != nil {
@@ -188,6 +200,14 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 	conv := cw.acp.convObj[convID]
 	cw.acp.mu.Unlock()
 	if conv == nil {
+		return
+	}
+	if upd.kind == "plan" {
+		// A plan update carries the whole list, so it replaces the stored one
+		// rather than appending to it.
+		conv.Plan = upd.plan
+		_ = cw.convManager.SaveConversation(conv)
+		cw.invalidate()
 		return
 	}
 	n := len(conv.Messages)

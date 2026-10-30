@@ -156,8 +156,11 @@ type Conversation struct {
 	Agent     string            `json:"agent,omitempty"`
 	ACPMode   string            `json:"acp_mode,omitempty"`
 	ACPConfig map[string]string `json:"acp_config,omitempty"`
-	Skills    []string          `json:"skills,omitempty"`
-	TaskID    string            `json:"task_id,omitempty"`
+	// Plan is the agent's current execution plan. An ACP agent replaces it
+	// whole on every update; a conversation that never planned leaves it nil.
+	Plan   []PlanEntry `json:"plan,omitempty"`
+	Skills []string    `json:"skills,omitempty"`
+	TaskID string      `json:"task_id,omitempty"`
 	// TaskStatus is the last auto-task run's outcome on this conversation:
 	// "success" or "failed", empty for a conversation without a run.
 	TaskStatus string `json:"task_status,omitempty"`
@@ -210,6 +213,22 @@ func (c *Conversation) NewAgentMessage(id, agentID, name string, at time.Time) M
 	c.AssignSeq(&m)
 	return m
 }
+
+// PlanEntry is one task in an agent's execution plan, as ACP defines it.
+// The agent sends the whole list on every update, so the client replaces the
+// plan rather than merging into it.
+type PlanEntry struct {
+	Content  string `json:"content"`
+	Priority string `json:"priority,omitempty"`
+	Status   string `json:"status"`
+}
+
+// Plan entry statuses.
+const (
+	PlanPending    = "pending"
+	PlanInProgress = "in_progress"
+	PlanCompleted  = "completed"
+)
 
 // ConversationManager manages conversation storage
 type ConversationManager struct {

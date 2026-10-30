@@ -578,6 +578,8 @@ func GetAvailableBuiltinTools() []string {
 		"jssandbox",
 		"webview",
 		"knowledge_search",
+		"update_plan",
+		"ask_question",
 	}
 }
 
@@ -596,6 +598,8 @@ func GetBuiltinToolDisplayName(toolType string) string {
 		"jssandbox":          "JS 沙箱",
 		"webview":            "WebView 浏览器",
 		"knowledge_search":   "知识库检索",
+		"update_plan":        "执行计划",
+		"ask_question":       "向用户提问",
 	}
 	if name, ok := names[toolType]; ok {
 		return name
@@ -618,6 +622,8 @@ func GetBuiltinToolDescription(toolType string) string {
 		"jssandbox":          "JS Sandbox - Run JavaScript/TypeScript code in a secure sandbox (powered by moejs)",
 		"webview":            "WebView - Open a URL or local HTML in the app's web view, read the page, click and type in it",
 		"knowledge_search":   "Knowledge Search - Search the local knowledge bases built from indexed text documents, returning the matching passages with their source",
+		"update_plan":        "Update Plan - Record or update the task list for a multi-step job, so progress stays visible above the composer",
+		"ask_question":       "Ask Question - Ask the user a question and wait for the answer, when a decision or missing detail blocks progress",
 	}
 	if desc, ok := descriptions[toolType]; ok {
 		return desc
@@ -650,6 +656,10 @@ func GetBuiltinToolConfigFields(toolType string) []string {
 		return []string{"allow_remote"}
 	case "knowledge_search":
 		return []string{"knowledge_base", "top_k"}
+	case "update_plan":
+		return []string{}
+	case "ask_question":
+		return []string{}
 	default:
 		return []string{}
 	}
@@ -680,6 +690,10 @@ func GetRequiredConfigFields(toolType string) []string {
 		return []string{} // allow_remote has a default
 	case "knowledge_search":
 		return []string{} // searches every knowledge base by default
+	case "update_plan":
+		return []string{} // the plan is the tool's only input
+	case "ask_question":
+		return []string{} // the question is the tool's only input
 	default:
 		return []string{}
 	}
@@ -1050,6 +1064,12 @@ func defaultBuiltinTool(toolType string) BuiltinTool {
 	case "knowledge_search":
 		t.Enabled = true
 		t.Config = map[string]string{"top_k": "5"}
+	case "update_plan":
+		// On by default: a plan the agent cannot record is a plan it never
+		// shows the user.
+		t.Enabled = true
+	case "ask_question":
+		t.Enabled = true
 	}
 	return t
 }

@@ -5,6 +5,7 @@ import (
 	"chatgo/internal/llm"
 	"chatgo/internal/mcp"
 	"chatgo/internal/tools/eino"
+	"chatgo/pkg/models"
 	"context"
 	"fmt"
 	"sort"
@@ -153,8 +154,8 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 
 // defaultSystemPrompt is used when an agent has no system prompt.
 
-func (cw *ChatWindow) buildEinoTools(toolIDs []string, root string) []tool.BaseTool {
-	key := cw.toolCacheSignature(toolIDs, root)
+func (cw *ChatWindow) buildEinoTools(toolIDs []string, root string, conv ...*models.Conversation) []tool.BaseTool {
+	key := cw.toolCacheSignature(toolIDs, root, conv...)
 	if key == cw.toolCacheKey && cw.toolCache != nil {
 		return cw.toolCache
 	}
@@ -173,7 +174,7 @@ func (cw *ChatWindow) buildEinoTools(toolIDs []string, root string) []tool.BaseT
 					continue
 				}
 			}
-			def, err := cw.createBuiltinToolDefinition(name, root)
+			def, err := cw.createBuiltinToolDefinition(name, root, conv...)
 			if err != nil {
 				continue
 			}
@@ -210,11 +211,17 @@ func (cw *ChatWindow) buildEinoTools(toolIDs []string, root string) []tool.BaseT
 // toolCacheSignature keys the built tools by the selection, the file root and
 // each selected MCP server's tool set, so cache hits are safe.
 
-func (cw *ChatWindow) toolCacheSignature(toolIDs []string, root string) string {
+func (cw *ChatWindow) toolCacheSignature(toolIDs []string, root string, conv ...*models.Conversation) string {
 	ids := append([]string(nil), toolIDs...)
 	sort.Strings(ids)
 	var b strings.Builder
 	b.WriteString(root)
+	// A plan tool closes over its conversation, so the cache must not hand
+	// one conversation's tool to another.
+	if len(conv) > 0 && conv[0] != nil {
+		b.WriteByte('\n')
+		b.WriteString(conv[0].ID)
+	}
 	for _, id := range ids {
 		b.WriteByte('\n')
 		b.WriteString(id)
@@ -268,7 +275,7 @@ func (cw *ChatWindow) findBuiltinTool(name string) (config.BuiltinTool, bool) {
 
 // createBuiltinToolDefinition builds an Eino tool definition for a builtin tool.
 
-func (cw *ChatWindow) createBuiltinToolDefinition(toolName, root string) (llm.ToolDefinition, error) {
+func (cw *ChatWindow) createBuiltinToolDefinition(toolName, root string, conv ...*models.Conversation) (llm.ToolDefinition, error) {
 	var builtin *config.BuiltinTool
 	for i := range cw.cfg.BuiltinTools {
 		if cw.cfg.BuiltinTools[i].Name == toolName && cw.cfg.BuiltinTools[i].Enabled {
@@ -375,7 +382,7 @@ func (cw *ChatWindow) agentToolsAndPrompt() ([]tool.BaseTool, string) {
 	if cw.currentApp != "" {
 		einoTools = cw.buildAppTools(cw.currentApp)
 	} else {
-		einoTools = cw.buildEinoTools(cw.selectedToolIDs(), cw.fileRoot())
+		einoTools = cw.buildEinoTools(cw.selectedToolIDs(), cw.fileRoot(), cw.cur)
 	}
 	systemPrompt := cw.systemPrompt
 	if systemPrompt == "" {

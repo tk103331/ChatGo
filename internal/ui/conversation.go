@@ -153,6 +153,7 @@ func (cw *ChatWindow) sendDraft() {
 		return
 	}
 	conv := cw.cur
+	cw.closeDonePlan(conv)
 	now := time.Now()
 	user := conv.NewHumanMessage(cw.newID(), text, now)
 	conv.Messages = append(conv.Messages, user)

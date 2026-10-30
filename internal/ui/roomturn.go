@@ -66,6 +66,7 @@ func (cw *ChatWindow) sendRoomDraft(r config.Room) {
 		cw.toast("没有成员会回应这条消息", mcore.SeverityWarning)
 		return
 	}
+	cw.closeDonePlan(conv)
 	r.KBID = cw.ensureRoomKBID(r.ID)
 	human := conv.NewHumanMessage(cw.newID(), text, time.Now())
 	human.QuoteID = cw.room.quoteID

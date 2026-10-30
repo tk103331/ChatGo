@@ -178,6 +178,9 @@ type ChatWindow struct {
 	toastSeverity mcore.Severity
 	toastAction   string
 	toastActionFn func()
+	// askQ is the pending question from an agent, blocking its tool call
+	// until the user answers.
+	askQ *askQuestion
 	// errDetail is the full text behind a toast's "查看详情"; empty hides
 	// the dialog.
 	errDetail     string
@@ -618,11 +621,19 @@ func convLast(conv models.Conversation) time.Time {
 	return conv.Messages[len(conv.Messages)-1].Timestamp
 }
 
-const defaultSystemPrompt = "You are a helpful AI assistant with access to various tools. Use tools when appropriate. When you use a tool, provide accurate parameters."
+const defaultSystemPrompt = "You are a helpful AI assistant with access to various tools. Use tools when appropriate. When you use a tool, provide accurate parameters. For a multi-step job, call update_plan first with the whole task list, then keep it current: mark an entry in_progress when you start it and completed when it is done, sending the complete list each time."
 
 // buildEinoTools builds the Eino tools for the given builtin/MCP ids, running
 // file tools under root. The result is memoized per selection so switching
 // conversations does not re-list MCP tools on the UI thread.
+
+// hasUI reports whether postMain has somewhere to run: a live window or the
+// test dispatcher. Without one, postMain silently drops its callback.
+func (cw *ChatWindow) hasUI() bool {
+	cw.winMu.Lock()
+	defer cw.winMu.Unlock()
+	return cw.window != nil || cw.dispatch != nil
+}
 
 func (cw *ChatWindow) postMain(fn func()) {
 	cw.winMu.Lock()
