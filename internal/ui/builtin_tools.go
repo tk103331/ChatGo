@@ -17,6 +17,7 @@ import (
 
 	"chatgo/internal/config"
 	"chatgo/internal/jssandbox"
+	"chatgo/pkg/models"
 
 	"github.com/cloudwego/eino/schema"
 )
@@ -58,13 +59,21 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 			"knowledge_base": {Type: schema.String, Desc: "知识库名称，留空检索全部知识库"},
 			"top_k":          {Type: schema.Integer, Desc: "返回片段数，默认 5，最多 20"},
 		}
+	case "update_plan":
+		return map[string]*schema.ParameterInfo{
+			"entries": {Type: schema.Array, Desc: "完整任务列表，每次提交全部条目：content（任务描述）、priority（high/medium/low）、status（pending/in_progress/completed）", Required: true},
+		}
+	case "ask_question":
+		return map[string]*schema.ParameterInfo{
+			"questions": {Type: schema.Array, Desc: "问题列表，每项含 question（问题文本）和 options（可选回答列表，留空则只有输入框）。一次问多个问题会用分页展示", Required: true},
+		}
 	}
 	return map[string]*schema.ParameterInfo{}
 }
 
 // builtinToolHandler returns the executor for a builtin tool, reading its
 // runtime settings from the tool config.
-func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) func(context.Context, string) (string, error) {
+func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string, conv ...*models.Conversation) func(context.Context, string) (string, error) {
 	params := builtinToolParams(tool.Type)
 	keys := make([]string, 0, len(params))
 	for k := range params {
@@ -206,6 +215,14 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string) 
 		return cw.webviewTool
 	case "knowledge_search":
 		return cw.knowledgeSearchTool(tool.Config)
+	case "ask_question":
+		return cw.askQuestionTool()
+	case "update_plan":
+		var target *models.Conversation
+		if len(conv) > 0 {
+			target = conv[0]
+		}
+		return cw.updatePlanTool(target)
 	}
 	return func(context.Context, string) (string, error) {
 		return "工具 " + tool.Type + " 暂未实现", nil
@@ -366,4 +383,69 @@ func splitList(v string) []string {
 		}
 	}
 	return out
+}
+
+// updatePlanTool records the agent's task list on the conversation, so the
+// plan panel above the composer reflects it. The agent sends the whole list
+// each time, matching the ACP rule: a plan update replaces the old one.
+func (cw *ChatWindow) updatePlanTool(target *models.Conversation) func(context.Context, string) (string, error) {
+	return func(_ context.Context, args string) (string, error) {
+		var in struct {
+			Entries []struct {
+				Content  string `json:"content"`
+				Priority string `json:"priority"`
+				Status   string `json:"status"`
+			} `json:"entries"`
+		}
+		if err := json.Unmarshal([]byte(args), &in); err != nil {
+			return "", fmt.Errorf("参数解析失败: %w", err)
+		}
+		plan := make([]models.PlanEntry, 0, len(in.Entries))
+		for _, e := range in.Entries {
+			content := strings.TrimSpace(e.Content)
+			if content == "" {
+				continue
+			}
+			status := strings.ToLower(strings.TrimSpace(e.Status))
+			switch status {
+			case models.PlanPending, models.PlanInProgress, models.PlanCompleted:
+			default:
+				status = models.PlanPending
+			}
+			plan = append(plan, models.PlanEntry{
+				Content:  content,
+				Priority: strings.ToLower(strings.TrimSpace(e.Priority)),
+				Status:   status,
+			})
+		}
+		// The tool may have been built before a conversation was open, so the
+		// captured target can be nil; resolve the current one at call time.
+		done := make(chan struct{})
+		var saved bool
+		cw.postMain(func() {
+			defer close(done)
+			conv := target
+			if conv == nil {
+				conv = cw.cur
+			}
+			if conv == nil {
+				return
+			}
+			conv.Plan = plan
+			_ = cw.convManager.SaveConversation(conv)
+			saved = true
+			cw.invalidate()
+		})
+		<-done
+		if !saved {
+			return "计划已记录（当前上下文不保存计划）", nil
+		}
+		doneN := 0
+		for _, e := range plan {
+			if e.Status == models.PlanCompleted {
+				doneN++
+			}
+		}
+		return fmt.Sprintf("计划已更新：%d/%d 项完成", doneN, len(plan)), nil
+	}
 }
