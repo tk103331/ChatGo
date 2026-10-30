@@ -180,6 +180,12 @@ type ChatWindow struct {
 	// askQ is the pending question from an agent, blocking its tool call
 	// until the user answers.
 	askQ *askQuestion
+	// askMu guards channelAsks, which channel goroutines read and main
+	// writes.
+	askMu sync.Mutex
+	// channelAsks holds the questions waiting for an answer in a channel
+	// conversation, keyed by conversation ID.
+	channelAsks map[string]*askQuestion
 	// errDetail is the full text behind a toast's "查看详情"; empty hides
 	// the dialog.
 	errDetail     string
@@ -432,7 +438,6 @@ func (cw *ChatWindow) view(c *mgo.Context) {
 	cw.confirmDialog(c)
 	cw.inputDialog(c)
 	cw.filePickDialog(c)
-	cw.acpPermissionDialog(c)
 	cw.flushToast(c)
 	kit.Toaster(c)
 	cw.errorDetailDialog(c)

@@ -249,7 +249,7 @@ func TestUpdatePlanToolRegistered(t *testing.T) {
 	if !found {
 		t.Fatalf("update_plan should be a selectable tool, got %v", cw.selectedToolIDs())
 	}
-	def, err := cw.createBuiltinToolDefinition("update_plan", t.TempDir())
+	def, err := cw.createBuiltinToolDefinition("update_plan", t.TempDir(), nil, nil)
 	if err != nil {
 		t.Fatalf("the tool definition should build, got %v", err)
 	}
@@ -289,7 +289,7 @@ func TestAskQuestionTool(t *testing.T) {
 
 	done := make(chan string, 1)
 	go func() {
-		out, err := cw.askQuestionTool()(context.Background(),
+		out, err := cw.askQuestionTool(nil)(context.Background(),
 			`{"question":"选哪个方案?","options":["A","B"]}`)
 		if err != nil {
 			done <- "ERR: " + err.Error()
@@ -336,7 +336,7 @@ func TestAskQuestionToolRegistered(t *testing.T) {
 	if !found {
 		t.Fatalf("ask_question should be selectable, got %v", cw.selectedToolIDs())
 	}
-	if _, err := cw.createBuiltinToolDefinition("ask_question", t.TempDir()); err != nil {
+	if _, err := cw.createBuiltinToolDefinition("ask_question", t.TempDir(), nil, nil); err != nil {
 		t.Fatalf("the definition should build, got %v", err)
 	}
 }
@@ -349,7 +349,7 @@ func TestAskQuestionMultiple(t *testing.T) {
 
 	done := make(chan string, 1)
 	go func() {
-		out, err := cw.askQuestionTool()(context.Background(),
+		out, err := cw.askQuestionTool(nil)(context.Background(),
 			`{"questions":[{"question":"选哪个?","options":["A","B"]},{"question":"为什么?"}]}`)
 		if err != nil {
 			done <- "ERR: " + err.Error()
@@ -443,7 +443,7 @@ func TestAskQuestionToolHeadless(t *testing.T) {
 	cw := &ChatWindow{}
 	done := make(chan error, 1)
 	go func() {
-		_, err := cw.askQuestionTool()(context.Background(), `{"question":"选哪个?"}`)
+		_, err := cw.askQuestionTool(nil)(context.Background(), `{"question":"选哪个?"}`)
 		done <- err
 	}()
 	select {

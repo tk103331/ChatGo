@@ -20,26 +20,32 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 )
 
-func (cw *ChatWindow) runChannelAgent(channelID, text string, msgCtx *channelMsgContext, done func(string)) {
+func (cw *ChatWindow) runChannelAgent(channelID, text string, msgCtx *channelMsgContext, done func(string)) bool {
+	// A pending question owns the next message from its chat: the user is
+	// answering it, so no command or new turn should run.
+	if cw.deliverChannelAsk(channelID, msgCtx, text) {
+		return true
+	}
 	if reply, handled := cw.channelCommand(channelID, text); handled {
 		done(reply)
-		return
+		return false
 	}
 	spec := cw.channelSpec(channelID)
 	if spec == nil {
 		done("⚠️ 渠道不存在")
-		return
+		return false
 	}
 	conv := cw.ensureChannelConv(channelID)
 	if conv == nil {
 		done("⚠️ 无法创建渠道会话")
-		return
+		return false
 	}
 	if connName, ok := strings.CutPrefix(spec.agent, "acp:"); ok {
 		cw.runChannelACPAgent(conv, connName, spec.workspace, text, done)
-		return
+		return false
 	}
 	cw.runChannelLLMAgent(conv, spec.agent, spec.workspace, spec.channel, msgCtx, text, done)
+	return false
 }
 
 type channelSpec struct {
@@ -64,7 +70,7 @@ func (cw *ChatWindow) runChannelLLMAgent(conv *models.Conversation, agent, works
 	if sys := cw.taskSystemPrompt(agent); sys != "" {
 		msgs = append([]llm.ChatMessage{{Role: "system", Content: sys}}, msgs...)
 	}
-	client, react, groupClient, groupReact, err := cw.taskClientWithChannel(agent, workspace, ch, msgCtx)
+	client, react, groupClient, groupReact, err := cw.taskClientWithChannel(agent, workspace, ch, msgCtx, conv)
 	if err != nil {
 		done("⚠️ " + err.Error())
 		return

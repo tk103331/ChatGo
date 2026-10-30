@@ -358,7 +358,7 @@ func (cw *ChatWindow) runRoomMember(ctx context.Context, r config.Room, conv *mo
 		return
 	}
 	name := roomMemberName(m)
-	client, react, groupClient, groupReact, err := cw.roomMemberClient(r, m)
+	client, react, groupClient, groupReact, err := cw.roomMemberClient(r, m, conv)
 	if err != nil {
 		cw.postMain(func() { cw.roomAppendError(conv, m, name, err) })
 		return
@@ -483,8 +483,8 @@ func (cw *ChatWindow) roomAppendError(conv *models.Conversation, m config.RoomMe
 // directory so every member's file and command tools act on one project.
 // Every member also carries the room_history tool, so it can recall archived
 // discussion beyond its context window.
-func (cw *ChatWindow) roomMemberClient(r config.Room, m config.RoomMember) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
-	return cw.taskClientWithChannel(m.Agent, r.Workspace, nil, nil,
+func (cw *ChatWindow) roomMemberClient(r config.Room, m config.RoomMember, conv *models.Conversation) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
+	return cw.taskClientWithChannel(m.Agent, r.Workspace, nil, nil, conv,
 		cw.roomHistoryTool(r.KBID), cw.roomSendTool(r, m))
 }
 

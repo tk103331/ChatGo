@@ -43,7 +43,7 @@ func commandlineHandler(cw *ChatWindow, allowed string, root string) func(contex
 	return cw.builtinToolHandler(&config.BuiltinTool{
 		Name: "commandline", Type: "commandline",
 		Config: map[string]string{"allowed_commands": allowed},
-	}, root)
+	}, root, nil)
 }
 
 // A rewrite applies when RTK is on and an unknown command passes the allow

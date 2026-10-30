@@ -75,6 +75,7 @@ func (cw *ChatWindow) messageArea(c *mgo.Context) {
 			Label: func(i int) string { return msgs[i].Role },
 		}, row)
 		res.Element.Grow(1).MinHeight(0)
+		cw.acpPermissionPanel(c)
 		cw.askQuestionPanel(c)
 		cw.planPanel(c)
 		mgo.Column(c).Shrink(0).Padding(u*3, u*4).BorderWidth(mtheme.BorderWidth, 0, 0, 0).

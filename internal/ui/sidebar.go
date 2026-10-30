@@ -564,10 +564,16 @@ func (cw *ChatWindow) convStatusOf(convID string) kit.ConversationStatus {
 	if convID == "" {
 		return kit.ConvIdle
 	}
+	if cw.askQ != nil && cw.askQ.convID != "" && cw.askQ.convID == convID {
+		return kit.ConvWaiting
+	}
+	if cw.channelAskWaiting(convID) {
+		return kit.ConvWaiting
+	}
 	cw.acp.mu.Lock()
 	waiting := false
 	if cw.acp.permissionShow && cw.acp.permissionReq != nil {
-		waiting = cw.acp.convBySess[cw.acp.permissionReq.SessionId] == convID
+		waiting = cw.acpConvIDOfLocked(cw.acp.permissionReq.SessionId) == convID
 	}
 	cw.acp.mu.Unlock()
 	if waiting {

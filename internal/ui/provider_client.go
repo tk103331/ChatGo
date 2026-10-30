@@ -155,8 +155,16 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 // defaultSystemPrompt is used when an agent has no system prompt.
 
 func (cw *ChatWindow) buildEinoTools(toolIDs []string, root string, conv ...*models.Conversation) []tool.BaseTool {
-	key := cw.toolCacheSignature(toolIDs, root, conv...)
-	if key == cw.toolCacheKey && cw.toolCache != nil {
+	var c *models.Conversation
+	if len(conv) > 0 {
+		c = conv[0]
+	}
+	return cw.buildEinoToolsEnv(toolIDs, root, c, nil)
+}
+
+func (cw *ChatWindow) buildEinoToolsEnv(toolIDs []string, root string, conv *models.Conversation, env *builtinToolEnv) []tool.BaseTool {
+	key := cw.toolCacheSignature(toolIDs, root, conv)
+	if env == nil && key == cw.toolCacheKey && cw.toolCache != nil {
 		return cw.toolCache
 	}
 	ctx := context.Background()
@@ -174,7 +182,7 @@ func (cw *ChatWindow) buildEinoTools(toolIDs []string, root string, conv ...*mod
 					continue
 				}
 			}
-			def, err := cw.createBuiltinToolDefinition(name, root, conv...)
+			def, err := cw.createBuiltinToolDefinition(name, root, conv, env)
 			if err != nil {
 				continue
 			}
@@ -204,7 +212,9 @@ func (cw *ChatWindow) buildEinoTools(toolIDs []string, root string, conv ...*mod
 			einoTools = append(einoTools, llm.ObserveTool(t))
 		}
 	}
-	cw.toolCache, cw.toolCacheKey = einoTools, key
+	if env == nil {
+		cw.toolCache, cw.toolCacheKey = einoTools, key
+	}
 	return einoTools
 }
 
@@ -275,7 +285,7 @@ func (cw *ChatWindow) findBuiltinTool(name string) (config.BuiltinTool, bool) {
 
 // createBuiltinToolDefinition builds an Eino tool definition for a builtin tool.
 
-func (cw *ChatWindow) createBuiltinToolDefinition(toolName, root string, conv ...*models.Conversation) (llm.ToolDefinition, error) {
+func (cw *ChatWindow) createBuiltinToolDefinition(toolName, root string, conv *models.Conversation, env *builtinToolEnv) (llm.ToolDefinition, error) {
 	var builtin *config.BuiltinTool
 	for i := range cw.cfg.BuiltinTools {
 		if cw.cfg.BuiltinTools[i].Name == toolName && cw.cfg.BuiltinTools[i].Enabled {
@@ -290,7 +300,7 @@ func (cw *ChatWindow) createBuiltinToolDefinition(toolName, root string, conv ..
 		Name:        builtin.Name,
 		Description: config.GetBuiltinToolDescription(builtin.Type),
 		Parameters:  builtinToolParams(builtin.Type),
-		Handler:     cw.builtinToolHandler(builtin, root),
+		Handler:     cw.builtinToolHandler(builtin, root, env, conv),
 	}, nil
 }
 
