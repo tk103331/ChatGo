@@ -36,6 +36,8 @@ Thumbs.db
 # Build output
 dist/
 build/
+web/app.wasm
+web/wasm_exec.js
 
 # Update signing key (never commit; upload to CI secrets instead)
 mygo-update.key

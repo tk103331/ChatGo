@@ -43,6 +43,9 @@ func (cw *ChatWindow) navRail(c *mgo.Context) {
 		cw.navItemSVG(c, "MCP", assets.MCPLogo(), sectionMCP)
 		cw.navItem(c, "统计", "chart-column", sectionStats)
 		mgo.Spacer(c)
+		if cw.cfg.WebEnabled {
+			cw.webNavItem(c)
+		}
 		label := "外观：" + themeModeLabel(cw.themeMode)
 		mode := mcore.IconAction(c, icons.Must(themeModeIcon(cw.themeMode)), label)
 		mcore.TooltipEnd(c, mode, label)

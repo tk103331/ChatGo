@@ -10,5 +10,9 @@
     "github": "tk103331/ChatGo",
     "tagPrefix": "v",
     "deltas": 3
-  }
+  },
+  "buildCommand": "./web/build.sh",
+  "resources": [
+    "web"
+  ]
 }

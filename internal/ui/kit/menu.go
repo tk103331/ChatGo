@@ -80,17 +80,23 @@ func SlashCommandMenu(c *mgo.Context, composer InputResult, value *string, comma
 type ContextKind int
 
 const (
-	ContextFile ContextKind = iota
+	ContextDirectory ContextKind = iota
+	ContextImage
 	ContextDoc
+	ContextFile
 	ContextWeb
 )
 
 func (k ContextKind) icon() string {
 	switch k {
-	case ContextFile:
-		return "file"
+	case ContextDirectory:
+		return "folder"
+	case ContextImage:
+		return "image"
 	case ContextDoc:
 		return "file-text"
+	case ContextFile:
+		return "file"
 	case ContextWeb:
 		return "globe"
 	}
@@ -98,7 +104,7 @@ func (k ContextKind) icon() string {
 }
 
 func (k ContextKind) group() string {
-	return [...]string{"文件", "文档", "网页"}[k]
+	return [...]string{"目录", "图片", "文档", "文件", "网页"}[k]
 }
 
 // ContextItem describes a file, document or webpage mention.
@@ -144,7 +150,7 @@ func ContextMentionMenu(c *mgo.Context, composer InputResult, value *string, ite
 		data.items = append(data.items[:0], items...)
 		data.rows, data.order = data.rows[:0], data.order[:0]
 
-		for kind := ContextFile; kind <= ContextWeb; kind++ {
+		for kind := ContextDirectory; kind <= ContextWeb; kind++ {
 			for i, it := range items {
 				if it.ID == "" || it.Label == "" {
 					panic("kit: ContextItem needs ID and Label")

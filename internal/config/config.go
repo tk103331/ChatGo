@@ -26,8 +26,11 @@ type Config struct {
 	QuickChatShortcut string          `yaml:"quick_chat_shortcut,omitempty"`
 	ShowTrayIcon      bool            `yaml:"show_tray_icon"`
 	RunInBackground   bool            `yaml:"run_in_background"`
-	Agents            []AgentDef      `yaml:"agents,omitempty"`
-	ACPAgents         []ACPConnection `yaml:"acp_agents,omitempty"`
+	// WebEnabled starts the local browser UI with the app. Off by default:
+	// enabling it is an explicit opt-in.
+	WebEnabled bool            `yaml:"web_enabled,omitempty"`
+	Agents     []AgentDef      `yaml:"agents,omitempty"`
+	ACPAgents  []ACPConnection `yaml:"acp_agents,omitempty"`
 	// AgentCheckpoint auto-commits an agent's file changes as checkpoints:
 	// "off" (default) disables it, "turn" commits once per completed reply,
 	// "batch" once per finished tool-call batch. Experimental.

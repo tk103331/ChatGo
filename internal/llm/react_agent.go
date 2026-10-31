@@ -54,6 +54,31 @@ type ToolCallCallback func(info ToolCallInfo)
 type chunkForwarder struct {
 	onChunk     func(string)
 	onReasoning func(string)
+	think       thinkStream
+}
+
+func (f *chunkForwarder) content(text string) {
+	f.think.feed(text, f.emitContent, f.emitReasoning)
+}
+
+func (f *chunkForwarder) reasoning(text string) {
+	f.emitReasoning(stripThinkTags(text))
+}
+
+func (f *chunkForwarder) flush() {
+	f.think.flush(f.emitContent, f.emitReasoning)
+}
+
+func (f *chunkForwarder) emitContent(text string) {
+	if f.onChunk != nil {
+		f.onChunk(text)
+	}
+}
+
+func (f *chunkForwarder) emitReasoning(text string) {
+	if f.onReasoning != nil {
+		f.onReasoning(text)
+	}
 }
 
 type chunkForwarderKey struct{}
@@ -74,6 +99,9 @@ func chunkForwarderFrom(ctx context.Context) *chunkForwarder {
 func streamToolCallChecker(ctx context.Context, sr *schema.StreamReader[*schema.Message]) (bool, error) {
 	defer sr.Close()
 	fwd := chunkForwarderFrom(ctx)
+	if fwd != nil {
+		defer fwd.flush()
+	}
 	for {
 		msg, err := sr.Recv()
 		if err == io.EOF {
@@ -86,11 +114,11 @@ func streamToolCallChecker(ctx context.Context, sr *schema.StreamReader[*schema.
 			continue
 		}
 		if fwd != nil {
-			if fwd.onReasoning != nil && msg.ReasoningContent != "" {
-				fwd.onReasoning(msg.ReasoningContent)
+			if msg.ReasoningContent != "" {
+				fwd.reasoning(msg.ReasoningContent)
 			}
-			if fwd.onChunk != nil && msg.Content != "" {
-				fwd.onChunk(msg.Content)
+			if msg.Content != "" {
+				fwd.content(msg.Content)
 			}
 		}
 		if len(msg.ToolCalls) > 0 {

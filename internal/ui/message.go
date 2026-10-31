@@ -209,21 +209,27 @@ func (cw *ChatWindow) reasoningBlock(c *mgo.Context, open *bool, reasoning strin
 	}
 	if *open {
 		// A framed body sets the thinking apart from the reply itself; the
-		// height cap keeps a long trace from pushing the answer away.
-		mgo.Scroll(c).FillWidth().Shrink(0).MaxHeight(caption * 1.6 * toolDetailLines).
-			Children(func() {
-				mgo.Column(c).FillWidth().Padding(u).Radius(mtheme.ControlRadius).
-					Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Children(func() {
-					mgo.Row(c).FillWidth().Justify(mgo.End).Children(func() {
-						if mcore.IconAction(c, icons.Must("copy"), "复制思考过程").Clicked() {
-							c.WriteClipboard(reasoning)
-							cw.toast("已复制", mcore.SeveritySuccess)
-						}
+		// height cap keeps a long trace from pushing the answer away. The copy
+		// action floats over the frame instead of taking a row of its own.
+		body := mgo.Box(c).FillWidth().Shrink(0)
+		body.Children(func() {
+			mgo.Scroll(c).FillWidth().Shrink(0).MaxHeight(caption * 1.6 * toolDetailLines).
+				Children(func() {
+					mgo.Column(c).FillWidth().Padding(u).Radius(mtheme.ControlRadius).
+						Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Children(func() {
+						kit.MarkdownView(c, reasoning)
 					})
-					mgo.Text(c, reasoning).TextColor(k.TextMuted).FontSize(caption).
-						LineHeight(1.3)
 				})
-			})
+			if body.Hovered() {
+				mgo.Row(c).Absolute().Top(u / 2).Right(u / 2).Padding(u / 2).
+					Radius(mtheme.ControlRadius).Background(k.Surface).Children(func() {
+					if mcore.IconAction(c, icons.Must("copy"), "复制思考过程").Clicked() {
+						c.WriteClipboard(reasoning)
+						cw.toast("已复制", mcore.SeveritySuccess)
+					}
+				})
+			}
+		})
 	}
 }
 

@@ -323,6 +323,7 @@ func (cw *ChatWindow) startComposer(c *mgo.Context, placeholder string, start fu
 				cw.createACPInfo(c)
 				return
 			}
+			cw.contextButton(c)
 			cw.modelSelector(c)
 			cw.toolsMenu(c)
 		},

@@ -224,6 +224,19 @@ func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message,
 	var fullContent strings.Builder
 	var fullReasoning strings.Builder
 	var usage *schema.TokenUsage
+	var think thinkStream
+	emitContent := func(text string) {
+		fullContent.WriteString(text)
+		onChunk(text)
+	}
+	emitReasoning := func(text string) {
+		fullReasoning.WriteString(text)
+		for _, cb := range onReasoning {
+			if cb != nil {
+				cb(text)
+			}
+		}
+	}
 
 	// Read from stream
 	for {
@@ -240,18 +253,13 @@ func (c *Client) chatWithStream(ctx context.Context, messages []*schema.Message,
 		}
 		takeUsage(&usage, chunk)
 		if chunk.Content != "" {
-			fullContent.WriteString(chunk.Content)
-			onChunk(chunk.Content)
+			think.feed(chunk.Content, emitContent, emitReasoning)
 		}
 		if chunk.ReasoningContent != "" {
-			fullReasoning.WriteString(chunk.ReasoningContent)
-			for _, cb := range onReasoning {
-				if cb != nil {
-					cb(chunk.ReasoningContent)
-				}
-			}
+			emitReasoning(stripThinkTags(chunk.ReasoningContent))
 		}
 	}
+	think.flush(emitContent, emitReasoning)
 
 	return newChatResponse(fullContent.String(), fullReasoning.String(), usage), nil
 }
@@ -280,6 +288,7 @@ func (c *Client) chatWithoutStream(ctx context.Context, messages []*schema.Messa
 
 // newChatResponse builds a ChatResponse, copying token usage when present.
 func newChatResponse(content, reasoning string, usage *schema.TokenUsage) *ChatResponse {
+	content, reasoning = splitThinkContent(content, reasoning)
 	resp := &ChatResponse{
 		Content:   content,
 		Reasoning: reasoning,

@@ -9,6 +9,8 @@ import (
 	mcore "chatgo/internal/ui/uikit"
 )
 
+const settingsWebTab = 8
+
 type settingsState struct {
 	tab         int
 	prov        providerForm
@@ -132,6 +134,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
 			{Label: "实验", Panel: func() { cw.experimentalTab(c) }},
 			{Label: "系统", Panel: func() { cw.systemTab(c) }},
+			{Label: "Web", Panel: func() { cw.webTab(c) }},
 		}, kit.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)
 	})

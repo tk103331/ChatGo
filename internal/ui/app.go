@@ -252,6 +252,7 @@ type ChatWindow struct {
 	tray              *mygo.Tray
 	trayMenuKeyCached string
 	quitting          bool
+	web               webServiceState
 
 	// channels owns every IM connection; each configured channel gets its
 	// own driver instance, so several of one platform can run at once.
@@ -350,6 +351,9 @@ func (cw *ChatWindow) Show() {
 	_ = mygo.App.Dock.SetIcon(assets.LogoPNG())
 	cw.applyQuickShortcut()
 	cw.syncTray()
+	if cw.cfg.WebEnabled {
+		cw.startWebService()
+	}
 	w.OnClose(func(e *mygo.CloseEvent) {
 		if !cw.cfg.RunInBackground {
 			return
@@ -366,6 +370,7 @@ func (cw *ChatWindow) Show() {
 		// Kill the coding CLIs here: a child that ignores the parent's death
 		// would otherwise linger after the window is gone.
 		cw.acpShutdown()
+		cw.stopWebService()
 	})
 	mygo.App.OnWillQuit(func(e *mygo.QuitEvent) { cw.quitting = false })
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {

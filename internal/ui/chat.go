@@ -106,6 +106,7 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 				cw.acpControls(c)
 				return
 			}
+			cw.contextButton(c)
 			cw.modelSelector(c)
 			cw.toolsMenu(c)
 		},
@@ -130,6 +131,13 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 			}
 		},
 	})
+	if files := in.Element.DroppedFiles(); len(files) > 0 {
+		cw.addDroppedFiles(files)
+	}
+	if in.Element.FileDragOver() {
+		in.Element.Border(mtheme.FocusWidth, mcore.Tokens(c).Focus).
+			Background(mcore.Tokens(c).Selection)
+	}
 	if !initializing {
 		cw.chatMenus(c, in)
 	}
@@ -184,6 +192,7 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	r := kit.SearchSelect(c, &cur, opts, kit.SearchSelectOptions[string]{
 		Label: "模型", Placeholder: "选择模型", SearchPlaceholder: "搜索模型",
 	})
+	r.Element.MaxWidth(260).MinWidth(0)
 	if r.Changed() {
 		cw.setModelRef(cur)
 		if cw.currentAgent == "" {
