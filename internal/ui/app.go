@@ -457,7 +457,7 @@ func (cw *ChatWindow) quickView(c *mgo.Context) {
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Children(func() {
 		cw.quickBar(c)
 		mgo.Box(c).Grow(1).MinWidth(0).MinHeight(0).Children(func() {
-			cw.messageArea(c)
+			cw.messageArea(c, &cw.msgList)
 		})
 	})
 }

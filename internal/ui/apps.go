@@ -289,7 +289,7 @@ func (cw *ChatWindow) appLeft(c *mgo.Context, a appDef) {
 // message list against the app's own session.
 func (cw *ChatWindow) appChat(c *mgo.Context) {
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(mcore.Tokens(c).Background).
-		Children(func() { cw.messageArea(c) })
+		Children(func() { cw.messageArea(c, &cw.msgList) })
 }
 
 // buildAppTools adapts the app's operations to Eino tools for the React agent.

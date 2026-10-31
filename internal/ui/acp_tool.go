@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -100,11 +101,15 @@ func (cw *ChatWindow) toolCallRows(c *mgo.Context, msg models.Message, calls []m
 			}
 		}
 		label := acpToolKindLabel(kind)
+		filePath := cw.toolReadPath(tc, kind)
+		if filePath != "" {
+			summary = cw.workspaceRel(filePath)
+		}
 		if summary == "" {
 			summary = label
 			label = ""
 		}
-		cw.toolRow(c, tc, kind, label, summary, open)
+		cw.toolRow(c, tc, kind, label, summary, filePath, open)
 	}
 }
 
@@ -112,7 +117,7 @@ func (cw *ChatWindow) toolCallRows(c *mgo.Context, msg models.Message, calls []m
 // The category mark doubles as the fold control: at rest it names the tool,
 // and under the pointer it turns into the fold arrow, so the row carries no
 // permanent disclosure chrome.
-func (cw *ChatWindow) toolRow(c *mgo.Context, tc models.ToolCall, kind, label, summary string, open *bool) {
+func (cw *ChatWindow) toolRow(c *mgo.Context, tc models.ToolCall, kind, label, summary, filePath string, open *bool) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
@@ -143,8 +148,19 @@ func (cw *ChatWindow) toolRow(c *mgo.Context, tc models.ToolCall, kind, label, s
 			mgo.Text(c, label).Shrink(0).SingleLine().FontWeight(600).
 				FontSize(caption).TextColor(k.TextMuted)
 		}
-		mgo.Text(c, summary).Grow(1).MinWidth(0).SingleLine().Ellipsis("…").
-			FontSize(caption).TextColor(k.TextMuted)
+		mgo.Row(c).Grow(1).MinWidth(0).Children(func() {
+			p := mgo.Text(c, summary).MinWidth(0).Shrink(1).SingleLine().Ellipsis("…").
+				FontSize(caption).TextColor(k.TextMuted)
+			if filePath != "" {
+				p.Font(mtheme.MonoFont).Cursor(mgo.CursorPointer).Tooltip("在新标签页打开")
+				if p.Hovered() {
+					p.TextColor(k.Accent).Underline()
+				}
+				if p.Clicked() {
+					cw.openPreview(filePath)
+				}
+			}
+		})
 		cw.acpToolState(c, tc)
 	})
 	if b.Clicked() {
@@ -287,6 +303,50 @@ func toolArgField(args, field string) string {
 	}
 	if v, ok := m[field].(string); ok {
 		return v
+	}
+	return ""
+}
+
+func (cw *ChatWindow) toolReadPath(tc models.ToolCall, kind string) string {
+	if kind == "" {
+		kind = builtinToolKind(tc.Name, tc.Arguments)
+	}
+	if acp.ToolKind(kind) != acp.ToolKindRead {
+		return ""
+	}
+	if strings.EqualFold(toolArgField(tc.Arguments, "action"), "list") {
+		return ""
+	}
+	lower := strings.ToLower(tc.Name)
+	if strings.Contains(lower, "list") || strings.Contains(lower, "glob") {
+		return ""
+	}
+	path := toolArgPath(tc.Arguments)
+	if path == "" {
+		return ""
+	}
+	if filepath.IsAbs(path) {
+		return filepath.Clean(path)
+	}
+	return filepath.Join(cw.fileRoot(), path)
+}
+
+func toolArgPath(args string) string {
+	var raw any
+	if err := json.Unmarshal([]byte(args), &raw); err != nil {
+		return ""
+	}
+	if s, ok := raw.(string); ok {
+		return strings.TrimSpace(s)
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return ""
+	}
+	for _, key := range []string{"path", "file", "file_path", "filePath", "filepath", "target_file", "targetFile", "filename", "fileName"} {
+		if v, ok := m[key].(string); ok && strings.TrimSpace(v) != "" {
+			return strings.TrimSpace(v)
+		}
 	}
 	return ""
 }

@@ -320,10 +320,11 @@ func (cw *ChatWindow) startComposer(c *mgo.Context, placeholder string, start fu
 		MaxHeight:   180,
 		Tools: func() {
 			if cw.createIsACP() {
+				cw.contextButton(c, false)
 				cw.createACPInfo(c)
 				return
 			}
-			cw.contextButton(c)
+			cw.contextButton(c, true)
 			cw.modelSelector(c)
 			cw.toolsMenu(c)
 		},

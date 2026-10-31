@@ -98,36 +98,205 @@ func (cw *ChatWindow) messageNameLabel(msg models.Message, role kit.MessageRole)
 	return msg.Role
 }
 
-// messageSegments renders an assistant reply's ordered blocks: a thinking
-// block, text, or a run of tool calls, each in the order the model produced
-// them, so a multi-step ReAct turn stays thinking, tool, text, thinking, tool.
+// messageSegments renders an assistant reply as completed execution rounds
+// plus the final answer. A round ends at each non-empty text block; completed
+// rounds fold away with their thinking and tool counts, while the last text
+// block stays visible as the reply.
 func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, streaming bool) {
-	for i := 0; i < len(msg.Segments); {
-		seg := msg.Segments[i]
-		switch seg.Kind {
-		case "reasoning":
-			live := streaming && i == len(msg.Segments)-1
-			fold := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:%d", msg.ID, i), func() reasoningFold { return reasoningFold{} })
+	rounds := segmentRounds(msg.Segments)
+	final := -1
+	for i := len(rounds) - 1; i >= 0; i-- {
+		if rounds[i].hasText() {
+			final = i
+			break
+		}
+	}
+	duration := cw.turnDuration(msg, streaming)
+	for i, round := range rounds {
+		if !round.hasProcess() && !round.hasText() {
+			continue
+		}
+		live := streaming && i == len(rounds)-1 && !round.hasText()
+		showProcess := round.hasProcess() || (round.hasText() && i != final)
+		if showProcess {
+			fold := mgo.Local(c.Root(), fmt.Sprintf("round:%s:%d", msg.ID, i), func() reasoningFold { return reasoningFold{} })
 			fold.follow(live)
-			cw.reasoningBlock(c, &fold.open, seg.Text, live)
-			i++
-		case "tool":
-			if tc := msg.Segments[i].ToolCall; tc != nil {
-				cw.toolCalls(c, msg, []models.ToolCall{*tc})
+			roundDuration := ""
+			if i == len(rounds)-1 {
+				roundDuration = duration
 			}
-			i++
-		case "text":
-			if strings.TrimSpace(seg.Text) != "" {
-				kit.MarkdownView(c, seg.Text)
+			cw.processBlock(c, &fold.open, msg, round, i, live, i != final, roundDuration)
+		}
+		if i == final {
+			if !showProcess && duration != "" {
+				mgo.Text(c, "用时 "+duration).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+					TextColor(mcore.Tokens(c).TextMuted)
 			}
-			i++
-		default:
-			i++
+			if text, ok := round.text(); ok {
+				kit.MarkdownView(c, text)
+			}
 		}
 	}
 	if cw.emptySegments(msg) && streaming {
 		kit.TypingIndicator(c, "Assistant")
 	}
+}
+
+// segmentRound is one completed or in-progress ReAct round: the thinking and
+// tool calls leading to a text block, or a trailing round still running.
+type segmentRound struct {
+	segments []models.Segment
+}
+
+// segmentRounds splits ordered segments at non-empty text blocks. A trailing
+// run without text is the round currently being generated.
+func segmentRounds(segs []models.Segment) []segmentRound {
+	var rounds []segmentRound
+	start := 0
+	for i, seg := range segs {
+		if seg.Kind == "text" && strings.TrimSpace(seg.Text) != "" {
+			rounds = append(rounds, segmentRound{segments: segs[start : i+1]})
+			start = i + 1
+		}
+	}
+	if start < len(segs) {
+		rounds = append(rounds, segmentRound{segments: segs[start:]})
+	}
+	return rounds
+}
+
+func (r segmentRound) hasText() bool {
+	_, ok := r.text()
+	return ok
+}
+
+func (r segmentRound) text() (string, bool) {
+	for i := len(r.segments) - 1; i >= 0; i-- {
+		s := r.segments[i]
+		if s.Kind == "text" && strings.TrimSpace(s.Text) != "" {
+			return s.Text, true
+		}
+	}
+	return "", false
+}
+
+func (r segmentRound) hasProcess() bool {
+	for _, s := range r.segments {
+		if s.Kind == "reasoning" && strings.TrimSpace(s.Text) != "" {
+			return true
+		}
+		if s.Kind == "tool" && s.ToolCall != nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (r segmentRound) counts() (thinking, tools int) {
+	for _, s := range r.segments {
+		if s.Kind == "reasoning" && strings.TrimSpace(s.Text) != "" {
+			thinking++
+		}
+		if s.Kind == "tool" && s.ToolCall != nil {
+			tools++
+		}
+	}
+	return thinking, tools
+}
+
+func (r segmentRound) lastProcessIndex() int {
+	for i := len(r.segments) - 1; i >= 0; i-- {
+		s := r.segments[i]
+		if s.Kind == "reasoning" && strings.TrimSpace(s.Text) != "" {
+			return i
+		}
+		if s.Kind == "tool" && s.ToolCall != nil {
+			return i
+		}
+	}
+	return -1
+}
+
+// turnDuration reports how long the turn that produced msg has been running,
+// or ran when it finished.
+func (cw *ChatWindow) turnDuration(msg models.Message, streaming bool) string {
+	t, ok := cw.turnFor(msg)
+	if !ok || t.StartedAt.IsZero() {
+		return ""
+	}
+	end := t.EndedAt
+	if end.IsZero() {
+		if !streaming {
+			return ""
+		}
+		end = time.Now()
+	}
+	if end.Before(t.StartedAt) {
+		return ""
+	}
+	return kit.AgentDuration(end.Sub(t.StartedAt))
+}
+
+// processBlock folds one round's thinking and tool calls, with a summary of
+// how many times the model thought and how many tools it ran.
+func (cw *ChatWindow) processBlock(c *mgo.Context, open *bool, msg models.Message, round segmentRound, roundIdx int, live, includeText bool, duration string) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	thinking, tools := round.counts()
+	b := mgo.ButtonBase(c).FillWidth().Justify(mgo.Start).Gap(u*2).AlignItems(mgo.Center).
+		Padding(u/2, u/2).Radius(mtheme.ControlRadius).
+		Role(mgo.RoleGroup).Label("执行过程")
+	if b.Hovered() {
+		b.Background(k.SurfaceHover)
+	}
+	b.Children(func() {
+		if b.Hovered() || *open {
+			name := "chevron-right"
+			if *open {
+				name = "chevron-down"
+			}
+			mgo.Icon(c, icons.Must(name)).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
+		} else {
+			mgo.Icon(c, icons.Must("brain")).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
+		}
+		mgo.Text(c, "执行过程").FontSize(caption).TextColor(k.TextMuted)
+		mgo.Text(c, fmt.Sprintf("思考 %d 次 · 工具 %d 次", thinking, tools)).
+			FontSize(caption).TextColor(k.TextMuted)
+		if duration != "" {
+			mgo.Text(c, "用时 "+duration).FontSize(caption).TextColor(k.TextMuted)
+		}
+		if live {
+			mcore.Spinner(c, mcore.SpinnerOptions{Size: 10})
+		}
+	})
+	if b.Clicked() {
+		*open = !*open
+	}
+	if !*open {
+		return
+	}
+	mgo.Column(c).FillWidth().Gap(u).Padding(u).Children(func() {
+		last := round.lastProcessIndex()
+		for j, seg := range round.segments {
+			switch seg.Kind {
+			case "reasoning":
+				if strings.TrimSpace(seg.Text) == "" {
+					continue
+				}
+				reasonOpen := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:r%d:%d", msg.ID, roundIdx, j), func() bool { return true })
+				cw.reasoningBlock(c, reasonOpen, seg.Text, live && j == last)
+			case "tool":
+				if seg.ToolCall != nil {
+					cw.toolCalls(c, msg, []models.ToolCall{*seg.ToolCall})
+				}
+			case "text":
+				if includeText && strings.TrimSpace(seg.Text) != "" {
+					kit.MarkdownView(c, seg.Text)
+				}
+			}
+		}
+	})
 }
 
 // messageLegacy renders a message that predates segments.
@@ -447,7 +616,7 @@ func (cw *ChatWindow) appendTurn(conv *models.Conversation, userMsg, reply model
 
 func (cw *ChatWindow) streamFrom(conv *models.Conversation, i int) {
 	replyID := conv.Messages[i].ID
-	cw.msgList.ScrollToEnd()
+	cw.scrollChatToEnd()
 	if strings.HasPrefix(conv.Agent, "acp:") {
 		cw.beginStream(conv.ID, replyID, nil)
 		cw.invalidate()

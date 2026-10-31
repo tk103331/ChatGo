@@ -62,13 +62,13 @@ func (cw *ChatWindow) chatMainArea(c *mgo.Context) {
 }
 
 // messageArea is the message list and the composer, without the sidebar.
-func (cw *ChatWindow) messageArea(c *mgo.Context) {
+func (cw *ChatWindow) messageArea(c *mgo.Context, list *kit.MessageListState) {
 	msgs := cw.messages()
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	row := func(i int) { cw.messageRow(c, i, msgs[i]) }
 	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(k.Background).Children(func() {
-		res := kit.MessageList(c, &cw.msgList, len(msgs), kit.MessageListOptions{
+		res := kit.MessageList(c, list, len(msgs), kit.MessageListOptions{
 			ID:    func(i int) string { return msgs[i].ID },
 			Date:  func(i int) time.Time { return msgs[i].Timestamp },
 			Label: func(i int) string { return msgs[i].Role },
@@ -83,6 +83,16 @@ func (cw *ChatWindow) messageArea(c *mgo.Context) {
 }
 
 // isACP reports whether the current conversation runs through an ACP CLI.
+// scrollChatToEnd follows new messages in every chat surface: the focused
+// quick/app area and each open chat tab. Each tab owns its own ListState, so
+// two panes can show a chat at the same time.
+func (cw *ChatWindow) scrollChatToEnd() {
+	cw.msgList.ScrollToEnd()
+	for _, tab := range cw.centerTabsOfKind(centerChat) {
+		tab.msgList.ScrollToEnd()
+	}
+}
+
 func (cw *ChatWindow) isACP() bool {
 	return cw.cur != nil && strings.HasPrefix(cw.cur.Agent, "acp:")
 }
@@ -103,10 +113,11 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 		Disabled:    initializing,
 		Tools: func() {
 			if cw.isACP() {
+				cw.contextButton(c, false)
 				cw.acpControls(c)
 				return
 			}
-			cw.contextButton(c)
+			cw.contextButton(c, true)
 			cw.modelSelector(c)
 			cw.toolsMenu(c)
 		},

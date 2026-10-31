@@ -2,9 +2,11 @@ package ui
 
 import (
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
+	mygo "github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/ui/icons"
@@ -134,96 +136,117 @@ func (cw *ChatWindow) selectSkill(id string) {
 	cw.invalidate()
 }
 
-// contextButton opens the searchable context picker from the composer's
-// leading +, the same @-mentions the typed picker offers.
-func (cw *ChatWindow) contextButton(c *mgo.Context) {
-	b := kit.IconButton(c, icons.Must("plus"), "选择上下文", kit.IconButtonOptions{
+// contextButton opens the reference picker from the composer's leading +:
+// external files and directories, plus an open Webview when allowed.
+func (cw *ChatWindow) contextButton(c *mgo.Context, allowWebview bool) {
+	b := kit.IconButton(c, icons.Must("plus"), "添加引用", kit.IconButtonOptions{
 		Variant: kit.Ghost,
 	})
 	open := mgo.Local(b, "chatgo.contextbutton", func() bool { return false })
-	query := mgo.Local(b, "chatgo.contextquery", func() string { return "" })
+	mode := mgo.Local(b, "chatgo.contextmode", func() string { return "" })
 	if b.Clicked() {
 		*open = !*open
 		if *open {
-			*query = ""
+			*mode = ""
 		}
 	}
+	title := "添加引用"
+	if allowWebview && *mode == "webview" {
+		title = "选择 Webview"
+	}
 	kit.Popover(c, b, open, kit.PopoverOptions{
-		Title: "选择上下文", Width: 360, Up: true,
-		Header: func() {
-			in := kit.TextInput(c, query, kit.TextInputOptions{
-				Placeholder: "搜索文件、目录、图片…", Label: "搜索上下文",
-			})
-			in.Element.FillWidth()
-			mcore.AutoFocus(c, in.Input)
-		},
+		Title: title, Width: 360, Up: true,
 	}, func() {
-		items := cw.contextItemsMatching(*query)
-		if len(items) == 0 {
-			mgo.Text(c, "没有匹配的上下文").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
-				TextColor(mcore.Tokens(c).TextMuted).Padding(mcore.Density(c).Unit() * 2)
-			return
-		}
 		u := mcore.Density(c).Unit()
 		k := mcore.Tokens(c)
 		caption := mcore.FontSize(c, mtheme.CaptionSize)
-		for _, it := range items {
-			row := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
+		row := func(icon, label, detail string, onClick func()) {
+			b := mgo.ButtonBase(c).FillWidth().MinHeight(mcore.Density(c).ControlHeight()).
 				Padding(u, u*2).Gap(u).AlignItems(mgo.Center).Justify(mgo.Start).
-				Radius(mtheme.ControlRadius).Label(it.Label)
-			if row.Hovered() {
-				row.Background(k.SurfaceHover)
+				Radius(mtheme.ControlRadius).Label(label)
+			if b.Hovered() {
+				b.Background(k.SurfaceHover)
 			}
-			row.Children(func() {
-				mgo.Icon(c, icons.Must(contextIcon(it.Kind))).Size(14, 14).
-					TextColor(contextIconColor(k, it.Kind)).Shrink(0)
-				mgo.Text(c, it.Label).SingleLine().Ellipsis("…").Grow(1).MinWidth(0)
-				mgo.Text(c, contextKindLabel(it.Kind)).FontSize(caption).
+			b.Children(func() {
+				mgo.Icon(c, icons.Must(icon)).Size(14, 14).
 					TextColor(k.TextMuted).Shrink(0)
+				mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
+					mgo.Text(c, label).SingleLine().Ellipsis("…")
+					if detail != "" {
+						mgo.Text(c, detail).SingleLine().Ellipsis("…").
+							FontSize(caption).TextColor(k.TextMuted)
+					}
+				})
 			})
-			if row.Clicked() {
-				cw.insertContextMention(it)
-				*open = false
+			if b.Clicked() {
+				onClick()
 			}
+		}
+
+		if allowWebview && *mode == "webview" {
+			row("chevron-left", "返回", "", func() { *mode = "" })
+			for _, tab := range cw.centerTabsOfKind(centerWeb) {
+				if tab.Web == nil {
+					continue
+				}
+				web := tab.Web
+				row("globe", "webview:"+web.ID, web.Title+" · "+web.URL, func() {
+					cw.insertContextMention(kit.ContextItem{
+						ID: "webview:" + web.ID, Label: "webview:" + web.ID,
+						Kind: kit.ContextWeb,
+					})
+					*open = false
+				})
+			}
+			return
+		}
+
+		row("file", "外部文件", "从系统文件浏览器选择文件", func() {
+			*open = false
+			cw.pickExternalFiles()
+		})
+		row("folder", "外部目录", "从系统文件浏览器选择目录", func() {
+			*open = false
+			cw.pickExternalDirectory()
+		})
+		if allowWebview && len(cw.centerTabsOfKind(centerWeb)) > 0 {
+			row("globe", "Webview", "引用当前打开的网页", func() { *mode = "webview" })
 		}
 	})
 }
 
-func contextIcon(kind kit.ContextKind) string {
-	switch kind {
-	case kit.ContextDirectory:
-		return "folder"
-	case kit.ContextImage:
-		return "image"
-	case kit.ContextDoc:
-		return "file-text"
-	case kit.ContextWeb:
-		return "globe"
-	default:
-		return "file"
-	}
+// pickExternalFiles opens the system file browser and adds every chosen file.
+func (cw *ChatWindow) pickExternalFiles() {
+	cw.winMu.Lock()
+	w := cw.window
+	cw.winMu.Unlock()
+	go func() {
+		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
+			Parent: w, Title: "选择外部文件", Multiple: true,
+		})
+		if err != nil || len(paths) == 0 {
+			return
+		}
+		cw.postMain(func() {
+			for _, path := range paths {
+				cw.addExternalContext(path)
+			}
+		})
+	}()
 }
 
-func contextIconColor(k *mgo.Theme, kind kit.ContextKind) mgo.Color {
-	if kind == kit.ContextDirectory {
-		return k.Accent
-	}
-	return k.TextMuted
+// pickExternalDirectory opens the system directory browser and adds it.
+func (cw *ChatWindow) pickExternalDirectory() {
+	cw.pickDirectory("选择外部目录", func(path string) { cw.addExternalContext(path) })
 }
 
-func contextKindLabel(kind kit.ContextKind) string {
-	switch kind {
-	case kit.ContextDirectory:
-		return "目录"
-	case kit.ContextImage:
-		return "图片"
-	case kit.ContextDoc:
-		return "文档"
-	case kit.ContextWeb:
-		return "网页"
-	default:
-		return "文件"
+func (cw *ChatWindow) addExternalContext(path string) {
+	label := cw.workspaceRel(path)
+	kind := contextKindOf(filepath.Base(path))
+	if info, err := os.Stat(path); err == nil && info.IsDir() {
+		kind = kit.ContextDirectory
 	}
+	cw.insertContextMention(kit.ContextItem{ID: label, Label: label, Kind: kind})
 }
 
 func (cw *ChatWindow) contextItems() []kit.ContextItem {

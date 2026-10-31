@@ -76,7 +76,7 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 	cw.pointAtWorkspace(ws)
 	cw.mode = modeChat
 	cw.focusConvTab(conv)
-	cw.msgList.ScrollToEnd()
+	cw.scrollChatToEnd()
 	cw.applyConversationAgent(conv)
 	cw.reloadConvs()
 }
@@ -101,7 +101,7 @@ func (cw *ChatWindow) openConversation(conv *models.Conversation) {
 	cw.applyConversationAgent(conv)
 	cw.applyConversationModel(conv)
 	cw.focusConvTab(conv)
-	cw.msgList.ScrollToEnd()
+	cw.scrollChatToEnd()
 	// Refreshing the summary when a conversation is opened keeps its row
 	// current with commits and checkouts made since the list was drawn.
 	cw.bumpConvGit(conv.Workspace)
@@ -162,7 +162,7 @@ func (cw *ChatWindow) sendDraft() {
 		conv.Title = titleFromText(text)
 	}
 	_ = cw.convManager.SaveConversation(conv)
-	cw.msgList.ScrollToEnd()
+	cw.scrollChatToEnd()
 	if strings.HasPrefix(conv.Agent, "acp:") {
 		cw.beginStream(conv.ID, reply.ID, nil)
 		cw.invalidate()
@@ -208,7 +208,7 @@ func (cw *ChatWindow) startAppSession(id string) {
 			cw.cur = conv
 			cw.mode = modeChat
 			cw.applyApp(id)
-			cw.msgList.ScrollToEnd()
+			cw.scrollChatToEnd()
 			return
 		}
 	}
@@ -237,7 +237,7 @@ func (cw *ChatWindow) newAppConversation(id string) {
 	cw.cur = conv
 	cw.mode = modeChat
 	cw.applyApp(id)
-	cw.msgList.ScrollToEnd()
+	cw.scrollChatToEnd()
 }
 
 // applyApp switches the client to an app's session: its system prompt and its

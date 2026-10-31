@@ -46,10 +46,11 @@ type centerTab struct {
 	// It survives until the editor has a laid-out view able to honour it.
 	GotoLine int
 
-	blame []kit.BlameLine
-	view  kit.CodeViewerState
-	dview kit.DiffViewerState
-	bview kit.BlameViewState
+	blame   []kit.BlameLine
+	view    kit.CodeViewerState
+	dview   kit.DiffViewerState
+	bview   kit.BlameViewState
+	msgList kit.MessageListState
 
 	// Commit is the commit a commit tab shows.
 	Commit *commitInfo
@@ -409,7 +410,7 @@ func (cw *ChatWindow) centerTabBody(c *mgo.Context, tab *centerTab) {
 	switch tab.Kind {
 	case centerChat:
 		cw.attachConvTab(tab)
-		cw.messageArea(c)
+		cw.messageArea(c, &tab.msgList)
 	case centerTerm:
 		cw.centerTermBody(c, tab)
 	case centerWeb:

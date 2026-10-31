@@ -19,9 +19,9 @@ import (
 type filePickState struct {
 	open bool
 	dir  string
-	// picked holds a file chosen this frame, opened at the start of the next.
+	// picked holds a file or directory chosen this frame, acted on next.
 	picked string
-	// action receives the chosen file's absolute path.
+	// action receives the chosen absolute path.
 	action func(string)
 }
 
