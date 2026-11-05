@@ -1,12 +1,14 @@
-# ChatGo
+# ChatGo 
 
 **A simple AI chat client built for learning purposes.**
 
 A simple cross-platform AI chat client built with Go and [MyGo](https://github.com/egoist/mygo), with multi-provider models, Agents, tools, MCP, ACP and a built-in terminal.
 
-![ChatGo](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go)
+![ChatGo](https://img.shields.io/badge/Go-1.27.1+-00ADD8?style=flat&logo=go&height=35)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
+
+[![Listed on Awesome MyGo](https://awesomemygo.dev/badge.svg)](https://awesomemygo.dev/apps/chatgo)
 
 ## ✨ Features
 
