@@ -18,6 +18,7 @@
 - 📚 **Skill** - 扫描本地 SKILL 目录，按 Agent 选择并支持检索
 - 🗂️ **工作区与面板** - 会话按工作区分组、可折叠；聊天/预览/文件面板可拖拽；多 Tab 文件预览与 Git 差异面板
 - 🌲 **Git Worktree** - 管理仓库的全部工作树：新建（签出已有分支或创建新分支）、锁定/解锁、删除、清理失效记录，并可把任一工作树设为当前工作区，让每个 Agent 在自己的工作树里互不干扰
+- 🪄 **快捷任务浮窗** - 在任意应用里划词或选中目录，用一个浮窗直接交给 Agent 执行；支持后台运行、剪贴板兜底与命令行 / URL 唤起
 - ⌨️ **终端** - 底部多 Tab 终端（Ghostty VT）
 - 💬 **流式输出** - 实时流式应答，Markdown 渲染
 - 💾 **持久化** - 配置与对话历史保存在 `~/.chatgo`
@@ -154,6 +155,47 @@ current_provider: "OpenAI"
 
 - **Enter**：发送
 - **Shift + Enter**：换行
+- **Cmd/Ctrl + Shift + Space**：打开紧凑聊天窗口（原行为）
+- **Cmd/Ctrl + Shift + K**：打开快捷任务浮窗（可在 设置 → 快捷键 修改）
+
+### 快捷任务浮窗
+
+一个浮在任意应用之上的小面板，用来把当前上下文直接交给 Agent：
+
+- **划词**：在 Safari、Chrome、VS Code 等应用里选中文本，按下快捷键，浮窗会把选中内容作为引用带进输入框；选择 Agent、输入指令，Enter 即开始执行。
+- **目录**：在 Finder 里选中目录（或先复制目录）后按快捷键，浮窗会把它作为工作目录；也可以直接把目录拖进浮窗、点目录按钮选择，或用 `chatgo .` 打开。
+- **自动弹出**（实验）：设置 → 系统里开启「选中文本后自动弹出浮窗」后，划词结束会在选区旁出现一条 Agent 快捷条。它需要 macOS 的辅助功能权限；未授权时只保留快捷键与剪贴板兜底。
+- **后台执行**：任务默认在后台运行，不打断主窗口当前会话；完成后弹通知，可随时「在主窗口打开」继续。勾选「新建 worktree」时会先在所选目录创建一个隔离工作树，再在其中执行。
+
+命令行与链接：
+
+```sh
+chatgo .                                   # 以当前目录为工作区打开浮窗
+chatgo --dir ~/code/repo --prompt "修一下测试"
+open "chatgo://quick?dir=/Users/me/repo&q=解释这个项目"
+```
+
+配置（`~/.chatgo/config.yaml`）：
+
+```yaml
+quick_panel:
+  enabled: true
+  shortcut: "CmdOrCtrl+Shift+K"   # 快捷任务浮窗的快捷键
+  auto_popup: false        # 划词自动弹出，需辅助功能权限
+  exclude_apps: []          # 自动弹窗忽略的 Bundle ID
+  min_chars: 2
+  favorites: []            # 浮窗里展示的 Agent，留空表示全部
+  default_agent: ""
+  background: true
+  default_worktree: false  # 在新的 worktree 里隔离执行
+  clipboard_fallback: true
+  explorer_menu: false     # Windows：资源管理器右键菜单
+  auto_copy_selection: false  # Windows：按快捷键时模拟 Ctrl+C
+```
+
+- **Windows**：设置 → 系统 → 「添加到资源管理器右键菜单」后，右键文件夹即可打开浮窗；也可开启「按快捷键时自动复制当前选区」（模拟 Ctrl+C，会短暂使用剪贴板），省掉手动复制的步骤。
+- **Linux**：读取 X11 PRIMARY 选区（需要 `xclip`、`xsel` 或 `wl-clipboard`），自动弹出暂不支持；其余功能用剪贴板、拖拽与命令行。
+- 系统级划词与 Finder 目录读取目前仅在 macOS 上完整实现。
 
 ### 会话
 

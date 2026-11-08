@@ -22,6 +22,7 @@ A simple cross-platform AI chat client built with Go and [MyGo](https://github.c
 - 📖 **Knowledge Bases** - Index local text documents into a pure-Go SQLite FTS5 store and retrieve them offline; agents search them with the `knowledge_search` tool
 - 🗂️ **Workspaces & Panels** - Sessions grouped by workspace and collapsible; resizable chat / preview / file panels with a multi-tab file preview and a Git diff panel
 - 🌲 **Git Worktrees** - Manage every working tree of a repository: create one (checking out an existing branch or creating a new one), lock and unlock, remove, prune stale records, and make any tree the current workspace so each agent works in its own tree without stepping on the others
+- 🪄 **Quick Task Panel** - Select text or a folder in any app and hand it to an agent from a floating panel, running in the background, with clipboard fallback and command-line / URL launch
 - ⌨️ **Terminal** - Multi-tab bottom terminal (Ghostty VT)
 - 💬 **Streaming Output** - Real-time streaming responses with Markdown rendering
 - 💾 **Persistence** - Config and chat history live under `~/.chatgo`
@@ -163,6 +164,47 @@ current_provider: "OpenAI"
 
 - **Enter**: send
 - **Shift + Enter**: new line
+- **Cmd/Ctrl + Shift + Space**: open the compact chat window (unchanged)
+- **Cmd/Ctrl + Shift + K**: open the quick task panel (change it in Settings → Shortcuts)
+
+### Quick Task Panel
+
+A panel floating over every app that hands the current context to an agent:
+
+- **Selected text**: select text in Safari, Chrome, VS Code and the like, press the shortcut, and the panel quotes it into the composer. Pick an agent, type the instruction, press Enter.
+- **A folder**: select a folder in Finder (or copy one) and press the shortcut to use it as the working directory. You can also drop a folder on the panel, use its folder button, or run `chatgo .`.
+- **Auto popup** (experimental): turn on "show the panel after selecting text" in Settings → System to get a small agent strip next to the selection. It needs the macOS Accessibility permission; without it the shortcut and clipboard fallback still work.
+- **Background**: tasks run without switching the main window, notify when done, and can be opened in the main window at any time. Turning on "new worktree" creates an isolated working tree first and runs the task in it.
+
+Command line and links:
+
+```sh
+chatgo .                                   # open the panel in this directory
+chatgo --dir ~/code/repo --prompt "fix the tests"
+open "chatgo://quick?dir=/Users/me/repo&q=explain this project"
+```
+
+Configuration (`~/.chatgo/config.yaml`):
+
+```yaml
+quick_panel:
+  enabled: true
+  shortcut: "CmdOrCtrl+Shift+K"   # quick task panel shortcut
+  auto_popup: false        # needs the Accessibility permission
+  exclude_apps: []          # bundle IDs AutoPopup ignores
+  min_chars: 2
+  favorites: []            # agent chips, empty shows every agent
+  default_agent: ""
+  background: true
+  default_worktree: false  # run in a new worktree
+  clipboard_fallback: true
+  explorer_menu: false     # Windows: folder context menu
+  auto_copy_selection: false  # Windows: simulate Ctrl+C on the shortcut
+```
+
+- **Windows**: turn on "add to the Explorer context menu" in Settings → System, then right-click a folder to open the panel. Turning on "copy the selection on the shortcut" (a simulated Ctrl+C that briefly uses the clipboard) skips the manual copy.
+- **Linux**: reads the X11 PRIMARY selection (needs `xclip`, `xsel` or `wl-clipboard`); auto popup is not supported yet. The rest works through the clipboard, drag and drop and the command line.
+- System-wide selection and Finder directory capture are fully supported on macOS only.
 
 ### Sessions
 
