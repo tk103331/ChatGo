@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+
 	"chatgo/internal/config"
 	"chatgo/internal/shellenv"
 	"chatgo/internal/ui"
@@ -15,6 +17,14 @@ import (
 func main() {
 	shellenv.AugmentPath()
 	mygo.Use(native.Plugin)
+
+	if len(os.Args) > 1 && os.Args[1] == "plugin" {
+		if err := runPluginCommand(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
