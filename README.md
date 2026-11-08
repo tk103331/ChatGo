@@ -169,6 +169,8 @@ current_provider: "OpenAI"
 
 ### Quick Task Panel
 
+> The packaged app can install the `chatgo` command from **Settings → System → Command line** (a link in `~/.local/bin`).
+
 A panel floating over every app that hands the current context to an agent:
 
 - **Selected text**: select text in Safari, Chrome, VS Code and the like, press the shortcut, and the panel quotes it into the composer. Pick an agent, type the instruction, press Enter.

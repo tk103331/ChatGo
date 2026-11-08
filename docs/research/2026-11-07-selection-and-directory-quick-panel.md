@@ -720,3 +720,29 @@ func readSelection(pid int32) (text string, rect Rect, ok bool) {
 3. 真机检查浮窗焦点：划词条首击是否命中按钮、输入面板是否拿到键盘、隐藏后焦点是否回到来源 App。
 4. 打包验证 TCC 授权在签名/公证后的稳定性。
 5. 视验证结果决定是否把 `capture` 上游为 MyGo 公共 API。
+
+---
+
+## 附录 D：遗漏项处理记录（2026-11-09）
+
+在 `feat/quick-panel` 的独立 worktree 中处理了上一轮列出的高优先级遗漏：
+
+| 项 | 处理 |
+|---|---|
+| ACP 任务「停止」无效 | `cancelConvStreams` 现在发送 `session/cancel`（`acpCancelConv`），CLI 收到后结束本轮，回复照常保存 |
+| 后台任务缺少 Skills | `taskSystemPrompt` 拼入该 Agent 的 Skill 正文（`agentSkillPrompt`）；Skills 加载移到启动时，并加读写锁避免后台任务与 Skill 页重载竞态 |
+| 并发无上限 | 最多 3 个快捷任务同时运行，超出时提示；计数随流结束/取消递减 |
+| 划词条只有 3 个 Agent | 超出时显示 `+N` 按钮，直接打开完整输入面板 |
+| 划词条悬停也会消失 | 指针在条上时自动续期 |
+| 重复划词重复弹 | 同一 App、同一文本 2 秒内只弹一次 |
+| 收藏可超过 8 个但被静默隐藏 | 设置页最多选 8 个，超出时提示 |
+| `exclude_apps` 无 UI | 自动弹窗开启时提供 Bundle ID 输入框 |
+| 托盘看不到运行中的任务 | 托盘菜单显示「快捷任务运行中（N）」 |
+| 打包版没有 `chatgo` 命令 | 设置 → 系统 提供「安装 chatgo 命令」，链接到 `~/.local/bin/chatgo` |
+
+仍未做（需要在有真机/发布流程时处理）：
+
+- macOS Finder 右键 Services / Quick Action 入口（需要 NSServices 与 provider，风险与工作量都更高）
+- 浮窗内的模型选择器、预设动作（解释/翻译/总结）
+- Developer ID 签名、公证与 DMG
+- 真机覆盖矩阵（Retina、多屏、Electron、密码框、键盘划选）

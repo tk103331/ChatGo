@@ -160,6 +160,8 @@ current_provider: "OpenAI"
 
 ### 快捷任务浮窗
 
+> 打包版可在 **设置 → 系统 → 命令行** 里一键安装 `chatgo` 命令（链接到 `~/.local/bin/chatgo`）。
+
 一个浮在任意应用之上的小面板，用来把当前上下文直接交给 Agent：
 
 - **划词**：在 Safari、Chrome、VS Code 等应用里选中文本，按下快捷键，浮窗会把选中内容作为引用带进输入框；选择 Agent、输入指令，Enter 即开始执行。
