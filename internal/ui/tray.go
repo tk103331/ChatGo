@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"fmt"
 	"strings"
 
 	"chatgo/internal/ui/assets"
@@ -85,6 +86,7 @@ func (cw *ChatWindow) trayMenuKey() string {
 	var b strings.Builder
 	b.WriteString(cw.updateVer)
 	b.WriteByte('\n')
+	b.WriteString(fmt.Sprintf("%v|%s\n", cw.cfg.QuickPanel.IsEnabled(), cw.quickPanelShortcut()))
 	for _, conv := range cw.recentConvs(trayRecentMax) {
 		b.WriteString(conv.ID)
 		b.WriteByte('|')
@@ -100,8 +102,15 @@ func (cw *ChatWindow) buildTrayMenu() *mygo.Menu {
 	items := []*mygo.MenuItem{
 		{Label: "打开 ChatGo", Click: func(*mygo.MenuItem, *mygo.Window) { cw.showMainWindow() }},
 		{Label: "新建会话", Click: func(*mygo.MenuItem, *mygo.Window) { cw.trayNewConversation() }},
-		mygo.Separator(),
 	}
+	if cw.cfg.QuickPanel.IsEnabled() {
+		items = append(items, &mygo.MenuItem{
+			Label:       "快捷任务…",
+			Accelerator: cw.quickPanelShortcut(),
+			Click:       func(*mygo.MenuItem, *mygo.Window) { cw.openQuickPanel() },
+		})
+	}
+	items = append(items, mygo.Separator())
 	if cw.updateVer != "" {
 		ver := cw.updateVer
 		items = append(items, &mygo.MenuItem{Label: "发现新版本 v" + ver, Click: func(*mygo.MenuItem, *mygo.Window) {

@@ -45,6 +45,101 @@ type Config struct {
 	AutoTasks       []AutoTask `yaml:"auto_tasks,omitempty"`
 	Channels        []Channel  `yaml:"channels,omitempty"`
 	Rooms           []Room     `yaml:"rooms,omitempty"`
+	// QuickPanel is the system-wide quick task panel: selected text or a
+	// chosen directory becomes a prompt for an agent without opening the
+	// main window first.
+	QuickPanel QuickPanelConfig `yaml:"quick_panel,omitempty"`
+}
+
+// QuickPanelConfig configures the system-wide quick task panel.
+//
+// The three settings that default to true are pointers so that an explicit
+// false in a hand-written file survives a reload, while an older config that
+// never heard of them gets the default.
+type QuickPanelConfig struct {
+	// Enabled shows the panel on its shortcut instead of leaving it off.
+	Enabled *bool `yaml:"enabled,omitempty"`
+	// Shortcut opens the quick task panel. It is independent of the compact
+	// window's shortcut. Defaults to CmdOrCtrl+Shift+K.
+	Shortcut string `yaml:"shortcut,omitempty"`
+	// AutoPopup opens the panel when the user finishes selecting text in
+	// another app. Off by default: it needs the Accessibility permission
+	// and changes how every selection feels.
+	AutoPopup bool `yaml:"auto_popup,omitempty"`
+	// MinChars is the shortest selection AutoPopup reacts to.
+	MinChars int `yaml:"min_chars,omitempty"`
+	// ExcludeApps lists bundle identifiers AutoPopup ignores.
+	ExcludeApps []string `yaml:"exclude_apps,omitempty"`
+	// Favorites lists agent references ("", "agent:Name", "acp:Name") shown
+	// as chips in the panel, in order. Empty shows every configured agent.
+	Favorites []string `yaml:"favorites,omitempty"`
+	// DefaultAgent runs a task when the panel opens with a selection and
+	// the user presses Enter before choosing an agent.
+	DefaultAgent string `yaml:"default_agent,omitempty"`
+	// Background runs the task without switching the main window to the new
+	// conversation.
+	Background *bool `yaml:"background,omitempty"`
+	// DefaultWorktree starts the task in a new git worktree of the chosen
+	// directory. Reserved: the panel does not create worktrees yet.
+	DefaultWorktree bool `yaml:"default_worktree,omitempty"`
+	// ClipboardFallback lets the panel take the selected text, or the
+	// picked directory, from the clipboard when Accessibility is not
+	// granted.
+	ClipboardFallback *bool `yaml:"clipboard_fallback,omitempty"`
+	// ExplorerMenu adds "用 ChatGo 快捷任务打开" to the folder context menu
+	// (Windows only). Turning it on writes HKCU registry keys.
+	ExplorerMenu bool `yaml:"explorer_menu,omitempty"`
+	// AutoCopySelection sends Ctrl+C when the panel opens, so a platform
+	// without a readable selection API still gets the text (Windows only).
+	// Off by default: it briefly uses the clipboard.
+	AutoCopySelection bool `yaml:"auto_copy_selection,omitempty"`
+}
+
+func boolValue(v *bool, def bool) bool {
+	if v == nil {
+		return def
+	}
+	return *v
+}
+
+// IsEnabled reports whether the quick panel is turned on. The panel has its
+// own shortcut; the compact window keeps the old one.
+func (q QuickPanelConfig) IsEnabled() bool { return boolValue(q.Enabled, true) }
+
+// IsBackground reports whether quick tasks run without switching the main
+// window to the new conversation.
+func (q QuickPanelConfig) IsBackground() bool { return boolValue(q.Background, true) }
+
+// IsClipboardFallback reports whether the panel may read the clipboard when
+// Accessibility is unavailable.
+func (q QuickPanelConfig) IsClipboardFallback() bool {
+	return boolValue(q.ClipboardFallback, true)
+}
+
+// MinSelection is the shortest selection the panel reacts to.
+func (q QuickPanelConfig) MinSelection() int {
+	if q.MinChars <= 0 {
+		return 2
+	}
+	return q.MinChars
+}
+
+// Ensure fills the defaults of a config written before the panel existed,
+// and repairs values a hand-edited file may have left at zero.
+func (q *QuickPanelConfig) Ensure() {
+	on := true
+	if q.Enabled == nil {
+		q.Enabled = &on
+	}
+	if q.Background == nil {
+		q.Background = &on
+	}
+	if q.ClipboardFallback == nil {
+		q.ClipboardFallback = &on
+	}
+	if q.MinChars <= 0 {
+		q.MinChars = 2
+	}
 }
 
 // Room is a group conversation several agents share with the user. It is not
@@ -796,6 +891,7 @@ func LoadConfig() (*Config, error) {
 			Density:           "compact",
 			Locale:            "zh-CN",
 		}
+		defaultConfig.QuickPanel.Ensure()
 
 		data, err := yaml.Marshal(defaultConfig)
 		if err != nil {
@@ -858,6 +954,8 @@ func loadFile(path string) (*Config, error) {
 			}
 		}
 	}
+
+	config.QuickPanel.Ensure()
 
 	return &config, nil
 }

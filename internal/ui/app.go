@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"chatgo/internal/capture"
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
 	"chatgo/internal/ui/assets"
@@ -248,6 +249,19 @@ type ChatWindow struct {
 	toolCacheKey string
 
 	quickShortcut string
+	// panelShortcut is the registered accelerator of the quick task panel,
+	// kept apart from the compact window's.
+	panelShortcut string
+
+	// grabber reads selections and directories from the system, and quick is
+	// the panel those reads feed. quickWatch stops the selection monitor when
+	// AutoPopup is turned off.
+	grabber    capture.Capture
+	quick      *quickPanel
+	quickWatch func()
+	// pendingQuick holds a launch request that arrived before the window
+	// existed, such as a chatgo:// URL on a cold start.
+	pendingQuick *quickLaunch
 
 	tray              *mygo.Tray
 	trayMenuKeyCached string
@@ -263,8 +277,11 @@ type ChatWindow struct {
 }
 
 // defaultQuickShortcut triggers the focused interface when unset.
-
 const defaultQuickShortcut = "CmdOrCtrl+Shift+Space"
+
+// defaultQuickPanelShortcut opens the quick task panel when unset. It differs
+// from the compact window's shortcut so both can be registered at once.
+const defaultQuickPanelShortcut = "CmdOrCtrl+Shift+K"
 
 // quickChatShortcut is the configured accelerator for the focused interface.
 
@@ -273,6 +290,14 @@ func (cw *ChatWindow) quickChatShortcut() string {
 		return s
 	}
 	return defaultQuickShortcut
+}
+
+// quickPanelShortcut is the configured accelerator for the quick task panel.
+func (cw *ChatWindow) quickPanelShortcut() string {
+	if s := strings.TrimSpace(cw.cfg.QuickPanel.Shortcut); s != "" {
+		return s
+	}
+	return defaultQuickPanelShortcut
 }
 
 // NewChatWindow loads configuration and prepares the LLM and MCP clients.
@@ -311,6 +336,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		streams:        map[string]*streamState{},
 		convGit:        newConvGitState(),
 		channels:       newChannelManager(),
+		grabber:        capture.New(),
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd
@@ -321,6 +347,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.settings.channel.editing = -1
 	cw.settings.channel.typ = "feishu"
 	cw.settings.shortcut.value = cw.quickChatShortcut()
+	cw.settings.shortcut.panelValue = cw.quickPanelShortcut()
 	cw.agentForm.editing = -1
 	cw.acpForm.editing = -1
 	cw.reloadConvs()
@@ -351,6 +378,26 @@ func (cw *ChatWindow) Show() {
 	_ = mygo.App.Dock.SetIcon(assets.LogoPNG())
 	cw.applyQuickShortcut()
 	cw.syncTray()
+	if cw.cfg.QuickPanel.IsEnabled() {
+		cw.quick = newQuickPanel(cw)
+		cw.quick.create()
+		cw.startQuickWatch()
+	}
+	// Keep the Explorer entry pointing at this executable; the user may have
+	// moved or updated the app since it was turned on.
+	if explorerMenuSupported() && cw.cfg.QuickPanel.ExplorerMenu {
+		_ = setExplorerMenu(true)
+	}
+	if pending := cw.pendingQuick; pending != nil {
+		cw.pendingQuick = nil
+		if cw.quick == nil {
+			cw.quick = newQuickPanel(cw)
+			cw.quick.create()
+		}
+		if cw.quick != nil {
+			cw.quick.openAt(pending.Dir, pending.Prompt)
+		}
+	}
 	if cw.cfg.WebEnabled {
 		cw.startWebService()
 	}
@@ -371,6 +418,10 @@ func (cw *ChatWindow) Show() {
 		// would otherwise linger after the window is gone.
 		cw.acpShutdown()
 		cw.stopWebService()
+		cw.stopQuickWatch()
+		if cw.quick != nil {
+			cw.quick.destroy()
+		}
 	})
 	mygo.App.OnWillQuit(func(e *mygo.QuitEvent) { cw.quitting = false })
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
@@ -384,13 +435,17 @@ func (cw *ChatWindow) Show() {
 // previous one, and reports a failure as a toast.
 
 func (cw *ChatWindow) applyQuickShortcut() {
+	cw.applyChatShortcut()
+	cw.applyPanelShortcut()
+}
+
+// applyChatShortcut registers the compact window's accelerator.
+func (cw *ChatWindow) applyChatShortcut() {
 	acc := cw.quickChatShortcut()
 	if acc == cw.quickShortcut {
 		return
 	}
-	if err := mygo.GlobalShortcut.Register(acc, func() {
-		cw.openQuick()
-	}); err != nil {
+	if err := mygo.GlobalShortcut.Register(acc, cw.openQuick); err != nil {
 		cw.settings.shortcut.err = "快捷键注册失败：" + err.Error()
 		return
 	}
@@ -401,11 +456,52 @@ func (cw *ChatWindow) applyQuickShortcut() {
 	cw.settings.shortcut.err = ""
 }
 
-// saveQuickShortcut persists the accelerator and re-registers it.
+// applyPanelShortcut registers the quick task panel's accelerator, which is
+// separate from the compact window's. It is only bound while the panel is
+// enabled.
+func (cw *ChatWindow) applyPanelShortcut() {
+	acc := cw.quickPanelShortcut()
+	if !cw.cfg.QuickPanel.IsEnabled() {
+		if cw.panelShortcut != "" {
+			mygo.GlobalShortcut.Unregister(cw.panelShortcut)
+			cw.panelShortcut = ""
+		}
+		cw.settings.shortcut.panelErr = ""
+		return
+	}
+	if acc == cw.panelShortcut {
+		return
+	}
+	if acc == cw.quickChatShortcut() {
+		cw.settings.shortcut.panelErr = "与「快捷对话」快捷键相同"
+		return
+	}
+	if err := mygo.GlobalShortcut.Register(acc, cw.openQuickPanel); err != nil {
+		cw.settings.shortcut.panelErr = "快捷键注册失败：" + err.Error()
+		return
+	}
+	if cw.panelShortcut != "" {
+		mygo.GlobalShortcut.Unregister(cw.panelShortcut)
+	}
+	cw.panelShortcut = acc
+	cw.settings.shortcut.panelErr = ""
+}
+
+// saveQuickShortcut persists the compact window's accelerator and
+// re-registers it.
 
 func (cw *ChatWindow) saveQuickShortcut() {
 	_ = config.SaveConfig(cw.cfg)
 	cw.applyQuickShortcut()
+	cw.invalidate()
+}
+
+// savePanelShortcut persists the panel's accelerator and re-registers it.
+func (cw *ChatWindow) savePanelShortcut() {
+	cw.cfg.QuickPanel.Shortcut = strings.TrimSpace(cw.settings.shortcut.panelValue)
+	_ = config.SaveConfig(cw.cfg)
+	cw.applyPanelShortcut()
+	cw.updateTrayMenu()
 	cw.invalidate()
 }
 
@@ -592,6 +688,11 @@ func (cw *ChatWindow) windowTitle() string {
 func (cw *ChatWindow) invalidate() {
 	if cw.window != nil {
 		cw.window.Invalidate()
+	}
+	// The quick panel is a second window drawing the same state (a task's
+	// streaming reply), so it repaints with the main one.
+	if cw.quick != nil {
+		cw.quick.invalidate()
 	}
 }
 

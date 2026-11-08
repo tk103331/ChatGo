@@ -23,7 +23,7 @@ func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
 		if cw.settings.shortcut.err != "" {
 			mgo.Text(c, cw.settings.shortcut.err).TextColor(k.Danger).FontSize(small)
 		}
-		mgo.Text(c, "快捷对话").FontSize(small).TextColor(k.TextMuted)
+		mgo.Text(c, "快捷对话（紧凑窗口）").FontSize(small).TextColor(k.TextMuted)
 		f := &cw.settings.shortcut
 		kit.TextInput(c, &f.value, kit.TextInputOptions{
 			Label: "快捷对话快捷键", Placeholder: defaultQuickShortcut,
@@ -40,6 +40,28 @@ func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
 				f.value = defaultQuickShortcut
 				cw.cfg.QuickChatShortcut = defaultQuickShortcut
 				cw.saveQuickShortcut()
+				cw.toast("已恢复默认快捷键", mcore.SeveritySuccess)
+			}
+		})
+
+		mgo.Text(c, "快捷任务浮窗").FontSize(small).TextColor(k.TextMuted)
+		if f.panelErr != "" {
+			mgo.Text(c, f.panelErr).TextColor(k.Danger).FontSize(small)
+		}
+		kit.TextInput(c, &f.panelValue, kit.TextInputOptions{
+			Label: "快捷任务快捷键", Placeholder: defaultQuickPanelShortcut,
+		})
+		mgo.Text(c, "打开快捷任务浮窗；与上面的紧凑窗口快捷键相互独立").
+			FontSize(small).TextColor(k.TextMuted)
+		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
+				cw.savePanelShortcut()
+				cw.toast("快捷任务快捷键已更新", mcore.SeveritySuccess)
+			}
+			if kit.Button(c, "恢复默认", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+				f.panelValue = defaultQuickPanelShortcut
+				cw.cfg.QuickPanel.Shortcut = defaultQuickPanelShortcut
+				cw.savePanelShortcut()
 				cw.toast("已恢复默认快捷键", mcore.SeveritySuccess)
 			}
 		})
@@ -157,6 +179,7 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 		}
 		mgo.Text(c, "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行（自动启用托盘图标）。").
 			FontSize(small).TextColor(k.TextMuted)
+		cw.quickPanelSection(c)
 		mgo.Text(c, "更新").FontWeight(600)
 		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if kit.Button(c, "检查更新", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {

@@ -49,6 +49,10 @@ type channelForm struct {
 type shortcutForm struct {
 	value string
 	err   string
+	// panelValue and panelErr belong to the quick task panel's accelerator,
+	// which is registered separately from the compact window's.
+	panelValue string
+	panelErr   string
 }
 
 type providerForm struct {
