@@ -23,7 +23,7 @@ const (
 	quickBarWidth      = 380
 	quickBarHeight     = 52
 	quickPanelWidth    = 480
-	quickPanelHeight   = 236
+	quickPanelHeight   = 278
 	quickRunningHeight = 300
 )
 
@@ -62,6 +62,7 @@ type quickPanel struct {
 
 	draft     string
 	agent     string
+	model     string
 	workspace string
 	worktree  bool
 
@@ -250,6 +251,7 @@ func (qp *quickPanel) reset() {
 	qp.draft = ""
 	qp.task = nil
 	qp.agent = cfg.DefaultAgent
+	qp.model = qp.defaultModelRef(qp.agent)
 	qp.worktree = cfg.DefaultWorktree
 	qp.workspace = qp.cw.workspace
 	if qp.workspace == "" {
@@ -560,6 +562,52 @@ func (cw *ChatWindow) agentChipLeading(c *mgo.Context, a quickAgentOption) func(
 	}
 }
 
+// modelRefsForAgent lists the models an agent may run; ACP agents choose
+// their own, so they get none.
+func (cw *ChatWindow) modelRefsForAgent(agent string) []string {
+	if strings.HasPrefix(agent, "acp:") {
+		return nil
+	}
+	if name, ok := strings.CutPrefix(agent, "agent:"); ok {
+		if a, found := cw.agentByName(name); found && len(a.Models) > 0 {
+			return append([]string(nil), a.Models...)
+		}
+	}
+	return cw.allModelRefs()
+}
+
+// defaultModelRef is the model the panel shows before the user picks one.
+func (qp *quickPanel) defaultModelRef(agent string) string {
+	refs := qp.cw.modelRefsForAgent(agent)
+	if len(refs) == 0 {
+		return ""
+	}
+	if agent == "" {
+		if cur := qp.cw.currentModelRef(); containsStr(refs, cur) {
+			return cur
+		}
+	}
+	return refs[0]
+}
+
+// setAgent switches the agent and follows its default model.
+func (qp *quickPanel) setAgent(ref string) {
+	if qp.agent == ref {
+		return
+	}
+	qp.agent = ref
+	qp.model = qp.defaultModelRef(ref)
+}
+
+// effectiveModel is the reference the selector shows.
+func (qp *quickPanel) effectiveModel() string {
+	refs := qp.cw.modelRefsForAgent(qp.agent)
+	if qp.model != "" && containsStr(refs, qp.model) {
+		return qp.model
+	}
+	return qp.defaultModelRef(qp.agent)
+}
+
 // submit turns the draft and the captured context into a task.
 func (qp *quickPanel) submit() {
 	text := strings.TrimSpace(qp.draft)
@@ -576,7 +624,7 @@ func (qp *quickPanel) submit() {
 			prompt = text + "\n\n" + q
 		}
 	}
-	task := qp.cw.quickStartTask(prompt, qp.agent, qp.workspace, qp.worktree)
+	task := qp.cw.quickStartTask(prompt, qp.agent, qp.workspace, qp.model, qp.worktree)
 	if task == nil {
 		return
 	}

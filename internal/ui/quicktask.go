@@ -50,8 +50,10 @@ func (cw *ChatWindow) unmarkQuickReply(replyID string) {
 // conversation it writes into, so the panel can draw the reply while the
 // main window shows something else.
 type quickTask struct {
-	Prompt    string
-	Agent     string
+	Prompt string
+	Agent  string
+	// Model is the chosen model reference, or empty for the agent's first.
+	Model     string
 	Workspace string
 	Conv      *models.Conversation
 	// ReplyIdx is the index of the reply message in Conv.Messages.
@@ -111,7 +113,7 @@ func (t *quickTask) stop(cw *ChatWindow) {
 // quickStartTask creates a conversation and runs its first turn. It runs on
 // the main thread; the reply itself runs off it. With worktree set, an
 // isolated working tree is created first.
-func (cw *ChatWindow) quickStartTask(prompt, agent, workspace string, worktree bool) *quickTask {
+func (cw *ChatWindow) quickStartTask(prompt, agent, workspace, model string, worktree bool) *quickTask {
 	prompt = strings.TrimSpace(prompt)
 	if prompt == "" {
 		return nil
@@ -123,7 +125,7 @@ func (cw *ChatWindow) quickStartTask(prompt, agent, workspace string, worktree b
 	if workspace == "" {
 		workspace = cw.fileRoot()
 	}
-	task := &quickTask{Prompt: prompt, Agent: agent, Workspace: workspace}
+	task := &quickTask{Prompt: prompt, Agent: agent, Model: model, Workspace: workspace}
 
 	if worktree {
 		task.preparing = true
@@ -154,7 +156,7 @@ func (cw *ChatWindow) quickStartTask(prompt, agent, workspace string, worktree b
 
 // quickLaunchTask writes the conversation and starts the turn.
 func (cw *ChatWindow) quickLaunchTask(task *quickTask) {
-	conv, idx, replyID, err := cw.quickConversation(task.Agent, task.Workspace, task.Prompt)
+	conv, idx, replyID, err := cw.quickConversation(task.Agent, task.Model, task.Workspace, task.Prompt)
 	if err != nil {
 		cw.quickTaskFail(task, err)
 		return
@@ -212,11 +214,18 @@ func (cw *ChatWindow) quickWorktree(repo string) (string, error) {
 
 // quickConversation writes the user message and the empty reply, so the
 // panel has something to draw before the first chunk arrives.
-func (cw *ChatWindow) quickConversation(agent, workspace, prompt string) (*models.Conversation, int, string, error) {
+func (cw *ChatWindow) quickConversation(agent, modelRef, workspace, prompt string) (*models.Conversation, int, string, error) {
 	provider, model := "", ""
 	isACP := strings.HasPrefix(agent, "acp:")
 	if !isACP {
 		provider, model, _, _, _ = cw.taskAgentSpec(agent)
+		if ref := strings.TrimSpace(modelRef); ref != "" {
+			if p, m := splitModelRef(ref); p != "" {
+				provider, model = p, m
+			} else if m != "" {
+				model = m
+			}
+		}
 		if model == "" {
 			if p, ok := cw.findProvider(provider); ok {
 				if ms := p.ModelsList(); len(ms) > 0 {
@@ -274,7 +283,7 @@ func (cw *ChatWindow) quickRunBackground(task *quickTask) {
 	go func() {
 		// Building the client lists MCP tools and can touch the network, so
 		// it stays off the thread that draws the panel.
-		client, react, groupClient, groupReact, err := cw.taskClient(task.Agent, task.Workspace, task.Conv)
+		client, react, groupClient, groupReact, err := cw.taskClientFor(task.Agent, task.Workspace, task.Model, task.Conv)
 		if err != nil {
 			cw.postMain(func() { cw.quickTaskFail(task, err) })
 			return

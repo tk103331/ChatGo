@@ -176,6 +176,8 @@ A panel floating over every app that hands the current context to an agent:
 - **Selected text**: select text in Safari, Chrome, VS Code and the like, press the shortcut, and the panel quotes it into the composer. Pick an agent, type the instruction, press Enter.
 - **A folder**: select a folder in Finder (or copy one) and press the shortcut to use it as the working directory. You can also drop a folder on the panel, use its folder button, or run `chatgo .`.
 - **Auto popup** (experimental): turn on "show the panel after selecting text" in Settings → System to get a small agent strip next to the selection. It needs the macOS Accessibility permission; without it the shortcut and clipboard fallback still work.
+- **Presets**: after selecting text, fill the instruction with Explain / Translate / Summarize, or type your own.
+- **Model**: the panel picks the model for this task (ACP agents manage their own model through the protocol).
 - **Background**: tasks run without switching the main window, notify when done, and can be opened in the main window at any time. Turning on "new worktree" creates an isolated working tree first and runs the task in it.
 
 Command line and links:

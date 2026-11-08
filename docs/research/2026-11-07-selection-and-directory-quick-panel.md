@@ -739,10 +739,11 @@ func readSelection(pid int32) (text string, rect Rect, ok bool) {
 | `exclude_apps` 无 UI | 自动弹窗开启时提供 Bundle ID 输入框 |
 | 托盘看不到运行中的任务 | 托盘菜单显示「快捷任务运行中（N）」 |
 | 打包版没有 `chatgo` 命令 | 设置 → 系统 提供「安装 chatgo 命令」，链接到 `~/.local/bin/chatgo` |
+| 浮窗内无模型选择 | 预设行右侧提供模型选择器（Agent 允许的模型；ACP 隐藏） |
+| 无预设动作 | 有选区时提供「解释 / 翻译 / 总结」，点击填入指令 |
 
 仍未做（需要在有真机/发布流程时处理）：
 
 - macOS Finder 右键 Services / Quick Action 入口（需要 NSServices 与 provider，风险与工作量都更高）
-- 浮窗内的模型选择器、预设动作（解释/翻译/总结）
 - Developer ID 签名、公证与 DMG
 - 真机覆盖矩阵（Retina、多屏、Electron、密码框、键盘划选）

@@ -114,9 +114,23 @@ func (qp *quickPanel) compose(c *mgo.Context) {
 					Variant: variant,
 					Leading: qp.cw.agentChipLeading(c, a),
 				}).Clicked() {
-					qp.agent = ref
+					qp.setAgent(ref)
 				}
 			}
+		})
+
+		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+			if qp.hasSelection {
+				for _, p := range quickPresets {
+					p := p
+					if kit.Button(c, p.Label, kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
+						qp.draft = p.Prompt
+						qp.focusInput = true
+					}
+				}
+			}
+			mgo.Box(c).Grow(1)
+			qp.modelSelector(c)
 		})
 
 		in := composer(c, &qp.draft, composerOptions{
@@ -220,9 +234,47 @@ func (qp *quickPanel) running(c *mgo.Context) {
 	})
 }
 
+// quickPreset is one of the instruction templates offered with a selection.
+type quickPreset struct {
+	Label  string
+	Prompt string
+}
+
+// quickPresets fill the composer with a common instruction; the selection
+// itself is quoted when the task is submitted.
+var quickPresets = []quickPreset{
+	{"解释", "解释这段内容，说明它的含义和关键点。"},
+	{"翻译", "翻译这段内容：原文是中文就翻译成英文，否则翻译成中文。"},
+	{"总结", "总结这段内容的要点。"},
+}
+
+// modelSelector chooses the model the task runs with, for agents that have a
+// choice. ACP agents pick their own model through the protocol.
+func (qp *quickPanel) modelSelector(c *mgo.Context) {
+	refs := qp.cw.modelRefsForAgent(qp.agent)
+	if len(refs) == 0 {
+		return
+	}
+	cur := qp.effectiveModel()
+	opts := make([]kit.SearchSelectOption[string], 0, len(refs))
+	for _, ref := range refs {
+		opts = append(opts, kit.SearchSelectOption[string]{
+			Value: ref, Label: qp.cw.refLabel(ref), Leading: qp.cw.providerLeading(c, ref),
+		})
+	}
+	r := kit.SearchSelect(c, &cur, opts, kit.SearchSelectOptions[string]{
+		Label: "模型", Placeholder: "跟随 Agent", SearchPlaceholder: "搜索模型",
+		MinWidth: 150, MinHeight: 30,
+	})
+	r.Element.MaxWidth(200).MinWidth(0)
+	if r.Changed() {
+		qp.model = cur
+	}
+}
+
 // chooseAgent picks an agent and moves the bar into the compose panel.
 func (qp *quickPanel) chooseAgent(ref string) {
-	qp.agent = ref
+	qp.setAgent(ref)
 	qp.showCompose()
 }
 

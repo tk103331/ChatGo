@@ -106,7 +106,7 @@ func TestQuickConversation(t *testing.T) {
 	cw.convManager = cm
 
 	dir := t.TempDir()
-	conv, idx, replyID, err := cw.quickConversation("agent:Review", dir, "解释这段代码")
+	conv, idx, replyID, err := cw.quickConversation("agent:Review", "", dir, "解释这段代码")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,6 +127,48 @@ func TestQuickConversation(t *testing.T) {
 	}
 	if len(conv.Turns) != 1 || conv.Turns[0].ReplyMsgID != replyID || conv.Turns[0].Model != "gpt-4o" {
 		t.Errorf("turns = %+v", conv.Turns)
+	}
+
+	// A model chosen in the panel overrides the agent's first model.
+	conv2, _, _, err := cw.quickConversation("agent:Review", "OpenAI::gpt-4", dir, "再解释一次")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if conv2.Provider != "OpenAI" || conv2.Model != "gpt-4" {
+		t.Errorf("override target = %s::%s", conv2.Provider, conv2.Model)
+	}
+	if len(conv2.Turns) != 1 || conv2.Turns[0].Model != "gpt-4" {
+		t.Errorf("override turn = %+v", conv2.Turns)
+	}
+}
+
+func TestQuickPanelModelSelection(t *testing.T) {
+	cw := testWindow()
+	cw.cfg.Agents = []config.AgentDef{
+		{Name: "Review", Models: []string{"OpenAI::gpt-4o"}},
+		{Name: "Code", Models: []string{"OpenAI::gpt-4"}},
+	}
+	qp := newQuickPanel(cw)
+	qp.setAgent("agent:Review")
+	if qp.model != "OpenAI::gpt-4o" {
+		t.Errorf("review model = %q", qp.model)
+	}
+	qp.setAgent("agent:Code")
+	if qp.model != "OpenAI::gpt-4" || qp.effectiveModel() != "OpenAI::gpt-4" {
+		t.Errorf("code model = %q effective %q", qp.model, qp.effectiveModel())
+	}
+	// ACP agents choose their own model, so the panel offers none.
+	if refs := cw.modelRefsForAgent("acp:Claude"); len(refs) != 0 {
+		t.Errorf("acp refs = %v", refs)
+	}
+	// The presets exist and carry an instruction.
+	if len(quickPresets) < 3 {
+		t.Fatalf("presets = %+v", quickPresets)
+	}
+	for _, p := range quickPresets {
+		if p.Label == "" || p.Prompt == "" {
+			t.Errorf("empty preset: %+v", p)
+		}
 	}
 }
 
@@ -222,7 +264,7 @@ func TestQuickRunningCounter(t *testing.T) {
 func TestQuickStartTaskRefusesAtCap(t *testing.T) {
 	cw := testWindow()
 	cw.quickRunning = quickMaxRunning
-	if task := cw.quickStartTask("解释一下", "", "/tmp", false); task != nil {
+	if task := cw.quickStartTask("解释一下", "", "/tmp", "", false); task != nil {
 		t.Fatalf("started a task at the cap: %+v", task)
 	}
 }

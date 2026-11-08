@@ -712,8 +712,29 @@ func (cw *ChatWindow) taskClient(agent, workspace string, conv ...*models.Conver
 	return cw.taskClientWithChannel(agent, workspace, nil, nil, c)
 }
 
+// taskClientFor builds a client with an optional model reference ("Provider::model"),
+// so the quick panel's model selector can override the agent's first model.
+func (cw *ChatWindow) taskClientFor(agent, workspace, modelRef string, conv ...*models.Conversation) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
+	var c *models.Conversation
+	if len(conv) > 0 {
+		c = conv[0]
+	}
+	return cw.taskClientWithChannelModel(agent, workspace, modelRef, nil, nil, c)
+}
+
 func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.Channel, msgCtx *channelMsgContext, conv *models.Conversation, extra ...tool.BaseTool) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
+	return cw.taskClientWithChannelModel(agent, workspace, "", ch, msgCtx, conv, extra...)
+}
+
+func (cw *ChatWindow) taskClientWithChannelModel(agent, workspace, modelRef string, ch *config.Channel, msgCtx *channelMsgContext, conv *models.Conversation, extra ...tool.BaseTool) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
 	provName, model, sys, ws, toolIDs := cw.taskAgentSpec(agent)
+	if ref := strings.TrimSpace(modelRef); ref != "" {
+		if p, m := splitModelRef(ref); p != "" {
+			provName, model = p, m
+		} else if m != "" {
+			model = m
+		}
+	}
 	root := workspace
 	if root == "" {
 		root = ws
