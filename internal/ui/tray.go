@@ -86,7 +86,7 @@ func (cw *ChatWindow) trayMenuKey() string {
 	var b strings.Builder
 	b.WriteString(cw.updateVer)
 	b.WriteByte('\n')
-	b.WriteString(fmt.Sprintf("%v|%s\n", cw.cfg.QuickPanel.IsEnabled(), cw.quickPanelShortcut()))
+	b.WriteString(fmt.Sprintf("%v|%s|%d\n", cw.cfg.QuickPanel.IsEnabled(), cw.quickPanelShortcut(), cw.quickRunning))
 	for _, conv := range cw.recentConvs(trayRecentMax) {
 		b.WriteString(conv.ID)
 		b.WriteByte('|')
@@ -109,6 +109,12 @@ func (cw *ChatWindow) buildTrayMenu() *mygo.Menu {
 			Accelerator: cw.quickPanelShortcut(),
 			Click:       func(*mygo.MenuItem, *mygo.Window) { cw.openQuickPanel() },
 		})
+		if cw.quickRunning > 0 {
+			items = append(items, &mygo.MenuItem{
+				Label:    fmt.Sprintf("快捷任务运行中（%d）", cw.quickRunning),
+				Disabled: true,
+			})
+		}
 	}
 	items = append(items, mygo.Separator())
 	if cw.updateVer != "" {

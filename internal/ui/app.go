@@ -252,6 +252,10 @@ type ChatWindow struct {
 	// panelShortcut is the registered accelerator of the quick task panel,
 	// kept apart from the compact window's.
 	panelShortcut string
+	// quickRunning counts the quick tasks still streaming, and
+	// quickReplyIDs remembers which replies belong to them.
+	quickRunning  int
+	quickReplyIDs map[string]bool
 
 	// grabber reads selections and directories from the system, and quick is
 	// the panel those reads feed. quickWatch stops the selection monitor when
@@ -337,6 +341,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		convGit:        newConvGitState(),
 		channels:       newChannelManager(),
 		grabber:        capture.New(),
+		quickReplyIDs:  map[string]bool{},
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd
@@ -351,6 +356,9 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.agentForm.editing = -1
 	cw.acpForm.editing = -1
 	cw.reloadConvs()
+	// Load the skill bodies once on the main thread: background tasks read
+	// them to build their system prompt.
+	cw.loadSkills()
 	cw.currentAgent = ""
 	cw.applyAgent("")
 	go cw.startMCP()

@@ -67,6 +67,13 @@ type quickPanel struct {
 
 	focusInput   bool
 	suppressBlur bool
+	// barHovered pauses the bar's auto-hide while the pointer is on it.
+	barHovered bool
+
+	// lastSel* skip a second bar for the same selection in quick succession.
+	lastSelText   string
+	lastSelBundle string
+	lastSelAt     time.Time
 
 	task *quickTask
 	// dismiss removes the mouse-down monitor that closes the bar when the
@@ -326,6 +333,13 @@ func (qp *quickPanel) onSelection(sel capture.Selection) {
 	if qp.win.IsVisible() && qp.mode != quickPanelBar {
 		return
 	}
+	// Double-clicking the same word twice should not flash two bars.
+	now := time.Now()
+	if qp.lastSelText == sel.Text && qp.lastSelBundle == sel.BundleID &&
+		now.Sub(qp.lastSelAt) < 2*time.Second {
+		return
+	}
+	qp.lastSelText, qp.lastSelBundle, qp.lastSelAt = sel.Text, sel.BundleID, now
 	// An element that reports no bounds still gets a bar at the pointer.
 	if sel.Rect.Width <= 0 && sel.Rect.Height <= 0 {
 		p := mygo.Screen.CursorScreenPoint()
@@ -347,11 +361,22 @@ func (qp *quickPanel) showBar() {
 	qp.win.ShowInactive()
 	qp.win.Invalidate()
 	qp.watchDismiss()
+	qp.scheduleBarHide()
+}
+
+// scheduleBarHide hides the bar after it is ignored, but waits again while the
+// pointer rests on it.
+func (qp *quickPanel) scheduleBarHide() {
 	time.AfterFunc(quickBarLifetime, func() {
 		qp.cw.postMain(func() {
-			if qp.mode == quickPanelBar {
-				qp.hide()
+			if qp.mode != quickPanelBar {
+				return
 			}
+			if qp.barHovered {
+				qp.scheduleBarHide()
+				return
+			}
+			qp.hide()
 		})
 	})
 }

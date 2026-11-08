@@ -3,6 +3,7 @@ package ui
 import (
 	"runtime"
 	"strconv"
+	"strings"
 
 	"chatgo/internal/capture"
 	"chatgo/internal/config"
@@ -46,6 +47,7 @@ func (cw *ChatWindow) quickPanelSection(c *mgo.Context) {
 				FontSize(small).TextColor(k.TextMuted)
 			if qp.AutoPopup {
 				cw.quickMinCharsRow(c)
+				cw.quickExcludeRow(c)
 			}
 		} else if runtime.GOOS == "linux" {
 			mgo.Text(c, "Linux 下会读取 X11 PRIMARY 选区（需要 xclip、xsel 或 wl-clipboard）；自动弹出暂不支持。").
@@ -75,6 +77,18 @@ func (cw *ChatWindow) quickPanelSection(c *mgo.Context) {
 			mgo.Text(c, "会模拟 Ctrl+C 并尽量还原剪贴板文本；剪贴板里的图片或富文本可能被替换。").
 				FontSize(small).TextColor(k.TextMuted)
 		}
+		if cliInstallSupported() {
+			mgo.Text(c, "命令行").FontSize(small).TextColor(k.TextMuted)
+			mgo.Text(c, "安装后可在终端用 chatgo . 从当前目录打开浮窗（需把 ~/.local/bin 加入 PATH）。").
+				FontSize(small).TextColor(k.TextMuted)
+			if kit.Button(c, "安装 chatgo 命令", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+				if path, err := installCLI(); err != nil {
+					cw.toast("安装失败："+err.Error(), mcore.SeverityError)
+				} else {
+					cw.toast("已安装："+path, mcore.SeveritySuccess)
+				}
+			}
+		}
 		cw.quickPermissionRow(c)
 	})
 }
@@ -103,6 +117,44 @@ func (cw *ChatWindow) quickMinCharsRow(c *mgo.Context) {
 		cw.cfg.QuickPanel.MinChars = levels[idx]
 		_ = config.SaveConfig(cw.cfg)
 	}
+}
+
+// quickExcludeRow edits the bundle IDs AutoPopup ignores.
+func (cw *ChatWindow) quickExcludeRow(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	qp := &cw.cfg.QuickPanel
+	f := &cw.settings.exclude
+	if !f.ready {
+		f.value = strings.Join(qp.ExcludeApps, ", ")
+		f.ready = true
+	}
+	mgo.Column(c).Gap(u).Children(func() {
+		mgo.Text(c, "排除的 App（Bundle ID，逗号分隔）").FontSize(small).TextColor(k.TextMuted)
+		r := kit.TextInput(c, &f.value, kit.TextInputOptions{
+			Label:       "排除的 App",
+			Placeholder: "com.apple.Terminal, com.tencent.xinWeChat",
+		})
+		if r.Changed() {
+			qp.ExcludeApps = splitBundleList(f.value)
+			_ = config.SaveConfig(cw.cfg)
+		}
+	})
+}
+
+// splitBundleList splits the delimiter-separated bundle IDs of the field.
+func splitBundleList(text string) []string {
+	var out []string
+	for _, part := range strings.FieldsFunc(text, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == ' ' || r == '\t'
+	}) {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }
 
 // quickDefaultAgentRow chooses the agent a new panel starts with.
@@ -174,8 +226,12 @@ func (cw *ChatWindow) quickFavoritesRow(c *mgo.Context) {
 					Variant: variant,
 					Leading: cw.agentChipLeading(c, a),
 				}).Clicked() {
-					qp.Favorites = toggleRef(qp.Favorites, ref)
-					_ = config.SaveConfig(cw.cfg)
+					if !on && len(qp.Favorites) >= 8 {
+						cw.toast("浮窗最多显示 8 个 Agent", mcore.SeverityInfo)
+					} else {
+						qp.Favorites = toggleRef(qp.Favorites, ref)
+						_ = config.SaveConfig(cw.cfg)
+					}
 				}
 			}
 		})

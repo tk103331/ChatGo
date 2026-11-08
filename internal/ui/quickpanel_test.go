@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -201,5 +202,88 @@ func TestQuickPanelShortcut(t *testing.T) {
 	cw.cfg.QuickPanel.Shortcut = "Alt+Space"
 	if got := cw.quickPanelShortcut(); got != "Alt+Space" {
 		t.Errorf("configured panel shortcut = %q", got)
+	}
+}
+
+func TestQuickRunningCounter(t *testing.T) {
+	cw := testWindow()
+	cw.markQuickRunning("r1")
+	cw.markQuickRunning("r1")
+	if cw.quickRunning != 1 {
+		t.Fatalf("running = %d, want 1", cw.quickRunning)
+	}
+	cw.unmarkQuickReply("r1")
+	cw.unmarkQuickReply("r1")
+	if cw.quickRunning != 0 {
+		t.Fatalf("running = %d, want 0", cw.quickRunning)
+	}
+}
+
+func TestQuickStartTaskRefusesAtCap(t *testing.T) {
+	cw := testWindow()
+	cw.quickRunning = quickMaxRunning
+	if task := cw.quickStartTask("解释一下", "", "/tmp", false); task != nil {
+		t.Fatalf("started a task at the cap: %+v", task)
+	}
+}
+
+func TestAgentSkillPrompt(t *testing.T) {
+	home := os.Getenv("HOME")
+	dir := filepath.Join(home, ".chatgo", "skills", "demo")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# Demo\n\nDo the demo thing."), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cw := testWindow()
+	cw.loadSkills()
+	if !containsStr(cw.cfg.SkillsEnabled, dir+string(os.PathSeparator)+"SKILL.md") {
+		t.Fatalf("loadSkills did not enable the skill: %v", cw.cfg.SkillsEnabled)
+	}
+
+	// The built-in chat gets every enabled skill.
+	if got := cw.agentSkillPrompt(""); !strings.Contains(got, "Do the demo thing") {
+		t.Errorf("chat skills = %q", got)
+	}
+	// A custom agent without it gets nothing.
+	cw.cfg.Agents = []config.AgentDef{{Name: "NoSkills"}}
+	if got := cw.agentSkillPrompt("agent:NoSkills"); got != "" {
+		t.Errorf("agent without skills = %q", got)
+	}
+	// A custom agent that lists it gets it.
+	cw.cfg.Agents = []config.AgentDef{{Name: "WithSkills", Skills: []string{"demo"}}}
+	if got := cw.agentSkillPrompt("agent:WithSkills"); !strings.Contains(got, "Do the demo thing") {
+		t.Errorf("agent with skills = %q", got)
+	}
+	// ACP manages its own skills.
+	if got := cw.agentSkillPrompt("acp:Claude"); got != "" {
+		t.Errorf("acp skills = %q", got)
+	}
+}
+
+func TestSplitBundleList(t *testing.T) {
+	got := splitBundleList(" com.apple.Terminal, com.tencent.xinWeChat;com.apple.finder ")
+	want := []string{"com.apple.Terminal", "com.tencent.xinWeChat", "com.apple.finder"}
+	if !equalStrings(got, want) {
+		t.Errorf("split = %v, want %v", got, want)
+	}
+	if len(splitBundleList("  ")) != 0 {
+		t.Errorf("blank split not empty")
+	}
+}
+
+func TestQuickBarRendersManyAgents(t *testing.T) {
+	cw := testWindow()
+	for _, name := range []string{"A", "B", "C", "D", "E"} {
+		cw.cfg.Agents = append(cw.cfg.Agents, config.AgentDef{Name: name})
+	}
+	qp := newQuickPanel(cw)
+	qp.mode = quickPanelBar
+	qp.hasSelection = true
+	qp.selection = capture.Selection{Text: "hello"}
+	if img := mgo.Render(qp.view, quickBarWidth, quickBarHeight, 1); img == nil {
+		t.Fatal("bar with six agents did not render")
 	}
 }

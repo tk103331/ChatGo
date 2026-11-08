@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"chatgo/internal/agentimport"
 	"chatgo/internal/config"
@@ -78,8 +79,10 @@ func (cw *ChatWindow) loadSkills() {
 	sort.Slice(out, func(i, j int) bool {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
+	cw.skills.mu.Lock()
 	cw.skills.list = out
 	cw.skills.loaded = true
+	cw.skills.mu.Unlock()
 	if len(cw.cfg.SkillsEnabled) == 0 && len(out) > 0 {
 		for _, s := range out {
 			cw.cfg.SkillsEnabled = append(cw.cfg.SkillsEnabled, s.ID)
@@ -452,6 +455,45 @@ func (cw *ChatWindow) skillPrompt() string {
 	return strings.Join(parts, "\n\n")
 }
 
+// agentSkillPrompt returns the skill bodies a background task runs with: the
+// globally enabled skills, narrowed to a custom agent's whitelist. The
+// per-chat toggles belong to the window's current conversation, so they do
+// not apply here. ACP agents manage their own skills.
+func (cw *ChatWindow) agentSkillPrompt(agent string) string {
+	if strings.HasPrefix(agent, "acp:") {
+		return ""
+	}
+	cw.skills.mu.RLock()
+	loaded := cw.skills.loaded
+	list := cw.skills.list
+	cw.skills.mu.RUnlock()
+	if !loaded {
+		return ""
+	}
+	var allow map[string]bool
+	if name, ok := strings.CutPrefix(agent, "agent:"); ok {
+		def, found := cw.agentByName(name)
+		if !found {
+			return ""
+		}
+		allow = make(map[string]bool, len(def.Skills))
+		for _, n := range def.Skills {
+			allow[n] = true
+		}
+	}
+	var parts []string
+	for _, s := range list {
+		if s.Body == "" || !cw.skillEnabled(s.ID) {
+			continue
+		}
+		if allow != nil && !allow[s.Name] {
+			continue
+		}
+		parts = append(parts, "## Skill: "+s.Name+"\n\n"+s.Body)
+	}
+	return strings.Join(parts, "\n\n")
+}
+
 // skillByID returns the loaded skill with the given ID.
 func (cw *ChatWindow) skillByID(id string) *skill {
 	if !cw.skills.loaded {
@@ -466,6 +508,9 @@ func (cw *ChatWindow) skillByID(id string) *skill {
 }
 
 type skillsState struct {
+	// mu guards list and loaded against the background tasks that build a
+	// system prompt while the Skill page reloads the list.
+	mu        sync.RWMutex
 	list      []skill
 	loaded    bool
 	sel       string

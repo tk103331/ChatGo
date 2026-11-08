@@ -120,6 +120,21 @@ func (cw *ChatWindow) acpRuntimeFor(convID string) *acpConv {
 	return cw.acp.convs[convID]
 }
 
+// acpCancelConv asks the coding CLI to stop the turn running in a
+// conversation. The agent answers the prompt as cancelled, so the ordinary
+// completion path saves whatever it had produced.
+func (cw *ChatWindow) acpCancelConv(convID string) {
+	rt := cw.acpRuntimeFor(convID)
+	if rt == nil || rt.sessionID == "" || rt.conn == nil {
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = rt.conn.Cancel(ctx, acp.CancelNotification{SessionId: rt.sessionID})
+	}()
+}
+
 func (cw *ChatWindow) acpInitializing(convID string) bool {
 	cw.acp.mu.Lock()
 	defer cw.acp.mu.Unlock()

@@ -18,6 +18,7 @@ type settingsState struct {
 	mcp         mcpForm
 	builtin     builtinForm
 	shortcut    shortcutForm
+	exclude     textForm
 	channel     channelForm
 	provList    mgo.ListState
 	builtinList mgo.ListState
@@ -53,6 +54,13 @@ type shortcutForm struct {
 	// which is registered separately from the compact window's.
 	panelValue string
 	panelErr   string
+}
+
+// textForm keeps a field's draft across frames, for a value the user edits
+// with delimiters that would otherwise be normalized while typing.
+type textForm struct {
+	value string
+	ready bool
 }
 
 type providerForm struct {

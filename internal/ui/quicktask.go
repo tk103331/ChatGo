@@ -10,7 +10,41 @@ import (
 
 	"chatgo/internal/llm"
 	"chatgo/pkg/models"
+
+	mcore "chatgo/internal/ui/uikit"
 )
+
+// quickMaxRunning caps the background tasks the panel starts at once, so a
+// burst of shortcuts cannot spawn a client (or an ACP process) per task.
+const quickMaxRunning = 3
+
+// markQuickRunning records that replyID belongs to a quick task.
+func (cw *ChatWindow) markQuickRunning(replyID string) {
+	if replyID == "" {
+		return
+	}
+	if cw.quickReplyIDs == nil {
+		cw.quickReplyIDs = map[string]bool{}
+	}
+	if cw.quickReplyIDs[replyID] {
+		return
+	}
+	cw.quickReplyIDs[replyID] = true
+	cw.quickRunning++
+	cw.updateTrayMenu()
+}
+
+// unmarkQuickReply is called when a quick reply ends or is cancelled.
+func (cw *ChatWindow) unmarkQuickReply(replyID string) {
+	if cw.quickReplyIDs == nil || !cw.quickReplyIDs[replyID] {
+		return
+	}
+	delete(cw.quickReplyIDs, replyID)
+	if cw.quickRunning > 0 {
+		cw.quickRunning--
+	}
+	cw.updateTrayMenu()
+}
 
 // quickTask is one agent run started from the quick panel. It keeps the
 // conversation it writes into, so the panel can draw the reply while the
@@ -82,6 +116,10 @@ func (cw *ChatWindow) quickStartTask(prompt, agent, workspace string, worktree b
 	if prompt == "" {
 		return nil
 	}
+	if cw.quickRunning >= quickMaxRunning {
+		cw.toast(fmt.Sprintf("最多同时运行 %d 个快捷任务，请等一个完成", quickMaxRunning), mcore.SeverityError)
+		return nil
+	}
 	if workspace == "" {
 		workspace = cw.fileRoot()
 	}
@@ -128,6 +166,7 @@ func (cw *ChatWindow) quickLaunchTask(task *quickTask) {
 		// ACP sessions are keyed by conversation, so this runs without the
 		// main window having to show the conversation.
 		cw.beginStream(conv.ID, replyID, nil)
+		cw.markQuickRunning(replyID)
 		cw.acpChatStart(conv, strings.TrimPrefix(agent, "acp:"), idx, task.Prompt)
 		cw.invalidate()
 		return
@@ -142,6 +181,7 @@ func (cw *ChatWindow) quickLaunchTask(task *quickTask) {
 	ctx, cancel := context.WithCancel(context.Background())
 	task.cancel = cancel
 	cw.beginStream(conv.ID, replyID, cancel)
+	cw.markQuickRunning(replyID)
 	cw.invalidate()
 	go cw.runStream(ctx, conv, idx, cw.chatMessages(conv, idx))
 }
@@ -228,6 +268,7 @@ func (cw *ChatWindow) quickRunBackground(task *quickTask) {
 	ctx, cancel := context.WithCancel(context.Background())
 	task.cancel = cancel
 	cw.beginStream(task.Conv.ID, task.ReplyID, cancel)
+	cw.markQuickRunning(task.ReplyID)
 	cw.invalidate()
 
 	go func() {

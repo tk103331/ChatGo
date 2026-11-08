@@ -784,9 +784,17 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 	return c, nil, nil, nil, err
 }
 
-// taskSystemPrompt returns the system prompt an agent runs with.
+// taskSystemPrompt returns the system prompt an agent runs with, including
+// the Skill bodies it may use. Interactive chats add the same bodies through
+// chatMessages; background tasks had been missing them.
 func (cw *ChatWindow) taskSystemPrompt(agent string) string {
 	_, _, sys, _, _ := cw.taskAgentSpec(agent)
+	if skills := cw.agentSkillPrompt(agent); skills != "" {
+		if sys != "" {
+			sys += "\n\n"
+		}
+		sys += skills
+	}
 	return sys
 }
 

@@ -51,6 +51,7 @@ func (cw *ChatWindow) beginStream(convID, msgID string, cancel context.CancelFun
 // endStream forgets the reply filling msgID, without cancelling: the caller
 // is the finishing stream itself.
 func (cw *ChatWindow) endStream(msgID string) {
+	cw.unmarkQuickReply(msgID)
 	delete(cw.streams, msgID)
 }
 
@@ -92,6 +93,10 @@ func (cw *ChatWindow) cancelConvStreams(convID string) {
 		if s.cancel != nil {
 			s.cancel()
 		}
+		cw.unmarkQuickReply(id)
 		delete(cw.streams, id)
 	}
+	// ACP prompts run without a context of their own; ask the CLI to stop
+	// the turn, which makes Prompt return so the reply is saved.
+	cw.acpCancelConv(convID)
 }

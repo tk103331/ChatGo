@@ -47,13 +47,18 @@ func (qp *quickPanel) bar(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	qp.panelFrame(c).Padding(u*1.5, u*2.5).Children(func() {
+	agents := qp.agents()
+	shown := agents
+	if len(shown) > 3 {
+		shown = shown[:3]
+	}
+	root := qp.panelFrame(c).Padding(u*1.5, u*2.5).Children(func() {
 		mgo.Row(c).Fill().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
 			mgo.Icon(c, assets.BrandMark()).Size(16, 16).TextColor(k.Accent).Shrink(0)
 			count := utf8.RuneCountInString(strings.TrimSpace(qp.selection.Text))
 			mgo.Text(c, fmt.Sprintf("%d 字", count)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
 			mgo.Box(c).Grow(1)
-			for _, a := range qp.visibleAgents(3) {
+			for _, a := range shown {
 				ref := a.Ref
 				b := kit.Button(c, "", kit.ButtonOptions{
 					Variant: kit.Ghost,
@@ -65,11 +70,22 @@ func (qp *quickPanel) bar(c *mgo.Context) {
 					qp.chooseAgent(ref)
 				}
 			}
+			if len(agents) > len(shown) {
+				more := kit.Button(c, fmt.Sprintf("+%d", len(agents)-len(shown)), kit.ButtonOptions{
+					Variant: kit.Ghost,
+					Label:   "更多 Agent",
+				})
+				more.Tooltip("更多 Agent")
+				if more.Clicked() {
+					qp.showCompose()
+				}
+			}
 			if mcore.IconAction(c, icons.Must("x"), "关闭").Clicked() {
 				qp.hide()
 			}
 		})
 	})
+	qp.barHovered = root.Hovered()
 }
 
 // compose is the input panel: agent chips, the prompt and the directory.
