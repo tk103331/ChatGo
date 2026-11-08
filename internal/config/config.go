@@ -37,14 +37,62 @@ type Config struct {
 	AgentCheckpoint string `yaml:"agent_checkpoint,omitempty"`
 	// RTKEnabled routes command output through the rtk CLI to shrink what
 	// the model reads. Off by default; turning it on needs rtk on PATH.
-	RTKEnabled      bool       `yaml:"rtk_enabled,omitempty"`
-	Workspaces      []string   `yaml:"workspaces,omitempty"`
-	SkillsEnabled   []string   `yaml:"skills_enabled,omitempty"`
+	RTKEnabled    bool     `yaml:"rtk_enabled,omitempty"`
+	Workspaces    []string `yaml:"workspaces,omitempty"`
+	SkillsEnabled []string `yaml:"skills_enabled,omitempty"`
+	// SkillsKnown records skills ChatGo has already auto-enabled, so a skill
+	// the user turned off stays off after a rescan.
+	SkillsKnown     []string   `yaml:"skills_known,omitempty"`
 	Chat            Selection  `yaml:"chat,omitempty"`
 	ChatInitialized bool       `yaml:"chat_initialized,omitempty"`
 	AutoTasks       []AutoTask `yaml:"auto_tasks,omitempty"`
 	Channels        []Channel  `yaml:"channels,omitempty"`
 	Rooms           []Room     `yaml:"rooms,omitempty"`
+	// Plugins holds each installed plugin's enable flag, granted permissions,
+	// settings and install source. Plugin contributions themselves are rebuilt
+	// from the plugin directory on every start, never persisted here.
+	Plugins []PluginRef `yaml:"plugins,omitempty"`
+}
+
+// PluginRef is the persisted state of one installed plugin.
+type PluginRef struct {
+	ID          string            `yaml:"id"`
+	Enabled     bool              `yaml:"enabled"`
+	Permissions []string          `yaml:"permissions,omitempty"`
+	Settings    map[string]string `yaml:"settings,omitempty"`
+	Source      PluginSource      `yaml:"source,omitempty"`
+}
+
+// PluginSource records where a plugin came from, so the UI can show it and an
+// update can be checked.
+type PluginSource struct {
+	Kind        string    `yaml:"kind,omitempty"` // dir | zip | git | npm
+	URL         string    `yaml:"url,omitempty"`
+	Ref         string    `yaml:"ref,omitempty"`
+	Commit      string    `yaml:"commit,omitempty"`
+	Path        string    `yaml:"path,omitempty"`
+	Integrity   string    `yaml:"integrity,omitempty"`
+	InstalledAt time.Time `yaml:"installed_at,omitempty"`
+}
+
+// FindPlugin returns the persisted state of the named plugin.
+func (c *Config) FindPlugin(id string) (PluginRef, bool) {
+	for _, p := range c.Plugins {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return PluginRef{}, false
+}
+
+// PermissionGranted reports whether a plugin was granted the exact permission.
+func (p PluginRef) PermissionGranted(perm string) bool {
+	for _, x := range p.Permissions {
+		if x == perm {
+			return true
+		}
+	}
+	return false
 }
 
 // Room is a group conversation several agents share with the user. It is not
@@ -208,19 +256,28 @@ type Schedule struct {
 	Day     int    `yaml:"day"`     // 1-31 (monthly)
 }
 
+// Trigger is a task trigger, either a built-in schedule or a plugin-provided
+// type. Values holds the plugin trigger's own fields.
+type Trigger struct {
+	Type   string            `yaml:"type,omitempty"`
+	Values map[string]string `yaml:"values,omitempty"`
+}
+
 // AutoTask runs an agent on a prompt on a schedule, in its own conversations.
 type AutoTask struct {
-	ID        string    `yaml:"id"`
-	Name      string    `yaml:"name"`
-	Agent     string    `yaml:"agent,omitempty"` // "" = built-in Chat, "agent:<name>"
-	Prompt    string    `yaml:"prompt"`
-	Workspace string    `yaml:"workspace,omitempty"`
-	Schedule  Schedule  `yaml:"schedule"`
-	Reuse     bool      `yaml:"reuse"`                     // reuse one conversation
-	ConvID    string    `yaml:"conversation_id,omitempty"` // reused conversation id
-	Enabled   bool      `yaml:"enabled"`
-	LastRun   time.Time `yaml:"last_run,omitempty"`
-	LastNote  string    `yaml:"last_note,omitempty"`
+	ID        string   `yaml:"id"`
+	Name      string   `yaml:"name"`
+	Agent     string   `yaml:"agent,omitempty"` // "" = built-in Chat, "agent:<name>"
+	Prompt    string   `yaml:"prompt"`
+	Workspace string   `yaml:"workspace,omitempty"`
+	Schedule  Schedule `yaml:"schedule"`
+	// Trigger overrides Schedule when a plugin trigger type is selected.
+	Trigger  Trigger   `yaml:"trigger,omitempty"`
+	Reuse    bool      `yaml:"reuse"`                     // reuse one conversation
+	ConvID   string    `yaml:"conversation_id,omitempty"` // reused conversation id
+	Enabled  bool      `yaml:"enabled"`
+	LastRun  time.Time `yaml:"last_run,omitempty"`
+	LastNote string    `yaml:"last_note,omitempty"`
 }
 
 // Selection is the models and tools an agent may use. For the built-in Chat it
@@ -251,6 +308,8 @@ type AgentDef struct {
 	BuiltinTools []string `yaml:"builtin_tools,omitempty"`
 	MCPServers   []string `yaml:"mcp_servers,omitempty"`
 	Skills       []string `yaml:"skills,omitempty"`
+	// Source names the plugin that contributed this agent; empty for a user agent.
+	Source string `yaml:"-"`
 }
 
 // ACPConnection is a local coding CLI spoken to over the Agent Client Protocol.
@@ -263,6 +322,8 @@ type ACPConnection struct {
 	Icon       string            `yaml:"icon,omitempty"`
 	AvatarSeed string            `yaml:"avatar_seed,omitempty"`
 	Disabled   bool              `yaml:"disabled,omitempty"`
+	// Source names the plugin that contributed this connection.
+	Source string `yaml:"-"`
 }
 
 // Provider represents an LLM provider configuration
@@ -280,6 +341,12 @@ type Provider struct {
 	APIType string `yaml:"api_type,omitempty"`
 	// Preset marks a shipped example whose name and type are fixed.
 	Preset bool `yaml:"preset,omitempty"`
+	// Headers are static request headers, used by plugin-contributed providers
+	// that need a version or tenant header. Empty for user providers.
+	Headers map[string]string `yaml:"headers,omitempty"`
+	// Source names the plugin that contributed this provider; empty for a user
+	// provider. Plugin providers are rebuilt at startup, never persisted.
+	Source string `yaml:"-"`
 }
 
 // The provider types ChatGo can talk to. A provider's type names the protocol
@@ -556,6 +623,8 @@ type MCPServer struct {
 	URL            string            `yaml:"url,omitempty"`             // For SSE and StreamableHTTP
 	Headers        map[string]string `yaml:"headers,omitempty"`         // For SSE and StreamableHTTP
 	TimeoutSeconds int               `yaml:"timeout_seconds,omitempty"` // For SSE and StreamableHTTP
+	// Source names the plugin that contributed this server.
+	Source string `yaml:"-"`
 }
 
 // BuiltinTool represents a built-in tool configuration from Eino framework
@@ -564,6 +633,9 @@ type BuiltinTool struct {
 	Type    string            `yaml:"type"` // bingsearch, googlesearch, wikipedia, duckduckgosearch, httprequest, browseruse, commandline, sequentialthinking
 	Enabled bool              `yaml:"enabled"`
 	Config  map[string]string `yaml:"config,omitempty"` // Tool-specific configuration
+	// Source names the plugin that contributed this tool; empty for a builtin.
+	// Plugin contributions are rebuilt at startup and never written to disk.
+	Source string `yaml:"-"`
 }
 
 // GetAvailableBuiltinTools returns a list of all available built-in tool types
@@ -965,6 +1037,9 @@ func EnsureChannelTools(ch *Channel) {
 }
 
 func GetChannelToolTypes(channelType string) []string {
+	if strings.HasPrefix(channelType, "plugin:") {
+		return []string{"plugin_send_message"}
+	}
 	switch channelType {
 	case "feishu":
 		return []string{"feishu_send_message", "feishu_send_card"}
@@ -1002,6 +1077,8 @@ func GetChannelToolDisplayName(toolType string) string {
 		return "Discord 发消息"
 	case "wecom_send_message":
 		return "企业微信发消息"
+	case "plugin_send_message":
+		return "插件渠道发消息"
 	}
 	return toolType
 }
@@ -1024,6 +1101,8 @@ func GetChannelToolDescription(toolType string) string {
 		return "向当前 Discord 频道发送消息（自动使用消息来源频道）。"
 	case "wecom_send_message":
 		return "向当前企业微信会话发送 Markdown 消息（自动使用消息来源会话）。"
+	case "plugin_send_message":
+		return "向当前插件渠道会话发送文本消息（自动使用消息来源会话）。"
 	}
 	return toolType
 }
@@ -1043,6 +1122,8 @@ func GetChannelToolConfigFields(toolType string) []string {
 	case "discord_send_message":
 		return []string{"default_chat_id"}
 	case "wecom_send_message":
+		return []string{"default_chat_id"}
+	case "plugin_send_message":
 		return []string{"default_chat_id"}
 	}
 	return nil
@@ -1120,13 +1201,32 @@ func SaveConfig(config *Config) error {
 }
 
 // writeConfig marshals and writes a configuration to path, creating its dir.
+// Plugin-contributed entries are stripped first: they are rebuilt from the
+// plugin directory on every start and must never be persisted.
 func writeConfig(path string, config *Config) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
-	data, err := yaml.Marshal(config)
+	clean := *config
+	clean.Providers = dropPluginEntries(config.Providers, func(p Provider) string { return p.Source })
+	clean.MCPServers = dropPluginEntries(config.MCPServers, func(s MCPServer) string { return s.Source })
+	clean.BuiltinTools = dropPluginEntries(config.BuiltinTools, func(t BuiltinTool) string { return t.Source })
+	clean.Agents = dropPluginEntries(config.Agents, func(a AgentDef) string { return a.Source })
+	clean.ACPAgents = dropPluginEntries(config.ACPAgents, func(a ACPConnection) string { return a.Source })
+	data, err := yaml.Marshal(&clean)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, data, 0644)
+}
+
+// dropPluginEntries removes the entries a plugin contributed.
+func dropPluginEntries[T any](items []T, source func(T) string) []T {
+	out := make([]T, 0, len(items))
+	for _, it := range items {
+		if source(it) == "" {
+			out = append(out, it)
+		}
+	}
+	return out
 }
