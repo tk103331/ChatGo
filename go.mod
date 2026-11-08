@@ -20,6 +20,7 @@ require (
 	github.com/cloudwego/eino-ext/components/tool/wikipedia v0.0.0-20260924074145-3603a39473c3
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.13
 	github.com/coder/acp-go-sdk v0.13.5
+	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.6.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/issue9/identicon v1.2.1
@@ -31,6 +32,7 @@ require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/slack-go/slack v0.31.0
 	google.golang.org/genai v1.36.0
+	golang.org/x/sys v0.49.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.61.0
 )
@@ -70,7 +72,6 @@ require (
 	github.com/corpix/uarand v0.2.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dustin/go-humanize v1.1.0 // indirect
-	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/eino-contrib/jsonschema v1.0.3 // indirect
 	github.com/eino-contrib/ollama v0.1.0 // indirect
 	github.com/evanphx/json-patch v0.5.2 // indirect
@@ -129,7 +130,6 @@ require (
 	golang.org/x/net v0.59.0 // indirect
 	golang.org/x/oauth2 v0.23.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.7.0 // indirect
 	google.golang.org/api v0.204.0 // indirect
