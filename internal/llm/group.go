@@ -29,8 +29,8 @@ type GroupClient struct {
 }
 
 // NewGroupClient builds a client for every selected provider model.
-func NewGroupClient(group config.ProviderGroup, providers []config.Provider) (*GroupClient, error) {
-	endpoints, err := buildEndpoints(group, providers, nil, nil)
+func NewGroupClient(group config.ProviderGroup, providers []config.Provider, mws ...Middleware) (*GroupClient, error) {
+	endpoints, err := buildEndpoints(group, providers, nil, nil, mws...)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func NewGroupClient(group config.ProviderGroup, providers []config.Provider) (*G
 
 // buildEndpoints resolves the group's members to concrete clients. When tools
 // and an agent config are given, React clients are built instead.
-func buildEndpoints(group config.ProviderGroup, providers []config.Provider, einoTools []tool.BaseTool, agentConfig *ReactAgentConfig) ([]groupEndpoint, error) {
+func buildEndpoints(group config.ProviderGroup, providers []config.Provider, einoTools []tool.BaseTool, agentConfig *ReactAgentConfig, mws ...Middleware) ([]groupEndpoint, error) {
 	byName := make(map[string]config.Provider, len(providers))
 	for _, p := range providers {
 		byName[p.Name] = p
@@ -57,13 +57,13 @@ func buildEndpoints(group config.ProviderGroup, providers []config.Provider, ein
 			p.Model = model
 			endpoint := groupEndpoint{provider: member.Provider, model: model}
 			if agentConfig != nil {
-				rc, err := NewReactClientWithEinoTools(p, einoTools, agentConfig)
+				rc, err := NewReactClientWithEinoTools(p, einoTools, agentConfig, mws...)
 				if err != nil {
 					continue
 				}
 				endpoint.react = rc
 			} else {
-				c, err := NewClient(p)
+				c, err := NewClient(p, mws...)
 				if err != nil {
 					continue
 				}
@@ -170,8 +170,8 @@ type GroupReactClient struct {
 }
 
 // NewGroupReactClient builds a React client for every selected provider model.
-func NewGroupReactClient(group config.ProviderGroup, providers []config.Provider, einoTools []tool.BaseTool, agentConfig *ReactAgentConfig) (*GroupReactClient, error) {
-	endpoints, err := buildEndpoints(group, providers, einoTools, agentConfig)
+func NewGroupReactClient(group config.ProviderGroup, providers []config.Provider, einoTools []tool.BaseTool, agentConfig *ReactAgentConfig, mws ...Middleware) (*GroupReactClient, error) {
+	endpoints, err := buildEndpoints(group, providers, einoTools, agentConfig, mws...)
 	if err != nil {
 		return nil, err
 	}

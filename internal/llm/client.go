@@ -22,10 +22,13 @@ import (
 type Client struct {
 	provider config.Provider
 	model    model.ChatModel
+	// mws rewrites request messages, streamed deltas and the final response.
+	// Empty keeps the plain client behaviour.
+	mws MiddlewareChain
 }
 
 // NewClient creates a new LLM client using eino
-func NewClient(provider config.Provider) (*Client, error) {
+func NewClient(provider config.Provider, mws ...Middleware) (*Client, error) {
 	var chatModel model.ChatModel
 	var err error
 
@@ -145,6 +148,7 @@ func NewClient(provider config.Provider) (*Client, error) {
 	return &Client{
 		provider: provider,
 		model:    chatModel,
+		mws:      mws,
 	}, nil
 }
 
@@ -193,22 +197,92 @@ type ChatResponse struct {
 
 // Chat sends a chat completion request with streaming support
 func (c *Client) Chat(ctx context.Context, messages []ChatMessage, onChunk func(string), onReasoning ...func(string)) (*ChatResponse, error) {
-	// Convert messages to eino format
-	einoMessages := make([]*schema.Message, len(messages))
-	for i, msg := range messages {
-		einoMessages[i] = &schema.Message{
-			Role:    schema.RoleType(msg.Role),
-			Content: msg.Content,
+	mws := c.mws.For(c.provider.Name, c.provider.Model)
+	messages, _ = applyRequestMiddleware(ctx, mws, c.provider.Name, c.provider.Model, messages)
+
+	call := func() (*ChatResponse, error) {
+		// Convert messages to eino format
+		einoMessages := make([]*schema.Message, len(messages))
+		for i, msg := range messages {
+			einoMessages[i] = &schema.Message{
+				Role:    schema.RoleType(msg.Role),
+				Content: msg.Content,
+			}
+		}
+		chunk := wrapContentEmitter(ctx, mws, onChunk)
+		reasoning := wrapReasoningEmitters(ctx, mws, onReasoning)
+
+		// If streaming callback is provided, use Stream
+		if onChunk != nil {
+			return c.chatWithStream(ctx, einoMessages, chunk, reasoning)
+		}
+
+		// Otherwise use Generate
+		return c.chatWithoutStream(ctx, einoMessages)
+	}
+
+	resp, err := call()
+	if err != nil {
+		message, retry := mws.OnError(ctx, err)
+		if retry && ctx.Err() == nil {
+			resp, err = call()
+			if err == nil {
+				mws.AfterResponse(ctx, resp)
+				return resp, nil
+			}
+			message, _ = mws.OnError(ctx, err)
+		}
+		if message != "" {
+			return nil, fmt.Errorf("%s", message)
+		}
+		return nil, err
+	}
+	mws.AfterResponse(ctx, resp)
+	return resp, nil
+}
+
+// wrapContentEmitter applies chunk middleware to the content callback.
+func wrapContentEmitter(ctx context.Context, mws MiddlewareChain, onChunk func(string)) func(string) {
+	if onChunk == nil {
+		return nil
+	}
+	if len(mws) == 0 {
+		return onChunk
+	}
+	index := 0
+	return func(text string) {
+		index++
+		out := mws.OnChunk(ctx, MiddlewareChunk{Channel: "content", Index: index, Text: text})
+		if out.Text != "" {
+			onChunk(out.Text)
 		}
 	}
+}
 
-	// If streaming callback is provided, use Stream
-	if onChunk != nil {
-		return c.chatWithStream(ctx, einoMessages, onChunk, onReasoning)
+// wrapReasoningEmitters applies chunk middleware to reasoning callbacks.
+func wrapReasoningEmitters(ctx context.Context, mws MiddlewareChain, callbacks []func(string)) []func(string) {
+	if len(callbacks) == 0 {
+		return nil
 	}
-
-	// Otherwise use Generate
-	return c.chatWithoutStream(ctx, einoMessages)
+	if len(mws) == 0 {
+		return callbacks
+	}
+	wrapped := make([]func(string), 0, len(callbacks))
+	for _, cb := range callbacks {
+		if cb == nil {
+			continue
+		}
+		cb := cb
+		index := 0
+		wrapped = append(wrapped, func(text string) {
+			index++
+			out := mws.OnChunk(ctx, MiddlewareChunk{Channel: "reasoning", Index: index, Text: text})
+			if out.Text != "" {
+				cb(out.Text)
+			}
+		})
+	}
+	return wrapped
 }
 
 // chatWithStream sends a streaming chat completion request
