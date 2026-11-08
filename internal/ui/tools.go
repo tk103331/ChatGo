@@ -19,14 +19,22 @@ type toolMeta struct {
 func (cw *ChatWindow) toolMetas() []toolMeta {
 	var out []toolMeta
 	for _, name := range cw.visibleBuiltinToolNames() {
-		desc := ""
+		label, desc := name, ""
 		for _, t := range cw.cfg.BuiltinTools {
-			if t.Name == name {
-				desc = config.GetBuiltinToolDescription(t.Type)
+			if t.Name != name {
+				continue
+			}
+			if t.Type == "plugin" && cw.plugins != nil {
+				if c, ok := cw.plugins.FindTool(t.Config["plugin"], t.Config["tool"]); ok {
+					label = c.Label + " · " + t.Config["plugin"]
+					desc = c.Description
+				}
 				break
 			}
+			desc = config.GetBuiltinToolDescription(t.Type)
+			break
 		}
-		out = append(out, toolMeta{ID: "builtin:" + name, Label: name, Desc: desc})
+		out = append(out, toolMeta{ID: "builtin:" + name, Label: label, Desc: desc})
 	}
 	for _, name := range cw.visibleMCPServerNames() {
 		out = append(out, toolMeta{ID: "mcp:" + name, Label: name, Desc: cw.mcpServerDesc(name)})

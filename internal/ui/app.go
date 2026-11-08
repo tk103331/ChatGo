@@ -16,6 +16,7 @@ import (
 
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
+	"chatgo/internal/plugin"
 	"chatgo/internal/ui/assets"
 	"chatgo/pkg/models"
 
@@ -46,6 +47,9 @@ type ChatWindow struct {
 	cfg         *config.Config
 	convManager *models.ConversationManager
 	mcpManager  *MCPManagerWrapper
+	// plugins owns installed JavaScript plugins and their contributions.
+	plugins  *plugin.Manager
+	pluginUI pluginUIState
 
 	winMu  sync.Mutex
 	window *mygo.Window
@@ -323,6 +327,11 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	cw.settings.shortcut.value = cw.quickChatShortcut()
 	cw.agentForm.editing = -1
 	cw.acpForm.editing = -1
+	// Plugins must load before MCP starts: their MCP servers, providers, tools,
+	// agents and themes are merged into the live config here.
+	cw.plugins = plugin.NewManager(cfg)
+	cw.plugins.LoadAll()
+	cw.syncPluginChannelTypes()
 	cw.reloadConvs()
 	cw.currentAgent = ""
 	cw.applyAgent("")

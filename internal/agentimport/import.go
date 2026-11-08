@@ -137,3 +137,34 @@ func (r ImportResult) Summary() string {
 	}
 	return strings.Join(parts, "，")
 }
+
+// ImportDir copies one skill directory into ~/.chatgo/skills. It is used by
+// plugin-declared importers, which point at an already-resolved directory
+// rather than another agent's whole skill root.
+func ImportDir(src, name string, overwrite bool) (bool, error) {
+	name = filepath.Base(strings.TrimSpace(name))
+	if name == "" || name == "." || name == string(filepath.Separator) {
+		return false, fmt.Errorf("非法的 Skill 名称")
+	}
+	dest, err := HomeDir()
+	if err != nil {
+		return false, err
+	}
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return false, err
+	}
+	target := filepath.Join(dest, name)
+	if _, err := os.Stat(target); err == nil {
+		if !overwrite {
+			return false, nil
+		}
+		if err := os.RemoveAll(target); err != nil {
+			return false, err
+		}
+	}
+	if err := copyTree(src, target); err != nil {
+		_ = os.RemoveAll(target)
+		return false, err
+	}
+	return true, nil
+}

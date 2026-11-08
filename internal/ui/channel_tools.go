@@ -28,7 +28,7 @@ func channelToolParams(toolType string) map[string]*schema.ParameterInfo {
 			"card": {Type: schema.String, Desc: "飞书交互卡片 JSON", Required: true},
 		}
 	case "wechat_send_message", "telegram_send_message", "dingtalk_send_message",
-		"slack_send_message", "discord_send_message", "wecom_send_message":
+		"slack_send_message", "discord_send_message", "wecom_send_message", "plugin_send_message":
 		return map[string]*schema.ParameterInfo{
 			"text": {Type: schema.String, Desc: "消息文本", Required: true},
 		}
@@ -44,6 +44,29 @@ type channelMsgContext struct {
 
 func (cw *ChatWindow) channelToolHandler(ch *config.Channel, t *config.ChannelTool, msgCtx *channelMsgContext) func(context.Context, string) (string, error) {
 	switch t.Type {
+	case "plugin_send_message":
+		return func(_ context.Context, args string) (string, error) {
+			var in struct {
+				Text string `json:"text"`
+			}
+			if err := json.Unmarshal([]byte(args), &in); err != nil {
+				return "", fmt.Errorf("参数解析失败: %w", err)
+			}
+			if strings.TrimSpace(in.Text) == "" {
+				return "", fmt.Errorf("缺少必填参数 text")
+			}
+			chatID := strings.TrimSpace(t.Config["default_chat_id"])
+			if msgCtx != nil && strings.TrimSpace(msgCtx.ChatID) != "" {
+				chatID = strings.TrimSpace(msgCtx.ChatID)
+			}
+			if chatID == "" {
+				return "", fmt.Errorf("缺少会话 ID（当前消息未携带且未配置 default_chat_id）")
+			}
+			if err := cw.sendPluginChannel(ch, chatID, in.Text); err != nil {
+				return "", err
+			}
+			return "已发送", nil
+		}
 	case "feishu_send_message":
 		return func(_ context.Context, args string) (string, error) {
 			var in struct {

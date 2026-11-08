@@ -440,6 +440,13 @@ func (cw *ChatWindow) updatePlanTool(target *models.Conversation) func(context.C
 		if !saved {
 			return "计划已记录（当前上下文不保存计划）", nil
 		}
+		entries := make([]map[string]any, 0, len(plan))
+		for _, e := range plan {
+			entries = append(entries, map[string]any{
+				"content": e.Content, "priority": e.Priority, "status": e.Status,
+			})
+		}
+		cw.emit("plan.updated", map[string]any{"entries": entries})
 		doneN := 0
 		for _, e := range plan {
 			if e.Status == models.PlanCompleted {

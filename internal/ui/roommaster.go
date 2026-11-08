@@ -46,7 +46,7 @@ func (cw *ChatWindow) masterClient(r config.Room) masterChatFunc {
 		}
 	}
 	if g, ok := cw.cfg.FindProviderGroup(provName); ok {
-		if gc, err := llm.NewGroupClient(g, cw.cfg.Providers); err == nil {
+		if gc, err := llm.NewGroupClient(g, cw.cfg.Providers, cw.middlewares()...); err == nil {
 			return gc.ChatNonBlocking
 		}
 	}
@@ -60,7 +60,7 @@ func (cw *ChatWindow) masterClient(r config.Room) masterChatFunc {
 	if model != "" {
 		provider.Model = model
 	}
-	client, err := llm.NewClient(provider)
+	client, err := llm.NewClient(provider, cw.middlewares()...)
 	if err != nil {
 		return nil
 	}

@@ -332,6 +332,18 @@ func (cw *ChatWindow) channelCredentialFields(c *mgo.Context) {
 			}
 		})
 	}
+	if _, ok := pluginChannelSpec(f.typ); ok {
+		token := f.options["webhook_token"]
+		id := ""
+		if f.editing >= 0 && f.editing < len(cw.cfg.Channels) {
+			id = cw.cfg.Channels[f.editing].ID
+		}
+		url := pluginChannelWebhookURL(id, token)
+		if url == "" {
+			url = "启用渠道后生成（需保存并启用）"
+		}
+		mgo.Text(c, "Webhook 地址："+url).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted)
+	}
 	cw.channelQuickButtons(c, f.typ)
 	cw.channelQuickCode(c)
 	cw.channelQuickNotice(c)

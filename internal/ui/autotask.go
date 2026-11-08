@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
 	"strings"
 	"time"
 
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
+	"chatgo/internal/plugin"
 	"chatgo/pkg/models"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -28,11 +30,13 @@ type autoForm struct {
 	prompt    string
 	workspace string
 	kind      string
-	tod       kit.TimeOfDay
-	weekday   int
-	day       int
-	reuse     bool
-	enabled   bool
+	// triggerValues are the fields of a plugin trigger, keyed by manifest key.
+	triggerValues map[string]string
+	tod           kit.TimeOfDay
+	weekday       int
+	day           int
+	reuse         bool
+	enabled       bool
 }
 
 // autoTasksPage lists auto tasks, or the editor page.
@@ -119,7 +123,7 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 		cardMetaRow(c, func() {
 			mgo.Row(c).Gap(u / 2).AlignItems(mgo.Center).Shrink(0).Children(func() {
 				mgo.Icon(c, icons.Must("clock")).Size(14, 14).TextColor(k.TextMuted)
-				mgo.Text(c, scheduleText(t.Schedule)).FontSize(caption).TextColor(k.TextMuted)
+				mgo.Text(c, cw.scheduleTextFor(t)).FontSize(caption).TextColor(k.TextMuted)
 			})
 			mgo.Row(c).Gap(u / 2).AlignItems(mgo.Center).Shrink(0).Children(func() {
 				mgo.Icon(c, icons.Must("bot")).Size(14, 14).TextColor(k.TextMuted)
@@ -150,8 +154,10 @@ func (cw *ChatWindow) autoTaskCard(c *mgo.Context, i int) {
 				if from.IsZero() {
 					from = time.Now()
 				}
-				if nr := nextRun(t.Schedule, from); !nr.IsZero() {
-					mgo.Text(c, "下次 "+nr.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+				if _, _, pluginTrigger := splitTriggerType(t.Trigger.Type); !pluginTrigger {
+					if nr := nextRun(t.Schedule, from); !nr.IsZero() {
+						mgo.Text(c, "下次 "+nr.Format("01-02 15:04")).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+					}
 				}
 			})
 		}
@@ -344,10 +350,19 @@ func (cw *ChatWindow) autoTaskEditor(c *mgo.Context) {
 func (cw *ChatWindow) autoScheduleForm(c *mgo.Context, f *autoForm) {
 	u := mcore.Density(c).Unit()
 	kinds := []kit.SelectOption[string]{{Value: "daily", Label: "每天"}, {Value: "weekly", Label: "每周"}, {Value: "monthly", Label: "每月"}}
+	for _, tr := range cw.pluginTriggerList() {
+		kinds = append(kinds, kit.SelectOption[string]{
+			Value: pluginTriggerValue(tr), Label: tr.Spec.Label + "（" + tr.PluginID + "）",
+		})
+	}
 	mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Start).Wrap().Children(func() {
 		formField(c, "频率", func() {
 			kit.Select(c, &f.kind, kinds, kit.SelectOptions{Label: "频率"}).Element.Width(140)
 		})
+		if _, _, pluginTrigger := splitTriggerType(f.kind); pluginTrigger {
+			cw.pluginTriggerFields(c, f)
+			return
+		}
 		switch f.kind {
 		case "weekly":
 			opts := []kit.SelectOption[int]{
@@ -420,7 +435,10 @@ func autoFormGroup(c *mgo.Context, title string, fields func()) {
 }
 
 func (cw *ChatWindow) clearAutoForm() {
-	cw.autoForm = autoForm{editing: -1, kind: "daily", tod: kit.TimeOfDay{Hour: 9}, day: 1, enabled: true}
+	cw.autoForm = autoForm{
+		editing: -1, kind: "daily", tod: kit.TimeOfDay{Hour: 9}, day: 1, enabled: true,
+		triggerValues: map[string]string{},
+	}
 }
 
 func (cw *ChatWindow) loadAutoForm(i int) {
@@ -429,9 +447,21 @@ func (cw *ChatWindow) loadAutoForm(i int) {
 	if d < 1 {
 		d = 1
 	}
+	kind := t.Schedule.Kind
+	if kind == "" {
+		kind = "daily"
+	}
+	values := map[string]string{}
+	if _, _, pluginTrigger := splitTriggerType(t.Trigger.Type); pluginTrigger {
+		kind = t.Trigger.Type
+		for k, v := range t.Trigger.Values {
+			values[k] = v
+		}
+	}
 	cw.autoForm = autoForm{
 		editing: i, name: t.Name, agent: t.Agent, prompt: t.Prompt, workspace: t.Workspace,
-		kind: t.Schedule.Kind, tod: kit.TimeOfDay{Hour: t.Schedule.Hour, Minute: t.Schedule.Minute},
+		kind: kind, triggerValues: values,
+		tod:     kit.TimeOfDay{Hour: t.Schedule.Hour, Minute: t.Schedule.Minute},
 		weekday: t.Schedule.Weekday, day: d, reuse: t.Reuse, enabled: t.Enabled,
 	}
 }
@@ -453,8 +483,18 @@ func (cw *ChatWindow) saveAutoTask() bool {
 	sched := config.Schedule{
 		Kind: kind, Hour: f.tod.Hour, Minute: f.tod.Minute, Weekday: f.weekday, Day: d,
 	}
+	var trigger config.Trigger
+	if _, _, pluginTrigger := splitTriggerType(f.kind); pluginTrigger {
+		values := make(map[string]string, len(f.triggerValues))
+		for k, v := range f.triggerValues {
+			values[k] = v
+		}
+		trigger = config.Trigger{Type: f.kind, Values: values}
+		sched = config.Schedule{}
+	}
 	def := config.AutoTask{
-		Name: f.name, Agent: f.agent, Prompt: f.prompt, Workspace: f.workspace, Schedule: sched, Reuse: f.reuse, Enabled: f.enabled,
+		Name: f.name, Agent: f.agent, Prompt: f.prompt, Workspace: f.workspace,
+		Schedule: sched, Trigger: trigger, Reuse: f.reuse, Enabled: f.enabled,
 	}
 	if f.editing >= 0 && f.editing < len(cw.cfg.AutoTasks) {
 		def.ID = cw.cfg.AutoTasks[f.editing].ID
@@ -578,7 +618,8 @@ func (cw *ChatWindow) autoTaskTick() {
 		if from.IsZero() {
 			from = now
 		}
-		if !nextRun(t.Schedule, from).After(now) {
+		next, ok := cw.nextRunFor(t, from)
+		if ok && !next.After(now) {
 			cw.startAutoTask(i)
 		}
 	}
@@ -614,11 +655,12 @@ func (cw *ChatWindow) startAutoTask(i int) {
 		msgs = append([]llm.ChatMessage{{Role: "system", Content: sys}}, msgs...)
 	}
 	cw.autoRunning[t.ID] = true
+	cw.emit("task.started", map[string]any{"taskId": t.ID, "name": t.Name, "agent": t.Agent})
 	go func() {
 		reply := ""
 		reasoning := ""
 		var runErr error
-		ctx := context.Background()
+		ctx := llm.WithToolResultHook(context.Background(), cw.toolResultHook())
 		switch {
 		case groupReact != nil:
 			resp, err := groupReact.Chat(ctx, msgs, nil, nil)
@@ -668,6 +710,11 @@ func (cw *ChatWindow) startAutoTask(i int) {
 			cw.reloadConvs()
 			cw.invalidate()
 			cw.notifySessionComplete(conv, reply)
+			payload := map[string]any{"taskId": t.ID, "name": t.Name, "ok": runErr == nil, "note": cw.cfg.AutoTasks[i].LastNote}
+			if runErr != nil {
+				payload["error"] = runErr.Error()
+			}
+			cw.emit("task.finished", payload)
 		})
 	}()
 }
@@ -737,13 +784,13 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 		}
 		einoTools = combineTools(einoTools, extra)
 		if len(einoTools) > 0 {
-			rc, err := llm.NewGroupReactClient(g, cw.cfg.Providers, einoTools, &llm.ReactAgentConfig{MaxStep: cw.cfg.ReactAgentMaxStep, SystemPrompt: sys})
+			rc, err := llm.NewGroupReactClient(g, cw.cfg.Providers, einoTools, &llm.ReactAgentConfig{MaxStep: cw.cfg.ReactAgentMaxStep, SystemPrompt: sys}, cw.middlewares()...)
 			if err == nil {
 				return nil, nil, nil, rc, nil
 			}
 			log.Printf("[channel-agent] NewGroupReactClient failed: %v", err)
 		}
-		gc, err := llm.NewGroupClient(g, cw.cfg.Providers)
+		gc, err := llm.NewGroupClient(g, cw.cfg.Providers, cw.middlewares()...)
 		return nil, nil, gc, nil, err
 	}
 	p, ok := cw.findProvider(provName)
@@ -752,7 +799,7 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 	}
 	if !ok {
 		if g, ok := cw.firstGroup(); ok {
-			gc, err := llm.NewGroupClient(g, cw.cfg.Providers)
+			gc, err := llm.NewGroupClient(g, cw.cfg.Providers, cw.middlewares()...)
 			return nil, nil, gc, nil, err
 		}
 		return nil, nil, nil, nil, fmt.Errorf("尚未配置模型")
@@ -773,14 +820,14 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 	}
 	einoTools = combineTools(einoTools, extra)
 	if len(einoTools) > 0 {
-		rc, err := llm.NewReactClientWithEinoTools(p, einoTools, &llm.ReactAgentConfig{MaxStep: cw.cfg.ReactAgentMaxStep, SystemPrompt: sys})
+		rc, err := llm.NewReactClientWithEinoTools(p, einoTools, &llm.ReactAgentConfig{MaxStep: cw.cfg.ReactAgentMaxStep, SystemPrompt: sys}, cw.middlewares()...)
 		if err != nil {
 			log.Printf("[channel-agent] NewReactClientWithEinoTools failed: %v (tools=%d)", err, len(einoTools))
 		} else {
 			return nil, rc, nil, nil, nil
 		}
 	}
-	c, err := llm.NewClient(p)
+	c, err := llm.NewClient(p, cw.middlewares()...)
 	return c, nil, nil, nil, err
 }
 
@@ -846,4 +893,120 @@ func mcpEnabled(cfg *config.Config, name string) bool {
 		}
 	}
 	return false
+}
+
+// pluginTriggerList lists the trigger types plugins contribute.
+func (cw *ChatWindow) pluginTriggerList() []plugin.TriggerContribution {
+	if cw.plugins == nil {
+		return nil
+	}
+	return cw.plugins.Triggers()
+}
+
+// pluginTriggerValue is the select value of one plugin trigger.
+func pluginTriggerValue(tr plugin.TriggerContribution) string {
+	return "plugin:" + tr.ID
+}
+
+// splitTriggerType splits "plugin:<id>:<type>" into its parts.
+func splitTriggerType(v string) (pluginID, typ string, ok bool) {
+	rest, ok := strings.CutPrefix(v, "plugin:")
+	if !ok {
+		return "", "", false
+	}
+	i := strings.Index(rest, ":")
+	if i <= 0 || i == len(rest)-1 {
+		return "", "", false
+	}
+	return rest[:i], rest[i+1:], true
+}
+
+// scheduleTextFor renders either a built-in schedule or a plugin trigger.
+func (cw *ChatWindow) scheduleTextFor(t config.AutoTask) string {
+	pid, typ, ok := splitTriggerType(t.Trigger.Type)
+	if !ok {
+		return scheduleText(t.Schedule)
+	}
+	for _, tr := range cw.pluginTriggerList() {
+		if tr.PluginID == pid && tr.Spec.Type == typ {
+			return tr.Spec.Label + "（插件）"
+		}
+	}
+	return "插件触发器 " + typ
+}
+
+// nextRunFor asks a plugin trigger, or the built-in schedule, when the task
+// should run next. A plugin error pauses the task instead of running it.
+func (cw *ChatWindow) nextRunFor(t config.AutoTask, from time.Time) (time.Time, bool) {
+	pid, typ, ok := splitTriggerType(t.Trigger.Type)
+	if !ok {
+		return nextRun(t.Schedule, from), true
+	}
+	if cw.plugins == nil {
+		return time.Time{}, false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	next, err := cw.plugins.EvaluateTrigger(ctx, pid, typ, t.Trigger.Values, t.LastRun, from)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return next, true
+}
+
+// pluginTriggerFields renders the fields a plugin trigger declares.
+func (cw *ChatWindow) pluginTriggerFields(c *mgo.Context, f *autoForm) {
+	pid, typ, ok := splitTriggerType(f.kind)
+	if !ok {
+		return
+	}
+	var spec plugin.TriggerContribution
+	found := false
+	for _, tr := range cw.pluginTriggerList() {
+		if tr.PluginID == pid && tr.Spec.Type == typ {
+			spec, found = tr, true
+			break
+		}
+	}
+	if !found {
+		mgo.Text(c, "该触发器已不可用（插件未启用）").TextColor(mcore.Tokens(c).Warning)
+		return
+	}
+	if f.triggerValues == nil {
+		f.triggerValues = map[string]string{}
+	}
+	u := mcore.Density(c).Unit()
+	mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Start).Wrap().Children(func() {
+		for _, field := range spec.Spec.Fields {
+			field := field
+			key := field.Key
+			formField(c, field.Label, func() {
+				v := f.triggerValues[key]
+				if v == "" {
+					v = field.Default
+				}
+				switch field.Type {
+				case "bool":
+					on := strings.EqualFold(v, "true")
+					switchRow(c, &on, field.Label, field.Placeholder)
+					f.triggerValues[key] = strconv.FormatBool(on)
+				case "select":
+					if len(field.Options) == 0 {
+						kit.TextInput(c, &v, kit.TextInputOptions{Label: field.Label, Placeholder: field.Placeholder})
+						f.triggerValues[key] = v
+						break
+					}
+					opts := make([]kit.SelectOption[string], 0, len(field.Options))
+					for _, o := range field.Options {
+						opts = append(opts, kit.SelectOption[string]{Value: o, Label: o})
+					}
+					kit.Select(c, &v, opts, kit.SelectOptions{Label: field.Label}).Element.Width(160)
+					f.triggerValues[key] = v
+				default:
+					kit.TextInput(c, &v, kit.TextInputOptions{Label: field.Label, Placeholder: field.Placeholder})
+					f.triggerValues[key] = v
+				}
+			})
+		}
+	})
 }

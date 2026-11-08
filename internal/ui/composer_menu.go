@@ -24,14 +24,23 @@ func (cw *ChatWindow) chatMenus(c *mgo.Context, in kit.InputResult) {
 		}
 	} else {
 		cmds, tokens := cw.slashSkills()
+		cmds = append(cmds, cw.pluginSlashCommands()...)
 		if cmd, ok := kit.SlashCommandMenu(c, in, &cw.draft, cmds).Chosen(); ok {
-			cw.selectSkill(tokens[cmd.Name])
+			if id, ok := tokens[cmd.Name]; ok {
+				cw.selectSkill(id)
+			} else if pc, ok := cw.findPluginCommand(cmd.Name); ok {
+				args := strings.TrimSpace(strings.TrimPrefix(cw.draft, "/"+cmd.Name))
+				cw.draft = ""
+				cw.runPluginCommand(pc, args)
+			}
 			in.Input.Focus()
 			return
 		}
 	}
-	if it, ok := kit.ContextMentionMenu(c, in, &cw.draft, cw.contextItems(), kit.ContextMentionOptions{}).Chosen(); ok {
+	items, loading := cw.contextItems()
+	if it, ok := kit.ContextMentionMenu(c, in, &cw.draft, items, kit.ContextMentionOptions{Loading: loading}).Chosen(); ok {
 		cw.insertContextMention(it)
+		cw.resolvePluginToken(it.Label)
 		in.Input.Focus()
 	}
 }
@@ -249,8 +258,11 @@ func (cw *ChatWindow) addExternalContext(path string) {
 	cw.insertContextMention(kit.ContextItem{ID: label, Label: label, Kind: kind})
 }
 
-func (cw *ChatWindow) contextItems() []kit.ContextItem {
-	return cw.contextItemsMatching(mentionQuery(cw.draft))
+func (cw *ChatWindow) contextItems() ([]kit.ContextItem, bool) {
+	items := cw.contextItemsMatching(mentionQuery(cw.draft))
+	pluginItems, loading := cw.pluginContextItems(mentionQuery(cw.draft))
+	out := append([]kit.ContextItem(nil), items...)
+	return append(out, pluginItems...), loading
 }
 
 func (cw *ChatWindow) contextItemsMatching(query string) []kit.ContextItem {

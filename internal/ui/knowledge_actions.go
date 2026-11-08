@@ -161,6 +161,12 @@ func (cw *ChatWindow) importKnowledgeFiles(paths []string) {
 		cw.postMain(func() {
 			cw.knowledge.busy = false
 			cw.knowledge.status = describeIngest("索引完成", result, err)
+			if err == nil {
+				cw.emit("knowledge.imported", map[string]any{
+					"kbId": kbID, "added": result.Added, "updated": result.Updated,
+					"skipped": result.Skipped, "failed": result.Failed,
+				})
+			}
 			cw.refreshKnowledgeAfterIngest()
 			cw.invalidate()
 		})
@@ -190,6 +196,7 @@ func (cw *ChatWindow) importKnowledgeText() {
 				return
 			}
 			cw.knowledge.status = "已导入粘贴文本"
+			cw.emit("knowledge.imported", map[string]any{"kbId": kbID, "added": 1})
 			cw.refreshKnowledgeAfterIngest()
 			cw.invalidate()
 		})
@@ -209,6 +216,12 @@ func (cw *ChatWindow) reindexKnowledge() {
 		cw.postMain(func() {
 			cw.knowledge.busy = false
 			cw.knowledge.status = describeIngest("重建完成", result, err)
+			if err == nil {
+				cw.emit("knowledge.imported", map[string]any{
+					"kbId": kbID, "added": result.Added, "updated": result.Updated,
+					"skipped": result.Skipped, "failed": result.Failed,
+				})
+			}
 			cw.refreshKnowledgeAfterIngest()
 			cw.invalidate()
 		})

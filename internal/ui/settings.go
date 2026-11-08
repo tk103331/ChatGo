@@ -135,6 +135,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "实验", Panel: func() { cw.experimentalTab(c) }},
 			{Label: "系统", Panel: func() { cw.systemTab(c) }},
 			{Label: "Web", Panel: func() { cw.webTab(c) }},
+			{Label: "插件", Panel: func() { cw.pluginsTab(c) }},
 		}, kit.TabsOptions{})
 		res.Element.Grow(1).MinHeight(0)
 	})
@@ -190,6 +191,7 @@ func (cw *ChatWindow) askDeleteConversation(id, title string) {
 			cw.mode = modeHome
 		}
 		cw.reloadConvs()
+		cw.emit("conversation.deleted", map[string]any{"conversationId": id, "title": title})
 		cw.toast("会话已删除", mcore.SeveritySuccess)
 	})
 }

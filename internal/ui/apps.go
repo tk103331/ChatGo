@@ -125,6 +125,7 @@ func (cw *ChatWindow) openApp(id string) {
 	cw.appActive = id
 	cw.appTabList(id)
 	cw.startAppSession(id)
+	cw.emit("app.opened", map[string]any{"appId": id})
 	cw.invalidate()
 }
 
