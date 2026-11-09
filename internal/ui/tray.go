@@ -55,6 +55,8 @@ func (cw *ChatWindow) syncTaskbar() {
 }
 
 func (cw *ChatWindow) showMainWindow() {
+	// An explicit "open ChatGo" also undoes the quick panel's dimming.
+	cw.restoreMainAfterQuickPanel()
 	cw.winMu.Lock()
 	w := cw.window
 	cw.winMu.Unlock()

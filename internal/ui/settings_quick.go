@@ -35,7 +35,7 @@ func (cw *ChatWindow) quickPanelSection(c *mgo.Context) {
 	mgo.Column(c).Gap(u * 2).Children(func() {
 		mgo.Text(c, "快捷任务面板").FontWeight(600)
 		mgo.Text(c, "在任意应用里按 "+cw.quickPanelShortcut()+
-			" 打开浮窗：自动带入选中的文本、剪贴板里的目录或当前工作区，选一个 Agent 就能直接执行。").
+			" 打开浮窗：自动带入选中的文本、剪贴板里的目录或当前工作区，选择 Agent、项目与模型后输入指令即可执行。").
 			FontSize(small).TextColor(k.TextMuted)
 		if kit.SwitchRow(c, qp.Enabled, "启用浮窗（替代原来的紧凑窗口）", kit.SwitchRowOptions{}).Changed() {
 			cw.applyQuickPanelSetting()
@@ -67,11 +67,8 @@ func (cw *ChatWindow) quickPanelSection(c *mgo.Context) {
 			mgo.Text(c, "提示：关闭主窗口会退出程序，快捷键也随之失效；可开启上方的「允许后台运行」让浮窗常驻。").
 				FontSize(small).TextColor(k.TextMuted)
 		}
-		cw.quickDefaultAgentRow(c)
 		cw.quickFavoritesRow(c)
-		if kit.SwitchRow(c, &qp.DefaultWorktree, "默认在新建 worktree 中执行", kit.SwitchRowOptions{}).Changed() {
-			_ = config.SaveConfig(cw.cfg)
-		}
+		cw.quickDefaultAgentRow(c)
 		if explorerMenuSupported() {
 			if kit.SwitchRow(c, &qp.ExplorerMenu, "添加到资源管理器右键菜单", kit.SwitchRowOptions{}).Changed() {
 				if err := setExplorerMenu(qp.ExplorerMenu); err != nil {
@@ -167,6 +164,73 @@ func splitBundleList(text string) []string {
 	return out
 }
 
+// quickFavoritesRow chooses which agents the panel shows as chips. With none
+// chosen the panel shows every agent, including ones added later.
+func (cw *ChatWindow) quickFavoritesRow(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	qp := &cw.cfg.QuickPanel
+	agents := allQuickAgents(cw.cfg)
+	mgo.Column(c).Gap(u).Children(func() {
+		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+			mgo.Text(c, "浮窗里显示的 Agent").FontSize(small).TextColor(k.TextMuted).Grow(1)
+			if len(qp.Favorites) > 0 {
+				if kit.Button(c, "显示全部", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
+					qp.Favorites = nil
+					_ = config.SaveConfig(cw.cfg)
+					cw.invalidate()
+				}
+			}
+		})
+		mgo.Row(c).Wrap().Gap(u).Children(func() {
+			for _, a := range agents {
+				ref := a.Ref
+				on := len(qp.Favorites) == 0 || containsStr(qp.Favorites, ref)
+				variant := kit.Ghost
+				if on {
+					variant = kit.Secondary
+				}
+				if kit.Button(c, a.Name, kit.ButtonOptions{
+					Variant: variant,
+					Leading: cw.agentChipLeading(c, a),
+				}).Clicked() {
+					// Starting from "all", the first toggle materializes the
+					// list so the rest stay chosen.
+					list := qp.Favorites
+					if len(list) == 0 {
+						for _, o := range agents {
+							list = append(list, o.Ref)
+						}
+					}
+					qp.Favorites = toggleRef(list, ref)
+					_ = config.SaveConfig(cw.cfg)
+					cw.invalidate()
+				}
+			}
+		})
+		mgo.Text(c, "可多选；一个都不选时显示全部。默认 Agent 始终显示在最前。").
+			FontSize(small).TextColor(k.TextMuted)
+	})
+}
+
+// toggleRef adds ref to list, or removes it when it is already there.
+func toggleRef(list []string, ref string) []string {
+	out := make([]string, 0, len(list)+1)
+	found := false
+	for _, item := range list {
+		if item == ref {
+			found = true
+			continue
+		}
+		out = append(out, item)
+	}
+	if !found {
+		out = append(out, ref)
+	}
+	return out
+}
+
 // quickDefaultAgentRow chooses the agent a new panel starts with.
 func (cw *ChatWindow) quickDefaultAgentRow(c *mgo.Context) {
 	k := mcore.Tokens(c)
@@ -204,65 +268,6 @@ func (cw *ChatWindow) quickDefaultAgentRow(c *mgo.Context) {
 			_ = config.SaveConfig(cw.cfg)
 		}
 	})
-}
-
-// quickFavoritesRow chooses which agents the panel shows as chips.
-func (cw *ChatWindow) quickFavoritesRow(c *mgo.Context) {
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	small := mcore.FontSize(c, mtheme.CaptionSize)
-	qp := &cw.cfg.QuickPanel
-	agents := allQuickAgents(cw.cfg)
-	mgo.Column(c).Gap(u).Children(func() {
-		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, "浮窗里显示的 Agent").FontSize(small).TextColor(k.TextMuted)
-			if len(qp.Favorites) > 0 {
-				if kit.Button(c, "显示全部", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
-					qp.Favorites = nil
-					_ = config.SaveConfig(cw.cfg)
-				}
-			}
-		})
-		mgo.Text(c, "不选则显示全部，最多 8 个").FontSize(small).TextColor(k.TextMuted)
-		mgo.Row(c).Wrap().Gap(u).Children(func() {
-			for _, a := range agents {
-				ref := a.Ref
-				on := containsStr(qp.Favorites, ref)
-				variant := kit.Ghost
-				if on {
-					variant = kit.Secondary
-				}
-				if kit.Button(c, a.Name, kit.ButtonOptions{
-					Variant: variant,
-					Leading: cw.agentChipLeading(c, a),
-				}).Clicked() {
-					if !on && len(qp.Favorites) >= 8 {
-						cw.toast("浮窗最多显示 8 个 Agent", mcore.SeverityInfo)
-					} else {
-						qp.Favorites = toggleRef(qp.Favorites, ref)
-						_ = config.SaveConfig(cw.cfg)
-					}
-				}
-			}
-		})
-	})
-}
-
-// toggleRef adds ref to list, or removes it when it is already there.
-func toggleRef(list []string, ref string) []string {
-	out := make([]string, 0, len(list)+1)
-	found := false
-	for _, item := range list {
-		if item == ref {
-			found = true
-			continue
-		}
-		out = append(out, item)
-	}
-	if !found {
-		out = append(out, ref)
-	}
-	return out
 }
 
 // quickPermissionRow reports, and opens, the system capture permission.

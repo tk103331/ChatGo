@@ -24,38 +24,6 @@ func TestQuickTaskSummary(t *testing.T) {
 	}
 }
 
-func TestQuickPanelAgents(t *testing.T) {
-	cw := testWindow()
-	cw.cfg.Agents = []config.AgentDef{{Name: "Review"}, {Name: "Code"}}
-	cw.cfg.ACPAgents = []config.ACPConnection{
-		{Name: "Claude Code"},
-		{Name: "Off", Disabled: true},
-	}
-	qp := newQuickPanel(cw)
-
-	refs := func() []string {
-		var out []string
-		for _, a := range qp.agents() {
-			out = append(out, a.Ref)
-		}
-		return out
-	}
-
-	// Without favorites: the built-in chat first, then every enabled agent.
-	want := []string{"", "agent:Review", "agent:Code", "acp:Claude Code"}
-	if got := refs(); !equalStrings(got, want) {
-		t.Errorf("agents = %v, want %v", got, want)
-	}
-
-	// Favorites order the chips, and the default agent always comes first.
-	cw.cfg.QuickPanel.Favorites = []string{"acp:Claude Code", "agent:Review"}
-	cw.cfg.QuickPanel.DefaultAgent = "agent:Code"
-	want = []string{"agent:Code", "acp:Claude Code", "agent:Review"}
-	if got := refs(); !equalStrings(got, want) {
-		t.Errorf("favorite agents = %v, want %v", got, want)
-	}
-}
-
 // A captured selection lands in the field as a quote block, and submitting it
 // unchanged does not attach the same text a second time.
 func TestQuickPanelPrefillsSelection(t *testing.T) {
@@ -96,8 +64,9 @@ func TestQuickPanelOpensServiceSelection(t *testing.T) {
 	}
 }
 
-// A preset replaces the quote block, so submit attaches the selection again.
-func TestQuickPanelPresetReattachesSelection(t *testing.T) {
+// A draft that replaces the quote block has the selection attached again on
+// submit.
+func TestQuickPanelReattachesSelection(t *testing.T) {
 	cw := testWindow()
 	qp := newQuickPanel(cw)
 	qp.hasSelection = true
@@ -116,7 +85,7 @@ func TestQuickPanelReset(t *testing.T) {
 	onCopy := on
 	cw.cfg.QuickPanel = config.QuickPanelConfig{
 		Enabled: &on, Background: &on, ClipboardFallback: &onCopy,
-		DefaultAgent: "agent:Review", DefaultWorktree: true,
+		DefaultAgent: "agent:Review",
 	}
 	cw.workspace = "/tmp/demo"
 	qp := newQuickPanel(cw)
@@ -129,8 +98,8 @@ func TestQuickPanelReset(t *testing.T) {
 	if qp.hasSelection || qp.draft != "" || len(qp.selection.Text) != 0 {
 		t.Errorf("reset kept captured state: %+v", qp)
 	}
-	if qp.agent != "agent:Review" || !qp.worktree {
-		t.Errorf("reset defaults: agent=%q worktree=%v", qp.agent, qp.worktree)
+	if qp.agent != "agent:Review" {
+		t.Errorf("reset default agent = %q", qp.agent)
 	}
 	if qp.workspace != "/tmp/demo" {
 		t.Errorf("reset workspace = %q", qp.workspace)
@@ -196,33 +165,112 @@ func TestQuickConversation(t *testing.T) {
 	}
 }
 
-func TestQuickPanelModelSelection(t *testing.T) {
+// The panel starts with the default agent and that agent's first model; a
+// model picked in the panel overrides it.
+func TestQuickPanelUsesDefaultAgentModel(t *testing.T) {
 	cw := testWindow()
 	cw.cfg.Agents = []config.AgentDef{
 		{Name: "Review", Models: []string{"OpenAI::gpt-4o"}},
 		{Name: "Code", Models: []string{"OpenAI::gpt-4"}},
 	}
+	cw.cfg.QuickPanel.DefaultAgent = "agent:Review"
 	qp := newQuickPanel(cw)
-	qp.setAgent("agent:Review")
-	if qp.model != "OpenAI::gpt-4o" {
-		t.Errorf("review model = %q", qp.model)
+	qp.reset()
+	if qp.agent != "agent:Review" || qp.model != "OpenAI::gpt-4o" {
+		t.Errorf("defaults: agent=%q model=%q", qp.agent, qp.model)
 	}
+	// Choosing another chip follows that agent's first model.
 	qp.setAgent("agent:Code")
-	if qp.model != "OpenAI::gpt-4" || qp.effectiveModel() != "OpenAI::gpt-4" {
-		t.Errorf("code model = %q effective %q", qp.model, qp.effectiveModel())
+	if qp.agent != "agent:Code" || qp.model != "OpenAI::gpt-4" {
+		t.Errorf("after setAgent: agent=%q model=%q", qp.agent, qp.model)
 	}
-	// ACP agents choose their own model, so the panel offers none.
+	// ACP agents choose their own model, so the panel has none to pick.
 	if refs := cw.modelRefsForAgent("acp:Claude"); len(refs) != 0 {
 		t.Errorf("acp refs = %v", refs)
 	}
-	// The presets exist and carry an instruction.
-	if len(quickPresets) < 3 {
-		t.Fatalf("presets = %+v", quickPresets)
-	}
-	for _, p := range quickPresets {
-		if p.Label == "" || p.Prompt == "" {
-			t.Errorf("empty preset: %+v", p)
+}
+
+// Favorites limit the panel's chips to the chosen agents; the default agent
+// keeps its chip and leads the row, and no favorites shows every agent.
+func TestQuickPanelFavoritesLimitAgents(t *testing.T) {
+	cw := testWindow()
+	cw.cfg.Agents = []config.AgentDef{{Name: "Review"}, {Name: "Code"}}
+	cw.cfg.QuickPanel.DefaultAgent = ""
+	cw.cfg.QuickPanel.Favorites = []string{"agent:Code"}
+	qp := newQuickPanel(cw)
+	refs := func() []string {
+		var out []string
+		for _, a := range qp.agents() {
+			out = append(out, a.Ref)
 		}
+		return out
+	}
+	if got := refs(); len(got) != 2 || got[0] != "" || got[1] != "agent:Code" {
+		t.Fatalf("favorites chips = %v", got)
+	}
+
+	// A default agent outside the favorites still gets a chip, first.
+	cw.cfg.QuickPanel.DefaultAgent = "agent:Review"
+	qp.reset()
+	if got := refs(); len(got) != 2 || got[0] != "agent:Review" || got[1] != "agent:Code" {
+		t.Fatalf("default chips = %v", got)
+	}
+	if qp.agent != "agent:Review" {
+		t.Fatalf("default agent = %q", qp.agent)
+	}
+
+	cw.cfg.QuickPanel.Favorites = nil
+	if got := refs(); len(got) != 3 {
+		t.Fatalf("all chips = %v", got)
+	}
+}
+
+func TestToggleRef(t *testing.T) {
+	got := toggleRef(nil, "agent:Code")
+	if len(got) != 1 || got[0] != "agent:Code" {
+		t.Fatalf("add = %v", got)
+	}
+	if got := toggleRef(got, "agent:Code"); len(got) != 0 {
+		t.Fatalf("remove = %v", got)
+	}
+}
+
+// The model picker switches the model of the next task, and the pick is kept
+// when the panel resets for another task.
+func TestQuickPanelPicksModel(t *testing.T) {
+	cw := testWindow()
+	cw.provider, cw.model = "OpenAI", "gpt-4"
+	cw.cfg.Agents = []config.AgentDef{
+		{Name: "Review", Models: []string{"OpenAI::gpt-4", "OpenAI::gpt-4o"}},
+	}
+	cw.cfg.QuickPanel.DefaultAgent = "agent:Review"
+	qp := newQuickPanel(cw)
+	qp.reset()
+	qp.mode = quickPanelCompose
+	if qp.model != "OpenAI::gpt-4" {
+		t.Fatalf("default model = %q", qp.model)
+	}
+
+	tr := mgo.NewTester(qp.view, quickPanelWidth, quickPanelHeight)
+	tr.Frame()
+	if !tr.HasText("OpenAI · gpt-4") {
+		t.Fatalf("the model trigger is missing; texts: %v", tr.Texts())
+	}
+	if err := tr.Click("OpenAI · gpt-4"); err != nil {
+		t.Fatal(err)
+	}
+	tr.Frame()
+	if err := tr.Click("OpenAI · gpt-4o"); err != nil {
+		t.Fatal(err)
+	}
+	tr.Frame()
+	if qp.model != "OpenAI::gpt-4o" {
+		t.Fatalf("model after picking = %q", qp.model)
+	}
+
+	qp.reset()
+	if qp.model != "OpenAI::gpt-4o" {
+		t.Fatalf("reset dropped the picked model: %q", qp.model)
 	}
 }
 
@@ -277,50 +325,122 @@ func TestQuickPanelViewsRender(t *testing.T) {
 	}
 }
 
-// The agent chips and the model choice share one row, so the panel does not
-// stack two half-empty lines above the composer.
-func TestQuickPanelAgentAndModelShareRow(t *testing.T) {
+// The compose panel shows the agent chips, the project picker and the model
+// picker, but still no preset or worktree controls.
+func TestQuickPanelShowsAgentAndProject(t *testing.T) {
 	cw := testWindow()
+	cw.cfg.Agents = []config.AgentDef{{Name: "Review"}}
+	cw.cfg.QuickPanel.DefaultAgent = "agent:Review"
 	qp := newQuickPanel(cw)
+	qp.reset()
+	qp.workspace = ""
 	qp.mode = quickPanelCompose
 	tr := mgo.NewTester(qp.view, quickPanelWidth, quickPanelHeight)
 	tr.Frame()
-	agent, ok := tr.Find("Chat")
-	if !ok {
-		t.Fatalf("the agent chip is missing; texts: %v", tr.Texts())
+	for _, want := range []string{"Review", "选择项目", "OpenAI · gpt-4", "进入主程序"} {
+		if !tr.HasText(want) {
+			t.Errorf("the compose panel lacks %q; texts: %v", want, tr.Texts())
+		}
 	}
-	model, ok := tr.Find("OpenAI · gpt-4")
-	if !ok {
-		t.Fatalf("the model selector is missing; texts: %v", tr.Texts())
-	}
-	if agent.Y+agent.H/2 != model.Y+model.H/2 {
-		t.Fatalf("the agent and model sit on different rows: agent %+v, model %+v", agent, model)
+	for _, unwanted := range []string{"解释", "翻译", "总结", "新建 worktree"} {
+		if tr.HasText(unwanted) {
+			t.Errorf("the compose panel still offers %q; texts: %v", unwanted, tr.Texts())
+		}
 	}
 }
 
-// The panel names its worktree toggle instead of leaving a bare switch.
-func TestQuickPanelNamesItsWorktreeSwitch(t *testing.T) {
+// While a reply has no text yet, the running panel shows the model's
+// reasoning or the tool it is running rather than a frozen "thinking" line.
+func TestQuickPanelRunningShowsProgress(t *testing.T) {
 	cw := testWindow()
 	qp := newQuickPanel(cw)
-	qp.mode = quickPanelCompose
-	tr := mgo.NewTester(qp.view, quickPanelWidth, quickPanelHeight)
-	tr.Frame()
-	r, ok := tr.Find("新建 worktree")
-	if !ok || r.H == 0 {
-		t.Fatalf("the worktree switch is clipped or missing: %+v, texts: %v", r, tr.Texts())
+	task := &quickTask{
+		Prompt:   "解释这段代码",
+		Agent:    "agent:Review",
+		ReplyID:  "r1",
+		Conv:     &models.Conversation{ID: "c1", Title: "解释"},
+		ReplyIdx: 0,
 	}
-	if r.Y+r.H > quickPanelHeight {
-		t.Fatalf("the worktree switch overflows the panel: %+v", r)
+	task.Conv.Messages = []models.Message{{
+		ID: "r1", Role: "assistant", Reasoning: "先看看这段代码做了什么",
+	}}
+	qp.task = task
+	qp.mode = quickPanelRunning
+	cw.beginStream("c1", "r1", nil)
+
+	tr := mgo.NewTester(qp.view, quickPanelWidth, quickRunningHeight)
+	tr.Frame()
+	if !tr.HasText("先看看这段代码") || !tr.HasText("正在思考") {
+		t.Fatalf("reasoning not shown; texts: %v", tr.Texts())
+	}
+
+	task.Conv.Messages[0].Reasoning = ""
+	task.Conv.Messages[0].Segments = []models.Segment{{
+		Kind:     "tool",
+		ToolCall: &models.ToolCall{ID: "t1", Name: "read_file"},
+	}}
+	tr.Frame()
+	for _, want := range []string{"read_file", "正在调用工具"} {
+		if !tr.HasText(want) {
+			t.Fatalf("tool progress %q not shown; texts: %v", want, tr.Texts())
+		}
 	}
 }
 
-func TestToggleRef(t *testing.T) {
-	if got := toggleRef(nil, "agent:A"); len(got) != 1 || got[0] != "agent:A" {
-		t.Errorf("toggleRef on empty = %v", got)
+// The selection strip opens the composer with one ask button instead of agent
+// chips.
+func TestQuickBarOpensComposer(t *testing.T) {
+	cw := testWindow()
+	for _, name := range []string{"A", "B", "C", "D", "E"} {
+		cw.cfg.Agents = append(cw.cfg.Agents, config.AgentDef{Name: name})
 	}
-	got := toggleRef([]string{"agent:A", "acp:B"}, "agent:A")
-	if len(got) != 1 || got[0] != "acp:B" {
-		t.Errorf("toggleRef remove = %v", got)
+	qp := newQuickPanel(cw)
+	qp.mode = quickPanelBar
+	qp.hasSelection = true
+	qp.selection = capture.Selection{Text: "hello"}
+	tr := mgo.NewTester(qp.view, quickBarWidth, quickBarHeight)
+	tr.Frame()
+	if !tr.HasText("提问") {
+		t.Fatalf("the bar lacks its ask button; texts: %v", tr.Texts())
+	}
+	for _, name := range []string{"A", "B", "C", "D", "E"} {
+		if tr.HasText(name) {
+			t.Errorf("the bar still shows agent %q; texts: %v", name, tr.Texts())
+		}
+	}
+}
+
+// Activating the app for the panel must not reopen the main window behind it.
+func TestQuickPanelShowingGuardsActivation(t *testing.T) {
+	cw := testWindow()
+	qp := newQuickPanel(cw)
+	cw.quick = qp
+	if cw.quickPanelShowing() {
+		t.Fatal("a hidden panel counts as showing")
+	}
+	qp.mode = quickPanelCompose
+	if !cw.quickPanelShowing() {
+		t.Fatal("the panel is up but not reported as showing")
+	}
+	qp.mode = quickPanelHidden
+	if cw.quickPanelShowing() {
+		t.Fatal("a hidden panel still counts as showing")
+	}
+}
+
+// Closing the panel gives the main window back after the panel cleared it.
+func TestQuickPanelRestoresMainWindow(t *testing.T) {
+	cw := testWindow()
+	qp := newQuickPanel(cw)
+	cw.quick = qp
+	qp.mode = quickPanelCompose
+	cw.hideMainForQuickPanel()
+	if !cw.mainDimmed {
+		t.Fatal("showing the panel did not clear the main window")
+	}
+	qp.hide()
+	if cw.mainDimmed {
+		t.Fatal("hiding the panel left the main window cleared")
 	}
 }
 
@@ -404,19 +524,5 @@ func TestSplitBundleList(t *testing.T) {
 	}
 	if len(splitBundleList("  ")) != 0 {
 		t.Errorf("blank split not empty")
-	}
-}
-
-func TestQuickBarRendersManyAgents(t *testing.T) {
-	cw := testWindow()
-	for _, name := range []string{"A", "B", "C", "D", "E"} {
-		cw.cfg.Agents = append(cw.cfg.Agents, config.AgentDef{Name: name})
-	}
-	qp := newQuickPanel(cw)
-	qp.mode = quickPanelBar
-	qp.hasSelection = true
-	qp.selection = capture.Selection{Text: "hello"}
-	if img := mgo.Render(qp.view, quickBarWidth, quickBarHeight, 1); img == nil {
-		t.Fatal("bar with six agents did not render")
 	}
 }

@@ -27,10 +27,17 @@ func TestQuickPanelSettingsShowSwitchLabels(t *testing.T) {
 		"启用浮窗（替代原来的紧凑窗口）",
 		"后台执行，不切换主窗口",
 		"没有辅助功能权限时读取剪贴板",
-		"默认在新建 worktree 中执行",
+		"浮窗里显示的 Agent",
+		"默认 Agent",
 	} {
 		if !tr.HasText(want) {
 			t.Fatalf("the 快捷任务 tab lacks %q; texts: %v", want, tr.Texts())
+		}
+	}
+	// The panel has no worktree option left to configure.
+	for _, gone := range []string{"默认在新建 worktree 中执行"} {
+		if tr.HasText(gone) {
+			t.Errorf("the 快捷任务 tab still offers %q; texts: %v", gone, tr.Texts())
 		}
 	}
 }

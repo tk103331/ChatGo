@@ -395,6 +395,46 @@ func quickTaskSummary(prompt string) string {
 	return prompt
 }
 
+// quickTaskProgress is what the panel draws for a task: its reply text once
+// there is any, otherwise the model's reasoning or the tool it is running. A
+// panel that only showed the reply looked frozen while a reasoning model
+// thought or an agent worked through tools.
+func quickTaskProgress(task *quickTask) string {
+	if task == nil {
+		return ""
+	}
+	if task.preparing || task.Conv == nil {
+		return task.note
+	}
+	m := task.reply()
+	if m == nil {
+		return "正在思考…"
+	}
+	if s := strings.TrimSpace(m.Content); s != "" {
+		return m.Content
+	}
+	if s := strings.TrimSpace(m.Reasoning); s != "" {
+		return s
+	}
+	if tc := lastQuickTool(m); tc != nil {
+		return "正在使用工具 · " + tc.Name
+	}
+	return "正在思考…"
+}
+
+// lastQuickTool returns the newest tool call of a reply, if any.
+func lastQuickTool(m *models.Message) *models.ToolCall {
+	for i := len(m.Segments) - 1; i >= 0; i-- {
+		if s := m.Segments[i]; s.Kind == "tool" && s.ToolCall != nil {
+			return s.ToolCall
+		}
+	}
+	if n := len(m.ToolCalls); n > 0 {
+		return &m.ToolCalls[n-1]
+	}
+	return nil
+}
+
 // quickTaskStatus is the running/done label under the prompt.
 func quickTaskStatus(cw *ChatWindow, task *quickTask) string {
 	if task == nil {
@@ -404,6 +444,14 @@ func quickTaskStatus(cw *ChatWindow, task *quickTask) string {
 		return task.note
 	}
 	if task.running(cw) {
+		if m := task.reply(); m != nil {
+			if tc := lastQuickTool(m); tc != nil && tc.Result == "" && tc.Error == "" {
+				return "正在调用工具 · " + tc.Name
+			}
+			if strings.TrimSpace(m.Content) == "" && strings.TrimSpace(m.Reasoning) != "" {
+				return "正在思考…"
+			}
+		}
 		return "正在执行…"
 	}
 	if task.Conv == nil {

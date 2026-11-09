@@ -47,38 +47,14 @@ func (qp *quickPanel) bar(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	agents := qp.agents()
-	shown := agents
-	if len(shown) > 3 {
-		shown = shown[:3]
-	}
 	root := qp.panelFrame(c).Padding(u*1.5, u*2.5).Children(func() {
 		mgo.Row(c).Fill().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
 			mgo.Icon(c, assets.BrandMark()).Size(16, 16).TextColor(k.Accent).Shrink(0)
 			count := utf8.RuneCountInString(strings.TrimSpace(qp.selection.Text))
 			mgo.Text(c, fmt.Sprintf("%d 字", count)).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
 			mgo.Box(c).Grow(1)
-			for _, a := range shown {
-				ref := a.Ref
-				b := kit.Button(c, "", kit.ButtonOptions{
-					Variant: kit.Ghost,
-					Label:   "用 " + a.Name + " 执行",
-					Leading: qp.cw.agentChipLeading(c, a),
-				})
-				b.Tooltip(a.Name)
-				if b.Clicked() {
-					qp.chooseAgent(ref)
-				}
-			}
-			if len(agents) > len(shown) {
-				more := kit.Button(c, fmt.Sprintf("+%d", len(agents)-len(shown)), kit.ButtonOptions{
-					Variant: kit.Ghost,
-					Label:   "更多 Agent",
-				})
-				more.Tooltip("更多 Agent")
-				if more.Clicked() {
-					qp.showCompose()
-				}
+			if kit.Button(c, "提问", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
+				qp.showCompose()
 			}
 			if mcore.IconAction(c, icons.Must("x"), "关闭").Clicked() {
 				qp.hide()
@@ -88,7 +64,8 @@ func (qp *quickPanel) bar(c *mgo.Context) {
 	qp.barHovered = root.Hovered()
 }
 
-// compose is the input panel: agent chips, the prompt and the directory.
+// compose is the input panel: the captured context, the agent and project
+// pickers, and the prompt. The model follows the selected agent.
 func (qp *quickPanel) compose(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -98,18 +75,20 @@ func (qp *quickPanel) compose(c *mgo.Context) {
 			mgo.Icon(c, assets.BrandMark()).Size(16, 16).TextColor(k.Accent).Shrink(0)
 			mgo.Text(c, qp.contextLabel()).FontSize(caption).TextColor(k.TextMuted).
 				Grow(1).SingleLine().Ellipsis("…")
+			if mcore.IconAction(c, icons.Must("maximize"), "进入主程序").Clicked() {
+				qp.enterMain()
+			}
 			if mcore.IconAction(c, icons.Must("x"), "关闭").Clicked() {
 				qp.hide()
 			}
 		})
 
-		// The agent chips and the model choice share one row: the chips
-		// scroll sideways so the model keeps its place at the row's end, even
-		// when many agents are shown.
+		// The agent chips scroll sideways, so a long list does not widen the
+		// panel; the selected chip is the agent this task runs with.
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
 			mgo.ScrollHorizontal(c).Grow(1).MinWidth(0).Children(func() {
 				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-					for _, a := range qp.visibleAgents(8) {
+					for _, a := range qp.agents() {
 						ref := a.Ref
 						variant := kit.Ghost
 						if ref == qp.agent {
@@ -124,23 +103,7 @@ func (qp *quickPanel) compose(c *mgo.Context) {
 					}
 				})
 			})
-			qp.modelSelector(c)
 		})
-
-		if qp.hasSelection {
-			mgo.Row(c).FillWidth().Wrap().Gap(u).Children(func() {
-				for _, p := range quickPresets {
-					p := p
-					if kit.Button(c, p.Label, kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
-						qp.draft = p.Prompt
-						// The template replaces the quote block; submit
-						// attaches the selection again.
-						qp.selectionInDraft = false
-						qp.focusInput = true
-					}
-				}
-			})
-		}
 
 		in := composer(c, &qp.draft, composerOptions{
 			Placeholder: qp.placeholder(),
@@ -165,20 +128,51 @@ func (qp *quickPanel) compose(c *mgo.Context) {
 		}
 
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-			label := "选择目录"
+			label := "选择项目"
 			if qp.workspace != "" {
-				label = middleEllipsis(qp.workspace, 30)
+				label = "项目 · " + middleEllipsis(qp.workspace, 30)
 			}
-			if kit.Button(c, label, kit.ButtonOptions{
+			b := kit.Button(c, label, kit.ButtonOptions{
 				Variant: kit.Ghost,
 				Icon:    icons.Must("folder"),
-			}).Clicked() {
+			})
+			b.MaxWidth(230).MinWidth(0)
+			if b.Clicked() {
 				qp.pickWorkspace()
 			}
-			mgo.Box(c).Grow(1)
-			kit.SwitchRow(c, &qp.worktree, "新建 worktree", kit.SwitchRowOptions{Compact: true})
+			qp.modelPicker(c)
 		})
 	})
+}
+
+// modelPicker chooses the model this task runs with. It lists the models the
+// selected agent allows; an ACP agent picks its own, so there is nothing to
+// show for one.
+func (qp *quickPanel) modelPicker(c *mgo.Context) {
+	refs := qp.cw.modelRefsForAgent(qp.agent)
+	if len(refs) == 0 {
+		return
+	}
+	cur := qp.model
+	if !containsStr(refs, cur) {
+		cur = refs[0]
+		qp.model = cur
+	}
+	opts := make([]kit.SearchSelectOption[string], 0, len(refs))
+	for _, ref := range refs {
+		opts = append(opts, kit.SearchSelectOption[string]{
+			Value:   ref,
+			Label:   middleEllipsis(qp.cw.refLabel(ref), 30),
+			Leading: qp.cw.providerLeading(c, ref),
+		})
+	}
+	r := kit.SearchSelect(c, &cur, opts, kit.SearchSelectOptions[string]{
+		Label: "模型", Placeholder: "选择模型", SearchPlaceholder: "搜索模型",
+	})
+	r.Element.MaxWidth(190).MinWidth(0)
+	if r.Changed() {
+		qp.setModel(cur)
+	}
 }
 
 // running shows the reply as it streams.
@@ -191,12 +185,7 @@ func (qp *quickPanel) running(c *mgo.Context) {
 		qp.compose(c)
 		return
 	}
-	body := "正在思考…"
-	if task.note != "" && (task.preparing || task.Conv == nil) {
-		body = task.note
-	} else if m := task.reply(); m != nil && strings.TrimSpace(m.Content) != "" {
-		body = m.Content
-	}
+	body := quickTaskProgress(task)
 	busy := task.running(qp.cw)
 	qp.panelFrame(c).Padding(u*2, u*3).Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
@@ -241,50 +230,6 @@ func (qp *quickPanel) running(c *mgo.Context) {
 			}
 		})
 	})
-}
-
-// quickPreset is one of the instruction templates offered with a selection.
-type quickPreset struct {
-	Label  string
-	Prompt string
-}
-
-// quickPresets fill the composer with a common instruction; the selection
-// itself is quoted when the task is submitted.
-var quickPresets = []quickPreset{
-	{"解释", "解释这段内容，说明它的含义和关键点。"},
-	{"翻译", "翻译这段内容：原文是中文就翻译成英文，否则翻译成中文。"},
-	{"总结", "总结这段内容的要点。"},
-}
-
-// modelSelector chooses the model the task runs with, for agents that have a
-// choice. ACP agents pick their own model through the protocol.
-func (qp *quickPanel) modelSelector(c *mgo.Context) {
-	refs := qp.cw.modelRefsForAgent(qp.agent)
-	if len(refs) == 0 {
-		return
-	}
-	cur := qp.effectiveModel()
-	opts := make([]kit.SearchSelectOption[string], 0, len(refs))
-	for _, ref := range refs {
-		opts = append(opts, kit.SearchSelectOption[string]{
-			Value: ref, Label: qp.cw.refLabel(ref), Leading: qp.cw.providerLeading(c, ref),
-		})
-	}
-	r := kit.SearchSelect(c, &cur, opts, kit.SearchSelectOptions[string]{
-		Label: "模型", Placeholder: "跟随 Agent", SearchPlaceholder: "搜索模型",
-		MinWidth: 150, MinHeight: 30,
-	})
-	r.Element.MaxWidth(200).MinWidth(0)
-	if r.Changed() {
-		qp.model = cur
-	}
-}
-
-// chooseAgent picks an agent and moves the bar into the compose panel.
-func (qp *quickPanel) chooseAgent(ref string) {
-	qp.setAgent(ref)
-	qp.showCompose()
 }
 
 // contextLabel says where the prompt's context came from.

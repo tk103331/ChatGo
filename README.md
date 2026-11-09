@@ -169,16 +169,15 @@ current_provider: "OpenAI"
 
 ### Quick Task Panel
 
-> The packaged app can install the `chatgo` command from **Settings → System → Command line** (a link in `~/.local/bin`).
+> The packaged app can install the `chatgo` command from **Settings → Quick task → Command line** (a link in `~/.local/bin`).
 
 A panel floating over every app that hands the current context to an agent:
 
-- **Selected text**: select text in Safari, Chrome, VS Code and the like, press the shortcut, and the panel quotes it into the composer. Pick an agent, type the instruction, press Enter.
-- **A folder**: select a folder in Finder (or copy one) and press the shortcut to use it as the working directory. You can also drop a folder on the panel, use its folder button, or run `chatgo .`.
-- **Auto popup** (experimental): turn on "show the panel after selecting text" in Settings → System to get a small agent strip next to the selection. It needs the macOS Accessibility permission; without it the shortcut and clipboard fallback still work.
-- **Presets**: after selecting text, fill the instruction with Explain / Translate / Summarize, or type your own.
-- **Model**: the panel picks the model for this task (ACP agents manage their own model through the protocol).
-- **Background**: tasks run without switching the main window, notify when done, and can be opened in the main window at any time. Turning on "new worktree" creates an isolated working tree first and runs the task in it.
+- **Selected text**: select text in Safari, Chrome, VS Code and the like, press the shortcut, and the panel quotes it into the composer. Pick an agent, type the instruction and press Enter.
+- **A folder**: select a folder in Finder (or copy one) and press the shortcut to use it as the working directory, pick another project in the panel, or run `chatgo .`.
+- **Auto popup** (experimental): turn on "show the panel after selecting text" in Settings → Quick task to get a small ask strip next to the selection. It needs the macOS Accessibility permission; without it the shortcut and clipboard fallback still work.
+- **Background**: tasks run without switching the main window, notify when done, and can be opened in the main window at any time.
+- The panel offers agent, project and model pickers; the model list follows the selected agent, and it has no preset or worktree controls. Choose which agents the panel shows under **Settings → Quick task → Agents in the panel**; leaving none chosen shows every agent.
 
 Command line and links:
 
@@ -197,16 +196,14 @@ quick_panel:
   auto_popup: false        # needs the Accessibility permission
   exclude_apps: []          # bundle IDs AutoPopup ignores
   min_chars: 2
-  favorites: []            # agent chips, empty shows every agent
   default_agent: ""
   background: true
-  default_worktree: false  # run in a new worktree
   clipboard_fallback: true
   explorer_menu: false     # Windows: folder context menu
   auto_copy_selection: false  # Windows: simulate Ctrl+C on the shortcut
 ```
 
-- **Windows**: turn on "add to the Explorer context menu" in Settings → System, then right-click a folder to open the panel. Turning on "copy the selection on the shortcut" (a simulated Ctrl+C that briefly uses the clipboard) skips the manual copy.
+- **Windows**: turn on "add to the Explorer context menu" in Settings → Quick task, then right-click a folder to open the panel. Turning on "copy the selection on the shortcut" (a simulated Ctrl+C that briefly uses the clipboard) skips the manual copy.
 - **Linux**: reads the X11 PRIMARY selection (needs `xclip`, `xsel` or `wl-clipboard`); auto popup is not supported yet. The rest works through the clipboard, drag and drop and the command line.
 - System-wide selection and Finder directory capture are fully supported on macOS only.
 

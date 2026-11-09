@@ -50,6 +50,9 @@ type ChatWindow struct {
 
 	winMu  sync.Mutex
 	window *mygo.Window
+	// mainDimmed records that the main window was made transparent for the
+	// quick panel, so closing the panel restores it.
+	mainDimmed bool
 	// dispatch runs a main-thread callback when there is no window yet, which
 	// is how tests drain the work postMain would otherwise drop.
 	dispatch func(func())
@@ -440,6 +443,11 @@ func (cw *ChatWindow) Show() {
 	})
 	mygo.App.OnWillQuit(func(e *mygo.QuitEvent) { cw.quitting = false })
 	mygo.App.OnActivate(func(hasVisibleWindows bool) {
+		// The quick panel is an overlay for other apps; activating the app to
+		// show it must not reopen the main window behind it.
+		if cw.quickPanelShowing() {
+			return
+		}
 		if !hasVisibleWindows {
 			cw.openNormal()
 		}

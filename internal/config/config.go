@@ -70,17 +70,18 @@ type QuickPanelConfig struct {
 	MinChars int `yaml:"min_chars,omitempty"`
 	// ExcludeApps lists bundle identifiers AutoPopup ignores.
 	ExcludeApps []string `yaml:"exclude_apps,omitempty"`
-	// Favorites lists agent references ("", "agent:Name", "acp:Name") shown
-	// as chips in the panel, in order. Empty shows every configured agent.
+	// Favorites lists the agent references shown as chips in the panel, in
+	// order. Empty shows every configured agent; the default agent is always
+	// shown and comes first.
 	Favorites []string `yaml:"favorites,omitempty"`
-	// DefaultAgent runs a task when the panel opens with a selection and
-	// the user presses Enter before choosing an agent.
+	// DefaultAgent is the agent a new task starts with; the panel's chips
+	// switch it, and its models become the model picker's choices.
 	DefaultAgent string `yaml:"default_agent,omitempty"`
 	// Background runs the task without switching the main window to the new
 	// conversation.
 	Background *bool `yaml:"background,omitempty"`
-	// DefaultWorktree starts the task in a new git worktree of the chosen
-	// directory. Reserved: the panel does not create worktrees yet.
+	// DefaultWorktree is kept for older configs. The panel no longer offers
+	// a worktree option, so it is ignored.
 	DefaultWorktree bool `yaml:"default_worktree,omitempty"`
 	// ClipboardFallback lets the panel take the selected text, or the
 	// picked directory, from the clipboard when Accessibility is not

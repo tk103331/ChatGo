@@ -20,13 +20,13 @@ import (
 // The quick panel's two shapes. The bar is a small, inactive strip next to a
 // selection; the compose panel takes the keyboard and runs a task.
 //
-// quickPanelHeight fits the whole compose panel: agent chips, presets, the
-// composer and the directory/worktree row, without clipping the last one.
+// quickPanelHeight fits the compose panel's context header, agent chips,
+// composer, and the project and model row.
 const (
 	quickBarWidth      = 380
 	quickBarHeight     = 52
 	quickPanelWidth    = 480
-	quickPanelHeight   = 320
+	quickPanelHeight   = 280
 	quickRunningHeight = 300
 )
 
@@ -67,7 +67,6 @@ type quickPanel struct {
 	agent     string
 	model     string
 	workspace string
-	worktree  bool
 	// selectionInDraft records that the draft already carries the quoted
 	// selection, so submit does not attach the same text twice.
 	selectionInDraft bool
@@ -135,6 +134,9 @@ func (qp *quickPanel) destroy() {
 	qp.win = nil
 	qp.mode = quickPanelHidden
 	qp.task = nil
+	// A destroyed panel cannot close itself later, so bring the main window
+	// back now instead of leaving it transparent.
+	qp.cw.restoreMainAfterQuickPanel()
 }
 
 // openQuickPanel is the global shortcut's action: show the panel, or hide it
@@ -228,9 +230,10 @@ func (qp *quickPanel) open() {
 		return
 	}
 	if qp.task != nil && qp.task.running(qp.cw) {
+		qp.cw.hideMainForQuickPanel()
 		qp.mode = quickPanelRunning
 		qp.resizeAndPlace(quickPanelWidth, quickRunningHeight)
-		qp.win.Show()
+		qp.showWindow(false)
 		qp.win.Invalidate()
 		return
 	}
@@ -313,8 +316,7 @@ func (qp *quickPanel) reset() {
 	qp.draft = ""
 	qp.task = nil
 	qp.agent = cfg.DefaultAgent
-	qp.model = qp.defaultModelRef(qp.agent)
-	qp.worktree = cfg.DefaultWorktree
+	qp.model = qp.keepModel(qp.agent)
 	qp.workspace = qp.cw.workspace
 	if qp.workspace == "" {
 		qp.workspace = qp.cw.fileRoot()
@@ -419,10 +421,11 @@ func (qp *quickPanel) showBar() {
 	if qp.win == nil {
 		return
 	}
+	qp.cw.hideMainForQuickPanel()
 	qp.mode = quickPanelBar
 	qp.focusInput = false
 	qp.resizeAndPlace(quickBarWidth, quickBarHeight)
-	qp.win.ShowInactive()
+	qp.showWindow(true)
 	qp.win.Invalidate()
 	qp.watchDismiss()
 	qp.scheduleBarHide()
@@ -449,12 +452,13 @@ func (qp *quickPanel) showCompose() {
 	if qp.win == nil {
 		return
 	}
+	qp.cw.hideMainForQuickPanel()
 	qp.prefillSelection()
 	qp.stopDismiss()
 	qp.mode = quickPanelCompose
 	qp.focusInput = true
 	qp.resizeAndPlace(quickPanelWidth, quickPanelHeight)
-	qp.win.Show()
+	qp.showWindow(false)
 	qp.win.Invalidate()
 }
 
@@ -462,20 +466,46 @@ func (qp *quickPanel) showRunning() {
 	if qp.win == nil {
 		return
 	}
+	qp.cw.hideMainForQuickPanel()
 	qp.stopDismiss()
 	qp.mode = quickPanelRunning
 	qp.resizeAndPlace(quickPanelWidth, quickRunningHeight)
-	qp.win.Show()
+	qp.showWindow(false)
 	qp.win.Invalidate()
+}
+
+// showWindow reveals the panel. Hiding is done by clearing the window rather
+// than by ordering it out alone, so showing it again must restore what the
+// hide cleared.
+func (qp *quickPanel) showWindow(inactive bool) {
+	if qp.win == nil {
+		return
+	}
+	qp.win.SetOpacity(1)
+	qp.win.SetIgnoreMouseEvents(false)
+	if inactive {
+		qp.win.ShowInactive()
+		return
+	}
+	qp.win.Show()
+}
+
+// hideWindow takes the panel off the screen and leaves its state hidden.
+func (qp *quickPanel) hideWindow() {
+	if qp.win == nil {
+		return
+	}
+	qp.win.SetIgnoreMouseEvents(true)
+	qp.win.SetOpacity(0)
+	qp.win.Hide()
 }
 
 func (qp *quickPanel) hide() {
 	qp.stopDismiss()
 	// A capture still in flight must not reopen the panel after it hides.
 	qp.seq++
-	if qp.win != nil {
-		qp.win.Hide()
-	}
+	qp.hideWindow()
+	qp.cw.restoreMainAfterQuickPanel()
 	// A finished task is read and dismissed; one still running is kept so
 	// the shortcut shows it again instead of starting over.
 	if qp.task == nil || !qp.task.running(qp.cw) {
@@ -508,6 +538,46 @@ func (qp *quickPanel) stopDismiss() {
 		qp.dismiss = nil
 		stop()
 	}
+}
+
+// hideMainForQuickPanel keeps the main window out of the way while the panel
+// is on screen. The panel is used over whichever app the user is in, so
+// showing it must never bring the full interface forward with it.
+//
+// The window is cleared rather than ordered out: mygo's Hide leaves the window
+// on screen on recent macOS, so hiding it visually and keeping it out of the
+// mouse's way is what actually works.
+func (cw *ChatWindow) hideMainForQuickPanel() {
+	cw.winMu.Lock()
+	w := cw.window
+	already := cw.mainDimmed
+	cw.mainDimmed = true
+	cw.winMu.Unlock()
+	if w == nil || w.IsDestroyed() || already || !w.IsVisible() {
+		return
+	}
+	w.SetIgnoreMouseEvents(true)
+	w.SetOpacity(0)
+}
+
+// restoreMainAfterQuickPanel brings back a main window the panel cleared.
+func (cw *ChatWindow) restoreMainAfterQuickPanel() {
+	cw.winMu.Lock()
+	w := cw.window
+	dimmed := cw.mainDimmed
+	cw.mainDimmed = false
+	cw.winMu.Unlock()
+	if !dimmed || w == nil || w.IsDestroyed() {
+		return
+	}
+	w.SetIgnoreMouseEvents(false)
+	w.SetOpacity(1)
+}
+
+// quickPanelShowing reports whether the panel is up, so activating the app for
+// the panel does not reopen the main window behind it.
+func (cw *ChatWindow) quickPanelShowing() bool {
+	return cw.quick != nil && cw.quick.mode != quickPanelHidden
 }
 
 func (qp *quickPanel) invalidate() {
@@ -547,41 +617,43 @@ func (qp *quickPanel) resizeAndPlace(width, height int) {
 	qp.win.SetPosition(x, y)
 }
 
-// agents lists the chips in display order: favorites first when configured,
-// otherwise the built-in chat and every enabled agent.
+// agents lists the panel's chips: the configured favorites in order, with the
+// default agent first. Without favorites every agent is shown.
 func (qp *quickPanel) agents() []quickAgentOption {
-	out := allQuickAgents(qp.cw.cfg)
+	all := allQuickAgents(qp.cw.cfg)
 	favorites := qp.cw.cfg.QuickPanel.Favorites
 	if len(favorites) == 0 {
-		return out
+		return all
 	}
-	byRef := make(map[string]quickAgentOption, len(out))
-	for _, o := range out {
-		byRef[o.Ref] = o
+	byRef := make(map[string]quickAgentOption, len(all))
+	for _, a := range all {
+		byRef[a.Ref] = a
 	}
-	var ordered []quickAgentOption
+	var out []quickAgentOption
 	seen := map[string]bool{}
 	push := func(ref string) {
 		if seen[ref] {
 			return
 		}
-		if o, ok := byRef[ref]; ok {
+		if a, ok := byRef[ref]; ok {
 			seen[ref] = true
-			ordered = append(ordered, o)
+			out = append(out, a)
 		}
 	}
+	// The default agent always has a chip, so a task never starts with an
+	// agent the panel cannot show.
 	push(qp.cw.cfg.QuickPanel.DefaultAgent)
 	for _, ref := range favorites {
 		push(ref)
 	}
-	if len(ordered) == 0 {
-		return out
+	if len(out) == 0 {
+		return all
 	}
-	return ordered
+	return out
 }
 
-// allQuickAgents lists the agents a panel can run: the built-in chat, every
-// custom agent and every enabled ACP agent.
+// allQuickAgents lists the built-in chat, every custom agent and every
+// enabled ACP agent.
 func allQuickAgents(cfg *config.Config) []quickAgentOption {
 	out := []quickAgentOption{{Ref: "", Name: chatAgentName}}
 	for _, a := range cfg.Agents {
@@ -599,17 +671,7 @@ func allQuickAgents(cfg *config.Config) []quickAgentOption {
 	return out
 }
 
-// visibleAgents caps the chips; limit 0 means all of them.
-func (qp *quickPanel) visibleAgents(limit int) []quickAgentOption {
-	all := qp.agents()
-	if limit > 0 && len(all) > limit {
-		return all[:limit]
-	}
-	return all
-}
-
-// agentChipLeading draws an agent's mark for a chip, in the panel or in
-// settings.
+// agentChipLeading draws an agent's mark for a chip.
 func (cw *ChatWindow) agentChipLeading(c *mgo.Context, a quickAgentOption) func() {
 	switch {
 	case strings.HasPrefix(a.Ref, "acp:"):
@@ -639,7 +701,8 @@ func (cw *ChatWindow) modelRefsForAgent(agent string) []string {
 	return cw.allModelRefs()
 }
 
-// defaultModelRef is the model the panel shows before the user picks one.
+// defaultModelRef is the model a new task runs with: the current one for the
+// built-in chat, otherwise the agent's first model.
 func (qp *quickPanel) defaultModelRef(agent string) string {
 	refs := qp.cw.modelRefsForAgent(agent)
 	if len(refs) == 0 {
@@ -653,6 +716,23 @@ func (qp *quickPanel) defaultModelRef(agent string) string {
 	return refs[0]
 }
 
+// keepModel keeps a model the user picked while the agent still allows it,
+// so starting another task does not silently go back to the default.
+func (qp *quickPanel) keepModel(agent string) string {
+	if qp.model != "" && containsStr(qp.cw.modelRefsForAgent(agent), qp.model) {
+		return qp.model
+	}
+	return qp.defaultModelRef(agent)
+}
+
+// setModel switches the model the next task runs with.
+func (qp *quickPanel) setModel(ref string) {
+	if ref == "" || ref == qp.model {
+		return
+	}
+	qp.model = ref
+}
+
 // setAgent switches the agent and follows its default model.
 func (qp *quickPanel) setAgent(ref string) {
 	if qp.agent == ref {
@@ -660,15 +740,6 @@ func (qp *quickPanel) setAgent(ref string) {
 	}
 	qp.agent = ref
 	qp.model = qp.defaultModelRef(ref)
-}
-
-// effectiveModel is the reference the selector shows.
-func (qp *quickPanel) effectiveModel() string {
-	refs := qp.cw.modelRefsForAgent(qp.agent)
-	if qp.model != "" && containsStr(refs, qp.model) {
-		return qp.model
-	}
-	return qp.defaultModelRef(qp.agent)
 }
 
 // prefillSelection puts the captured selection into an empty draft as a
@@ -709,7 +780,7 @@ func (qp *quickPanel) submit() {
 		qp.cw.toast("工作目录不存在："+qp.workspace, mcore.SeverityError)
 		return
 	}
-	task := qp.cw.quickStartTask(prompt, qp.agent, qp.workspace, qp.model, qp.worktree)
+	task := qp.cw.quickStartTask(prompt, qp.agent, qp.workspace, qp.model, false)
 	if task == nil {
 		return
 	}
@@ -726,22 +797,22 @@ func (qp *quickPanel) newTask() {
 		return
 	}
 	qp.stopDismiss()
-	qp.win.Hide()
+	qp.hideWindow()
 	qp.seq++
 	qp.reset()
 	qp.mode = quickPanelHidden
 	qp.prepare()
 }
 
-// pickWorkspace lets the user choose a directory from a native dialog. The
-// dialog is app-modal rather than parented to the main window, which may be
-// hidden while the panel runs.
+// pickWorkspace lets the user choose a project directory from a native
+// dialog. The dialog is app-modal rather than parented to the main window,
+// which may be hidden while the panel runs.
 func (qp *quickPanel) pickWorkspace() {
 	qp.suppressBlur = true
 	time.AfterFunc(2*time.Minute, func() { qp.cw.postMain(func() { qp.suppressBlur = false }) })
 	go func() {
 		paths, err := mygo.Dialog.Open(mygo.OpenDialogOptions{
-			Title:     "选择工作目录",
+			Title:     "选择项目",
 			Directory: true,
 		})
 		qp.cw.postMain(func() {
@@ -753,6 +824,13 @@ func (qp *quickPanel) pickWorkspace() {
 			qp.showCompose()
 		})
 	}()
+}
+
+// enterMain closes the panel and brings up the full interface, so a task can
+// be continued or a new conversation started there.
+func (qp *quickPanel) enterMain() {
+	qp.hide()
+	qp.cw.postMain(func() { qp.cw.openNormal() })
 }
 
 // openInMain shows the task's conversation in the main window. It hands the
@@ -819,7 +897,11 @@ func (cw *ChatWindow) handleLaunchArgs(args []string, wd string) {
 		}
 	}
 	if dir == "" && prompt == "" {
-		cw.openNormal()
+		// A service or URL launch can arrive with no arguments of its own;
+		// the panel it queued is the whole interface it wants.
+		if cw.pendingQuick == nil && !cw.quickPanelShowing() {
+			cw.openNormal()
+		}
 		return
 	}
 	cw.openQuickAt(dir, prompt)
