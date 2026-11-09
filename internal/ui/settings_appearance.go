@@ -18,52 +18,54 @@ func (cw *ChatWindow) shortcutTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Column(c).Gap(u * 2).MaxWidth(720).Children(func() {
-		mgo.Text(c, "快捷键").FontWeight(600)
-		if cw.settings.shortcut.err != "" {
-			mgo.Text(c, cw.settings.shortcut.err).TextColor(k.Danger).FontSize(small)
-		}
-		mgo.Text(c, "快捷对话（紧凑窗口）").FontSize(small).TextColor(k.TextMuted)
-		f := &cw.settings.shortcut
-		kit.TextInput(c, &f.value, kit.TextInputOptions{
-			Label: "快捷对话快捷键", Placeholder: defaultQuickShortcut,
-		})
-		mgo.Text(c, "示例：CmdOrCtrl+Shift+Space、Alt+Space、CmdOrCtrl+Shift+K").
-			FontSize(small).TextColor(k.TextMuted)
-		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
-				cw.cfg.QuickChatShortcut = strings.TrimSpace(f.value)
-				cw.saveQuickShortcut()
-				cw.toast("快捷键已更新", mcore.SeveritySuccess)
+	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		mgo.Column(c).Gap(u * 2).MaxWidth(720).Children(func() {
+			mgo.Text(c, "快捷键").FontWeight(600)
+			if cw.settings.shortcut.err != "" {
+				mgo.Text(c, cw.settings.shortcut.err).TextColor(k.Danger).FontSize(small)
 			}
-			if kit.Button(c, "恢复默认", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
-				f.value = defaultQuickShortcut
-				cw.cfg.QuickChatShortcut = defaultQuickShortcut
-				cw.saveQuickShortcut()
-				cw.toast("已恢复默认快捷键", mcore.SeveritySuccess)
-			}
-		})
+			mgo.Text(c, "快捷对话（紧凑窗口）").FontSize(small).TextColor(k.TextMuted)
+			f := &cw.settings.shortcut
+			kit.TextInput(c, &f.value, kit.TextInputOptions{
+				Label: "快捷对话快捷键", Placeholder: defaultQuickShortcut,
+			})
+			mgo.Text(c, "示例：CmdOrCtrl+Shift+Space、Alt+Space、CmdOrCtrl+Shift+K").
+				FontSize(small).TextColor(k.TextMuted)
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
+					cw.cfg.QuickChatShortcut = strings.TrimSpace(f.value)
+					cw.saveQuickShortcut()
+					cw.toast("快捷键已更新", mcore.SeveritySuccess)
+				}
+				if kit.Button(c, "恢复默认", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+					f.value = defaultQuickShortcut
+					cw.cfg.QuickChatShortcut = defaultQuickShortcut
+					cw.saveQuickShortcut()
+					cw.toast("已恢复默认快捷键", mcore.SeveritySuccess)
+				}
+			})
 
-		mgo.Text(c, "快捷任务浮窗").FontSize(small).TextColor(k.TextMuted)
-		if f.panelErr != "" {
-			mgo.Text(c, f.panelErr).TextColor(k.Danger).FontSize(small)
-		}
-		kit.TextInput(c, &f.panelValue, kit.TextInputOptions{
-			Label: "快捷任务快捷键", Placeholder: defaultQuickPanelShortcut,
-		})
-		mgo.Text(c, "打开快捷任务浮窗；与上面的紧凑窗口快捷键相互独立").
-			FontSize(small).TextColor(k.TextMuted)
-		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
-				cw.savePanelShortcut()
-				cw.toast("快捷任务快捷键已更新", mcore.SeveritySuccess)
+			mgo.Text(c, "快捷任务浮窗").FontSize(small).TextColor(k.TextMuted)
+			if f.panelErr != "" {
+				mgo.Text(c, f.panelErr).TextColor(k.Danger).FontSize(small)
 			}
-			if kit.Button(c, "恢复默认", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
-				f.panelValue = defaultQuickPanelShortcut
-				cw.cfg.QuickPanel.Shortcut = defaultQuickPanelShortcut
-				cw.savePanelShortcut()
-				cw.toast("已恢复默认快捷键", mcore.SeveritySuccess)
-			}
+			kit.TextInput(c, &f.panelValue, kit.TextInputOptions{
+				Label: "快捷任务快捷键", Placeholder: defaultQuickPanelShortcut,
+			})
+			mgo.Text(c, "打开快捷任务浮窗；与上面的紧凑窗口快捷键相互独立").
+				FontSize(small).TextColor(k.TextMuted)
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
+					cw.savePanelShortcut()
+					cw.toast("快捷任务快捷键已更新", mcore.SeveritySuccess)
+				}
+				if kit.Button(c, "恢复默认", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+					f.panelValue = defaultQuickPanelShortcut
+					cw.cfg.QuickPanel.Shortcut = defaultQuickPanelShortcut
+					cw.savePanelShortcut()
+					cw.toast("已恢复默认快捷键", mcore.SeveritySuccess)
+				}
+			})
 		})
 	})
 }
@@ -74,31 +76,33 @@ func (cw *ChatWindow) appearanceTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
-		mgo.Text(c, "外观").FontWeight(600)
-		mgo.Text(c, "主题模式").FontSize(small).TextColor(k.TextMuted)
-		mode := int(cw.themeMode)
-		kit.SegmentedControl(c, &mode, []kit.Segment{
-			{Label: "跟随系统"}, {Label: "浅色"}, {Label: "深色"},
-		}, kit.SegmentedControlOptions{Label: "主题模式", Equal: true})
-		if mcore.Mode(mode) != cw.themeMode {
-			cw.themeMode = mcore.Mode(mode)
-			cw.saveAppearance()
-		}
-		mgo.Text(c, "颜色主题").FontWeight(600)
-		mgo.Text(c, "每种颜色主题都提供浅色与深色两套配色，随「主题模式」自动切换。").
-			FontSize(small).TextColor(k.TextMuted)
-		mgo.Column(c).Gap(u * 2).FillWidth().Children(func() {
-			for i := 0; i < len(mtheme.Themes); i += 3 {
-				mgo.Row(c).Gap(u * 2).FillWidth().AlignItems(mgo.Start).Children(func() {
-					for j := i; j < i+3 && j < len(mtheme.Themes); j++ {
-						cw.colorThemeCard(c, mtheme.Themes[j])
-					}
-					for j := len(mtheme.Themes); j < i+3; j++ {
-						mgo.Box(c).Grow(1)
-					}
-				})
+	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
+			mgo.Text(c, "外观").FontWeight(600)
+			mgo.Text(c, "主题模式").FontSize(small).TextColor(k.TextMuted)
+			mode := int(cw.themeMode)
+			kit.SegmentedControl(c, &mode, []kit.Segment{
+				{Label: "跟随系统"}, {Label: "浅色"}, {Label: "深色"},
+			}, kit.SegmentedControlOptions{Label: "主题模式", Equal: true})
+			if mcore.Mode(mode) != cw.themeMode {
+				cw.themeMode = mcore.Mode(mode)
+				cw.saveAppearance()
 			}
+			mgo.Text(c, "颜色主题").FontWeight(600)
+			mgo.Text(c, "每种颜色主题都提供浅色与深色两套配色，随「主题模式」自动切换。").
+				FontSize(small).TextColor(k.TextMuted)
+			mgo.Column(c).Gap(u * 2).FillWidth().Children(func() {
+				for i := 0; i < len(mtheme.Themes); i += 3 {
+					mgo.Row(c).Gap(u * 2).FillWidth().AlignItems(mgo.Start).Children(func() {
+						for j := i; j < i+3 && j < len(mtheme.Themes); j++ {
+							cw.colorThemeCard(c, mtheme.Themes[j])
+						}
+						for j := len(mtheme.Themes); j < i+3; j++ {
+							mgo.Box(c).Grow(1)
+						}
+					})
+				}
+			})
 		})
 	})
 }
@@ -167,34 +171,35 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
-		mgo.Text(c, "系统").FontWeight(600)
-		if mgo.Switch(c, &cw.cfg.ShowTrayIcon).Label("显示托盘图标").Changed() {
-			cw.saveSystemSettings()
-		}
-		mgo.Text(c, "在系统托盘 / 菜单栏显示 ChatGo 图标。点击图标打开程序，右键菜单可快速新建会话并进入最近会话。").
-			FontSize(small).TextColor(k.TextMuted)
-		if mgo.Switch(c, &cw.cfg.RunInBackground).Label("允许后台运行（关闭窗口时最小化到托盘）").Changed() {
-			cw.saveSystemSettings()
-		}
-		mgo.Text(c, "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行（自动启用托盘图标）。").
-			FontSize(small).TextColor(k.TextMuted)
-		cw.quickPanelSection(c)
-		mgo.Text(c, "更新").FontWeight(600)
-		mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-			if kit.Button(c, "检查更新", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
-				updater.CheckForUpdates()
+	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		mgo.Column(c).Gap(u * 2).MaxWidth(560).Children(func() {
+			mgo.Text(c, "系统").FontWeight(600)
+			if kit.SwitchRow(c, &cw.cfg.ShowTrayIcon, "显示托盘图标", kit.SwitchRowOptions{
+				Hint: "在系统托盘 / 菜单栏显示 ChatGo 图标。点击图标打开程序，右键菜单可快速新建会话并进入最近会话。",
+			}).Changed() {
+				cw.saveSystemSettings()
 			}
-			mgo.Text(c, "通过 MyGo Updater 从官方发布自动更新，仅在打包安装后的应用中可用。").
-				FontSize(small).TextColor(k.TextMuted)
-		})
-		mgo.Text(c, "关于").FontWeight(600)
-		mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-			mgo.Icon(c, assets.BrandMark()).Size(48, 48).TextColor(k.Accent)
-			mgo.Column(c).Gap(u / 2).Children(func() {
-				mgo.Text(c, "ChatGo").FontWeight(600)
-				mgo.Text(c, "版本 "+cw.appVersion()).FontSize(small).TextColor(k.TextMuted)
-				mgo.Text(c, "MyGo 原生 UI · MIT 许可").FontSize(small).TextColor(k.TextMuted)
+			if kit.SwitchRow(c, &cw.cfg.RunInBackground, "允许后台运行（关闭窗口时最小化到托盘）", kit.SwitchRowOptions{
+				Hint: "关闭窗口时不退出程序，而是隐藏到托盘继续后台运行（自动启用托盘图标）。",
+			}).Changed() {
+				cw.saveSystemSettings()
+			}
+			mgo.Text(c, "更新").FontWeight(600)
+			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+				if kit.Button(c, "检查更新", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+					updater.CheckForUpdates()
+				}
+				mgo.Text(c, "通过 MyGo Updater 从官方发布自动更新，仅在打包安装后的应用中可用。").
+					FontSize(small).TextColor(k.TextMuted)
+			})
+			mgo.Text(c, "关于").FontWeight(600)
+			mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+				mgo.Icon(c, assets.BrandMark()).Size(48, 48).TextColor(k.Accent)
+				mgo.Column(c).Gap(u / 2).Children(func() {
+					mgo.Text(c, "ChatGo").FontWeight(600)
+					mgo.Text(c, "版本 "+cw.appVersion()).FontSize(small).TextColor(k.TextMuted)
+					mgo.Text(c, "MyGo 原生 UI · MIT 许可").FontSize(small).TextColor(k.TextMuted)
+				})
 			})
 		})
 	})

@@ -15,6 +15,16 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 )
 
+// quickPanelTab is the quick task panel's own settings page.
+func (cw *ChatWindow) quickPanelTab(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	mgo.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+		mgo.Column(c).Gap(u * 2).MaxWidth(640).Children(func() {
+			cw.quickPanelSection(c)
+		})
+	})
+}
+
 // quickPanelSection configures the system-wide quick task panel.
 func (cw *ChatWindow) quickPanelSection(c *mgo.Context) {
 	k := mcore.Tokens(c)
@@ -27,20 +37,20 @@ func (cw *ChatWindow) quickPanelSection(c *mgo.Context) {
 		mgo.Text(c, "在任意应用里按 "+cw.quickPanelShortcut()+
 			" 打开浮窗：自动带入选中的文本、剪贴板里的目录或当前工作区，选一个 Agent 就能直接执行。").
 			FontSize(small).TextColor(k.TextMuted)
-		if mgo.Switch(c, qp.Enabled).Label("启用浮窗（替代原来的紧凑窗口）").Changed() {
+		if kit.SwitchRow(c, qp.Enabled, "启用浮窗（替代原来的紧凑窗口）", kit.SwitchRowOptions{}).Changed() {
 			cw.applyQuickPanelSetting()
 		}
 		if !qp.IsEnabled() {
 			return
 		}
-		if mgo.Switch(c, qp.Background).Label("后台执行，不切换主窗口").Changed() {
+		if kit.SwitchRow(c, qp.Background, "后台执行，不切换主窗口", kit.SwitchRowOptions{}).Changed() {
 			_ = config.SaveConfig(cw.cfg)
 		}
-		if mgo.Switch(c, qp.ClipboardFallback).Label("没有辅助功能权限时读取剪贴板").Changed() {
+		if kit.SwitchRow(c, qp.ClipboardFallback, "没有辅助功能权限时读取剪贴板", kit.SwitchRowOptions{}).Changed() {
 			_ = config.SaveConfig(cw.cfg)
 		}
 		if runtime.GOOS == "darwin" {
-			if mgo.Switch(c, &qp.AutoPopup).Label("选中文本后自动弹出浮窗（实验）").Changed() {
+			if kit.SwitchRow(c, &qp.AutoPopup, "选中文本后自动弹出浮窗（实验）", kit.SwitchRowOptions{}).Changed() {
 				cw.applyQuickPanelSetting()
 			}
 			mgo.Text(c, "自动弹出需要辅助功能权限；未授权时仍可用上面的快捷键。").
@@ -59,11 +69,11 @@ func (cw *ChatWindow) quickPanelSection(c *mgo.Context) {
 		}
 		cw.quickDefaultAgentRow(c)
 		cw.quickFavoritesRow(c)
-		if mgo.Switch(c, &qp.DefaultWorktree).Label("默认在新建 worktree 中执行").Changed() {
+		if kit.SwitchRow(c, &qp.DefaultWorktree, "默认在新建 worktree 中执行", kit.SwitchRowOptions{}).Changed() {
 			_ = config.SaveConfig(cw.cfg)
 		}
 		if explorerMenuSupported() {
-			if mgo.Switch(c, &qp.ExplorerMenu).Label("添加到资源管理器右键菜单").Changed() {
+			if kit.SwitchRow(c, &qp.ExplorerMenu, "添加到资源管理器右键菜单", kit.SwitchRowOptions{}).Changed() {
 				if err := setExplorerMenu(qp.ExplorerMenu); err != nil {
 					cw.toast("右键菜单更新失败："+err.Error(), mcore.SeverityError)
 				}
@@ -71,7 +81,7 @@ func (cw *ChatWindow) quickPanelSection(c *mgo.Context) {
 			}
 		}
 		if runtime.GOOS == "windows" {
-			if mgo.Switch(c, &qp.AutoCopySelection).Label("按快捷键时自动复制当前选区").Changed() {
+			if kit.SwitchRow(c, &qp.AutoCopySelection, "按快捷键时自动复制当前选区", kit.SwitchRowOptions{}).Changed() {
 				_ = config.SaveConfig(cw.cfg)
 			}
 			mgo.Text(c, "会模拟 Ctrl+C 并尽量还原剪贴板文本；剪贴板里的图片或富文本可能被替换。").

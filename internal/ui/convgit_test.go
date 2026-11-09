@@ -753,9 +753,10 @@ func TestSidebarOrderIgnoresActivity(t *testing.T) {
 		{ID: "mid", Title: "m", Workspace: projB, CreatedAt: now.Add(-time.Hour)},
 		{ID: "oldest", Title: "o", Workspace: projA, CreatedAt: now.Add(-2 * time.Hour)},
 	}
-	// A has one tree, so it draws only its project header; B has two, so its
-	// project header is followed by a header per tree, main first.
-	want := []string{projA, projB, projB, wtB}
+	// Every project with sessions labels its trees, even when it has only
+	// one: A draws its project header plus its tree header; B's project
+	// header is followed by a header per tree, main first.
+	want := []string{projA, projA, projB, projB, wtB}
 	if got := headerOrder(cw.groupedConvRows()); !equalStrings(got, want) {
 		t.Fatalf("headers are %v, want the configured order %v", got, want)
 	}

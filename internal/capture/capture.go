@@ -47,6 +47,8 @@ const (
 	SourceClipboard
 	// SourcePrimary read the X11 primary selection.
 	SourcePrimary
+	// SourceService came from a macOS Services menu command.
+	SourceService
 )
 
 // Selection is text selected in another application.

@@ -8,9 +8,6 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 )
 
-// settingsExperimentalTab is the index of the 实验 tab in the settings page.
-const settingsExperimentalTab = 6
-
 // withoutRTK puts an empty directory on PATH, so the probe finds no rtk
 // however the machine running the test is set up.
 func withoutRTK(t *testing.T) {
@@ -144,7 +141,7 @@ func TestSettingsExperimentalTabHoldsBothFeatures(t *testing.T) {
 func TestSystemTabDropsCheckpoint(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	cw.settings.tab = settingsExperimentalTab + 1
+	cw.settings.tab = settingsSystemTab
 	tr := mgo.NewTester(cw.view, 1000, 700)
 	for range 6 {
 		tr.Frame()
@@ -161,7 +158,10 @@ func TestSystemTabDropsCheckpoint(t *testing.T) {
 func TestSettingsTabIndexesAreStable(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	for idx, want := range map[int]string{0: "模型", 1: "工具", 2: "ACP", 4: "快捷键", 5: "外观"} {
+	for idx, want := range map[int]string{
+		settingsModelsTab: "模型", settingsToolsTab: "工具", settingsACPTab: "ACP",
+		settingsShortcutsTab: "快捷键", settingsAppearanceTab: "外观",
+	} {
 		cw.settings.tab = idx
 		tr := mgo.NewTester(cw.view, 1000, 700)
 		for range 4 {

@@ -68,7 +68,7 @@ func (cw *ChatWindow) rtkSection(c *mgo.Context) {
 			FontSize(small).TextColor(k.TextMuted)
 
 		on := cw.cfg.RTKEnabled
-		if mgo.Switch(c, &on).Label("启用 RTK 压缩命令输出").Changed() {
+		if kit.SwitchRow(c, &on, "启用 RTK 压缩命令输出", kit.SwitchRowOptions{}).Changed() {
 			cw.setRTKEnabled(on)
 		}
 

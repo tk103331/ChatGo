@@ -19,11 +19,14 @@ import (
 
 // The quick panel's two shapes. The bar is a small, inactive strip next to a
 // selection; the compose panel takes the keyboard and runs a task.
+//
+// quickPanelHeight fits the whole compose panel: agent chips, presets, the
+// composer and the directory/worktree row, without clipping the last one.
 const (
 	quickBarWidth      = 380
 	quickBarHeight     = 52
 	quickPanelWidth    = 480
-	quickPanelHeight   = 278
+	quickPanelHeight   = 320
 	quickRunningHeight = 300
 )
 
@@ -65,6 +68,9 @@ type quickPanel struct {
 	model     string
 	workspace string
 	worktree  bool
+	// selectionInDraft records that the draft already carries the quoted
+	// selection, so submit does not attach the same text twice.
+	selectionInDraft bool
 
 	focusInput   bool
 	suppressBlur bool
@@ -211,6 +217,13 @@ func (qp *quickPanel) open() {
 		return
 	}
 	if qp.win.IsVisible() {
+		if qp.mode == quickPanelBar {
+			// The bar is only a preview; the shortcut opens the input panel
+			// with the selection already captured, rather than hiding it and
+			// making the user press again.
+			qp.showCompose()
+			return
+		}
 		qp.hide()
 		return
 	}
@@ -223,6 +236,54 @@ func (qp *quickPanel) open() {
 	}
 	qp.reset()
 	qp.prepare()
+}
+
+// openQuickSelection shows the panel with text a system integration captured,
+// such as the "向 ChatGo 提问" Service, quoted in the composer. It queues the
+// request when the window does not exist yet, so a service that launched the
+// app still opens the panel.
+func (cw *ChatWindow) openQuickSelection(text string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return
+	}
+	if !cw.hasUI() {
+		cw.pendingQuick = &quickLaunch{Text: text}
+		return
+	}
+	cw.postMain(func() {
+		if cw.quick == nil {
+			cw.quick = newQuickPanel(cw)
+			cw.quick.create()
+		}
+		if cw.quick == nil {
+			return
+		}
+		cw.quick.openSelection(capture.Selection{Text: text, Source: capture.SourceService})
+	})
+}
+
+// openSelection shows the compose panel with sel already captured, as the
+// Services menu integration asks.
+func (qp *quickPanel) openSelection(sel capture.Selection) {
+	if qp.win == nil {
+		qp.create()
+	}
+	if qp.win == nil {
+		return
+	}
+	qp.showSelection(sel)
+	qp.showCompose()
+}
+
+// showSelection fills the panel with a captured selection, leaving the window
+// alone so the state can be checked without one.
+func (qp *quickPanel) showSelection(sel capture.Selection) {
+	qp.reset()
+	qp.selection = sel
+	qp.hasSelection = true
+	qp.seq++
+	qp.prefillSelection()
 }
 
 // openAt shows the panel with a directory and a prompt already filled, as a
@@ -248,6 +309,7 @@ func (qp *quickPanel) reset() {
 	cfg := qp.cw.cfg.QuickPanel
 	qp.selection = capture.Selection{}
 	qp.hasSelection = false
+	qp.selectionInDraft = false
 	qp.draft = ""
 	qp.task = nil
 	qp.agent = cfg.DefaultAgent
@@ -387,6 +449,7 @@ func (qp *quickPanel) showCompose() {
 	if qp.win == nil {
 		return
 	}
+	qp.prefillSelection()
 	qp.stopDismiss()
 	qp.mode = quickPanelCompose
 	qp.focusInput = true
@@ -608,21 +671,43 @@ func (qp *quickPanel) effectiveModel() string {
 	return qp.defaultModelRef(qp.agent)
 }
 
-// submit turns the draft and the captured context into a task.
-func (qp *quickPanel) submit() {
+// prefillSelection puts the captured selection into an empty draft as a
+// quote block, so the user sees the context and can type the instruction
+// around it. The bar and the shortcut both come through here.
+func (qp *quickPanel) prefillSelection() {
+	if !qp.hasSelection || strings.TrimSpace(qp.draft) != "" {
+		return
+	}
+	if q := capture.Quote(qp.selection.Text, 6000); q != "" {
+		qp.draft = q
+		qp.selectionInDraft = true
+	}
+}
+
+// prompt combines the draft with the selection, unless the draft already
+// carries the quoted selection.
+func (qp *quickPanel) prompt() string {
 	text := strings.TrimSpace(qp.draft)
 	if text == "" {
+		return ""
+	}
+	if qp.hasSelection && !qp.selectionInDraft {
+		if q := capture.Quote(qp.selection.Text, 6000); q != "" {
+			return text + "\n\n" + q
+		}
+	}
+	return text
+}
+
+// submit turns the draft and the captured context into a task.
+func (qp *quickPanel) submit() {
+	prompt := qp.prompt()
+	if prompt == "" {
 		return
 	}
 	if qp.workspace != "" && !capture.ExistingDir(qp.workspace) {
 		qp.cw.toast("工作目录不存在："+qp.workspace, mcore.SeverityError)
 		return
-	}
-	prompt := text
-	if qp.hasSelection {
-		if q := capture.Quote(qp.selection.Text, 6000); q != "" {
-			prompt = text + "\n\n" + q
-		}
 	}
 	task := qp.cw.quickStartTask(prompt, qp.agent, qp.workspace, qp.model, qp.worktree)
 	if task == nil {
@@ -630,6 +715,7 @@ func (qp *quickPanel) submit() {
 	}
 	qp.task = task
 	qp.draft = ""
+	qp.selectionInDraft = false
 	qp.showRunning()
 }
 
@@ -759,6 +845,8 @@ func (cw *ChatWindow) openQuickAt(dir, prompt string) {
 type quickLaunch struct {
 	Dir    string
 	Prompt string
+	// Text is a selection captured by a service, quoted when the panel opens.
+	Text string
 }
 
 // HandleQuickURL opens the panel for chatgo://quick?dir=…&q=… links.

@@ -258,6 +258,7 @@ func (cw *ChatWindow) skillViewer(c *mgo.Context) {
 				mgo.Text(c, s.Name).
 					FontSize(mcore.FontSize(c, mtheme.H3Size)).FontWeight(600).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 				on := cw.skillEnabled(s.ID)
+				mgo.Text(c, "启用").FontSize(caption).TextColor(k.TextMuted).Shrink(0)
 				if mgo.Switch(c, &on).Label("启用").Changed() {
 					cw.setSkillEnabled(s.ID, on)
 				}

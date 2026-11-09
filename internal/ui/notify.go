@@ -97,7 +97,14 @@ func (cw *ChatWindow) notifyUser(title, body string) {
 // conversation. The current conversation with a focused window already shows
 // its dialog, so nothing is sent then; otherwise the notice leads back to it.
 func (cw *ChatWindow) notifyAttention(convID, label, detail string) {
-	focused := cw.window != nil && cw.window.IsFocused()
+	if cw.window == nil {
+		// Without a window there is no UI thread to notify from, and mygo's
+		// notification APIs wait on the main loop: calling them from a
+		// background goroutine (tests, headless runs) would block forever.
+		// There is also no view to lead the user back to, so drop the notice.
+		return
+	}
+	focused := cw.window.IsFocused()
 	viewing := focused && cw.section == sectionChat && cw.mode == modeChat &&
 		convID != "" && cw.cur != nil && cw.cur.ID == convID
 	if viewing {

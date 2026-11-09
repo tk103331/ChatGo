@@ -9,7 +9,19 @@ import (
 	mcore "chatgo/internal/ui/uikit"
 )
 
-const settingsWebTab = 8
+// Settings tab indexes, in the order settingsPage lists them.
+const (
+	settingsModelsTab = iota
+	settingsToolsTab
+	settingsACPTab
+	settingsChannelsTab
+	settingsShortcutsTab
+	settingsQuickTab
+	settingsAppearanceTab
+	settingsExperimentalTab
+	settingsSystemTab
+	settingsWebTab
+)
 
 type settingsState struct {
 	tab         int
@@ -143,6 +155,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
 			{Label: "渠道", Panel: func() { cw.channelTab(c) }},
 			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
+			{Label: "快捷任务", Panel: func() { cw.quickPanelTab(c) }},
 			{Label: "外观", Panel: func() { cw.appearanceTab(c) }},
 			{Label: "实验", Panel: func() { cw.experimentalTab(c) }},
 			{Label: "系统", Panel: func() { cw.systemTab(c) }},

@@ -103,35 +103,44 @@ func (qp *quickPanel) compose(c *mgo.Context) {
 			}
 		})
 
-		mgo.Row(c).FillWidth().Wrap().Gap(u).Children(func() {
-			for _, a := range qp.visibleAgents(8) {
-				ref := a.Ref
-				variant := kit.Ghost
-				if ref == qp.agent {
-					variant = kit.Secondary
-				}
-				if kit.Button(c, a.Name, kit.ButtonOptions{
-					Variant: variant,
-					Leading: qp.cw.agentChipLeading(c, a),
-				}).Clicked() {
-					qp.setAgent(ref)
-				}
-			}
+		// The agent chips and the model choice share one row: the chips
+		// scroll sideways so the model keeps its place at the row's end, even
+		// when many agents are shown.
+		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+			mgo.ScrollHorizontal(c).Grow(1).MinWidth(0).Children(func() {
+				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+					for _, a := range qp.visibleAgents(8) {
+						ref := a.Ref
+						variant := kit.Ghost
+						if ref == qp.agent {
+							variant = kit.Secondary
+						}
+						if kit.Button(c, a.Name, kit.ButtonOptions{
+							Variant: variant,
+							Leading: qp.cw.agentChipLeading(c, a),
+						}).Clicked() {
+							qp.setAgent(ref)
+						}
+					}
+				})
+			})
+			qp.modelSelector(c)
 		})
 
-		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-			if qp.hasSelection {
+		if qp.hasSelection {
+			mgo.Row(c).FillWidth().Wrap().Gap(u).Children(func() {
 				for _, p := range quickPresets {
 					p := p
 					if kit.Button(c, p.Label, kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 						qp.draft = p.Prompt
+						// The template replaces the quote block; submit
+						// attaches the selection again.
+						qp.selectionInDraft = false
 						qp.focusInput = true
 					}
 				}
-			}
-			mgo.Box(c).Grow(1)
-			qp.modelSelector(c)
-		})
+			})
+		}
 
 		in := composer(c, &qp.draft, composerOptions{
 			Placeholder: qp.placeholder(),
@@ -167,7 +176,7 @@ func (qp *quickPanel) compose(c *mgo.Context) {
 				qp.pickWorkspace()
 			}
 			mgo.Box(c).Grow(1)
-			mgo.Switch(c, &qp.worktree).Label("新建 worktree")
+			kit.SwitchRow(c, &qp.worktree, "新建 worktree", kit.SwitchRowOptions{Compact: true})
 		})
 	})
 }
@@ -285,6 +294,8 @@ func (qp *quickPanel) contextLabel() string {
 		return "来自剪贴板"
 	case qp.hasSelection && qp.selection.Source == capture.SourcePrimary:
 		return "来自选中文本"
+	case qp.hasSelection && qp.selection.Source == capture.SourceService:
+		return "来自服务"
 	case qp.hasSelection && qp.selection.App != "":
 		return "来自 " + qp.selection.App
 	case qp.hasSelection:

@@ -101,7 +101,7 @@ func TestSidebarSearchRenders(t *testing.T) {
 func TestAppearanceTabRenders(t *testing.T) {
 	cw := testWindow()
 	cw.section = sectionSettings
-	cw.settings.tab = 5
+	cw.settings.tab = settingsAppearanceTab
 	img := mgo.Render(cw.view, 1000, 700, 1)
 	if img == nil || img.Bounds().Dx() != 1000 {
 		t.Fatalf("appearance render failed: %v", img)

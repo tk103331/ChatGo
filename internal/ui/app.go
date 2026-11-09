@@ -370,6 +370,9 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 // Show creates the MyGo window; call it from mygo.App.WhenReady.
 
 func (cw *ChatWindow) Show() {
+	// Register before the main window so a service request that launched the
+	// app finds its provider as soon as the app is ready.
+	installServiceProvider(cw)
 	w := mygo.NewWindow(mygo.WindowOptions{
 		Title:         "ChatGo",
 		Width:         1000,
@@ -403,7 +406,11 @@ func (cw *ChatWindow) Show() {
 			cw.quick.create()
 		}
 		if cw.quick != nil {
-			cw.quick.openAt(pending.Dir, pending.Prompt)
+			if pending.Text != "" {
+				cw.quick.openSelection(capture.Selection{Text: pending.Text, Source: capture.SourceService})
+			} else {
+				cw.quick.openAt(pending.Dir, pending.Prompt)
+			}
 		}
 	}
 	if cw.cfg.WebEnabled {

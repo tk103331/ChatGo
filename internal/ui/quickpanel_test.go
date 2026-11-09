@@ -56,6 +56,60 @@ func TestQuickPanelAgents(t *testing.T) {
 	}
 }
 
+// A captured selection lands in the field as a quote block, and submitting it
+// unchanged does not attach the same text a second time.
+func TestQuickPanelPrefillsSelection(t *testing.T) {
+	cw := testWindow()
+	qp := newQuickPanel(cw)
+	qp.hasSelection = true
+	qp.selection = capture.Selection{Text: "func main() {\n\tprintln(1)\n}"}
+	qp.prefillSelection()
+	want := "> func main() {\n> \tprintln(1)\n> }"
+	if qp.draft != want {
+		t.Fatalf("draft = %q, want %q", qp.draft, want)
+	}
+	if !qp.selectionInDraft {
+		t.Fatal("the draft is not marked as carrying the selection")
+	}
+	if got := qp.prompt(); got != want {
+		t.Fatalf("prompt duplicates the selection: %q", got)
+	}
+
+	// A draft the user already typed is left alone.
+	qp.draft = "解释一下"
+	if qp.prefillSelection(); qp.draft != "解释一下" {
+		t.Fatalf("prefill overwrote the draft: %q", qp.draft)
+	}
+}
+
+// A selection captured by the Services menu opens the composer with the text
+// quoted, without reading the selection again.
+func TestQuickPanelOpensServiceSelection(t *testing.T) {
+	cw := testWindow()
+	qp := newQuickPanel(cw)
+	qp.showSelection(capture.Selection{Text: "hello", Source: capture.SourceService})
+	if qp.draft != "> hello" {
+		t.Fatalf("draft = %q, want the quoted selection", qp.draft)
+	}
+	if !qp.hasSelection || !qp.selectionInDraft {
+		t.Fatalf("selection state: has=%v inDraft=%v", qp.hasSelection, qp.selectionInDraft)
+	}
+}
+
+// A preset replaces the quote block, so submit attaches the selection again.
+func TestQuickPanelPresetReattachesSelection(t *testing.T) {
+	cw := testWindow()
+	qp := newQuickPanel(cw)
+	qp.hasSelection = true
+	qp.selection = capture.Selection{Text: "hello"}
+	qp.prefillSelection()
+	qp.draft = "解释这段内容"
+	qp.selectionInDraft = false
+	if got := qp.prompt(); got != "解释这段内容\n\n> hello" {
+		t.Fatalf("prompt = %q", got)
+	}
+}
+
 func TestQuickPanelReset(t *testing.T) {
 	cw := testWindow()
 	on := true
@@ -220,6 +274,43 @@ func TestQuickPanelViewsRender(t *testing.T) {
 	}
 	if img := mgo.Render(qp.view, quickPanelWidth, quickRunningHeight, 1); img == nil {
 		t.Fatal("running view did not render")
+	}
+}
+
+// The agent chips and the model choice share one row, so the panel does not
+// stack two half-empty lines above the composer.
+func TestQuickPanelAgentAndModelShareRow(t *testing.T) {
+	cw := testWindow()
+	qp := newQuickPanel(cw)
+	qp.mode = quickPanelCompose
+	tr := mgo.NewTester(qp.view, quickPanelWidth, quickPanelHeight)
+	tr.Frame()
+	agent, ok := tr.Find("Chat")
+	if !ok {
+		t.Fatalf("the agent chip is missing; texts: %v", tr.Texts())
+	}
+	model, ok := tr.Find("OpenAI · gpt-4")
+	if !ok {
+		t.Fatalf("the model selector is missing; texts: %v", tr.Texts())
+	}
+	if agent.Y+agent.H/2 != model.Y+model.H/2 {
+		t.Fatalf("the agent and model sit on different rows: agent %+v, model %+v", agent, model)
+	}
+}
+
+// The panel names its worktree toggle instead of leaving a bare switch.
+func TestQuickPanelNamesItsWorktreeSwitch(t *testing.T) {
+	cw := testWindow()
+	qp := newQuickPanel(cw)
+	qp.mode = quickPanelCompose
+	tr := mgo.NewTester(qp.view, quickPanelWidth, quickPanelHeight)
+	tr.Frame()
+	r, ok := tr.Find("新建 worktree")
+	if !ok || r.H == 0 {
+		t.Fatalf("the worktree switch is clipped or missing: %+v, texts: %v", r, tr.Texts())
+	}
+	if r.Y+r.H > quickPanelHeight {
+		t.Fatalf("the worktree switch overflows the panel: %+v", r)
 	}
 }
 

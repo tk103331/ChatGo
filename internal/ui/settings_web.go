@@ -22,7 +22,7 @@ func (cw *ChatWindow) webTab(c *mgo.Context) {
 				FontSize(small).TextColor(k.TextMuted)
 
 			enabled := cw.cfg.WebEnabled
-			if mgo.Switch(c, &enabled).Label("启用 Web 服务").Changed() {
+			if kit.SwitchRow(c, &enabled, "启用 Web 服务", kit.SwitchRowOptions{}).Changed() {
 				cw.setWebEnabled(enabled)
 				info = cw.webInfo()
 				if enabled {

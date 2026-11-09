@@ -243,7 +243,9 @@ func goString(id objc.ID) string {
 	for *(*byte)(unsafe.Add(unsafe.Pointer(p), n)) != 0 {
 		n++
 	}
-	return unsafe.String(p, n)
+	// Copy: p points into an autoreleased NSString, whose buffer is freed
+	// when the pool drains, while the Selection outlives it.
+	return string(unsafe.Slice(p, n))
 }
 
 // withPool runs fn inside an autorelease pool, which matters on the

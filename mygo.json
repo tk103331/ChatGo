@@ -15,5 +15,18 @@
   "buildCommand": "./web/build.sh",
   "resources": [
     "web"
-  ]
+  ],
+  "macos": {
+    "infoPlist": {
+      "NSServices": [
+        {
+          "NSMenuItem": { "default": "向 ChatGo 提问" },
+          "NSMessage": "askChatGo",
+          "NSPortName": "ChatGo",
+          "NSRequiredContext": {},
+          "NSSendTypes": ["public.utf8-plain-text", "public.plain-text", "NSStringPboardType"]
+        }
+      ]
+    }
+  }
 }

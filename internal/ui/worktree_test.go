@@ -652,9 +652,9 @@ func (e *wtEnv) frames(n int) {
 	}
 }
 
-// A project header carries only the new-session action: worktrees are chosen
-// in the create tab, so no header — Git project or not — offers a worktree
-// button of its own.
+// Project headers carry no action of their own: worktrees are chosen in the
+// create tab, so no header — Git project or not — offers a worktree button,
+// and new sessions start from the sidebar's global action.
 func TestProjectHeaderHasNoWorktreeButton(t *testing.T) {
 	dir := newTestRepo(t)
 	wt := filepath.Join(filepath.Dir(dir), "wt-hdr")
@@ -669,7 +669,7 @@ func TestProjectHeaderHasNoWorktreeButton(t *testing.T) {
 	if _, ok := tr.Find("新建/打开 Worktree"); ok {
 		t.Fatal("the project header still offers a worktree button")
 	}
-	if _, ok := tr.Find("新建会话"); !ok {
-		t.Fatalf("the project header lost its new-session action; texts: %v", tr.Texts())
+	if _, ok := tr.Find("新会话"); !ok {
+		t.Fatalf("the sidebar lost its new-session action; texts: %v", tr.Texts())
 	}
 }
