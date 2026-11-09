@@ -2,6 +2,7 @@ package main
 
 import (
 	"chatgo/internal/config"
+	"chatgo/internal/plugincli"
 	"chatgo/internal/shellenv"
 	"chatgo/internal/ui"
 	"chatgo/internal/ui/assets"
@@ -21,7 +22,7 @@ func main() {
 	mygo.Use(native.New(updater.Options{Icon: assets.LogoPNG()}))
 
 	if len(os.Args) > 1 && os.Args[1] == "plugin" {
-		if err := runPluginCommand(os.Args[2:]); err != nil {
+		if err := plugincli.Run(os.Args[2:]); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
