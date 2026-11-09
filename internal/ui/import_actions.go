@@ -6,6 +6,7 @@ import (
 
 	"chatgo/internal/agentimport"
 	"chatgo/internal/config"
+	"chatgo/internal/plugin"
 	mcore "chatgo/internal/ui/uikit"
 )
 
@@ -19,6 +20,7 @@ func (cw *ChatWindow) startImportScan() {
 	cw.imp.groups = nil
 	go func() {
 		groups := scanImportable(kind, workdir)
+		groups = append(groups, cw.pluginImportGroups(kind, workdir)...)
 		cw.postMain(func() {
 			if !cw.imp.open || cw.imp.kind != kind {
 				return
@@ -181,6 +183,24 @@ func (cw *ChatWindow) runSkillImport() {
 			total.Failed = append(total.Failed, res.Failed...)
 			total.Errors = append(total.Errors, res.Errors...)
 		}
+		if cw.plugins != nil {
+			for _, c := range cw.plugins.DiscoverSkillImports(workdir) {
+				if !containsStr(wanted[c.From], c.Name) {
+					continue
+				}
+				ok, err := agentimport.ImportDir(c.Path, c.Name, overwrite)
+				if err != nil {
+					total.Failed = append(total.Failed, c.Name)
+					total.Errors = append(total.Errors, c.Name+": "+err.Error())
+					continue
+				}
+				if ok {
+					total.Imported = append(total.Imported, c.Name)
+				} else {
+					total.Skipped = append(total.Skipped, c.Name)
+				}
+			}
+		}
 		cw.postMain(func() {
 			cw.imp.busy = false
 			cw.imp.status = total.Summary()
@@ -214,6 +234,19 @@ func (cw *ChatWindow) runMCPImport() {
 		}
 		cw.cfg.MCPServers = append(cw.cfg.MCPServers, srv)
 		added++
+	}
+	if cw.plugins != nil {
+		for _, c := range cw.plugins.DiscoverImports(cw.fileRoot(), "mcp") {
+			if !wanted[c.From+"|"+c.Name] {
+				continue
+			}
+			cw.cfg.MCPServers = append(cw.cfg.MCPServers, config.MCPServer{
+				Name: cw.uniqueMCPName(c.Name), Type: config.MCPServerType(c.Type),
+				Enabled: false, Command: c.Command, Args: c.Args, Env: c.Env,
+				URL: c.URL, Headers: c.Headers,
+			})
+			added++
+		}
 	}
 	if added == 0 {
 		cw.imp.status = "没有新增服务"
@@ -251,6 +284,24 @@ func (cw *ChatWindow) runProviderImport() {
 			Enabled: false,
 		})
 		added++
+	}
+	if cw.plugins != nil {
+		for _, p := range cw.plugins.DiscoverImports(cw.fileRoot(), "providers") {
+			if !wanted[p.From+"|"+p.Name] {
+				continue
+			}
+			models := importedModels(p.Models)
+			model := ""
+			if len(models) > 0 {
+				model = models[0]
+			}
+			cw.cfg.Providers = append(cw.cfg.Providers, config.Provider{
+				Name: cw.uniqueProviderName(p.Name), Type: config.ProviderTypeCustom,
+				APIType: config.ProviderTypeOpenAI, APIKey: p.APIKey, BaseURL: p.BaseURL,
+				Model: model, Models: models, Enabled: false,
+			})
+			added++
+		}
 	}
 	if added == 0 {
 		cw.imp.status = "没有新增模型"
@@ -325,4 +376,51 @@ func uniqueName(name string, taken func(string) bool) string {
 			return candidate
 		}
 	}
+}
+
+// pluginImportGroups appends the groups plugin-declared importers found.
+func (cw *ChatWindow) pluginImportGroups(kind importKind, workdir string) []importGroup {
+	if cw.plugins == nil {
+		return nil
+	}
+	pluginKind := "mcp"
+	if kind == importProviders {
+		pluginKind = "providers"
+	}
+	byFrom := map[string]*importGroup{}
+	var order []string
+	var candidates []plugin.ImportCandidate
+	if kind == importSkills {
+		candidates = cw.plugins.DiscoverSkillImports(workdir)
+	} else {
+		candidates = cw.plugins.DiscoverImports(workdir, pluginKind)
+	}
+	for _, c := range candidates {
+		g, ok := byFrom[c.From]
+		if !ok {
+			g = &importGroup{From: c.From}
+			byFrom[c.From] = g
+			order = append(order, c.From)
+		}
+		desc := c.BaseURL
+		tags := modelTags(c.Models)
+		if kind == importSkills {
+			desc = c.Path
+		}
+		if pluginKind == "mcp" && kind != importSkills {
+			target := strings.TrimSpace(c.Command + " " + strings.Join(c.Args, " "))
+			if target == "" {
+				target = c.URL
+			}
+			desc = strings.TrimSpace(c.Type + " · " + target)
+		}
+		g.Items = append(g.Items, importCandidate{
+			ID: c.From + "|" + c.Name, Title: c.Name, Desc: desc, Tags: tags,
+		})
+	}
+	out := make([]importGroup, 0, len(order))
+	for _, from := range order {
+		out = append(out, *byFrom[from])
+	}
+	return out
 }

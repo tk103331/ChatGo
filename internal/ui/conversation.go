@@ -79,6 +79,9 @@ func (cw *ChatWindow) newConversationIn(ws, agent string) {
 	cw.scrollChatToEnd()
 	cw.applyConversationAgent(conv)
 	cw.reloadConvs()
+	cw.emit("conversation.created", map[string]any{
+		"conversationId": conv.ID, "agent": conv.Agent, "workspace": conv.Workspace,
+	})
 }
 
 // selectConversation loads a conversation and shows it in chat mode. The
@@ -128,6 +131,9 @@ func (cw *ChatWindow) sendDraft() {
 	if text == "" {
 		return
 	}
+	// Plugin context references are expanded before the turn is stored, so the
+	// model sees the referenced body and the saved message stays reproducible.
+	text = cw.expandPluginContext(text)
 	if cw.cur == nil {
 		cw.newConversation()
 	}
@@ -158,6 +164,12 @@ func (cw *ChatWindow) sendDraft() {
 	}
 	conv.Turns = append(conv.Turns, turn)
 	cw.draft = ""
+	cw.emit("message.received", map[string]any{
+		"conversationId": conv.ID, "agent": conv.Agent, "text": shorten(text, 4000),
+	})
+	cw.emit("turn.started", map[string]any{
+		"conversationId": conv.ID, "turnId": turn.ID, "provider": turn.Provider, "model": turn.Model,
+	})
 	if strings.HasPrefix(conv.Agent, "acp:") && conv.Title == defaultTitle {
 		conv.Title = titleFromText(text)
 	}
@@ -172,6 +184,7 @@ func (cw *ChatWindow) sendDraft() {
 	}
 	msgs := cw.chatMessages(conv, idx)
 	ctx, cancel := context.WithCancel(context.Background())
+	ctx = llm.WithToolResultHook(ctx, cw.toolResultHook())
 	cw.beginStream(conv.ID, reply.ID, cancel)
 	cw.invalidate()
 	go cw.runStream(ctx, conv, idx, msgs)
@@ -282,6 +295,15 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 			applyToolCall(m, info)
 			appendSegmentTool(m, info)
 		})
+		payload := map[string]any{
+			"conversationId": conv.ID, "name": info.Name,
+			"arguments": shorten(info.Arguments, 4000), "result": shorten(info.Result, 4000),
+			"durationMs": info.Duration.Milliseconds(),
+		}
+		if info.Error != nil {
+			payload["error"] = info.Error.Error()
+		}
+		cw.emit("tool.afterCall", payload)
 	}
 	switch {
 	case cw.groupReact != nil:
@@ -322,6 +344,23 @@ func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, 
 		cw.reloadConvs()
 		cw.generateTitle(conv)
 		cw.notifySessionComplete(conv, conv.Messages[idx].Content)
+		if err != nil {
+			cw.emit("turn.failed", map[string]any{"conversationId": conv.ID, "error": err.Error()})
+		} else {
+			duration := int64(0)
+			if t := turnOf(conv, conv.Messages[idx].ID); t != nil && !t.EndedAt.IsZero() {
+				duration = t.EndedAt.Sub(t.StartedAt).Milliseconds()
+			}
+			payload := map[string]any{
+				"conversationId": conv.ID, "reply": shorten(conv.Messages[idx].Content, 4000),
+				"durationMs": duration,
+			}
+			if resp != nil {
+				payload["promptTokens"] = resp.PromptTokens
+				payload["completionTokens"] = resp.CompletionTokens
+			}
+			cw.emit("turn.completed", payload)
+		}
 	})
 }
 
@@ -367,7 +406,7 @@ func (cw *ChatWindow) generateTitle(conv *models.Conversation) {
 	}
 	var chat func(context.Context, []llm.ChatMessage) (*llm.ChatResponse, error)
 	if g, ok := cw.cfg.FindProviderGroup(turnProvider(conv)); ok {
-		gc, err := llm.NewGroupClient(g, cw.cfg.Providers)
+		gc, err := llm.NewGroupClient(g, cw.cfg.Providers, cw.middlewares()...)
 		if err != nil {
 			return
 		}
@@ -383,7 +422,7 @@ func (cw *ChatWindow) generateTitle(conv *models.Conversation) {
 		if m := turnModel(conv); m != "" {
 			provider.Model = m
 		}
-		client, err := llm.NewClient(provider)
+		client, err := llm.NewClient(provider, cw.middlewares()...)
 		if err != nil {
 			return
 		}

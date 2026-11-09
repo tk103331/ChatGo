@@ -44,6 +44,9 @@ type Inbound struct {
 // channel's saved configuration, so a running driver never reads the mutable
 // config while the user edits it.
 type Config struct {
+	// ID is the saved channel's identity, so a driver that needs a stable
+	// webhook path can use it.
+	ID string
 	// Type is the driver's own kind, e.g. "telegram".
 	Type string
 	// Name labels the channel in notifications and errors.

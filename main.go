@@ -20,6 +20,14 @@ func main() {
 	// image, so it cannot drift from the dock and window icons.
 	mygo.Use(native.New(updater.Options{Icon: assets.LogoPNG()}))
 
+	if len(os.Args) > 1 && os.Args[1] == "plugin" {
+		if err := runPluginCommand(os.Args[2:]); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		return
+	}
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Printf("Failed to load config: %v\n", err)

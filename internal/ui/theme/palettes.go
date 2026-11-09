@@ -2,6 +2,8 @@ package theme
 
 import (
 	"math"
+	"sort"
+	"sync"
 
 	mgo "github.com/egoist/mygo/ui"
 )
@@ -29,57 +31,97 @@ type Theme struct {
 	LightSurface, DarkSurface string
 }
 
-// Themes lists every built-in theme. The first is the default: MyGo's own
+// baseThemes lists every built-in theme. The first is the default: MyGo's own
 // colors untouched, which an unknown or empty stored name resolves to.
 //
 // Accent steps are Tailwind's color scales: 600/700/800 in a light
 // appearance, 500/400/600 in a dark one, as MyGo's own theme does.
-var Themes = []Theme{
-	{Name: DefaultName, Label: "默认"},
-	{Name: "wine", Label: "象牙·酒红", Accent: Accent{
-		Light: "#9f1239", LightHover: "#881337", LightPressed: "#4c0519",
-		Dark: "#be123c", DarkHover: "#e11d48", DarkPressed: "#9f1239",
-	}, LightBG: "#fdf6ec", DarkBG: "#1c1013", LightSurface: "#fdf6ec", DarkSurface: "#1c1013"},
-	{Name: "blue", Label: "海洋", Accent: Accent{
-		Light: "#0e7490", LightHover: "#155e75", LightPressed: "#164e63",
-		Dark: "#06b6d4", DarkHover: "#22d3ee", DarkPressed: "#0891b2",
-	}, LightBG: "#f0f9ff", DarkBG: "#0b1620", LightSurface: "#f2f8fd", DarkSurface: "#0b1620"},
-	{Name: "emerald", Label: "森林", Accent: Accent{
-		Light: "#047857", LightHover: "#065f46", LightPressed: "#064e3b",
-		Dark: "#10b981", DarkHover: "#34d399", DarkPressed: "#059669",
-	}, LightBG: "#f0fdf4", DarkBG: "#0c1a12", LightSurface: "#f2fcf5", DarkSurface: "#0c1a12"},
-	{Name: "slate", Label: "石墨", Accent: Accent{
-		Light: "#475569", LightHover: "#334155", LightPressed: "#1e293b",
-		Dark: "#94a3b8", DarkHover: "#cbd5e1", DarkPressed: "#64748b",
-	}, LightBG: "#f4f4f5", DarkBG: "#18181b", LightSurface: "#f7f7f8", DarkSurface: "#18181b"},
-	{Name: "amber", Label: "落日", Accent: Accent{
-		Light: "#c2410c", LightHover: "#9a3412", LightPressed: "#7c2d12",
-		Dark: "#f97316", DarkHover: "#fb923c", DarkPressed: "#ea580c",
-	}, LightBG: "#fff7ed", DarkBG: "#1c120a", LightSurface: "#fff8f1", DarkSurface: "#1c120a"},
-	{Name: "rose", Label: "玫瑰", Accent: Accent{
-		Light: "#be123c", LightHover: "#9f1239", LightPressed: "#881337",
-		Dark: "#f43f5e", DarkHover: "#fb7185", DarkPressed: "#e11d48",
-	}, LightBG: "#fff1f2", DarkBG: "#1c0f14", LightSurface: "#fff3f4", DarkSurface: "#1c0f14"},
-	{Name: "violet", Label: "薰衣草", Accent: Accent{
-		Light: "#7c3aed", LightHover: "#6d28d9", LightPressed: "#5b21b6",
-		Dark: "#8b5cf6", DarkHover: "#a78bfa", DarkPressed: "#7c3aed",
-	}, LightBG: "#f5f3ff", DarkBG: "#150f22", LightSurface: "#f7f5ff", DarkSurface: "#150f22"},
-	{Name: "mint", Label: "薄荷", Accent: Accent{
-		Light: "#0f766e", LightHover: "#115e59", LightPressed: "#134e4a",
-		Dark: "#14b8a6", DarkHover: "#2dd4bf", DarkPressed: "#0d9488",
-	}, LightBG: "#f0fdfa", DarkBG: "#0a1a18", LightSurface: "#f2fdfb", DarkSurface: "#0a1a18"},
-	{Name: "ochre", Label: "琥珀", Accent: Accent{
-		Light: "#b45309", LightHover: "#92400e", LightPressed: "#78350f",
-		Dark: "#f59e0b", DarkHover: "#fbbf24", DarkPressed: "#d97706",
-	}, LightBG: "#fffbeb", DarkBG: "#1a1207", LightSurface: "#fffcef", DarkSurface: "#1a1207"},
-	{Name: "teal", Label: "青灰", Accent: Accent{
-		Light: "#0f766e", LightHover: "#0e5f5a", LightPressed: "#134e4a",
-		Dark: "#5eead4", DarkHover: "#99f6e4", DarkPressed: "#2dd4bf",
-	}, LightBG: "#f8fafc", DarkBG: "#0d1b1e", LightSurface: "#f6fafb", DarkSurface: "#0d1b1e"},
-	{Name: "mono", Label: "单色", Accent: Accent{
-		Light: "#18181b", LightHover: "#27272a", LightPressed: "#000000",
-		Dark: "#e4e4e7", DarkHover: "#f4f4f5", DarkPressed: "#a1a1aa",
-	}, LightBG: "#ffffff", DarkBG: "#0a0a0a", LightSurface: "#ffffff", DarkSurface: "#000000"},
+func baseThemes() []Theme {
+	return []Theme{
+		{Name: DefaultName, Label: "默认"},
+		{Name: "wine", Label: "象牙·酒红", Accent: Accent{
+			Light: "#9f1239", LightHover: "#881337", LightPressed: "#4c0519",
+			Dark: "#be123c", DarkHover: "#e11d48", DarkPressed: "#9f1239",
+		}, LightBG: "#fdf6ec", DarkBG: "#1c1013", LightSurface: "#fdf6ec", DarkSurface: "#1c1013"},
+		{Name: "blue", Label: "海洋", Accent: Accent{
+			Light: "#0e7490", LightHover: "#155e75", LightPressed: "#164e63",
+			Dark: "#06b6d4", DarkHover: "#22d3ee", DarkPressed: "#0891b2",
+		}, LightBG: "#f0f9ff", DarkBG: "#0b1620", LightSurface: "#f2f8fd", DarkSurface: "#0b1620"},
+		{Name: "emerald", Label: "森林", Accent: Accent{
+			Light: "#047857", LightHover: "#065f46", LightPressed: "#064e3b",
+			Dark: "#10b981", DarkHover: "#34d399", DarkPressed: "#059669",
+		}, LightBG: "#f0fdf4", DarkBG: "#0c1a12", LightSurface: "#f2fcf5", DarkSurface: "#0c1a12"},
+		{Name: "slate", Label: "石墨", Accent: Accent{
+			Light: "#475569", LightHover: "#334155", LightPressed: "#1e293b",
+			Dark: "#94a3b8", DarkHover: "#cbd5e1", DarkPressed: "#64748b",
+		}, LightBG: "#f4f4f5", DarkBG: "#18181b", LightSurface: "#f7f7f8", DarkSurface: "#18181b"},
+		{Name: "amber", Label: "落日", Accent: Accent{
+			Light: "#c2410c", LightHover: "#9a3412", LightPressed: "#7c2d12",
+			Dark: "#f97316", DarkHover: "#fb923c", DarkPressed: "#ea580c",
+		}, LightBG: "#fff7ed", DarkBG: "#1c120a", LightSurface: "#fff8f1", DarkSurface: "#1c120a"},
+		{Name: "rose", Label: "玫瑰", Accent: Accent{
+			Light: "#be123c", LightHover: "#9f1239", LightPressed: "#881337",
+			Dark: "#f43f5e", DarkHover: "#fb7185", DarkPressed: "#e11d48",
+		}, LightBG: "#fff1f2", DarkBG: "#1c0f14", LightSurface: "#fff3f4", DarkSurface: "#1c0f14"},
+		{Name: "violet", Label: "薰衣草", Accent: Accent{
+			Light: "#7c3aed", LightHover: "#6d28d9", LightPressed: "#5b21b6",
+			Dark: "#8b5cf6", DarkHover: "#a78bfa", DarkPressed: "#7c3aed",
+		}, LightBG: "#f5f3ff", DarkBG: "#150f22", LightSurface: "#f7f5ff", DarkSurface: "#150f22"},
+		{Name: "mint", Label: "薄荷", Accent: Accent{
+			Light: "#0f766e", LightHover: "#115e59", LightPressed: "#134e4a",
+			Dark: "#14b8a6", DarkHover: "#2dd4bf", DarkPressed: "#0d9488",
+		}, LightBG: "#f0fdfa", DarkBG: "#0a1a18", LightSurface: "#f2fdfb", DarkSurface: "#0a1a18"},
+		{Name: "ochre", Label: "琥珀", Accent: Accent{
+			Light: "#b45309", LightHover: "#92400e", LightPressed: "#78350f",
+			Dark: "#f59e0b", DarkHover: "#fbbf24", DarkPressed: "#d97706",
+		}, LightBG: "#fffbeb", DarkBG: "#1a1207", LightSurface: "#fffcef", DarkSurface: "#1a1207"},
+		{Name: "teal", Label: "青灰", Accent: Accent{
+			Light: "#0f766e", LightHover: "#0e5f5a", LightPressed: "#134e4a",
+			Dark: "#5eead4", DarkHover: "#99f6e4", DarkPressed: "#2dd4bf",
+		}, LightBG: "#f8fafc", DarkBG: "#0d1b1e", LightSurface: "#f6fafb", DarkSurface: "#0d1b1e"},
+		{Name: "mono", Label: "单色", Accent: Accent{
+			Light: "#18181b", LightHover: "#27272a", LightPressed: "#000000",
+			Dark: "#e4e4e7", DarkHover: "#f4f4f5", DarkPressed: "#a1a1aa",
+		}, LightBG: "#ffffff", DarkBG: "#0a0a0a", LightSurface: "#ffffff", DarkSurface: "#000000"},
+	}
+}
+
+// Themes is every selectable theme: the built-in list followed by the sets
+// plugins contributed, so the appearance page lists them without changes.
+var Themes = baseThemes()
+
+var (
+	pluginThemesMu sync.Mutex
+	pluginThemes   = map[string][]Theme{}
+)
+
+// RegisterThemes adds or replaces the theme set a plugin contributes.
+func RegisterThemes(source string, list []Theme) {
+	pluginThemesMu.Lock()
+	defer pluginThemesMu.Unlock()
+	pluginThemes[source] = list
+	rebuildThemesLocked()
+}
+
+// UnregisterThemes removes a plugin's theme set.
+func UnregisterThemes(source string) {
+	pluginThemesMu.Lock()
+	defer pluginThemesMu.Unlock()
+	delete(pluginThemes, source)
+	rebuildThemesLocked()
+}
+
+func rebuildThemesLocked() {
+	out := baseThemes()
+	keys := make([]string, 0, len(pluginThemes))
+	for k := range pluginThemes {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		out = append(out, pluginThemes[k]...)
+	}
+	Themes = out
 }
 
 // ByName resolves a stored name to a theme, falling back to the first when

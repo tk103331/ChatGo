@@ -1,0 +1,300 @@
+{
+  "id": "lab",
+  "name": "插件能力实验室",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "覆盖工具、Provider、中间件、MCP、ACP、Agent、Skill、主题、事件、命令、上下文、导入器、触发器、渠道、结果钩子与声明式渲染的测试插件",
+  "main": "main.js",
+  "engines": {
+    "chatgo": ">=0.12"
+  },
+  "limits": {
+    "memoryMB": 64
+  },
+  "permissions": [
+    "store",
+    "events",
+    "context"
+  ],
+  "settings": [
+    {
+      "key": "greeting",
+      "label": "问候语",
+      "type": "text",
+      "default": "你好"
+    },
+    {
+      "key": "masking",
+      "label": "脱敏工具结果",
+      "type": "bool",
+      "default": "true"
+    },
+    {
+      "key": "tone",
+      "label": "语气",
+      "type": "select",
+      "options": [
+        "friendly",
+        "terse"
+      ],
+      "default": "friendly"
+    },
+    {
+      "key": "api_key",
+      "label": "Lab API Key",
+      "type": "secret",
+      "placeholder": "仅用于演示 Provider 设置"
+    }
+  ],
+  "tools": [
+    {
+      "name": "echo",
+      "label": "回显",
+      "description": "回显输入文本，并带上插件设置里的问候语",
+      "handler": "echo",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "要回显的文本"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    },
+    {
+      "name": "render",
+      "label": "渲染示例",
+      "description": "返回指定类型的声明式视图，用于测试表格/图表/代码等渲染",
+      "handler": "render",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "view": {
+            "type": "string",
+            "enum": [
+              "table",
+              "chart",
+              "keyvalue",
+              "list",
+              "code",
+              "diff",
+              "links",
+              "markdown",
+              "image"
+            ],
+            "description": "视图类型，默认 table"
+          }
+        },
+        "required": []
+      }
+    },
+    {
+      "name": "fail",
+      "label": "失败示例",
+      "description": "故意抛错，用于测试工具错误路径",
+      "handler": "fail",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  ],
+  "providers": [
+    {
+      "name": "Lab AI",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://lab.invalid/v1",
+      "models": [
+        "lab-1",
+        "lab-2"
+      ],
+      "apiKeySetting": "api_key",
+      "enabled": false,
+      "headers": {
+        "X-Lab-Plugin": "1"
+      }
+    }
+  ],
+  "middleware": [
+    {
+      "name": "lab_marker",
+      "match": {
+        "providers": [
+          "Lab AI"
+        ]
+      },
+      "priority": 100,
+      "timeoutMs": 2000,
+      "hooks": [
+        "beforeRequest",
+        "onChunk",
+        "afterResponse",
+        "onError"
+      ]
+    }
+  ],
+  "mcpServers": [
+    {
+      "name": "lab-mcp",
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-everything"
+      ],
+      "enabled": false
+    }
+  ],
+  "acpAgents": [
+    {
+      "name": "LabCLI",
+      "command": "lab-acp",
+      "args": [
+        "acp"
+      ],
+      "disabled": true
+    }
+  ],
+  "agents": [
+    {
+      "name": "Plugin Lab Helper",
+      "description": "用于测试插件工具、Skill 与声明式渲染",
+      "systemPrompt": "你是插件实验室助手。优先使用 lab__echo 与 lab__render 演示插件能力。",
+      "models": [],
+      "tools": [
+        "lab__echo",
+        "lab__render"
+      ],
+      "skills": [
+        "lab-guide"
+      ],
+      "mode": "agent"
+    }
+  ],
+  "skills": [
+    {
+      "name": "lab-guide",
+      "description": "插件实验室的使用说明",
+      "path": "skills/lab-guide/SKILL.md"
+    }
+  ],
+  "themes": [
+    {
+      "name": "lab-neon",
+      "label": "实验霓虹（插件）",
+      "light": "#7c3aed",
+      "lightHover": "#6d28d9",
+      "lightPressed": "#5b21b6",
+      "dark": "#a78bfa",
+      "darkHover": "#c4b5fd",
+      "darkPressed": "#8b5cf6",
+      "lightBg": "#faf5ff",
+      "darkBg": "#150f22",
+      "lightSurface": "#fbf7ff",
+      "darkSurface": "#150f22"
+    }
+  ],
+  "events": [
+    "turn.completed",
+    "turn.failed",
+    "tool.afterCall",
+    "plugin.enabled"
+  ],
+  "commands": [
+    {
+      "name": "brief",
+      "description": "把当前输入整理成总结请求",
+      "kind": "prompt",
+      "template": "请用三句话总结下面的内容，并列出两个待办：\n\n{selection}"
+    },
+    {
+      "name": "draft",
+      "description": "生成一段示例草稿（不自动发送）",
+      "kind": "action",
+      "handler": "draft"
+    }
+  ],
+  "contextProviders": [
+    {
+      "id": "notes",
+      "label": "Lab 笔记",
+      "icon": "file-text",
+      "kind": "doc",
+      "search": "search",
+      "resolve": "resolve",
+      "maxChars": 8000
+    }
+  ],
+  "importers": [
+    {
+      "id": "lab-sample",
+      "label": "Lab 示例配置",
+      "kinds": [
+        "mcp"
+      ],
+      "files": [
+        {
+          "os": "any",
+          "path": "~/.chatgo/plugins/lab/lab-import.json"
+        }
+      ],
+      "format": "json",
+      "mapping": {
+        "mcp": {
+          "root": "/mcpServers",
+          "name": "@key",
+          "command": "/command",
+          "args": "/args",
+          "env": "/env",
+          "url": "/url"
+        }
+      }
+    }
+  ],
+  "triggerTypes": [
+    {
+      "type": "interval",
+      "label": "Lab 间隔触发",
+      "fields": [
+        {
+          "key": "seconds",
+          "label": "间隔（秒）",
+          "type": "number",
+          "default": "60",
+          "placeholder": "最小 10"
+        }
+      ],
+      "evaluate": "evaluateInterval"
+    }
+  ],
+  "channels": [
+    {
+      "type": "labchat",
+      "name": "Lab 回显渠道",
+      "mode": "webhook",
+      "fields": [
+        {
+          "key": "app_id",
+          "label": "Bot Token",
+          "type": "secret",
+          "placeholder": "任意值，用于演示"
+        },
+        {
+          "key": "app_secret",
+          "label": "签名密钥",
+          "type": "secret",
+          "placeholder": "webhook JSON 里的 secret 需与此一致；留空则不校验"
+        }
+      ],
+      "verify": "verifyWebhook",
+      "send": "sendMessage"
+    }
+  ],
+  "toolResult": true
+}

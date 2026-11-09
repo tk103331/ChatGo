@@ -1,0 +1,90 @@
+{
+  "id": "example-weather",
+  "name": "示例天气",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "演示插件工具、声明式表格、Skill、预置 Agent 与配色主题",
+  "main": "main.js",
+  "limits": {
+    "memoryMB": 64
+  },
+  "permissions": [
+    "store"
+  ],
+  "tools": [
+    {
+      "name": "forecast",
+      "label": "天气预报",
+      "description": "根据城市名返回一份示例天气（离线演示，不访问网络）",
+      "handler": "forecast",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "city": {
+            "type": "string",
+            "description": "城市名"
+          }
+        },
+        "required": [
+          "city"
+        ]
+      }
+    },
+    {
+      "name": "forecast_table",
+      "label": "天气表格",
+      "description": "用声明式表格展示多个城市的示例天气",
+      "handler": "forecast_table",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "cities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "城市列表，留空使用默认三个"
+          }
+        }
+      }
+    }
+  ],
+  "skills": [
+    {
+      "name": "weather-guide",
+      "description": "天气工具的使用规范",
+      "path": "skills/weather-guide/SKILL.md"
+    }
+  ],
+  "agents": [
+    {
+      "name": "Weather Helper",
+      "description": "专注天气问答的示例插件 Agent",
+      "systemPrompt": "你是天气助手。回答天气问题时先调用 example-weather__forecast 工具，再解释结果。",
+      "models": [],
+      "tools": [
+        "example-weather__forecast"
+      ],
+      "skills": [
+        "weather-guide"
+      ],
+      "mode": "agent"
+    }
+  ],
+  "themes": [
+    {
+      "name": "sky-example",
+      "label": "晴空（插件）",
+      "light": "#0284c7",
+      "lightHover": "#0369a1",
+      "lightPressed": "#075985",
+      "dark": "#38bdf8",
+      "darkHover": "#7dd3fc",
+      "darkPressed": "#0ea5e9",
+      "lightBg": "#f0f9ff",
+      "darkBg": "#0b1620",
+      "lightSurface": "#f2f8fd",
+      "darkSurface": "#0b1620"
+    }
+  ]
+}

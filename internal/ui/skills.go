@@ -76,6 +76,19 @@ func (cw *ChatWindow) loadSkills() {
 			out = append(out, s)
 		}
 	}
+	if cw.plugins != nil {
+		for _, ps := range cw.plugins.Skills() {
+			key := strings.ToLower(ps.Name)
+			if seenName[key] {
+				continue
+			}
+			seenName[key] = true
+			out = append(out, skill{
+				ID: ps.ID, Name: ps.Name, Description: ps.Description,
+				Path: ps.Path, Source: ps.Source, Body: ps.Body,
+			})
+		}
+	}
 	sort.Slice(out, func(i, j int) bool {
 		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
 	})
@@ -83,10 +96,20 @@ func (cw *ChatWindow) loadSkills() {
 	cw.skills.list = out
 	cw.skills.loaded = true
 	cw.skills.mu.Unlock()
-	if len(cw.cfg.SkillsEnabled) == 0 && len(out) > 0 {
-		for _, s := range out {
+	// A skill seen for the first time starts enabled; after that the user's
+	// toggle wins, which is what SkillsKnown remembers.
+	changed := false
+	for _, s := range out {
+		if containsStr(cw.cfg.SkillsKnown, s.ID) {
+			continue
+		}
+		cw.cfg.SkillsKnown = append(cw.cfg.SkillsKnown, s.ID)
+		changed = true
+		if !containsStr(cw.cfg.SkillsEnabled, s.ID) {
 			cw.cfg.SkillsEnabled = append(cw.cfg.SkillsEnabled, s.ID)
 		}
+	}
+	if changed {
 		_ = config.SaveConfig(cw.cfg)
 	}
 }
@@ -411,7 +434,8 @@ func (cw *ChatWindow) skillIDsByName(names []string) []string {
 	var out []string
 	for _, n := range names {
 		for i := range cw.skills.list {
-			if cw.skills.list[i].Name == n {
+			// Agents may name a skill by its display name or its stable id.
+			if cw.skills.list[i].Name == n || cw.skills.list[i].ID == n {
 				out = append(out, cw.skills.list[i].ID)
 			}
 		}
@@ -434,6 +458,9 @@ func (cw *ChatWindow) skillRuntime(id string) bool {
 
 func (cw *ChatWindow) setSkillEnabled(id string, on bool) {
 	cw.cfg.SkillsEnabled = setTool(cw.cfg.SkillsEnabled, id, on)
+	if !containsStr(cw.cfg.SkillsKnown, id) {
+		cw.cfg.SkillsKnown = append(cw.cfg.SkillsKnown, id)
+	}
 	_ = config.SaveConfig(cw.cfg)
 }
 

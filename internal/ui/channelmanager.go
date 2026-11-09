@@ -78,7 +78,7 @@ func (cw *ChatWindow) startChannel(ch config.Channel) {
 	cw.channels.mu.Unlock()
 
 	cfg := channel.Config{
-		Type: ch.Type, Name: ch.Name,
+		ID: ch.ID, Type: ch.Type, Name: ch.Name,
 		AppID: ch.AppID, AppSecret: ch.AppSecret, BaseURL: ch.BaseURL,
 		Options: ch.Options,
 	}
@@ -156,6 +156,10 @@ func (cw *ChatWindow) onChannelInbound(channelID string, in channel.Inbound) {
 		return
 	}
 	cw.notifyChannelMessage(channelID, text)
+	cw.emit("channel.message.received", map[string]any{
+		"channelId": channelID, "chatId": in.ChatID, "fromUser": in.FromUser,
+		"text": shorten(text, 4000),
+	})
 	// Acknowledge the message with an emoji the moment it arrives, the way the
 	// Feishu channel always has: the user sees the bot picked it up before the
 	// answer is ready. Platforms without a reaction API are skipped silently.
@@ -197,6 +201,9 @@ func (cw *ChatWindow) sendChannelReply(channelID string, in channel.Inbound, rep
 	if rt == nil {
 		return
 	}
+	cw.emit("channel.reply.sent", map[string]any{
+		"channelId": channelID, "chatId": in.ChatID, "reply": shorten(reply, 4000),
+	})
 	ctx := context.Background()
 	// DingTalk and WeCom only accept a reply that quotes the inbound frame,
 	// which the driver exposes as a separate method.
@@ -245,6 +252,19 @@ type channelField struct {
 // channelFields lists the credential fields a platform needs. The first two
 // map to AppID and AppSecret; any further ones live in Options.
 func channelFields(typ string) []channelField {
+	if c, ok := pluginChannelSpec(typ); ok {
+		out := make([]channelField, 0, len(c.Spec.Fields))
+		for _, f := range c.Spec.Fields {
+			out = append(out, channelField{
+				Key: f.Key, Label: firstNonEmptyStr(f.Label, f.Key),
+				Placeholder: f.Placeholder, Secret: f.Type == "secret",
+			})
+		}
+		if len(out) == 0 {
+			out = append(out, channelField{Key: "app_id", Label: "Token", Secret: true})
+		}
+		return out
+	}
 	switch typ {
 	case "feishu":
 		return []channelField{
@@ -293,6 +313,9 @@ func channelFields(typ string) []channelField {
 
 // channelTypeName is the human name of a platform type.
 func channelTypeName(typ string) string {
+	if c, ok := pluginChannelSpec(typ); ok {
+		return c.Spec.Name
+	}
 	switch typ {
 	case "feishu":
 		return "飞书"
@@ -455,4 +478,12 @@ func channelSetupFor(typ string) channelSetup {
 		}
 	}
 	return channelSetup{}
+}
+
+// firstNonEmptyStr returns v, or fallback when v is blank.
+func firstNonEmptyStr(v, fallback string) string {
+	if strings.TrimSpace(v) == "" {
+		return fallback
+	}
+	return v
 }

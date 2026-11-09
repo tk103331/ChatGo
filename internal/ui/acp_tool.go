@@ -206,7 +206,11 @@ func (cw *ChatWindow) acpToolDetail(c *mgo.Context, tc models.ToolCall) {
 			cw.toolDetailBlock(c, "输入", args, false)
 		}
 		if out := strings.TrimSpace(tc.Result); out != "" {
-			cw.toolDetailBlock(c, "输出", out, tc.Error != "")
+			if v, ok := parseView(out); ok {
+				cw.renderView(c, v)
+			} else {
+				cw.toolDetailBlock(c, "输出", out, tc.Error != "")
+			}
 		}
 	})
 }

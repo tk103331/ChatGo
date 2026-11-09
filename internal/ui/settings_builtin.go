@@ -25,6 +25,10 @@ func (cw *ChatWindow) builtinTab(c *mgo.Context) {
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			}
 			for i := range cw.cfg.BuiltinTools {
+				// Plugin tools are managed on the plugin page, not here.
+				if cw.cfg.BuiltinTools[i].Type == "plugin" {
+					continue
+				}
 				cw.builtinCard(c, i)
 			}
 		})

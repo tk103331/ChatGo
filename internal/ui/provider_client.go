@@ -78,7 +78,7 @@ func (cw *ChatWindow) setupProvider(name string) {
 			return
 		}
 	}
-	client, err := llm.NewClient(p)
+	client, err := llm.NewClient(p, cw.middlewares()...)
 	if err != nil {
 		cw.llmClient, cw.reactClient = nil, nil
 		cw.setSetupError(err.Error())
@@ -105,7 +105,7 @@ func (cw *ChatWindow) setupGroup(g config.ProviderGroup) {
 		rc, err := llm.NewGroupReactClient(g, cw.cfg.Providers, einoTools, &llm.ReactAgentConfig{
 			MaxStep:      cw.cfg.ReactAgentMaxStep,
 			SystemPrompt: systemPrompt,
-		})
+		}, cw.middlewares()...)
 		if err == nil {
 			cw.llmClient, cw.reactClient, cw.groupClient = nil, nil, nil
 			cw.groupReact = rc
@@ -113,7 +113,7 @@ func (cw *ChatWindow) setupGroup(g config.ProviderGroup) {
 			return
 		}
 	}
-	c, err := llm.NewGroupClient(g, cw.cfg.Providers)
+	c, err := llm.NewGroupClient(g, cw.cfg.Providers, cw.middlewares()...)
 	if err != nil {
 		cw.llmClient, cw.reactClient, cw.groupClient, cw.groupReact = nil, nil, nil, nil
 		cw.setSetupError("模型组「" + g.Name + "」初始化失败：" + err.Error())
@@ -143,7 +143,7 @@ func (cw *ChatWindow) setupReactAgent(provider config.Provider) error {
 		MaxStep:      cw.cfg.ReactAgentMaxStep,
 		SystemPrompt: systemPrompt,
 	}
-	reactClient, err := llm.NewReactClientWithEinoTools(provider, einoTools, agentConfig)
+	reactClient, err := llm.NewReactClientWithEinoTools(provider, einoTools, agentConfig, cw.middlewares()...)
 	if err != nil {
 		return fmt.Errorf("failed to create React client: %w", err)
 	}
@@ -174,6 +174,12 @@ func (cw *ChatWindow) buildEinoToolsEnv(toolIDs []string, root string, conv *mod
 		switch {
 		case strings.HasPrefix(toolID, "builtin:"):
 			name := strings.TrimPrefix(toolID, "builtin:")
+			if bt, ok := cw.findBuiltinTool(name); ok && bt.Type == "plugin" {
+				if t := cw.newPluginTool(bt); t != nil {
+					einoTools = append(einoTools, llm.ObserveTool(t))
+				}
+				continue
+			}
 			if bt, ok := cw.findBuiltinTool(name); ok && eino.IsBuiltinTool(bt.Type) {
 				if t, delegated, err := eino.BuiltinTool(bt.Type, bt.Config); delegated {
 					if err == nil && t != nil {

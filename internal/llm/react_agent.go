@@ -22,6 +22,11 @@ type ReactClient struct {
 	model  model.ToolCallingChatModel
 	tools  *compose.ToolsNodeConfig
 	config *ReactAgentConfig
+	// mws rewrites request messages, streamed deltas and the final response.
+	mws MiddlewareChain
+	// provider and model identify this client to middleware matching.
+	provider  string
+	modelName string
 }
 
 // ReactAgentConfig holds configuration for the React Agent
@@ -174,6 +179,11 @@ func (t *observedTool) InvokableRun(ctx context.Context, args string, opts ...to
 	}
 	start := time.Now()
 	out, err := inv.InvokableRun(ctx, args, opts...)
+	if err == nil {
+		if rewrite := toolResultHookOf(ctx); rewrite != nil {
+			out = rewrite(ctx, name, args, out)
+		}
+	}
 	if cb != nil {
 		cb(ToolCallInfo{ID: id, Name: name, Arguments: args, Result: out, Error: err, Duration: time.Since(start)})
 	}
@@ -197,7 +207,7 @@ type ToolDefinition struct {
 }
 
 // NewReactClient creates a new React Agent client
-func NewReactClient(provider config.Provider, tools []ToolDefinition, agentConfig *ReactAgentConfig) (*ReactClient, error) {
+func NewReactClient(provider config.Provider, tools []ToolDefinition, agentConfig *ReactAgentConfig, mws ...Middleware) (*ReactClient, error) {
 	ctx := context.Background()
 
 	// First, create the base chat model
@@ -218,11 +228,12 @@ func NewReactClient(provider config.Provider, tools []ToolDefinition, agentConfi
 		einoTools[i] = newToolWrapper(toolDef)
 	}
 
-	return createReactClientWithTools(ctx, toolableModel, einoTools, agentConfig)
+	rc, err := createReactClientWithTools(ctx, toolableModel, einoTools, agentConfig, mws...)
+	return finishReactClient(rc, err, provider)
 }
 
 // NewReactClientWithEinoTools creates a new React Agent client with pre-built Eino tools
-func NewReactClientWithEinoTools(provider config.Provider, einoTools []tool.BaseTool, agentConfig *ReactAgentConfig) (*ReactClient, error) {
+func NewReactClientWithEinoTools(provider config.Provider, einoTools []tool.BaseTool, agentConfig *ReactAgentConfig, mws ...Middleware) (*ReactClient, error) {
 	ctx := context.Background()
 
 	// First, create the base chat model
@@ -237,11 +248,22 @@ func NewReactClientWithEinoTools(provider config.Provider, einoTools []tool.Base
 		return nil, fmt.Errorf("model %s does not support tool calling", provider.Type)
 	}
 
-	return createReactClientWithTools(ctx, toolableModel, einoTools, agentConfig)
+	rc, err := createReactClientWithTools(ctx, toolableModel, einoTools, agentConfig, mws...)
+	return finishReactClient(rc, err, provider)
+}
+
+// finishReactClient records the provider identity a middleware matches on.
+func finishReactClient(rc *ReactClient, err error, provider config.Provider) (*ReactClient, error) {
+	if err != nil || rc == nil {
+		return rc, err
+	}
+	rc.provider = provider.Name
+	rc.modelName = provider.Model
+	return rc, nil
 }
 
 // createReactClientWithTools creates a ReactClient with given Eino tools
-func createReactClientWithTools(ctx context.Context, toolableModel model.ToolCallingChatModel, einoTools []tool.BaseTool, agentConfig *ReactAgentConfig) (*ReactClient, error) {
+func createReactClientWithTools(ctx context.Context, toolableModel model.ToolCallingChatModel, einoTools []tool.BaseTool, agentConfig *ReactAgentConfig, mws ...Middleware) (*ReactClient, error) {
 	// Build tools config
 	toolsConfig := &compose.ToolsNodeConfig{
 		Tools: einoTools,
@@ -298,6 +320,7 @@ func createReactClientWithTools(ctx context.Context, toolableModel model.ToolCal
 		model:  toolableModel,
 		tools:  toolsConfig,
 		config: agentConfig,
+		mws:    mws,
 	}, nil
 }
 
@@ -310,23 +333,56 @@ func (c *ReactClient) Chat(ctx context.Context, messages []ChatMessage, onChunk 
 		defer cancel()
 	}
 
-	// Convert messages to eino format
-	einoMessages := make([]*schema.Message, len(messages))
-	for i, msg := range messages {
-		einoMessages[i] = &schema.Message{
-			Role:    schema.RoleType(msg.Role),
-			Content: msg.Content,
+	mws := c.mws.For(c.providerName(), c.providerModel())
+	messages, _ = applyRequestMiddleware(ctx, mws, c.providerName(), c.providerModel(), messages)
+
+	call := func() (*ChatResponse, error) {
+		// Convert messages to eino format
+		einoMessages := make([]*schema.Message, len(messages))
+		for i, msg := range messages {
+			einoMessages[i] = &schema.Message{
+				Role:    schema.RoleType(msg.Role),
+				Content: msg.Content,
+			}
 		}
+		chunk := wrapContentEmitter(ctx, mws, onChunk)
+		reasoning := wrapReasoningEmitters(ctx, mws, onReasoning)
+
+		// If streaming callback is provided, use Stream
+		if onChunk != nil || onToolCall != nil {
+			return c.chatWithStream(ctx, einoMessages, chunk, onToolCall, reasoning)
+		}
+
+		// Otherwise use Generate
+		return c.chatWithoutStream(ctx, einoMessages)
 	}
 
-	// If streaming callback is provided, use Stream
-	if onChunk != nil || onToolCall != nil {
-		return c.chatWithStream(ctx, einoMessages, onChunk, onToolCall, onReasoning)
+	resp, err := call()
+	if err != nil {
+		message, retry := mws.OnError(ctx, err)
+		if retry && ctx.Err() == nil {
+			resp, err = call()
+			if err == nil {
+				mws.AfterResponse(ctx, resp)
+				return resp, nil
+			}
+			message, _ = mws.OnError(ctx, err)
+		}
+		if message != "" {
+			return nil, fmt.Errorf("%s", message)
+		}
+		return nil, err
 	}
-
-	// Otherwise use Generate
-	return c.chatWithoutStream(ctx, einoMessages)
+	mws.AfterResponse(ctx, resp)
+	return resp, nil
 }
+
+// providerName and providerModel expose the identity a middleware matches on.
+// A ReactClient is built from a provider, so the model is the toolable model's
+// configured name; an empty name simply matches a wildcard middleware.
+func (c *ReactClient) providerName() string { return c.provider }
+
+func (c *ReactClient) providerModel() string { return c.modelName }
 
 // chatWithStream sends a streaming chat completion request via React Agent
 func (c *ReactClient) chatWithStream(ctx context.Context, messages []*schema.Message, onChunk func(string), onToolCall ToolCallCallback, onReasoning []func(string)) (*ChatResponse, error) {
