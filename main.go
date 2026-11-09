@@ -4,6 +4,7 @@ import (
 	"chatgo/internal/config"
 	"chatgo/internal/shellenv"
 	"chatgo/internal/ui"
+	"chatgo/internal/ui/assets"
 	"fmt"
 	"log"
 	"os"
@@ -15,7 +16,9 @@ import (
 
 func main() {
 	shellenv.AugmentPath()
-	mygo.Use(native.Plugin)
+	// The update window draws the same icon as the app: the embedded brand
+	// image, so it cannot drift from the dock and window icons.
+	mygo.Use(native.New(updater.Options{Icon: assets.LogoPNG()}))
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
