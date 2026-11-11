@@ -57,7 +57,7 @@ func (cw *ChatWindow) startWebService() {
 		cw.setWebServiceError(err)
 		return
 	}
-	srv, err := webui.NewServer(cw.cfg, cw.convManager, webDir)
+	srv, err := webui.NewServerWithRunner(cw.cfg, cw.convManager, webDir, cw.WebRuntime())
 	if err != nil {
 		cw.setWebServiceError(err)
 		return

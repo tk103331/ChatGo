@@ -160,7 +160,12 @@ type Conversation struct {
 	// whole on every update; a conversation that never planned leaves it nil.
 	Plan   []PlanEntry `json:"plan,omitempty"`
 	Skills []string    `json:"skills,omitempty"`
-	TaskID string      `json:"task_id,omitempty"`
+	// Tools overrides the tools a session runs with ("builtin:name" or
+	// "mcp:name"). ToolsSet distinguishes "use the agent's or global list"
+	// from "run with no tools at all"; the browser lets a session choose.
+	Tools    []string `json:"tools,omitempty"`
+	ToolsSet bool     `json:"tools_set,omitempty"`
+	TaskID   string   `json:"task_id,omitempty"`
 	// TaskStatus is the last auto-task run's outcome on this conversation:
 	// "success" or "failed", empty for a conversation without a run.
 	TaskStatus string `json:"task_status,omitempty"`

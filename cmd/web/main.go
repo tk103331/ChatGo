@@ -40,7 +40,49 @@ type app struct {
 	contextQuery    string
 	contextFiles    []contextItem
 	folds           map[string]bool
+	foldLive        map[string]bool
 	collapsedGroups map[string]bool
+
+	caps       map[string]bool
+	agents     []agentInfo
+	tools      []toolInfo
+	workspaces []string
+	skills     []skillInfo
+	agentRef   string
+	toolsFor   string
+	skillsFor  string
+	skillsOn   []string
+	toolsOpen  bool
+
+	pending         *interactionInfo
+	askAnswers      map[string]string
+	askInputs       map[string]string
+	askTab          int
+	askFor          string
+	interactionDone string
+
+	newSessionOpen    bool
+	newSessionClosing bool
+	newTitle          string
+	newAgent          string
+	newWorkspace      string
+
+	attachments []attachmentRef
+	attaching   bool
+	attachOpen  bool
+
+	editingID string
+	editDraft string
+
+	menuFor     string
+	renameID    string
+	renameDraft string
+	renameOpen  bool
+	deleteID    string
+	deleteTitle string
+	deleteOpen  bool
+	revertID    string
+	revertOpen  bool
 
 	msgList kit.MessageListState
 }
@@ -52,10 +94,12 @@ func (a *app) start() {
 	} else {
 		a.win.Update(func() {
 			a.meta = m
+			a.caps = m.Capabilities
 			if a.modelRef == "" {
 				a.modelRef = modelRefOf(m.Provider, m.Model)
 			}
 		})
+		a.loadFeatures()
 	}
 	a.refreshSessions()
 	go a.poll()
@@ -124,6 +168,17 @@ func (a *app) loadSession(id string, showLoading bool) {
 		if oldID != resp.Session.ID && resp.Session.Provider != "" {
 			a.modelRef = modelRefOf(resp.Session.Provider, resp.Session.Model)
 		}
+		switch {
+		case resp.Interaction == nil:
+			a.pending = nil
+			a.interactionDone = ""
+		case resp.Interaction.ID == a.interactionDone:
+			a.pending = nil
+		default:
+			a.pending = resp.Interaction
+		}
+		a.agentRef = resp.Session.Agent
+		a.syncAgentFeatures()
 		a.setRunning(resp.Running)
 		if !resp.Running && (a.status == "加载中…" || a.status == "正在生成…" || a.status == "正在停止…") {
 			a.status = ""
@@ -134,42 +189,17 @@ func (a *app) loadSession(id string, showLoading bool) {
 	})
 }
 
-func (a *app) newSession() {
-	a.win.Update(func() { a.status = "创建中…" })
-	provider, model := a.selectedModel()
-	body := map[string]string{}
-	if provider != "" {
-		body["provider"] = provider
-		body["model"] = model
-	}
-	go func() {
-		var resp sessionResponse
-		if err := apiPost("/api/sessions", body, &resp); err != nil {
-			a.win.Update(func() { a.status = err.Error() })
-			return
-		}
-		a.setSelected(resp.Session.ID)
-		a.win.Update(func() {
-			a.cur = &resp.Session
-			a.modelRef = modelRefOf(resp.Session.Provider, resp.Session.Model)
-			a.setRunning(false)
-			a.status = ""
-			a.sidebarOpen = false
-			a.contextOpen = false
-			a.contextFor = ""
-			a.contextFiles = nil
-			a.contextErr = ""
-			a.msgList.ScrollToEnd()
-		})
-		a.refreshSessions()
-	}()
-}
-
 func (a *app) openSession(id string) {
 	if id == "" {
 		return
 	}
 	a.setSelected(id)
+	a.menuFor = ""
+	a.editingID = ""
+	a.editDraft = ""
+	a.pending = nil
+	a.attachments = nil
+	a.skillsOn = nil
 	a.sidebarOpen = false
 	a.contextOpen = false
 	a.contextFor = ""
@@ -182,16 +212,24 @@ func (a *app) openSession(id string) {
 func (a *app) send() {
 	id, running := a.snapshot()
 	text := strings.TrimSpace(a.draft)
-	if id == "" || text == "" || running {
+	attachments := append([]attachmentRef{}, a.attachments...)
+	skills := append([]string{}, a.skillsOn...)
+	if id == "" || running || a.attaching || (text == "" && len(attachments) == 0) {
 		return
 	}
 	a.draft = ""
+	a.attachments = nil
+	a.skillsOn = nil
 	a.setRunning(true)
 	a.status = "正在生成…"
 	localID := fmt.Sprintf("local-%d", time.Now().UnixNano())
 	if a.cur != nil && a.cur.ID == id {
+		content := text
+		for _, att := range attachments {
+			content += "\n\n[附件 " + att.Name + "]"
+		}
 		a.cur.Messages = append(a.cur.Messages, models.Message{
-			ID: localID, Role: "user", Content: text,
+			ID: localID, Role: "user", Content: content,
 			AuthorID: models.AuthorHuman, AuthorKind: models.AuthorKindHuman,
 			Timestamp: time.Now(),
 		})
@@ -199,10 +237,16 @@ func (a *app) send() {
 	a.msgList.ScrollToEnd()
 	a.win.Update(func() {})
 	provider, model := a.selectedModel()
-	body := map[string]string{"text": text}
+	body := map[string]any{"text": text}
 	if provider != "" {
 		body["provider"] = provider
 		body["model"] = model
+	}
+	if len(skills) > 0 {
+		body["skills"] = skills
+	}
+	if len(attachments) > 0 {
+		body["attachments"] = attachments
 	}
 	go func() {
 		var out struct {
@@ -218,6 +262,8 @@ func (a *app) send() {
 						}
 					}
 				}
+				a.attachments = attachments
+				a.skillsOn = skills
 				a.setRunning(false)
 				a.status = err.Error()
 			})
@@ -273,6 +319,15 @@ func (a *app) isRunning() bool {
 
 func (a *app) current() *models.Conversation { return a.cur }
 
+// sessionAgent is the conversation's desktop agent reference. The web client
+// only runs a plain chat model, so an agent session is read-only there.
+func (a *app) sessionAgent() string {
+	if a.cur == nil {
+		return ""
+	}
+	return strings.TrimSpace(a.cur.Agent)
+}
+
 func (a *app) selectedModel() (string, string) {
 	provider, model := splitModelRef(a.modelRef)
 	if provider == "" && model == "" {
@@ -308,7 +363,15 @@ func clip(s string, n int) string {
 
 func main() {
 	mygo.App.WhenReady(func() {
-		a := &app{folds: map[string]bool{}, collapsedGroups: map[string]bool{}}
+		a := &app{
+			folds:           map[string]bool{},
+			foldLive:        map[string]bool{},
+			collapsedGroups: map[string]bool{},
+			askAnswers:      map[string]string{},
+			askInputs:       map[string]string{},
+			toolsFor:        "\x00",
+			skillsFor:       "\x00",
+		}
 		a.win = mygo.NewWindow(mygo.WindowOptions{
 			Title:   "ChatGo",
 			Width:   1180,

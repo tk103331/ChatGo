@@ -18,12 +18,13 @@ type modelChoice struct {
 }
 
 type metaInfo struct {
-	Provider string        `json:"provider"`
-	Model    string        `json:"model"`
-	Ready    bool          `json:"ready"`
-	Error    string        `json:"error,omitempty"`
-	Note     string        `json:"note,omitempty"`
-	Models   []modelChoice `json:"models,omitempty"`
+	Provider     string          `json:"provider"`
+	Model        string          `json:"model"`
+	Ready        bool            `json:"ready"`
+	Error        string          `json:"error,omitempty"`
+	Note         string          `json:"note,omitempty"`
+	Models       []modelChoice   `json:"models,omitempty"`
+	Capabilities map[string]bool `json:"capabilities,omitempty"`
 }
 
 type sessionSummary struct {
@@ -42,8 +43,64 @@ type sessionsResponse struct {
 }
 
 type sessionResponse struct {
-	Session models.Conversation `json:"session"`
-	Running bool                `json:"running"`
+	Session     models.Conversation `json:"session"`
+	Running     bool                `json:"running"`
+	Interaction *interactionInfo    `json:"interaction,omitempty"`
+}
+
+type agentInfo struct {
+	Ref         string   `json:"ref"`
+	Name        string   `json:"name"`
+	Description string   `json:"description,omitempty"`
+	Kind        string   `json:"kind"`
+	Icon        string   `json:"icon,omitempty"`
+	Models      []string `json:"models,omitempty"`
+	Tools       []string `json:"tools,omitempty"`
+	Workspace   string   `json:"workspace,omitempty"`
+	Skills      []string `json:"skills,omitempty"`
+}
+
+type toolInfo struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Kind    string `json:"kind"`
+	Enabled bool   `json:"enabled"`
+}
+
+type skillInfo struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Token       string `json:"token"`
+	Description string `json:"description,omitempty"`
+}
+
+type askItem struct {
+	Question string   `json:"question"`
+	Options  []string `json:"options,omitempty"`
+}
+
+type permissionOption struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Kind string `json:"kind,omitempty"`
+}
+
+type permissionRequest struct {
+	Title   string             `json:"title"`
+	Detail  string             `json:"detail,omitempty"`
+	Options []permissionOption `json:"options"`
+}
+
+type interactionInfo struct {
+	ID         string             `json:"id"`
+	Kind       string             `json:"kind"`
+	Items      []askItem          `json:"items,omitempty"`
+	Permission *permissionRequest `json:"permission,omitempty"`
+}
+
+type attachmentRef struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
 }
 
 type contextItem struct {
@@ -92,6 +149,19 @@ func apiDelete(path string, out any) error {
 	return apiDo(req, out)
 }
 
+func apiPatch(path string, body any, out any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPatch, path, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return apiDo(req, out)
+}
+
 func apiDo(req *http.Request, out any) error {
 	resp, err := webClient.Do(req)
 	if err != nil {
@@ -116,4 +186,9 @@ func apiDo(req *http.Request, out any) error {
 
 func sessionPath(id string) string {
 	return "/api/sessions/" + url.PathEscape(id)
+}
+
+// messagePath is a message action: "edit" or "regenerate".
+func messagePath(id, messageID, action string) string {
+	return sessionPath(id) + "/messages/" + url.PathEscape(messageID) + "/" + action
 }

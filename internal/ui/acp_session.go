@@ -41,6 +41,12 @@ type acpState struct {
 	permissionReq  *acp.RequestPermissionRequest
 	permissionCh   chan acp.RequestPermissionResponse
 	permissionShow bool
+
+	// webSink routes a conversation's ACP updates to an embedded web run, so
+	// they land under the run's lock instead of on the desktop's main thread.
+	webSink map[string]func(func(*models.Conversation))
+	// webPerm routes a conversation's permission requests to the browser.
+	webPerm map[string]func(context.Context, acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error)
 }
 
 func newACPState() acpState {
@@ -53,6 +59,8 @@ func newACPState() acpState {
 		channelSess:  map[acp.SessionId]bool{},
 		channelReply: map[acp.SessionId]*strings.Builder{},
 		toolStart:    map[string]time.Time{},
+		webSink:      map[string]func(func(*models.Conversation)){},
+		webPerm:      map[string]func(context.Context, acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error){},
 	}
 }
 

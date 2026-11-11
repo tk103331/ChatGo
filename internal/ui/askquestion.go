@@ -34,6 +34,10 @@ type askQuestionItem struct {
 type builtinToolEnv struct {
 	channel *config.Channel
 	msgCtx  *channelMsgContext
+	// ask lets a headless run ask the browser instead of the desktop panel.
+	ask func(ctx context.Context, items []*askQuestionItem) (string, error)
+	// tools overrides the agent or global tool list for this turn.
+	tools []string
 }
 
 // askQuestion is one pending ask from an agent, blocking its tool call until
@@ -113,6 +117,9 @@ func (cw *ChatWindow) askQuestionTool(env *builtinToolEnv, conv ...*models.Conve
 			return "", fmt.Errorf("缺少必填参数 questions")
 		}
 
+		if env != nil && env.ask != nil {
+			return env.ask(ctx, items)
+		}
 		if env != nil && env.channel != nil {
 			return cw.askChannelQuestion(ctx, env, convID, items)
 		}

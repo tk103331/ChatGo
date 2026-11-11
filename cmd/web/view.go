@@ -27,13 +27,17 @@ func (a *app) view(c *ui.Context) {
 			ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
 				a.sidebar(c, t, true)
 			})
+			a.overlays(c)
 			return
 		}
 		ui.Column(c).Fill().Background(t.Background).Children(func() {
 			a.header(c, t, true)
 			a.messages(c, t)
+			a.planPanel(c, t)
+			a.interactionPanel(c, t)
 			a.composer(c, t)
 		})
+		a.overlays(c)
 		return
 	}
 	ui.Row(c).Fill().AlignItems(ui.Stretch).Children(func() {
@@ -41,9 +45,12 @@ func (a *app) view(c *ui.Context) {
 		ui.Column(c).Grow(1).MinWidth(0).Background(t.Background).Children(func() {
 			a.header(c, t, false)
 			a.messages(c, t)
+			a.planPanel(c, t)
+			a.interactionPanel(c, t)
 			a.composer(c, t)
 		})
 	})
+	a.overlays(c)
 }
 
 func (a *app) sidebar(c *ui.Context, t *ui.Theme, narrow bool) {
@@ -69,7 +76,7 @@ func (a *app) sidebar(c *ui.Context, t *ui.Theme, narrow bool) {
 		})
 		newBtn.FillWidth()
 		if newBtn.Clicked() {
-			a.newSession()
+			a.openNewSession()
 		}
 		search := kit.TextInput(c, &a.search, kit.TextInputOptions{
 			Placeholder: "搜索会话", Label: "搜索会话",
@@ -183,6 +190,7 @@ func (a *app) sessionRow(c *ui.Context, t *ui.Theme, s sessionSummary, indent fl
 	} else if row.Hovered() {
 		row.Background(t.SurfaceHover)
 	}
+	var menuBtn ui.Element
 	row.Children(func() {
 		ui.Icon(c, icons.Must("message-square")).Size(16, 16).
 			TextColor(t.Accent).Shrink(0)
@@ -204,8 +212,32 @@ func (a *app) sessionRow(c *ui.Context, t *ui.Theme, s sessionSummary, indent fl
 					SingleLine().Ellipsis("…")
 			}
 		})
+		if row.Hovered() || selected || a.menuFor == s.ID {
+			menuBtn = kit.IconButton(c, icons.Must("ellipsis"), "会话操作",
+				kit.IconButtonOptions{Variant: kit.Ghost}).AlignSelf(ui.Center)
+		}
 	})
-	if row.Clicked() {
+	menuClicked := menuBtn.Valid() && menuBtn.Clicked()
+	if menuClicked {
+		a.menuFor = s.ID
+		a.win.Update(func() {})
+	}
+	if menuBtn.Valid() {
+		open := a.menuFor == s.ID
+		kit.PopupMenuOpen(c, menuBtn, &open, func(m *kit.PopupMenu) {
+			if m.Item("重命名", kit.PopupMenuItemOptions{}) {
+				a.beginRename(s)
+			}
+			m.Separator()
+			if m.Item("删除", kit.PopupMenuItemOptions{}) {
+				a.beginDelete(s)
+			}
+		})
+		if a.menuFor == s.ID && !open {
+			a.menuFor = ""
+		}
+	}
+	if row.Clicked() && !menuClicked {
 		a.openSession(s.ID)
 	}
 }
@@ -311,9 +343,23 @@ func (a *app) composer(c *ui.Context, t *ui.Theme) {
 		})
 		return
 	}
+	if agent := a.sessionAgent(); agent != "" && !a.cap(capAgents) {
+		ui.Row(c).FillWidth().Shrink(0).Padding(u*3, u*5).Gap(u).
+			AlignItems(ui.Center).
+			BorderWidth(mtheme.BorderWidth, 0, 0, 0).BorderColor(t.Border).Children(func() {
+			ui.Icon(c, icons.Must("triangle-alert")).Size(16, 16).
+				TextColor(t.TextMuted).Shrink(0)
+			ui.Textf(c, "该会话由 %s 运行，当前 Web 运行时暂不支持继续对话", agentLabel(agent)).
+				TextColor(t.TextMuted).FontSize(uikit.FontSize(c, mtheme.CaptionSize)).
+				Grow(1).MinWidth(0)
+		})
+		return
+	}
 	ui.Column(c).Shrink(0).Padding(u*3, u*5).
 		BorderWidth(mtheme.BorderWidth, 0, 0, 0).BorderColor(t.Border).
-		Background(t.Background).Children(func() {
+		Background(t.Background).Gap(u).Children(func() {
+		a.skillChips(c, t)
+		a.attachmentChips(c, t)
 		r := kit.PromptComposer(c, &a.draft, kit.PromptComposerOptions{
 			Placeholder: "输入消息，Enter 发送，Shift+Enter 换行",
 			MaxHeight:   220,
@@ -333,17 +379,61 @@ func (a *app) composer(c *ui.Context, t *ui.Theme) {
 		if frame.Clicked() {
 			r.Input.Focus()
 		}
+		if files := frame.DroppedFiles(); len(files) > 0 {
+			a.addDroppedFiles(files)
+		}
+		if frame.FileDragOver() {
+			frame.Border(mtheme.FocusWidth, t.Focus).Background(t.Selection)
+		}
+		if a.cap(capSkills) && len(a.skills) > 0 && !strings.HasPrefix(a.agentRef, "acp:") {
+			cmds := make([]kit.SlashCommand, 0, len(a.skills))
+			for _, s := range a.skills {
+				cmds = append(cmds, kit.SlashCommand{Name: s.Token, Description: s.Description})
+			}
+			if cmd, ok := kit.SlashCommandMenu(c, r, &a.draft, cmds).Chosen(); ok {
+				a.draft = ""
+				a.addSkill(cmd.Name)
+				r.Input.Focus()
+			}
+		}
 		if r.Submitted() {
 			a.send()
 		}
 	})
 }
 
+// skillChips shows the skills the next message carries.
+func (a *app) skillChips(c *ui.Context, t *ui.Theme) {
+	if len(a.skillsOn) == 0 {
+		return
+	}
+	u := uikit.Unit(c)
+	caption := uikit.FontSize(c, mtheme.CaptionSize)
+	ui.Row(c).FillWidth().Gap(u).Wrap().AlignItems(ui.Center).Children(func() {
+		for i := range a.skillsOn {
+			id := a.skillsOn[i]
+			ui.Row(c).Shrink(0).Gap(u).AlignItems(ui.Center).
+				Padding(u/2, u).Radius(mtheme.ControlRadius).
+				Background(t.Surface).Border(mtheme.BorderWidth, t.Border).Children(func() {
+				ui.Icon(c, icons.Must("sliders-horizontal")).Size(12, 12).
+					TextColor(t.Accent).Shrink(0)
+				ui.Text(c, a.skillName(id)).FontSize(caption).SingleLine().Ellipsis("…").MaxWidth(180)
+				if uikit.IconAction(c, icons.Must("x"), "移除 Skill").Clicked() {
+					a.skillsOn = append(a.skillsOn[:i], a.skillsOn[i+1:]...)
+				}
+			})
+		}
+	})
+}
+
 func (a *app) composerTools(c *ui.Context, t *ui.Theme) {
 	u := uikit.Unit(c)
-	ui.Row(c).Gap(u).AlignItems(ui.Center).Children(func() {
+	ui.Row(c).Gap(u).AlignItems(ui.Center).Wrap().Children(func() {
 		a.contextButton(c, t)
 		a.modelSelector(c, t)
+		a.agentSelector(c, t)
+		a.toolsButton(c, t)
+		a.attachmentButton(c, t, &a.attachOpen)
 	})
 }
 
@@ -463,7 +553,7 @@ func (a *app) modelSelector(c *ui.Context, t *ui.Theme) {
 func (a *app) composerActions(c *ui.Context, _ *ui.Theme) {
 	r := kit.SendButton(c, kit.SendButtonOptions{
 		Streaming: a.isRunning(),
-		Disabled:  strings.TrimSpace(a.draft) == "",
+		Disabled:  (strings.TrimSpace(a.draft) == "" && len(a.attachments) == 0) || a.attaching,
 	})
 	if r.Sent() {
 		a.send()

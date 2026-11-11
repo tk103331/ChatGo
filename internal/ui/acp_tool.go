@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"strings"
 	"time"
@@ -9,6 +8,7 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/toolview"
 	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
@@ -29,54 +29,12 @@ func acpToolKind(tc models.ToolCall) string {
 
 // acpToolKindLabel names a tool category for display.
 func acpToolKindLabel(kind string) string {
-	switch acp.ToolKind(kind) {
-	case acp.ToolKindRead:
-		return "读取"
-	case acp.ToolKindEdit:
-		return "编辑"
-	case acp.ToolKindDelete:
-		return "删除"
-	case acp.ToolKindMove:
-		return "移动"
-	case acp.ToolKindSearch:
-		return "搜索"
-	case acp.ToolKindExecute:
-		return "执行"
-	case acp.ToolKindThink:
-		return "思考"
-	case acp.ToolKindFetch:
-		return "获取"
-	case acp.ToolKindSwitchMode:
-		return "切换模式"
-	default:
-		return ""
-	}
+	return toolview.Label(kind)
 }
 
 // acpToolKindIcon picks the icon a category reads as.
 func acpToolKindIcon(kind string) string {
-	switch acp.ToolKind(kind) {
-	case acp.ToolKindRead:
-		return "file-text"
-	case acp.ToolKindEdit:
-		return "pencil"
-	case acp.ToolKindDelete:
-		return "circle-x"
-	case acp.ToolKindMove:
-		return "move"
-	case acp.ToolKindSearch:
-		return "search"
-	case acp.ToolKindExecute:
-		return "terminal"
-	case acp.ToolKindThink:
-		return "brain"
-	case acp.ToolKindFetch:
-		return "globe"
-	case acp.ToolKindSwitchMode:
-		return "sliders-horizontal"
-	default:
-		return "wrench"
-	}
+	return toolview.Icon(kind)
 }
 
 // toolCallRows renders a message's tool calls as foldable rows: the
@@ -257,58 +215,14 @@ func (cw *ChatWindow) toolDetailBlock(c *mgo.Context, title, body string, danger
 }
 
 // builtinToolKind infers a tool's category from its name and arguments, the
-// way an ACP adapter reports one explicitly. The argument action wins when
-// it names a concrete verb, so a single "file" tool splits into read and
-// write rows.
+// way an ACP adapter reports one explicitly.
 func builtinToolKind(name, args string) string {
-	lower := strings.ToLower(name)
-	action := strings.ToLower(toolArgField(args, "action"))
-	switch {
-	case action == "read" || action == "list" || action == "cat":
-		return string(acp.ToolKindRead)
-	case action == "write" || action == "create" || action == "update" || action == "apply":
-		return string(acp.ToolKindEdit)
-	case action == "delete" || action == "remove":
-		return string(acp.ToolKindDelete)
-	case action == "search" || action == "find" || action == "query":
-		return string(acp.ToolKindSearch)
-	}
-	switch {
-	case strings.Contains(lower, "delete") || strings.Contains(lower, "remove"):
-		return string(acp.ToolKindDelete)
-	case strings.Contains(lower, "move") || strings.Contains(lower, "rename"):
-		return string(acp.ToolKindMove)
-	case strings.Contains(lower, "search") || strings.Contains(lower, "grep") ||
-		strings.Contains(lower, "find") || strings.Contains(lower, "glob") ||
-		strings.Contains(lower, "knowledge"):
-		return string(acp.ToolKindSearch)
-	case strings.Contains(lower, "exec") || strings.Contains(lower, "command") ||
-		strings.Contains(lower, "shell") || strings.Contains(lower, "bash") ||
-		strings.Contains(lower, "run") || strings.Contains(lower, "sandbox"):
-		return string(acp.ToolKindExecute)
-	case strings.Contains(lower, "http") || strings.Contains(lower, "fetch") ||
-		strings.Contains(lower, "web") || strings.Contains(lower, "url"):
-		return string(acp.ToolKindFetch)
-	case strings.Contains(lower, "write") || strings.Contains(lower, "edit") ||
-		strings.Contains(lower, "create") || strings.Contains(lower, "patch"):
-		return string(acp.ToolKindEdit)
-	case strings.Contains(lower, "read") || strings.Contains(lower, "file") ||
-		strings.Contains(lower, "cat") || strings.Contains(lower, "list"):
-		return string(acp.ToolKindRead)
-	}
-	return string(acp.ToolKindOther)
+	return toolview.Kind(name, args)
 }
 
 // toolArgField reads one string field out of a tool call's JSON arguments.
 func toolArgField(args, field string) string {
-	var m map[string]any
-	if err := json.Unmarshal([]byte(args), &m); err != nil {
-		return ""
-	}
-	if v, ok := m[field].(string); ok {
-		return v
-	}
-	return ""
+	return toolview.ArgField(args, field)
 }
 
 func (cw *ChatWindow) toolReadPath(tc models.ToolCall, kind string) string {
@@ -336,36 +250,11 @@ func (cw *ChatWindow) toolReadPath(tc models.ToolCall, kind string) string {
 }
 
 func toolArgPath(args string) string {
-	var raw any
-	if err := json.Unmarshal([]byte(args), &raw); err != nil {
-		return ""
-	}
-	if s, ok := raw.(string); ok {
-		return strings.TrimSpace(s)
-	}
-	m, ok := raw.(map[string]any)
-	if !ok {
-		return ""
-	}
-	for _, key := range []string{"path", "file", "file_path", "filePath", "filepath", "target_file", "targetFile", "filename", "fileName"} {
-		if v, ok := m[key].(string); ok && strings.TrimSpace(v) != "" {
-			return strings.TrimSpace(v)
-		}
-	}
-	return ""
+	return toolview.ArgPath(args)
 }
 
 // toolArgSummary is the one-line summary of a built-in call: its most
 // telling argument, or its name when the arguments say nothing useful.
 func toolArgSummary(args string) string {
-	var m map[string]any
-	if err := json.Unmarshal([]byte(args), &m); err != nil {
-		return ""
-	}
-	for _, key := range []string{"command", "cmd", "path", "file", "query", "pattern", "url", "name"} {
-		if v, ok := m[key].(string); ok && strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
+	return toolview.ArgSummary(args)
 }

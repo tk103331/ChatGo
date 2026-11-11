@@ -774,7 +774,21 @@ func (cw *ChatWindow) taskClientWithChannel(agent, workspace string, ch *config.
 }
 
 func (cw *ChatWindow) taskClientWithChannelModel(agent, workspace, modelRef string, ch *config.Channel, msgCtx *channelMsgContext, conv *models.Conversation, extra ...tool.BaseTool) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
+	var env *builtinToolEnv
+	if ch != nil {
+		env = &builtinToolEnv{channel: ch, msgCtx: msgCtx}
+	}
+	return cw.taskClientWithEnvModel(agent, workspace, modelRef, env, conv, extra...)
+}
+
+// taskClientWithEnvModel builds the client a headless turn runs with. env
+// carries the channel a message arrived on, the browser's ask callback, or a
+// per-session tool override; nil means the plain agent/global configuration.
+func (cw *ChatWindow) taskClientWithEnvModel(agent, workspace, modelRef string, env *builtinToolEnv, conv *models.Conversation, extra ...tool.BaseTool) (*llm.Client, *llm.ReactClient, *llm.GroupClient, *llm.GroupReactClient, error) {
 	provName, model, sys, ws, toolIDs := cw.taskAgentSpec(agent)
+	if env != nil && env.tools != nil {
+		toolIDs = env.tools
+	}
 	if ref := strings.TrimSpace(modelRef); ref != "" {
 		if p, m := splitModelRef(ref); p != "" {
 			provName, model = p, m
@@ -795,13 +809,9 @@ func (cw *ChatWindow) taskClientWithChannelModel(agent, workspace, modelRef stri
 				model = ms[0]
 			}
 		}
-		var env *builtinToolEnv
-		if ch != nil {
-			env = &builtinToolEnv{channel: ch, msgCtx: msgCtx}
-		}
 		einoTools := cw.buildEinoToolsEnv(toolIDs, root, conv, env)
-		if ch != nil {
-			einoTools = combineTools(einoTools, cw.buildChannelTools(ch, msgCtx))
+		if env != nil && env.channel != nil {
+			einoTools = combineTools(einoTools, cw.buildChannelTools(env.channel, env.msgCtx))
 		}
 		einoTools = combineTools(einoTools, extra)
 		if len(einoTools) > 0 {
@@ -831,13 +841,9 @@ func (cw *ChatWindow) taskClientWithChannelModel(agent, workspace, modelRef stri
 		}
 	}
 	p.Model = model
-	var env *builtinToolEnv
-	if ch != nil {
-		env = &builtinToolEnv{channel: ch, msgCtx: msgCtx}
-	}
 	einoTools := cw.buildEinoToolsEnv(toolIDs, root, conv, env)
-	if ch != nil {
-		einoTools = combineTools(einoTools, cw.buildChannelTools(ch, msgCtx))
+	if env != nil && env.channel != nil {
+		einoTools = combineTools(einoTools, cw.buildChannelTools(env.channel, env.msgCtx))
 	}
 	einoTools = combineTools(einoTools, extra)
 	if len(einoTools) > 0 {

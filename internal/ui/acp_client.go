@@ -200,8 +200,13 @@ func (cw *ChatWindow) acpToolDuration(tc *models.ToolCall, id, status string) {
 func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 	cw.acp.mu.Lock()
 	conv := cw.acp.convObj[convID]
+	sink := cw.acp.webSink[convID]
 	cw.acp.mu.Unlock()
 	if conv == nil {
+		return
+	}
+	if sink != nil {
+		sink(func(c *models.Conversation) { cw.applyACPUpdate(c, upd) })
 		return
 	}
 	if upd.kind == "plan" {
@@ -210,6 +215,17 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 		conv.Plan = upd.plan
 		_ = cw.convManager.SaveConversation(conv)
 		cw.invalidate()
+		return
+	}
+	cw.applyACPUpdate(conv, upd)
+	cw.invalidate()
+}
+
+// applyACPUpdate writes one ACP update into a conversation. The caller owns
+// the lock: the desktop's main thread, or an embedded web run's sink.
+func (cw *ChatWindow) applyACPUpdate(conv *models.Conversation, upd acpUpdate) {
+	if upd.kind == "plan" {
+		conv.Plan = upd.plan
 		return
 	}
 	n := len(conv.Messages)
@@ -256,7 +272,6 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 					if upd.status != "" {
 						cw.acpBatchTick(conv, last.ID, upd.id, upd.name, upd.status)
 					}
-					cw.invalidate()
 					return
 				}
 			}
@@ -279,7 +294,6 @@ func (cw *ChatWindow) acpApplyToConv(convID string, upd acpUpdate) {
 			cw.acpBatchTick(conv, last.ID, upd.id, upd.name, upd.status)
 		}
 	}
-	cw.invalidate()
 }
 
 // acpBatchTick tracks one tool call in the current batch: an unseen,
@@ -347,6 +361,13 @@ func (a acpClient) RequestPermission(ctx context.Context, p acp.RequestPermissio
 		if r, ok := acpAutoApprove(p); ok {
 			return r, nil
 		}
+	}
+	convID := a.cw.acpConvIDOf(p.SessionId)
+	a.cw.acp.mu.Lock()
+	hook := a.cw.acp.webPerm[convID]
+	a.cw.acp.mu.Unlock()
+	if hook != nil {
+		return hook(ctx, p)
 	}
 	reply := make(chan acp.RequestPermissionResponse, 1)
 	req := p
