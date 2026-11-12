@@ -30,6 +30,8 @@ func (r webRuntime) Capabilities() map[string]bool {
 		webui.CapCheckpoints: true,
 		webui.CapAttachments: true,
 		webui.CapSkills:      true,
+		webui.CapRooms:       true,
+		webui.CapTasks:       true,
 	}
 }
 

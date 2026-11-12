@@ -24,6 +24,8 @@ const (
 	capCheckpoints = "checkpoints"
 	capAttachments = "attachments"
 	capSkills      = "skills"
+	capRooms       = "rooms"
+	capTasks       = "tasks"
 )
 
 func (a *app) cap(name string) bool { return a.caps[name] }

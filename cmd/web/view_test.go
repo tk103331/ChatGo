@@ -58,7 +58,7 @@ func testApp() *app {
 		caps: map[string]bool{
 			capAgents: true, capTools: true, capACP: true, capAsk: true,
 			capPermission: true, capCheckpoints: true, capAttachments: true,
-			capSkills: true,
+			capSkills: true, "rooms": true, "tasks": true,
 		},
 		agents:     []agentInfo{{Ref: "agent:Reviewer", Name: "Reviewer", Kind: "agent"}},
 		tools:      []toolInfo{{ID: "builtin:filesystem", Name: "filesystem", Kind: "builtin", Enabled: true}},
@@ -187,5 +187,62 @@ func TestWebViewRendersRevertDialog(t *testing.T) {
 	a := testApp()
 	a.revertID = "r1"
 	a.revertOpen = true
+	renderApp(t, a, 1180, 820)
+}
+
+func TestWebViewRendersRooms(t *testing.T) {
+	a := testApp()
+	a.section = secRooms
+	a.rooms = []roomInfo{{
+		ID: "r1", Name: "评审群", Activation: "master",
+		Members:  []roomMemberInfo{{Agent: "agent:A", Name: "A"}, {Agent: "agent:B", Name: "B"}},
+		Sessions: 2, Running: true,
+	}}
+	a.roomID = "r1"
+	a.roomSessions = []roomSessionInfo{{ID: "c1", Label: "第一次讨论"}}
+	a.cur.RoomID = "r1"
+	a.roomSessionsOpen = true
+	renderApp(t, a, 1180, 820)
+	renderApp(t, a, 520, 800)
+}
+
+func TestWebViewRendersRoomEditor(t *testing.T) {
+	a := testApp()
+	a.section = secRooms
+	a.roomForm = &roomForm{
+		id: "r1", name: "评审群", activation: "all", workspace: "/tmp/project",
+		members: []roomMemberInfo{{Agent: "agent:Reviewer", Name: "审查者"}},
+	}
+	a.roomEditorOpen = true
+	renderApp(t, a, 1180, 820)
+}
+
+func TestWebViewRendersTasks(t *testing.T) {
+	a := testApp()
+	a.section = secTasks
+	now := time.Now()
+	a.tasks = []taskInfo{{
+		ID: "t1", Name: "每日日报", Agent: "agent:Reviewer", Prompt: "汇总今天的提交并写日报",
+		Schedule: scheduleInfo{Kind: "daily", Hour: 9, Minute: 30},
+		Enabled:  true, LastRun: now, LastNote: "成功", Sessions: 3,
+	}}
+	a.taskID = "t1"
+	a.taskSessions = []roomSessionInfo{{ID: "c1", Label: "今天的日报", Updated: now}}
+	a.cur.TaskID = "t1"
+	a.taskSessionsOpen = true
+	renderApp(t, a, 1180, 820)
+	renderApp(t, a, 520, 800)
+}
+
+func TestWebViewRendersTaskEditor(t *testing.T) {
+	a := testApp()
+	a.section = secTasks
+	a.taskForm = &taskForm{
+		id: "t1", name: "每日日报", prompt: "汇总提交并写日报",
+		agent: "agent:Reviewer", workspace: "/tmp/project",
+		kind: "weekly", hour: "09", minute: "30", weekday: 1, day: "1",
+		enabled: true,
+	}
+	a.taskEditorOpen = true
 	renderApp(t, a, 1180, 820)
 }

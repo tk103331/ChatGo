@@ -24,6 +24,9 @@ type app struct {
 	mu       sync.Mutex
 	selected string
 	running  bool
+	section  string
+	roomConv string
+	taskConv string
 
 	meta            metaInfo
 	sessions        []sessionSummary
@@ -84,6 +87,24 @@ type app struct {
 	revertID    string
 	revertOpen  bool
 
+	rooms             []roomInfo
+	roomID            string
+	roomSessions      []roomSessionInfo
+	roomSessionsOpen  bool
+	roomEditorOpen    bool
+	roomEditorClosing bool
+	roomForm          *roomForm
+	roomDeleteOpen    bool
+
+	tasks             []taskInfo
+	taskID            string
+	taskSessions      []roomSessionInfo
+	taskSessionsOpen  bool
+	taskEditorOpen    bool
+	taskEditorClosing bool
+	taskForm          *taskForm
+	taskDeleteOpen    bool
+
 	msgList kit.MessageListState
 }
 
@@ -111,12 +132,31 @@ func (a *app) poll() {
 	tick := time.NewTicker(700 * time.Millisecond)
 	defer tick.Stop()
 	for i := 0; ; i++ {
-		if i%4 == 0 {
-			a.refreshSessions()
-		}
-		id, running := a.snapshot()
-		if id != "" && (running || i%4 == 0) {
-			a.loadSession(id, false)
+		switch a.getSection() {
+		case secRooms:
+			if i%4 == 0 {
+				a.refreshRooms()
+				a.refreshRoomSessions()
+			}
+			if id := a.getRoomConv(); id != "" && (a.isRunning() || i%4 == 0) {
+				a.loadSession(id, false)
+			}
+		case secTasks:
+			if i%4 == 0 {
+				a.refreshTasks()
+				a.refreshTaskSessions()
+			}
+			if id := a.getTaskConv(); id != "" && (a.isRunning() || i%4 == 0) {
+				a.loadSession(id, false)
+			}
+		default:
+			if i%4 == 0 {
+				a.refreshSessions()
+			}
+			id, running := a.snapshot()
+			if id != "" && (running || i%4 == 0) {
+				a.loadSession(id, false)
+			}
 		}
 	}
 }
@@ -131,6 +171,9 @@ func (a *app) refreshSessions() {
 		return resp.Sessions[i].UpdatedAt.After(resp.Sessions[j].UpdatedAt)
 	})
 	a.win.Update(func() { a.sessions = resp.Sessions })
+	if a.getSection() != secChat {
+		return
+	}
 	if a.getSelected() == "" && len(resp.Sessions) > 0 {
 		id := resp.Sessions[0].ID
 		a.setSelected(id)
@@ -141,7 +184,7 @@ func (a *app) refreshSessions() {
 func (a *app) loadSession(id string, showLoading bool) {
 	if showLoading {
 		a.win.Update(func() {
-			if a.getSelected() == id {
+			if a.activeID() == id {
 				a.status = "加载中…"
 			}
 		})
@@ -149,7 +192,7 @@ func (a *app) loadSession(id string, showLoading bool) {
 	var resp sessionResponse
 	if err := apiGet(sessionPath(id), &resp); err != nil {
 		a.win.Update(func() {
-			if a.getSelected() == id {
+			if a.activeID() == id {
 				a.setRunning(false)
 				a.status = err.Error()
 			}
@@ -157,7 +200,7 @@ func (a *app) loadSession(id string, showLoading bool) {
 		return
 	}
 	a.win.Update(func() {
-		if a.getSelected() != id {
+		if a.activeID() != id {
 			return
 		}
 		oldID := ""
@@ -193,6 +236,7 @@ func (a *app) openSession(id string) {
 	if id == "" {
 		return
 	}
+	a.setSection(secChat)
 	a.setSelected(id)
 	a.menuFor = ""
 	a.editingID = ""
@@ -214,7 +258,7 @@ func (a *app) send() {
 	text := strings.TrimSpace(a.draft)
 	attachments := append([]attachmentRef{}, a.attachments...)
 	skills := append([]string{}, a.skillsOn...)
-	if id == "" || running || a.attaching || (text == "" && len(attachments) == 0) {
+	if id == "" || running || a.attaching || a.getSection() != secChat || (text == "" && len(attachments) == 0) {
 		return
 	}
 	a.draft = ""
@@ -318,6 +362,134 @@ func (a *app) isRunning() bool {
 }
 
 func (a *app) current() *models.Conversation { return a.cur }
+
+// Sections of the web client: one conversation list, group chats and the
+// scheduled tasks.
+const (
+	secChat  = "chat"
+	secRooms = "rooms"
+	secTasks = "tasks"
+)
+
+func (a *app) getSection() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.section == "" {
+		return secChat
+	}
+	return a.section
+}
+
+func (a *app) setSection(section string) {
+	a.mu.Lock()
+	a.section = section
+	a.mu.Unlock()
+}
+
+// selectSection switches the visible list and conversation, reloading what
+// the new section shows.
+func (a *app) selectSection(section string) {
+	if a.getSection() == section {
+		return
+	}
+	a.setSection(section)
+	a.roomSessionsOpen = false
+	a.taskSessionsOpen = false
+	a.pending = nil
+	a.attachments = nil
+	a.skillsOn = nil
+	a.editingID = ""
+	a.editDraft = ""
+	a.draft = ""
+	a.cur = nil
+	a.setRunning(false)
+	a.win.Update(func() {})
+	go func() {
+		switch section {
+		case secRooms:
+			a.refreshRooms()
+		case secTasks:
+			a.refreshTasks()
+		default:
+			a.refreshSessions()
+		}
+		switch section {
+		case secRooms:
+			if id := a.getRoomConv(); id != "" {
+				a.loadSession(id, true)
+			}
+		case secTasks:
+			if id := a.getTaskConv(); id != "" {
+				a.loadSession(id, true)
+			}
+		default:
+			if id := a.getSelected(); id != "" {
+				a.loadSession(id, true)
+			}
+		}
+	}()
+}
+
+func (a *app) getRoomID() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.roomID
+}
+
+func (a *app) setRoomID(id string) {
+	a.mu.Lock()
+	a.roomID = id
+	a.mu.Unlock()
+}
+
+func (a *app) getTaskID() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.taskID
+}
+
+func (a *app) setTaskID(id string) {
+	a.mu.Lock()
+	a.taskID = id
+	a.mu.Unlock()
+}
+
+func (a *app) getRoomConv() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.roomConv
+}
+
+func (a *app) setRoomConv(id string) {
+	a.mu.Lock()
+	a.roomConv = id
+	a.mu.Unlock()
+}
+
+func (a *app) getTaskConv() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.taskConv
+}
+
+func (a *app) setTaskConv(id string) {
+	a.mu.Lock()
+	a.taskConv = id
+	a.mu.Unlock()
+}
+
+// activeID is the conversation the current section shows, the one polling
+// keeps fresh.
+func (a *app) activeID() string {
+	switch a.getSection() {
+	case secRooms:
+		return a.getRoomConv()
+	case secTasks:
+		return a.getTaskConv()
+	default:
+		return a.getSelected()
+	}
+}
 
 // sessionAgent is the conversation's desktop agent reference. The web client
 // only runs a plain chat model, so an agent session is read-only there.

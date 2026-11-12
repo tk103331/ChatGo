@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -29,6 +30,16 @@ type fakeRunner struct {
 	skills     []SkillInfo
 	revertErr  error
 	revertedID string
+
+	rooms        []RoomInfo
+	roomSessions []RoomSessionInfo
+	roomText     string
+	tasks        []TaskInfo
+	taskSessions []RoomSessionInfo
+	startedTask  string
+	markedTask   string
+	markedOK     bool
+	markedNote   string
 }
 
 func (f *fakeRunner) Capabilities() map[string]bool {
@@ -399,5 +410,196 @@ func TestAttachmentLargerThanReadLimit(t *testing.T) {
 	w := serve(t, s, http.MethodPost, "/api/sessions/"+conv.ID+"/attachments", body)
 	if w.Code != http.StatusOK {
 		t.Fatalf("upload %d: %s", w.Code, w.Body)
+	}
+}
+
+// --- Rooms and scheduled tasks ---
+
+func (f *fakeRunner) Rooms() []RoomInfo { return f.rooms }
+func (f *fakeRunner) CreateRoom(in RoomInput) (RoomInfo, error) {
+	room := RoomInfo{ID: "room-new", Name: in.Name, Workspace: in.Workspace, Activation: in.Activation}
+	for _, m := range in.Members {
+		room.Members = append(room.Members, RoomMemberInfo{Agent: m.Agent, Name: m.Name})
+	}
+	f.rooms = append(f.rooms, room)
+	return room, nil
+}
+func (f *fakeRunner) UpdateRoom(id string, in RoomInput) (RoomInfo, error) {
+	for i := range f.rooms {
+		if f.rooms[i].ID == id {
+			f.rooms[i].Name = in.Name
+			return f.rooms[i], nil
+		}
+	}
+	return RoomInfo{}, errors.New("room not found")
+}
+func (f *fakeRunner) DeleteRoom(id string) error {
+	for i := range f.rooms {
+		if f.rooms[i].ID == id {
+			f.rooms = append(f.rooms[:i], f.rooms[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("room not found")
+}
+func (f *fakeRunner) RoomSessions(id string) []RoomSessionInfo { return f.roomSessions }
+func (f *fakeRunner) CreateRoomSession(id string) (RoomSessionInfo, error) {
+	return RoomSessionInfo{ID: "room-conv-new", Label: "新会话"}, nil
+}
+func (f *fakeRunner) RunRoom(ctx context.Context, roomID string, conv *models.Conversation, text string, live Live) error {
+	f.mu.Lock()
+	f.roomText = text
+	f.mu.Unlock()
+	live.Update(func(c *models.Conversation) {
+		m := c.NewAgentMessage("room-reply", "agent:A", "A", time.Now())
+		m.Content = "room reply"
+		c.Messages = append(c.Messages, m)
+	})
+	return nil
+}
+
+func (f *fakeRunner) Tasks() []TaskInfo { return f.tasks }
+func (f *fakeRunner) CreateTask(in TaskInput) (TaskInfo, error) {
+	t := TaskInfo{ID: "task-new", Name: in.Name, Prompt: in.Prompt, Enabled: in.Enabled, Schedule: in.Schedule}
+	f.tasks = append(f.tasks, t)
+	return t, nil
+}
+func (f *fakeRunner) UpdateTask(id string, in TaskInput) (TaskInfo, error) {
+	for i := range f.tasks {
+		if f.tasks[i].ID == id {
+			f.tasks[i].Name = in.Name
+			f.tasks[i].Enabled = in.Enabled
+			return f.tasks[i], nil
+		}
+	}
+	return TaskInfo{}, errors.New("task not found")
+}
+func (f *fakeRunner) DeleteTask(id string) error {
+	for i := range f.tasks {
+		if f.tasks[i].ID == id {
+			f.tasks = append(f.tasks[:i], f.tasks[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("task not found")
+}
+func (f *fakeRunner) TaskSessions(id string) []RoomSessionInfo { return f.taskSessions }
+func (f *fakeRunner) SetTaskConv(id, convID string) {
+	for i := range f.tasks {
+		if f.tasks[i].ID == id {
+			f.tasks[i].ConvID = convID
+		}
+	}
+}
+func (f *fakeRunner) StartTask(id string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.startedTask = id
+	return true
+}
+func (f *fakeRunner) MarkTask(id string, ok bool, note string) {
+	f.mu.Lock()
+	f.markedTask = id
+	f.markedOK = ok
+	f.markedNote = note
+	f.mu.Unlock()
+}
+
+func TestRoomsAPI(t *testing.T) {
+	f := &fakeRunner{rooms: []RoomInfo{{
+		ID: "room1", Name: "评审群", Activation: "all",
+		Members: []RoomMemberInfo{{Agent: "agent:A", Name: "A"}},
+	}}}
+	s, _ := runnerServer(t, f)
+	w := serve(t, s, http.MethodGet, "/api/rooms", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "评审群") {
+		t.Fatalf("list %d: %s", w.Code, w.Body)
+	}
+	body := `{"name":"新群","members":[{"agent":"agent:A"}]}`
+	if w := serve(t, s, http.MethodPost, "/api/rooms", body); w.Code != http.StatusCreated {
+		t.Fatalf("create %d: %s", w.Code, w.Body)
+	}
+	if w := serve(t, s, http.MethodPatch, "/api/rooms/room1", body); w.Code != http.StatusOK {
+		t.Fatalf("patch %d: %s", w.Code, w.Body)
+	}
+	if w := serve(t, s, http.MethodDelete, "/api/rooms/room1", ""); w.Code != http.StatusOK {
+		t.Fatalf("delete %d: %s", w.Code, w.Body)
+	}
+}
+
+func TestRoomSendRunsTurn(t *testing.T) {
+	f := &fakeRunner{}
+	s, cm := runnerServer(t, f)
+	conv := newConversation(t, cm, "群聊会话")
+	conv.RoomID = "room1"
+	if err := cm.SaveConversation(conv); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	w := serve(t, s, http.MethodPost, "/api/rooms/room1/sessions/"+conv.ID+"/messages", `{"text":"大家好"}`)
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("send %d: %s", w.Code, w.Body)
+	}
+	waitIdle(t, s, conv.ID)
+	f.mu.Lock()
+	text := f.roomText
+	f.mu.Unlock()
+	if text != "大家好" {
+		t.Fatalf("run text = %q", text)
+	}
+	loaded, err := cm.LoadConversation(conv.ID)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if len(loaded.Messages) != 2 || loaded.Messages[0].Content != "大家好" || loaded.Messages[1].Content != "room reply" {
+		t.Fatalf("messages = %#v", loaded.Messages)
+	}
+}
+
+func TestTasksAPIAndRun(t *testing.T) {
+	f := &fakeRunner{
+		reply: "task reply",
+		tasks: []TaskInfo{{
+			ID: "t1", Name: "日报", Prompt: "写日报", Enabled: true,
+			Schedule: ScheduleInfo{Kind: "daily", Hour: 9},
+		}},
+	}
+	s, cm := runnerServer(t, f)
+	w := serve(t, s, http.MethodGet, "/api/tasks", "")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "日报") {
+		t.Fatalf("list %d: %s", w.Code, w.Body)
+	}
+	if w := serve(t, s, http.MethodPost, "/api/tasks", `{"name":"周报","prompt":"写周报","schedule":{"kind":"weekly","weekday":1}}`); w.Code != http.StatusCreated {
+		t.Fatalf("create %d: %s", w.Code, w.Body)
+	}
+	if w := serve(t, s, http.MethodPatch, "/api/tasks/t1", `{"name":"日报2","prompt":"写日报","enabled":false,"schedule":{"kind":"daily","hour":9}}`); w.Code != http.StatusOK {
+		t.Fatalf("patch %d: %s", w.Code, w.Body)
+	}
+
+	w = serve(t, s, http.MethodPost, "/api/tasks/t1/run", "")
+	if w.Code != http.StatusAccepted {
+		t.Fatalf("run %d: %s", w.Code, w.Body)
+	}
+	var runResp struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &runResp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	waitIdle(t, s, runResp.SessionID)
+	f.mu.Lock()
+	started, marked, note := f.startedTask, f.markedTask, f.markedNote
+	f.mu.Unlock()
+	if started != "t1" || marked != "t1" || note != "成功" {
+		t.Fatalf("task hooks: started=%q marked=%q note=%q", started, marked, note)
+	}
+	loaded, err := cm.LoadConversation(runResp.SessionID)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.TaskID != "t1" || loaded.TaskStatus != "success" {
+		t.Fatalf("conv = %#v", loaded)
+	}
+	if len(loaded.Messages) != 2 || loaded.Messages[0].Content != "写日报" || loaded.Messages[1].Content != "task reply" {
+		t.Fatalf("messages = %#v", loaded.Messages)
 	}
 }

@@ -192,3 +192,72 @@ func sessionPath(id string) string {
 func messagePath(id, messageID, action string) string {
 	return sessionPath(id) + "/messages/" + url.PathEscape(messageID) + "/" + action
 }
+
+type roomMemberInfo struct {
+	Agent         string `json:"agent"`
+	Name          string `json:"name,omitempty"`
+	Muted         bool   `json:"muted,omitempty"`
+	Talkativeness int    `json:"talkativeness,omitempty"`
+}
+
+type roomInfo struct {
+	ID                 string           `json:"id"`
+	Name               string           `json:"name"`
+	Workspace          string           `json:"workspace,omitempty"`
+	Activation         string           `json:"activation"`
+	Master             string           `json:"master,omitempty"`
+	AllowSelfResponses bool             `json:"allow_self_responses,omitempty"`
+	Members            []roomMemberInfo `json:"members"`
+	Sessions           int              `json:"sessions"`
+	Updated            time.Time        `json:"updated,omitempty"`
+	Running            bool             `json:"running,omitempty"`
+}
+
+type roomInput struct {
+	Name               string           `json:"name"`
+	Workspace          string           `json:"workspace,omitempty"`
+	Activation         string           `json:"activation,omitempty"`
+	Master             string           `json:"master,omitempty"`
+	AllowSelfResponses bool             `json:"allow_self_responses,omitempty"`
+	Members            []roomMemberInfo `json:"members"`
+}
+
+type roomSessionInfo struct {
+	ID      string    `json:"id"`
+	Label   string    `json:"label"`
+	Updated time.Time `json:"updated"`
+}
+
+type scheduleInfo struct {
+	Kind    string `json:"kind"`
+	Hour    int    `json:"hour"`
+	Minute  int    `json:"minute"`
+	Weekday int    `json:"weekday,omitempty"`
+	Day     int    `json:"day,omitempty"`
+}
+
+type taskInfo struct {
+	ID        string       `json:"id"`
+	Name      string       `json:"name"`
+	Agent     string       `json:"agent,omitempty"`
+	Prompt    string       `json:"prompt"`
+	Workspace string       `json:"workspace,omitempty"`
+	Schedule  scheduleInfo `json:"schedule"`
+	Reuse     bool         `json:"reuse,omitempty"`
+	ConvID    string       `json:"conversation_id,omitempty"`
+	Enabled   bool         `json:"enabled"`
+	Running   bool         `json:"running,omitempty"`
+	LastRun   time.Time    `json:"last_run,omitempty"`
+	LastNote  string       `json:"last_note,omitempty"`
+	Sessions  int          `json:"sessions"`
+}
+
+type taskInput struct {
+	Name      string       `json:"name"`
+	Agent     string       `json:"agent,omitempty"`
+	Prompt    string       `json:"prompt"`
+	Workspace string       `json:"workspace,omitempty"`
+	Schedule  scheduleInfo `json:"schedule"`
+	Reuse     bool         `json:"reuse,omitempty"`
+	Enabled   bool         `json:"enabled"`
+}

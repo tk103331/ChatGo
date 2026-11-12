@@ -19,7 +19,7 @@ import (
 // dropped file's bytes under a /mygo-drop path, readable only synchronously in
 // the drop handler, so the bytes are read here before the upload starts.
 func (a *app) addDroppedFiles(paths []string) {
-	id := a.getSelected()
+	id := a.activeID()
 	if id == "" || len(paths) == 0 {
 		return
 	}
@@ -62,7 +62,7 @@ func (a *app) addDroppedFiles(paths []string) {
 				continue
 			}
 			a.win.Update(func() {
-				if a.getSelected() == id {
+				if a.activeID() == id {
 					a.attachments = append(a.attachments, resp.Attachment)
 				}
 			})

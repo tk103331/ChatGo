@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -164,5 +165,126 @@ func conv0Agent(id string, at time.Time) models.Message {
 	return models.Message{
 		ID: id, Role: "assistant", Timestamp: at,
 		AuthorKind: models.AuthorKindAgent,
+	}
+}
+
+func webTestWindow(t *testing.T) *ChatWindow {
+	t.Helper()
+	t.Setenv("HOME", t.TempDir())
+	cw := testWindow()
+	cm, err := models.NewConversationManagerAt(t.TempDir())
+	if err != nil {
+		t.Fatalf("conversation manager: %v", err)
+	}
+	cw.convManager = cm
+	return cw
+}
+
+func TestWebRuntimeRoomCRUD(t *testing.T) {
+	cw := webTestWindow(t)
+	rt := cw.WebRuntime().(webui.RoomRunner)
+	room, err := rt.CreateRoom(webui.RoomInput{
+		Name: "评审群", Activation: "all",
+		Members: []webui.RoomMemberInfo{{Agent: "agent:Reviewer", Name: "审查者"}},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if room.ID == "" || len(rt.Rooms()) != 1 {
+		t.Fatalf("rooms = %#v", rt.Rooms())
+	}
+	room, err = rt.UpdateRoom(room.ID, webui.RoomInput{
+		Name: "改名群", Activation: "natural",
+		Members: []webui.RoomMemberInfo{{Agent: "agent:Reviewer"}},
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if room.Name != "改名群" || room.Activation != "natural" {
+		t.Fatalf("updated = %#v", room)
+	}
+	session, err := rt.CreateRoomSession(room.ID)
+	if err != nil {
+		t.Fatalf("session: %v", err)
+	}
+	if sessions := rt.RoomSessions(room.ID); len(sessions) != 1 || sessions[0].ID != session.ID {
+		t.Fatalf("sessions = %#v", sessions)
+	}
+	if err := rt.DeleteRoom(room.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if len(rt.Rooms()) != 0 {
+		t.Fatalf("rooms after delete = %#v", rt.Rooms())
+	}
+	all, _ := cw.convManager.ListConversations()
+	for _, conv := range all {
+		if conv.RoomID == room.ID {
+			t.Fatalf("room conversation %s was not deleted", conv.ID)
+		}
+	}
+}
+
+func TestWebRuntimeTaskCRUD(t *testing.T) {
+	cw := webTestWindow(t)
+	rt := cw.WebRuntime().(webui.TaskRunner)
+	task, err := rt.CreateTask(webui.TaskInput{
+		Name: "日报", Prompt: "写日报", Enabled: true,
+		Schedule: webui.ScheduleInfo{Kind: "daily", Hour: 9},
+	})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if len(rt.Tasks()) != 1 {
+		t.Fatalf("tasks = %#v", rt.Tasks())
+	}
+	task, err = rt.UpdateTask(task.ID, webui.TaskInput{
+		Name: "周报", Prompt: "写周报", Enabled: false,
+		Schedule: webui.ScheduleInfo{Kind: "weekly", Weekday: 1, Hour: 10},
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if task.Name != "周报" || task.Enabled {
+		t.Fatalf("updated = %#v", task)
+	}
+	rt.SetTaskConv(task.ID, "conv-1")
+	rt.StartTask(task.ID)
+	rt.MarkTask(task.ID, true, "成功")
+	tasks := rt.Tasks()
+	if len(tasks) != 1 || tasks[0].ConvID != "conv-1" || tasks[0].LastNote != "成功" || tasks[0].LastRun.IsZero() {
+		t.Fatalf("marked = %#v", tasks)
+	}
+	if cw.autoRunning[task.ID] {
+		t.Fatal("task still marked running")
+	}
+	if err := rt.DeleteTask(task.ID); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if len(rt.Tasks()) != 0 {
+		t.Fatalf("tasks after delete = %#v", rt.Tasks())
+	}
+}
+
+func TestWebRuntimeRunRoom(t *testing.T) {
+	cw := webTestWindow(t)
+	cw.cfg.Rooms = []config.Room{{
+		ID: "r1", Name: "评审群", Activation: "all", KBID: "test-kb",
+		Members: []config.RoomMember{{Agent: "agent:Reviewer"}},
+	}}
+	cw.cfg.Agents = []config.AgentDef{{Name: "Reviewer"}}
+	now := time.Now()
+	conv := &models.Conversation{ID: "c1", RoomID: "r1"}
+	conv.Messages = []models.Message{conv.NewHumanMessage("u1", "大家好", now)}
+	live := &fakeLive{conv: conv}
+	err := cw.WebRuntime().(webui.RoomRunner).RunRoom(context.Background(), "r1", conv, "大家好", live)
+	if err != nil {
+		t.Fatalf("run room: %v", err)
+	}
+	if len(conv.Messages) != 2 {
+		t.Fatalf("messages = %#v", conv.Messages)
+	}
+	reply := conv.Messages[1]
+	if reply.AuthorName != "Reviewer" || !strings.HasPrefix(reply.Content, "⚠️") {
+		t.Fatalf("reply = %#v", reply)
 	}
 }

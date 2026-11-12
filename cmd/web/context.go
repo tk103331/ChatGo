@@ -7,7 +7,7 @@ import (
 // toggleContext opens the composer's context picker, loading the current
 // session's workspace files the first time it is shown.
 func (a *app) toggleContext() {
-	id := a.getSelected()
+	id := a.activeID()
 	if id == "" {
 		return
 	}

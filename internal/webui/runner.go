@@ -18,6 +18,8 @@ const (
 	CapCheckpoints = "checkpoints"
 	CapAttachments = "attachments"
 	CapSkills      = "skills"
+	CapRooms       = "rooms"
+	CapTasks       = "tasks"
 )
 
 // Runner executes a turn with the desktop's full agent runtime. The embedded

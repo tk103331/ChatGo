@@ -32,10 +32,7 @@ func (a *app) view(c *ui.Context) {
 		}
 		ui.Column(c).Fill().Background(t.Background).Children(func() {
 			a.header(c, t, true)
-			a.messages(c, t)
-			a.planPanel(c, t)
-			a.interactionPanel(c, t)
-			a.composer(c, t)
+			a.main(c, t)
 		})
 		a.overlays(c)
 		return
@@ -44,13 +41,41 @@ func (a *app) view(c *ui.Context) {
 		a.sidebar(c, t, false)
 		ui.Column(c).Grow(1).MinWidth(0).Background(t.Background).Children(func() {
 			a.header(c, t, false)
-			a.messages(c, t)
-			a.planPanel(c, t)
-			a.interactionPanel(c, t)
-			a.composer(c, t)
+			a.main(c, t)
 		})
 	})
 	a.overlays(c)
+}
+
+// main draws the current section's conversation area.
+func (a *app) main(c *ui.Context, t *ui.Theme) {
+	switch a.getSection() {
+	case secRooms:
+		a.roomSessionMenu(c, t)
+		if a.cur == nil || a.cur.RoomID == "" || a.cur.RoomID != a.getRoomID() {
+			a.emptyConversation(c, t, "选择或新建一个群聊会话")
+		} else {
+			a.messages(c, t)
+		}
+		a.planPanel(c, t)
+		a.interactionPanel(c, t)
+		a.roomComposer(c, t)
+	case secTasks:
+		a.taskSessionMenu(c, t)
+		if a.cur == nil || a.cur.TaskID == "" || a.cur.TaskID != a.getTaskID() {
+			a.taskEmpty(c, t)
+		} else {
+			a.messages(c, t)
+		}
+		a.planPanel(c, t)
+		a.interactionPanel(c, t)
+		a.taskReadOnly(c, t)
+	default:
+		a.messages(c, t)
+		a.planPanel(c, t)
+		a.interactionPanel(c, t)
+		a.composer(c, t)
+	}
 }
 
 func (a *app) sidebar(c *ui.Context, t *ui.Theme, narrow bool) {
@@ -65,26 +90,78 @@ func (a *app) sidebar(c *ui.Context, t *ui.Theme, narrow bool) {
 	col.Children(func() {
 		if narrow {
 			ui.Row(c).Gap(u).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "会话").Bold().Grow(1)
-				if kit.IconButton(c, icons.Must("x"), "关闭会话列表", kit.IconButtonOptions{Variant: kit.Ghost}).Clicked() {
+				ui.Text(c, "ChatGo").Bold().Grow(1)
+				if kit.IconButton(c, icons.Must("x"), "关闭列表", kit.IconButtonOptions{Variant: kit.Ghost}).Clicked() {
 					a.sidebarOpen = false
 				}
 			})
 		}
-		newBtn := kit.Button(c, "新会话", kit.ButtonOptions{
-			Variant: kit.Secondary, Icon: icons.Must("message-square"),
-		})
-		newBtn.FillWidth()
-		if newBtn.Clicked() {
-			a.openNewSession()
+		a.sectionNav(c, t)
+		switch a.getSection() {
+		case secRooms:
+			newBtn := kit.Button(c, "新建群聊", kit.ButtonOptions{
+				Variant: kit.Secondary, Icon: icons.Must("users"),
+			})
+			newBtn.FillWidth()
+			if newBtn.Clicked() {
+				a.newRoom()
+			}
+			a.roomList(c, t)
+		case secTasks:
+			newBtn := kit.Button(c, "新建任务", kit.ButtonOptions{
+				Variant: kit.Secondary, Icon: icons.Must("clock"),
+			})
+			newBtn.FillWidth()
+			if newBtn.Clicked() {
+				a.newTask()
+			}
+			a.taskList(c, t)
+		default:
+			newBtn := kit.Button(c, "新会话", kit.ButtonOptions{
+				Variant: kit.Secondary, Icon: icons.Must("message-square"),
+			})
+			newBtn.FillWidth()
+			if newBtn.Clicked() {
+				a.openNewSession()
+			}
+			search := kit.TextInput(c, &a.search, kit.TextInputOptions{
+				Placeholder: "搜索会话", Label: "搜索会话",
+			})
+			search.Element.FillWidth()
+			a.conversationList(c, t)
+			a.sidebarFooter(c, t)
 		}
-		search := kit.TextInput(c, &a.search, kit.TextInputOptions{
-			Placeholder: "搜索会话", Label: "搜索会话",
-		})
-		search.Element.FillWidth()
-		a.conversationList(c, t)
-		a.sidebarFooter(c, t)
 	})
+}
+
+// sectionNav switches between conversations, group chats and scheduled tasks.
+func (a *app) sectionNav(c *ui.Context, t *ui.Theme) {
+	sections := []string{secChat}
+	segs := []kit.Segment{{Label: "会话", Icon: icons.Must("message-square")}}
+	if a.cap(capRooms) {
+		sections = append(sections, secRooms)
+		segs = append(segs, kit.Segment{Label: "群聊", Icon: icons.Must("users")})
+	}
+	if a.cap(capTasks) {
+		sections = append(sections, secTasks)
+		segs = append(segs, kit.Segment{Label: "任务", Icon: icons.Must("clock")})
+	}
+	idx := 0
+	for i, s := range sections {
+		if s == a.getSection() {
+			idx = i
+		}
+	}
+	before := idx
+	r := kit.SegmentedControl(c, &idx, segs, kit.SegmentedControlOptions{
+		Label: "板块", Equal: true,
+	})
+	r.FillWidth()
+	if idx == before || idx < 0 || idx >= len(sections) {
+		return
+	}
+	a.selectSection(sections[idx])
+	_ = t
 }
 
 func (a *app) conversationList(c *ui.Context, t *ui.Theme) {
@@ -264,6 +341,17 @@ func (a *app) sidebarFooter(c *ui.Context, t *ui.Theme) {
 }
 
 func (a *app) header(c *ui.Context, t *ui.Theme, narrow bool) {
+	switch a.getSection() {
+	case secRooms:
+		a.roomHeader(c, t, narrow)
+	case secTasks:
+		a.taskHeader(c, t, narrow)
+	default:
+		a.chatHeader(c, t, narrow)
+	}
+}
+
+func (a *app) chatHeader(c *ui.Context, t *ui.Theme, narrow bool) {
 	u := uikit.Unit(c)
 	title, sub := "ChatGo", "本地模型会话"
 	if cur := a.current(); cur != nil {

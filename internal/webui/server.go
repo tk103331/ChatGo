@@ -53,6 +53,12 @@ type runState struct {
 	cancel  context.CancelFunc
 	done    chan struct{}
 	pending *pendingInteraction
+
+	// kind is "room" or "task" for the non-chat runs; both stream through
+	// the same run state so polling and cancel stay one mechanism.
+	kind   string
+	roomID string
+	taskID string
 }
 
 func NewServer(cfg *config.Config, cm *models.ConversationManager, webDir string) (*Server, error) {
@@ -188,6 +194,19 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/tools", s.handleTools)
 	mux.HandleFunc("GET /api/workspaces", s.handleWorkspaces)
 	mux.HandleFunc("GET /api/skills", s.handleSkills)
+	mux.HandleFunc("GET /api/rooms", s.handleRooms)
+	mux.HandleFunc("POST /api/rooms", s.handleCreateRoom)
+	mux.HandleFunc("PATCH /api/rooms/{id}", s.handleUpdateRoom)
+	mux.HandleFunc("DELETE /api/rooms/{id}", s.handleDeleteRoom)
+	mux.HandleFunc("GET /api/rooms/{id}/sessions", s.handleRoomSessions)
+	mux.HandleFunc("POST /api/rooms/{id}/sessions", s.handleCreateRoomSession)
+	mux.HandleFunc("POST /api/rooms/{id}/sessions/{convID}/messages", s.handleRoomSend)
+	mux.HandleFunc("GET /api/tasks", s.handleTasks)
+	mux.HandleFunc("POST /api/tasks", s.handleCreateTask)
+	mux.HandleFunc("PATCH /api/tasks/{id}", s.handleUpdateTask)
+	mux.HandleFunc("DELETE /api/tasks/{id}", s.handleDeleteTask)
+	mux.HandleFunc("POST /api/tasks/{id}/run", s.handleRunTask)
+	mux.HandleFunc("GET /api/tasks/{id}/sessions", s.handleTaskSessions)
 	mux.HandleFunc("GET /api/sessions", s.handleListSessions)
 	mux.HandleFunc("POST /api/sessions", s.handleCreateSession)
 	mux.HandleFunc("GET /api/sessions/{id}", s.handleGetSession)
@@ -909,7 +928,9 @@ func (s *Server) turnTarget(agent, provider, model string) (config.Provider, err
 	} else {
 		target, err = s.targetFor(provider, model)
 	}
-	if err != nil && s.runner != nil && strings.HasPrefix(agent, "acp:") {
+	// A named agent carries its own model, and ACP brings its own runtime;
+	// neither needs the global chat provider to be configured.
+	if err != nil && s.runner != nil && strings.TrimSpace(agent) != "" {
 		return config.Provider{}, nil
 	}
 	return target, err
@@ -1076,11 +1097,33 @@ func (s *Server) run(ctx context.Context, rs *runState, replyIdx, turnIdx int) {
 		t.Assistant = m.Content
 		t.EndedAt = time.Now()
 	}
+	if rs.taskID != "" {
+		if canceled {
+			rs.conv.TaskStatus = "failed"
+		} else if err != nil {
+			rs.conv.TaskStatus = "failed"
+		} else {
+			rs.conv.TaskStatus = "success"
+		}
+	}
 	rs.conv.UpdatedAt = time.Now()
 	saveErr := s.cm.SaveConversation(rs.conv)
 	rs.mu.Unlock()
 	if saveErr != nil {
 		log.Printf("save conversation %s: %v", convID, saveErr)
+	}
+	if rs.taskID != "" {
+		if tr, ok := s.runner.(TaskRunner); ok {
+			note := "成功"
+			okRun := err == nil && !canceled
+			switch {
+			case canceled:
+				note = "已停止"
+			case err != nil:
+				note = "失败: " + err.Error()
+			}
+			tr.MarkTask(rs.taskID, okRun, note)
+		}
 	}
 }
 

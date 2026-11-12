@@ -112,6 +112,10 @@ func (a *app) overlays(c *ui.Context) {
 	a.deleteDialog(c)
 	a.newSessionDialog(c)
 	a.revertDialog(c)
+	a.roomEditor(c)
+	a.roomDeleteDialog(c)
+	a.taskEditor(c)
+	a.taskDeleteDialog(c)
 }
 
 // renameDialog edits a session title. It renders the closed state once more

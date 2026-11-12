@@ -556,6 +556,17 @@ func (a *app) messageActions(c *ui.Context, m models.Message, reveal bool) {
 			c.WriteClipboard(m.Content)
 			a.flash("已复制到剪贴板")
 		}
+		if !m.IsHuman() {
+			if turn, ok := a.turnFor(m); ok && turn.Total > 0 {
+				ui.Text(c, tokenLabel(turn)).FontSize(caption).
+					TextColor(t.TextMuted).SingleLine()
+			}
+		}
+		// Group chats and task runs are history: their composer and runner
+		// own the turns, so only the chat section rewrites a message.
+		if a.getSection() != secChat {
+			return
+		}
 		// Without the desktop runtime an agent session is read-only: the
 		// plain web server cannot answer it, so replacing its history would
 		// leave the agent in an inconsistent state.
@@ -579,10 +590,6 @@ func (a *app) messageActions(c *ui.Context, m models.Message, reveal bool) {
 				Tooltip("回退到此点").Clicked() {
 				a.beginRevert(m)
 			}
-		}
-		if turn, ok := a.turnFor(m); ok && turn.Total > 0 {
-			ui.Text(c, tokenLabel(turn)).FontSize(caption).
-				TextColor(t.TextMuted).SingleLine()
 		}
 	})
 }
