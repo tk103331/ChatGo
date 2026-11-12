@@ -201,7 +201,7 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 		cur = refs[0]
 	}
 	r := kit.SearchSelect(c, &cur, opts, kit.SearchSelectOptions[string]{
-		Label: "模型", Placeholder: "选择模型", SearchPlaceholder: "搜索模型",
+		Label: "模型", Placeholder: "选择模型", SearchPlaceholder: "搜索模型", Up: true,
 	})
 	r.Element.MaxWidth(260).MinWidth(0)
 	if r.Changed() {

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -165,11 +164,7 @@ func (cw *ChatWindow) appRunCommand(command string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	c := exec.CommandContext(ctx, "sh", "-c", command)
-	if root := cw.fileRoot(); root != "" {
-		c.Dir = root
-	}
-	out, err := c.CombinedOutput()
+	out, err := shellCommandContext(ctx, command, cw.fileRoot()).CombinedOutput()
 	result := strings.TrimSpace(string(out))
 	if err != nil {
 		return result + "\n" + err.Error(), nil

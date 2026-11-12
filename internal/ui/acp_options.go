@@ -107,7 +107,7 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	items := cw.acpConfigItems(rt)
 	const visible = 3
-	mgo.Row(c).Gap(u * 2).Wrap().AlignItems(mgo.End).Children(func() {
+	mgo.Row(c).Gap(u * 2).AlignItems(mgo.End).Children(func() {
 		for _, it := range items {
 			if it.rank >= visible {
 				break
@@ -195,9 +195,9 @@ func (cw *ChatWindow) acpConfigControl(c *mgo.Context, rt *acpConv, it acpConfig
 		}
 		cur := string(rt.modeID)
 		r := kit.SearchSelect(c, &cur, opts, kit.SearchSelectOptions[string]{
-			Label: "模式", Placeholder: it.label, SearchPlaceholder: "搜索模式",
+			Label: "模式", Placeholder: it.label, SearchPlaceholder: "搜索模式", Up: true,
 		})
-		r.Element.Width(140)
+		r.Element.MaxWidth(130).MinWidth(0)
 		if r.Changed() {
 			cw.acpSetMode(rt, acp.SessionModeId(cur))
 		}
@@ -205,9 +205,9 @@ func (cw *ChatWindow) acpConfigControl(c *mgo.Context, rt *acpConv, it acpConfig
 		s := it.acpsel
 		cur := string(s.CurrentValue)
 		r := kit.SearchSelect(c, &cur, acpSearchSelectOptions(s.Options), kit.SearchSelectOptions[string]{
-			Label: s.Name, Placeholder: s.Name, SearchPlaceholder: "搜索" + s.Name,
+			Label: s.Name, Placeholder: s.Name, SearchPlaceholder: "搜索" + s.Name, Up: true,
 		})
-		r.Element.Width(140)
+		r.Element.MaxWidth(130).MinWidth(0)
 		if r.Changed() {
 			s.CurrentValue = acp.SessionConfigValueId(cur)
 			cw.acpSetConfigValue(rt, s.Id, acp.SessionConfigValueId(cur))
@@ -221,8 +221,8 @@ func (cw *ChatWindow) acpConfigControl(c *mgo.Context, rt *acpConv, it acpConfig
 		r := kit.SearchSelect(c, &cur, []kit.SearchSelectOption[string]{
 			{Value: "on", Label: "开"},
 			{Value: "off", Label: "关"},
-		}, kit.SearchSelectOptions[string]{Label: b.Name, Placeholder: b.Name, SearchPlaceholder: "搜索" + b.Name})
-		r.Element.Width(110)
+		}, kit.SearchSelectOptions[string]{Label: b.Name, Placeholder: b.Name, SearchPlaceholder: "搜索" + b.Name, Up: true})
+		r.Element.MaxWidth(110).MinWidth(0)
 		if r.Changed() {
 			b.CurrentValue = cur == "on"
 			cw.acpSetConfigBool(rt, b.Id, b.CurrentValue)

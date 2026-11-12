@@ -94,6 +94,9 @@ func commonBinDirs() []string {
 		"/usr/local/bin",
 		"/usr/local/sbin",
 	}
+	if runtime.GOOS == "windows" {
+		dirs = append(windowsBinDirs(home), dirs...)
+	}
 	if home == "" {
 		var filtered []string
 		for _, d := range dirs {
@@ -102,6 +105,30 @@ func commonBinDirs() []string {
 			}
 		}
 		return filtered
+	}
+	return dirs
+}
+
+// windowsBinDirs lists Windows install locations outside PATH, notably Git for
+// Windows, whose bin directory provides sh.exe and the usual POSIX tools.
+func windowsBinDirs(home string) []string {
+	var dirs []string
+	for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"} {
+		if dir := os.Getenv(env); dir != "" {
+			dirs = append(dirs,
+				filepath.Join(dir, "Git", "bin"),
+				filepath.Join(dir, "Git", "usr", "bin"),
+			)
+		}
+	}
+	if local := os.Getenv("LOCALAPPDATA"); local != "" {
+		dirs = append(dirs,
+			filepath.Join(local, "Programs", "Git", "bin"),
+			filepath.Join(local, "Microsoft", "WindowsApps"),
+		)
+	}
+	if home != "" {
+		dirs = append(dirs, filepath.Join(home, "scoop", "apps", "git", "current", "bin"))
 	}
 	return dirs
 }

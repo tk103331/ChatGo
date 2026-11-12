@@ -8,8 +8,8 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -35,7 +35,7 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 		}
 	case "commandline":
 		return map[string]*schema.ParameterInfo{
-			"command": {Type: schema.String, Desc: "要执行的 shell 命令", Required: true},
+			"command": {Type: schema.String, Desc: "要执行的 shell 命令（" + shellDescription() + "）", Required: true},
 		}
 	case "filesystem":
 		return map[string]*schema.ParameterInfo{
@@ -334,10 +334,33 @@ func checkCommandAllowed(command string, allowed []string) error {
 	if i := strings.IndexAny(first, " \t"); i >= 0 {
 		first = first[:i]
 	}
-	if !containsStr(allowed, filepath.Base(first)) {
+	name := filepath.Base(first)
+	if !containsCommand(allowed, name) {
 		return fmt.Errorf("命令 %q 不在允许列表（%s）", first, strings.Join(allowed, ", "))
 	}
 	return nil
+}
+
+// containsCommand compares a command name against the allow list. Windows
+// command names are case-insensitive and usually written with .exe, while the
+// list stores bare lowercase names.
+func containsCommand(allowed []string, name string) bool {
+	return containsCommandFor(runtime.GOOS, allowed, name)
+}
+
+// containsCommandFor is containsCommand with the platform injected, so the
+// Windows matching rules can be tested on any host.
+func containsCommandFor(goos string, allowed []string, name string) bool {
+	if goos != "windows" {
+		return containsStr(allowed, name)
+	}
+	name = strings.TrimSuffix(strings.ToLower(name), ".exe")
+	for _, a := range allowed {
+		if strings.TrimSuffix(strings.ToLower(a), ".exe") == name {
+			return true
+		}
+	}
+	return false
 }
 
 // runCommand runs a shell command when its program is in the allow list.
@@ -351,11 +374,7 @@ func runCommand(ctx context.Context, command string, allowed []string, dir strin
 	}
 	cctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	c := exec.CommandContext(cctx, "sh", "-c", command)
-	if dir != "" {
-		c.Dir = dir
-	}
-	out, err := c.CombinedOutput()
+	out, err := shellCommandContext(cctx, command, dir).CombinedOutput()
 	result := strings.TrimSpace(string(out))
 	if err != nil {
 		return result + "\n" + err.Error(), nil

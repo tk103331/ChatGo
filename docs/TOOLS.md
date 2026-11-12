@@ -36,8 +36,11 @@
 
 - **默认开启的工具**：`httprequest`、`commandline`、`filesystem` 开箱即用，并带有一套合理的默认配置。
 - **需要凭据的搜索工具**：`bingsearch`、`googlesearch` 需要 API Key；`googlesearch` 还需要自定义搜索引擎 ID（`search_engine_id`）。
-- **命令执行安全**：`commandline` 通过 `allowed_commands` 白名单限制可执行的命令，默认白名单为
-  `ls, pwd, cat, echo, grep, find, head, tail, wc`。**该字段为必填的安全要求**，请勿随意放宽。
+- **命令执行安全**：`commandline` 通过 `allowed_commands` 白名单限制可执行的命令。默认白名单在 macOS / Linux 上为
+  `ls, pwd, cat, echo, grep, find, head, tail, wc`；Windows 另外包含 `dir, type, more, findstr, where, tree, sort, whoami, hostname, ipconfig, tasklist, ver`。
+  **该字段为必填的安全要求**，请勿随意放宽。
+- **命令解释器**：优先使用 `sh`（Windows 上即 Git Bash / MSYS 提供的 `sh.exe`）；Windows 没有 `sh` 时自动改用系统自带的
+  `cmd.exe`。安装 Git for Windows 后无需把它加入 PATH，ChatGo 会在常见安装目录中查找。
 - **默认配置值**：
   - `httprequest`：`timeout=30`、`max_redirects=5`
   - `browseruse`：`headless`、`timeout` 有默认值
@@ -140,7 +143,10 @@ builtin_tools:
     type: commandline
     enabled: true
     config:
+      # macOS / Linux
       allowed_commands: "ls, pwd, cat, echo, grep, find, head, tail, wc"
+      # Windows（没有 sh 时由 cmd.exe 执行）
+      # allowed_commands: "ls, pwd, cat, echo, grep, find, head, tail, wc, dir, type, more, findstr, where, tree, sort, whoami, hostname, ipconfig, tasklist, ver"
   - name: filesystem
     type: filesystem
     enabled: true

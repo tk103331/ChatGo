@@ -167,7 +167,7 @@ func (qp *quickPanel) modelPicker(c *mgo.Context) {
 		})
 	}
 	r := kit.SearchSelect(c, &cur, opts, kit.SearchSelectOptions[string]{
-		Label: "模型", Placeholder: "选择模型", SearchPlaceholder: "搜索模型",
+		Label: "模型", Placeholder: "选择模型", SearchPlaceholder: "搜索模型", Up: true,
 	})
 	r.Element.MaxWidth(190).MinWidth(0)
 	if r.Changed() {

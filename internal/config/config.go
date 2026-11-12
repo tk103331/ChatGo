@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -1051,9 +1052,10 @@ func firstModel(providers []Provider, name string) string {
 func defaultACPAgents() []ACPConnection {
 	return []ACPConnection{
 		{Name: "ClaudeCode", Command: "npx", Args: []string{"-y", "@zed-industries/claude-code-acp"}, Disabled: true},
-		{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}, Disabled: true},
 		{Name: "CodexCLI", Command: "npx", Args: []string{"-y", "@agentclientprotocol/codex-acp"}, Disabled: true},
+		{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}, Disabled: true},
 		{Name: "PiAgent", Command: "npx", Args: []string{"-y", "pi-acp"}, Disabled: true},
+		{Name: "GeminiCLI", Command: "npx", Args: []string{"-y", "@google/gemini-cli", "--acp"}, Disabled: true},
 	}
 }
 
@@ -1228,6 +1230,22 @@ func GetChannelToolConfigFields(toolType string) []string {
 	return nil
 }
 
+// Shipped commandline allow lists. The Unix list is the original default; the
+// Windows list adds cmd.exe built-ins so the tool does more than report "not
+// found" when no Git Bash/MSYS sh is installed.
+const (
+	defaultAllowedCommands        = "ls, pwd, cat, echo, grep, find, head, tail, wc"
+	defaultAllowedCommandsWindows = "ls, pwd, cat, echo, grep, find, head, tail, wc, dir, type, more, findstr, where, tree, sort, whoami, hostname, ipconfig, tasklist, ver"
+)
+
+// defaultCommandlineAllowed is the allow list a new install starts with.
+func defaultCommandlineAllowed() string {
+	if runtime.GOOS == "windows" {
+		return defaultAllowedCommandsWindows
+	}
+	return defaultAllowedCommands
+}
+
 // defaultBuiltinTool is the shipped state of one built-in tool: httprequest and
 // commandline start enabled with sensible defaults, the rest disabled.
 func defaultBuiltinTool(toolType string) BuiltinTool {
@@ -1238,7 +1256,7 @@ func defaultBuiltinTool(toolType string) BuiltinTool {
 		t.Config = map[string]string{"timeout": "30", "max_redirects": "5"}
 	case "commandline":
 		t.Enabled = true
-		t.Config = map[string]string{"allowed_commands": "ls, pwd, cat, echo, grep, find, head, tail, wc"}
+		t.Config = map[string]string{"allowed_commands": defaultCommandlineAllowed()}
 	case "filesystem":
 		t.Enabled = true
 	case "webview":
@@ -1281,13 +1299,32 @@ func ensureAllBuiltinTools(existing []BuiltinTool) []BuiltinTool {
 	result := make([]BuiltinTool, 0, len(availableTools))
 	for _, toolType := range availableTools {
 		if tool, exists := existingMap[toolType]; exists {
-			result = append(result, tool)
+			result = append(result, migrateBuiltinTool(tool))
 		} else {
 			result = append(result, defaultBuiltinTool(toolType))
 		}
 	}
 
 	return result
+}
+
+// migrateBuiltinTool upgrades a persisted tool to the current platform's
+// shipped defaults. Only the untouched shipped value is rewritten, so a user's
+// own allow list is never replaced.
+func migrateBuiltinTool(tool BuiltinTool) BuiltinTool {
+	if tool.Type != "commandline" || runtime.GOOS != "windows" {
+		return tool
+	}
+	if strings.TrimSpace(tool.Config["allowed_commands"]) != defaultAllowedCommands {
+		return tool
+	}
+	cfg := make(map[string]string, len(tool.Config))
+	for k, v := range tool.Config {
+		cfg[k] = v
+	}
+	cfg["allowed_commands"] = defaultAllowedCommandsWindows
+	tool.Config = cfg
+	return tool
 }
 
 // SaveConfig saves the configuration to the default location

@@ -162,6 +162,9 @@ type SearchSelectOptions[T comparable] struct {
 	// MinHeight is the trigger's minimum height in DIPs; zero uses the
 	// standard control height.
 	MinHeight float32
+	// Up opens the list above the trigger, for a control at the bottom of a
+	// window where a list opening down would cover the input.
+	Up bool
 }
 
 // SearchSelectResult is a built SearchSelect and its events.
@@ -235,7 +238,7 @@ func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOpt
 	if empty == "" {
 		empty = "无匹配项"
 	}
-	Popover(c, trigger, open, PopoverOptions{Label: o.Label}, func() {
+	Popover(c, trigger, open, PopoverOptions{Label: o.Label, Up: o.Up}, func() {
 		// The filter field is named by its own placeholder, so two selectors
 		// on screen are told apart by assistive technology and in tests.
 		in := SearchInput(c, query, SearchInputOptions{Placeholder: placeholder, Label: placeholder})
