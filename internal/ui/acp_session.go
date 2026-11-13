@@ -38,6 +38,17 @@ type acpState struct {
 	channelReply map[acp.SessionId]*strings.Builder
 	toolStart    map[string]time.Time
 
+	// configs holds each connection's full session config options, warmed at
+	// startup for the 新会话 page.
+	// models caches the model list each ACP connection's runtime reports,
+	// fetched with a throwaway session for the agent picker. modelErrs
+	// remembers a failed probe so the picker shows the reason instead of
+	// probing again every frame, and modelsBusy marks a running probe.
+	models     map[string][]acpModelOption
+	modelErrs  map[string]string
+	modelsBusy map[string]bool
+	configs    map[string][]acp.SessionConfigOption
+
 	permissionReq  *acp.RequestPermissionRequest
 	permissionCh   chan acp.RequestPermissionResponse
 	permissionShow bool
@@ -61,6 +72,10 @@ func newACPState() acpState {
 		toolStart:    map[string]time.Time{},
 		webSink:      map[string]func(func(*models.Conversation)){},
 		webPerm:      map[string]func(context.Context, acp.RequestPermissionRequest) (acp.RequestPermissionResponse, error){},
+		models:       map[string][]acpModelOption{},
+		modelErrs:    map[string]string{},
+		modelsBusy:   map[string]bool{},
+		configs:      map[string][]acp.SessionConfigOption{},
 	}
 }
 

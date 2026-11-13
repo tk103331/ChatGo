@@ -76,6 +76,13 @@ func (cw *ChatWindow) isGroupRef(ref string) bool {
 	return ok
 }
 
+// isGroupModelRef reports whether a reference names a whole provider (its
+// model part is empty), which the picker treats as a pseudo-provider row.
+func isGroupModelRef(ref string) bool {
+	_, model := splitModelRef(ref)
+	return model == ""
+}
+
 // agentModelRefs is the models the active agent may switch between: the built-in
 // Chat uses every configured model, a custom agent its whitelist.
 func (cw *ChatWindow) agentModelRefs() []string {
@@ -85,6 +92,21 @@ func (cw *ChatWindow) agentModelRefs() []string {
 		return all
 	}
 	return append([]string(nil), a.Models...)
+}
+
+// modelRefsFor is agentModelRefs for an arbitrary agent reference, so the web
+// runtime can ask without touching the app's own selection: the built-in
+// Chat ("") lists every configured model, "agent:Name" its whitelist.
+func (cw *ChatWindow) modelRefsFor(agent string) []string {
+	name, ok := strings.CutPrefix(agent, "agent:")
+	if !ok {
+		return cw.allModelRefs()
+	}
+	def, found := cw.agentByName(name)
+	if !found || len(def.Models) == 0 {
+		return cw.allModelRefs()
+	}
+	return append([]string(nil), def.Models...)
 }
 
 // currentModelRef is the reference of the active provider and model.

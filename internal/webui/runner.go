@@ -40,6 +40,19 @@ type Runner interface {
 	Tools(agent string) []ToolInfo
 	// Workspaces lists the directories a new session may use.
 	Workspaces() []string
+	// Projects lists the projects and their worktrees a new session may run
+	// in, the way the desktop's 新会话 page picks one.
+	Projects() []ProjectInfo
+	// Models lists the models an agent reference may run, with their labels.
+	// An ACP reference returns nil: it brings its own runtime.
+	Models(agent string) []ModelInfo
+	// ACPOptions lists the ACP connection's session config options — the
+	// model, the modes, the toggles — with the values each one offers. Empty
+	// when the CLI offers none or the warm-up has not landed yet.
+	ACPOptions(agent string) []ACPConfigOptionInfo
+	// CreateWorktree adds a working tree of a project on branch and returns
+	// its path. newBranch creates the branch first.
+	CreateWorktree(project, branch string, newBranch bool) (string, error)
 	// Skills lists the skills available to an agent reference.
 	Skills(agent string) []SkillInfo
 	// Revert rewinds the conversation workspace to the checkpoint of a reply.
@@ -101,6 +114,7 @@ type AgentInfo struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
 	Kind        string   `json:"kind"` // chat, agent or acp
+	Disabled    bool     `json:"disabled,omitempty"`
 	Icon        string   `json:"icon,omitempty"`
 	Models      []string `json:"models,omitempty"`
 	Tools       []string `json:"tools,omitempty"`
@@ -123,6 +137,50 @@ type SkillInfo struct {
 	Name        string `json:"name"`
 	Token       string `json:"token"`
 	Description string `json:"description,omitempty"`
+}
+
+// TreeInfo is one working tree of a project.
+type TreeInfo struct {
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+}
+
+// ProjectInfo is one project a new session may run in: its main working
+// tree, every worktree with the branch it has checked out, and the local
+// branch list for creating a new tree.
+type ProjectInfo struct {
+	Main      string     `json:"main"`
+	Worktrees []TreeInfo `json:"worktrees,omitempty"`
+	Branches  []string   `json:"branches,omitempty"`
+}
+
+// ModelInfo is one model a session may run.
+type ModelInfo struct {
+	// Ref is a "Provider::Model" or "::Model" reference, the same shape the
+	// run request's provider and model split into.
+	Ref string `json:"ref"`
+	// Label is the model's own name, without its provider prefix.
+	Label string `json:"label"`
+	// Provider names the model's provider and ProviderType carries its
+	// protocol, which the picker draws as the provider's brand mark.
+	Provider     string `json:"provider,omitempty"`
+	ProviderType string `json:"provider_type,omitempty"`
+}
+
+// ACPConfigOptionInfo is one session config option an ACP agent's runtime
+// exposes, with the values it can take.
+type ACPConfigOptionInfo struct {
+	ID      string           `json:"id"`
+	Name    string           `json:"name"`
+	Current string           `json:"current"`
+	Kind    string           `json:"kind,omitempty"`
+	Options []ACPConfigValue `json:"options,omitempty"`
+}
+
+// ACPConfigValue is one value a config option can take.
+type ACPConfigValue struct {
+	Value string `json:"value"`
+	Name  string `json:"name"`
 }
 
 // InteractionInfo is the question or permission a running turn waits on.

@@ -604,6 +604,17 @@ func contextKindLabel(kind string) string {
 
 func (a *app) modelSelector(c *ui.Context, t *ui.Theme) {
 	caption := uikit.FontSize(c, mtheme.CaptionSize)
+	// An ACP session runs its own CLI; it has no model to pick.
+	if strings.HasPrefix(a.agentRef, "acp:") {
+		return
+	}
+	// The enriched list offers search and provider marks.
+	if len(a.models) > 0 {
+		a.modelPickerButton(c, t, currentModelLabel(a.models, a.modelRef),
+			a.models, &a.modelRef, func(ref string) { a.modelRef = ref },
+			modelPickerOptions{Up: true, Variant: kit.Secondary})
+		return
+	}
 	if len(a.meta.Models) > 0 {
 		opts := make([]kit.SelectOption[string], 0, len(a.meta.Models))
 		for _, m := range a.meta.Models {

@@ -62,6 +62,12 @@ func (darwinCapture) RequestPermission() {
 	axIsProcessTrustedWithOptions(dict)
 }
 
+// selectionMu serializes the Accessibility reads: they run from the watch
+// goroutines and the quick panel alike, and overlapping reads both slow each
+// other down and race inside the AX runtime. The staleness check upstream
+// keeps the queue short — only the latest event waits its turn.
+var selectionMu sync.Mutex
+
 // Selection reads the focused element's selected text.
 func (darwinCapture) Selection() (Selection, error) {
 	if err := loadNative(); err != nil {
@@ -77,6 +83,8 @@ func (darwinCapture) Selection() (Selection, error) {
 		sel Selection
 		err error
 	)
+	selectionMu.Lock()
+	defer selectionMu.Unlock()
 	withPool(func() { sel, err = readSelection() })
 	return sel, err
 }

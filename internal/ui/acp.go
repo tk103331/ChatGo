@@ -55,7 +55,7 @@ func acpCatalog() []acpCatalogEntry {
 		{Name: "QwenCode", Command: "qwen", Description: "阿里通义灵码 Qwen Code", Homepage: "https://github.com/QwenLM/qwen-code"},
 		{Name: "KimiCLI", Command: "kimi", Description: "月之暗面 Kimi CLI", Homepage: "https://github.com/MoonshotAI/kimi-cli"},
 		{Name: "PiG", Command: "pig-acp", Description: "PiG — Pi 的 Go 实现（需先 pig install npm:@pi-in-go/pigpen-acp 并 pig acp install 构建 pig-acp）", Homepage: "https://pi-in-go.dev"},
-		{Name: "Cline", Command: "npx", Args: []string{"-y", "@cline/cline-acp-adapter"}, Description: "Cline AI 助手", Homepage: "https://cline.bot"},
+		{Name: "Cline", Command: "npx", Args: []string{"-y", "cline-acp"}, Description: "Cline AI 助手", Homepage: "https://cline.bot"},
 		{Name: "Dockercagent", Command: "cagent", Description: "Docker cagent", Homepage: "https://github.com/docker/cagent"},
 		{Name: "FactoryDroid", Command: "droid", Description: "Factory Droid", Homepage: "https://factory.ai"},
 		{Name: "AugmentCode", Command: "augment", Args: []string{"acp"}, Description: "Augment Code CLI", Homepage: "https://docs.augmentcode.com/cli/acp"},
@@ -177,6 +177,13 @@ func (cw *ChatWindow) acpCard(c *mgo.Context, i int) {
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				cw.acpLeading(c, a.Name, 18)
 				mgo.Text(c, a.Name).FontWeight(600).Shrink(0)
+				cw.acpUpdBadge(c, a.Name)
+				if cw.acpModelError(a.Name) != "" {
+					// A failed warm-up is visible right on the card, so a
+					// CLI that cannot start never fails silently.
+					mgo.Text(c, "预热失败").FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+						TextColor(k.Danger).Shrink(0)
+				}
 			})
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				en := !a.Disabled
@@ -184,6 +191,11 @@ func (cw *ChatWindow) acpCard(c *mgo.Context, i int) {
 					cw.cfg.ACPAgents[i].Disabled = !en
 					cw.acpForm.disabled = !en
 					_ = config.SaveConfig(cw.cfg)
+					if en {
+						// Enabling warms the connection: its model list and
+						// config options land in the cache for 新会话.
+						cw.acpWarmConnection(a.Name)
+					}
 				}
 				if mcore.IconAction(c, icons.Must("chevron-down"), "展开").Clicked() {
 					if expanded {
@@ -218,6 +230,14 @@ func (cw *ChatWindow) acpFormFields(c *mgo.Context) {
 		kit.TextArea(c, &f.args, kit.TextAreaOptions{Label: "参数", Placeholder: "每行一个参数", MinHeight: 60})
 		kit.TextArea(c, &f.env, kit.TextAreaOptions{Label: "环境变量", Placeholder: "KEY=VALUE，每行一个", MinHeight: 60})
 		kit.TextInput(c, &f.cwd, kit.TextInputOptions{Label: "工作目录", Placeholder: "留空使用当前目录"})
+		// The warm-up state of the connection: its runtime answers the model
+		// list and config options the 新会话 page shows, so a failure is
+		// named here with a retry at hand.
+		cw.acpWarmRow(c, cw.acpFormConn(f))
+		// The version row describes the saved connection with the command
+		// fields as currently typed, so a located command can be checked
+		// before saving.
+		cw.acpVersionRow(c, f)
 		mgo.Row(c).Grow(0).Gap(u).AlignItems(mgo.Center).Children(func() {
 			if kit.Button(c, "保存", kit.ButtonOptions{Variant: kit.Primary}).Clicked() {
 				cw.saveACP()

@@ -193,6 +193,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/agents", s.handleAgents)
 	mux.HandleFunc("GET /api/tools", s.handleTools)
 	mux.HandleFunc("GET /api/workspaces", s.handleWorkspaces)
+	mux.HandleFunc("GET /api/projects", s.handleProjects)
+	mux.HandleFunc("GET /api/models", s.handleModels)
+	mux.HandleFunc("GET /api/acp-options", s.handleACPOptions)
+	mux.HandleFunc("GET /api/fs", s.handleFS)
+	mux.HandleFunc("POST /api/worktrees", s.handleCreateWorktree)
 	mux.HandleFunc("GET /api/skills", s.handleSkills)
 	mux.HandleFunc("GET /api/rooms", s.handleRooms)
 	mux.HandleFunc("POST /api/rooms", s.handleCreateRoom)
@@ -391,12 +396,13 @@ func summarize(c *models.Conversation, running bool) sessionSummary {
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Title     string   `json:"title"`
-		Provider  string   `json:"provider"`
-		Model     string   `json:"model"`
-		Agent     string   `json:"agent,omitempty"`
-		Workspace string   `json:"workspace,omitempty"`
-		Tools     []string `json:"tools,omitempty"`
+		Title     string            `json:"title"`
+		Provider  string            `json:"provider"`
+		Model     string            `json:"model"`
+		Agent     string            `json:"agent,omitempty"`
+		Workspace string            `json:"workspace,omitempty"`
+		Tools     []string          `json:"tools,omitempty"`
+		ACPConfig map[string]string `json:"acp_config,omitempty"`
 	}
 	if err := readJSON(r, &body); err != nil {
 		writeError(w, http.StatusBadRequest, err)
@@ -427,6 +433,11 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 	if body.Tools != nil {
 		conv.Tools = cleanTools(body.Tools)
 		conv.ToolsSet = true
+	}
+	if len(body.ACPConfig) > 0 {
+		// The ACP options picked in the new-session form ride the
+		// conversation, so its session starts with them.
+		conv.ACPConfig = body.ACPConfig
 	}
 	if err := s.cm.SaveConversation(conv); err != nil {
 		writeError(w, http.StatusInternalServerError, err)

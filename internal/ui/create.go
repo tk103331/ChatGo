@@ -7,10 +7,13 @@ package ui
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 
-	"chatgo/internal/config"
+	acp "github.com/coder/acp-go-sdk"
 	mgo "github.com/egoist/mygo/ui"
+
+	"chatgo/internal/config"
 
 	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
@@ -36,6 +39,10 @@ type createState struct {
 	branch string
 	// newBranch creates the branch instead of checking out an existing one.
 	newBranch bool
+	// acpConfig holds the ACP session's option choices made here: a config id
+	// to the value picked for it. They ride the new conversation, so its
+	// session starts with them.
+	acpConfig map[string]string
 }
 
 // openCreateTab opens the "新会话" tab in the focused pane, at most one at a
@@ -126,37 +133,17 @@ const createPickerWidth float32 = 180
 // createPickerHeight keeps the four pickers level with one another.
 const createPickerHeight float32 = 32
 
-// createAgentSelect chooses the agent that runs the new conversation.
+// createAgentSelect chooses the agent that runs the new conversation: the
+// picker that lists every assistant by Agent. Its
+// trigger shares the variant, width and height of the pickers beside it.
 func (cw *ChatWindow) createAgentSelect(c *mgo.Context, scope string) {
-	u := mcore.Density(c).Unit()
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	opts := make([]kit.SearchSelectOption[string], 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+1)
-	opts = append(opts, kit.SearchSelectOption[string]{
-		Value: "", Label: chatAgentName, Leading: iconLeading(c, chatAgentIcon),
-	})
-	for _, a := range cw.cfg.Agents {
-		name := a.Name
-		opts = append(opts, kit.SearchSelectOption[string]{
-			Value: "agent:" + name, Label: name, Leading: cw.agentLeading(c, name),
+	kit.FieldColumn(c, "Agent", kit.FieldOptions{
+		Width: createPickerWidth, Name: scope + " Agent",
+	}, func() {
+		cw.agentPickerButton(c, &cw.create.agent, func(ref string) {
+			cw.create.agent = ref
+			cw.invalidate()
 		})
-	}
-	for _, a := range cw.cfg.ACPAgents {
-		if a.Disabled {
-			continue
-		}
-		name := a.Name
-		opts = append(opts, kit.SearchSelectOption[string]{
-			Value: "acp:" + name, Label: name, Leading: logoLeading(c, name),
-		})
-	}
-	mgo.Column(c).Shrink(0).Gap(u).Children(func() {
-		mgo.Text(c, "Agent").FontSize(caption).TextColor(mcore.Tokens(c).TextMuted).
-			Label(scope + " Agent")
-		sel := kit.SearchSelect(c, &cw.create.agent, opts, kit.SearchSelectOptions[string]{
-			Label: "Agent", Placeholder: "选择 Agent", SearchPlaceholder: "搜索 Agent",
-			MinWidth: createPickerWidth, MinHeight: createPickerHeight,
-		})
-		sel.Element.Justify(mgo.Start)
 	})
 }
 
@@ -181,7 +168,6 @@ func (cw *ChatWindow) projectWorkspaces() []string {
 // below never belongs to a different project.
 func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context, scope string) {
 	u := mcore.Density(c).Unit()
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	projects := cw.projectWorkspaces()
 	if p := cw.convGitProject(cw.create.ws); p != nil && p.Main != "" {
 		cw.create.ws = p.Main
@@ -194,9 +180,9 @@ func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context, scope string) {
 		}
 		opts = append(opts, kit.SearchSelectOption[string]{Value: ws, Label: name})
 	}
-	mgo.Column(c).Shrink(0).Gap(u).Children(func() {
-		mgo.Text(c, "项目").FontSize(caption).TextColor(mcore.Tokens(c).TextMuted).
-			Label(scope + " 项目")
+	kit.FieldColumn(c, "项目", kit.FieldOptions{
+		Width: createPickerWidth, Name: scope + " 项目",
+	}, func() {
 		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
 			sel := kit.SearchSelect(c, &cw.create.ws, opts, kit.SearchSelectOptions[string]{
 				Label: "项目", Placeholder: "选择项目",
@@ -234,7 +220,6 @@ func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context, scope string) {
 // branch, the main tree marked [主]: the project is already chosen above, and
 // the branch is what tells the trees apart.
 func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context, scope string) {
-	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	k := mcore.Tokens(c)
 	p := cw.convGitProject(cw.create.ws)
@@ -266,9 +251,9 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context, scope string) {
 			Value: path, Label: label, Note: middleEllipsis(path, worktreePathWidth),
 		})
 	}
-	mgo.Column(c).Shrink(0).Gap(u).Children(func() {
-		mgo.Text(c, "工作树").FontSize(caption).TextColor(k.TextMuted).
-			Label(scope + " 工作树")
+	kit.FieldColumn(c, "工作树", kit.FieldOptions{
+		Width: createPickerWidth, Name: scope + " 工作树",
+	}, func() {
 		sel := kit.SearchSelect(c, &cw.create.wt, opts, kit.SearchSelectOptions[string]{
 			Label: "工作树", Placeholder: "选择工作树",
 			SearchPlaceholder: "搜索工作树", Empty: "此项目没有工作树",
@@ -283,19 +268,17 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context, scope string) {
 // createBranchSelect chooses the branch of a new worktree, searchable and
 // able to create a new branch, the same picker the worktree panel uses.
 func (cw *ChatWindow) createBranchSelect(c *mgo.Context, scope string) {
-	u := mcore.Density(c).Unit()
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	p := cw.convGitProject(cw.create.ws)
 	var branches []kit.Branch
 	if p != nil {
 		branches = branchList(p.Branches)
 	}
-	mgo.Column(c).Shrink(0).Gap(u).Children(func() {
-		mgo.Text(c, "分支").FontSize(caption).TextColor(mcore.Tokens(c).TextMuted).
-			Label(scope + " 分支")
+	kit.FieldColumn(c, "分支", kit.FieldOptions{
+		Width: createPickerWidth, Name: scope + " 分支",
+	}, func() {
 		sel := kit.BranchSelector(c, &cw.create.branch, branches,
 			kit.BranchSelectorOptions{AllowCreate: true, Key: "create", MinHeight: createPickerHeight})
-		sel.Element.Justify(mgo.Start)
+		sel.Element.MinWidth(createPickerWidth).Justify(mgo.Start)
 		if sel.Changed() {
 			cw.create.newBranch = false
 		}
@@ -321,7 +304,7 @@ func (cw *ChatWindow) startComposer(c *mgo.Context, placeholder string, start fu
 		Tools: func() {
 			if cw.createIsACP() {
 				cw.contextButton(c, false)
-				cw.createACPInfo(c)
+				cw.createACPControls(c)
 				return
 			}
 			cw.contextButton(c, true)
@@ -335,28 +318,90 @@ func (cw *ChatWindow) startComposer(c *mgo.Context, placeholder string, start fu
 			}
 		},
 	})
-	in.Element.FillWidth().Shrink(0)
+	// Keep the new-session/home composer centered and readable on wide panes.
+	in.Element.FillWidth().MaxWidth(createWidth).AlignSelf(mgo.Center).Shrink(0)
 	if in.Submitted() {
 		start()
 	}
 }
 
-// createACPInfo shows the chosen ACP connection's static config. The dynamic
-// options a server offers only appear after the process starts, in the
-// conversation's own footer.
-func (cw *ChatWindow) createACPInfo(c *mgo.Context) {
-	k := mcore.Tokens(c)
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	conn := cw.acpConnectionOf(cw.create.agent)
-	if conn == nil {
+// createACPControls shows the ACP agent's model and the options its runtime
+// offers in the composer's row, the way a conversation's composer shows them.
+// The choices wait in the page's state until the session starts.
+func (cw *ChatWindow) createACPControls(c *mgo.Context) {
+	name := strings.TrimPrefix(cw.create.agent, "acp:")
+	if name == cw.create.agent || name == "" {
 		return
 	}
-	cmd := strings.TrimSpace(conn.Command + " " + strings.Join(conn.Args, " "))
-	if cmd == "" {
+	opts := cw.acpConfigs(name)
+	if len(opts) == 0 {
+		// Keep the composer clean while the runtime is unavailable. Failed ACP
+		// agents are marked in the Agent picker instead of rendering an error
+		// inside the message input.
 		return
 	}
-	mgo.Text(c, "命令："+cmd).Font(mtheme.MonoFont).FontSize(caption).
-		TextColor(k.TextMuted).SingleLine().Ellipsis("…").MaxLines(1)
+	items := cw.createACPItems(opts)
+	sink := acpChoiceSink{
+		selectValue: func(id acp.SessionConfigId, value acp.SessionConfigValueId) {
+			cw.createACPSet(string(id), string(value))
+		},
+		boolValue: func(id acp.SessionConfigId, value bool) {
+			cw.createACPSet(string(id), strconv.FormatBool(value))
+		},
+	}
+	cw.acpControlRow(c, items, "create", func(it acpConfigItem, allowButtons bool) {
+		cw.acpOptionControl(c, it, sink, allowButtons)
+	})
+}
+
+// createACPItems builds the create page's ACP controls from the warm-up
+// cache: the runtime's own options, with the choices made here applied.
+func (cw *ChatWindow) createACPItems(opts []acp.SessionConfigOption) []acpConfigItem {
+	copies := make([]acp.SessionConfigOption, 0, len(opts))
+	for _, opt := range opts {
+		o := opt
+		switch {
+		case o.Select != nil:
+			s := *o.Select
+			o.Select = &s
+			if v, ok := cw.create.acpConfig[string(s.Id)]; ok {
+				s.CurrentValue = acp.SessionConfigValueId(v)
+			}
+		case o.Boolean != nil:
+			b := *o.Boolean
+			o.Boolean = &b
+			if v, ok := cw.create.acpConfig[string(b.Id)]; ok {
+				b.CurrentValue = v == "true"
+			}
+		}
+		copies = append(copies, o)
+	}
+	return acpConfigItemsFromOptions(copies)
+}
+
+// createACPSet records an ACP option's choice for the new session.
+func (cw *ChatWindow) createACPSet(id, value string) {
+	if cw.create.acpConfig == nil {
+		cw.create.acpConfig = map[string]string{}
+	}
+	cw.create.acpConfig[id] = value
+}
+
+// applyCreateACPConfig carries the ACP choices made on the 新会话 page into
+// the new conversation, so its session starts with them.
+func (cw *ChatWindow) applyCreateACPConfig() {
+	if len(cw.create.acpConfig) == 0 || cw.cur == nil {
+		return
+	}
+	if cw.cur.ACPConfig == nil {
+		cw.cur.ACPConfig = map[string]string{}
+	}
+	for id, value := range cw.create.acpConfig {
+		cw.cur.ACPConfig[id] = value
+	}
+	if cw.convManager != nil {
+		_ = cw.convManager.SaveConversation(cw.cur)
+	}
 }
 
 // acpConnectionOf looks up the ACP connection an agent id names.
@@ -415,6 +460,9 @@ func (cw *ChatWindow) finishCreate(ws string) {
 		}
 	}
 	cw.newConversationIn(ws, cw.create.agent)
+	// The ACP choices made on this page ride the new conversation, so its
+	// session starts with them.
+	cw.applyCreateACPConfig()
 	cw.sendDraft()
 }
 

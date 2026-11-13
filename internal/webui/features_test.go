@@ -97,6 +97,16 @@ func (f *fakeRunner) Tools(agent string) []ToolInfo   { return f.tools }
 func (f *fakeRunner) Workspaces() []string            { return f.workspaces }
 func (f *fakeRunner) Skills(agent string) []SkillInfo { return f.skills }
 
+func (f *fakeRunner) Projects() []ProjectInfo { return nil }
+
+func (f *fakeRunner) Models(agent string) []ModelInfo { return nil }
+
+func (f *fakeRunner) ACPOptions(agent string) []ACPConfigOptionInfo { return nil }
+
+func (f *fakeRunner) CreateWorktree(project, branch string, newBranch bool) (string, error) {
+	return "", nil
+}
+
 func (f *fakeRunner) Revert(ctx context.Context, conv *models.Conversation, messageID string) error {
 	if f.revertErr != nil {
 		return f.revertErr
@@ -184,6 +194,30 @@ func TestCreateAndPatchSessionSettings(t *testing.T) {
 	}
 	if loaded.Agent != "acp:Claude" || len(loaded.Tools) != 1 || loaded.Tools[0] != "mcp:github" || !loaded.ToolsSet {
 		t.Fatalf("patched = %#v", loaded)
+	}
+}
+
+// The ACP options picked in the new-session form ride the conversation, so
+// its session starts with them.
+func TestCreateSessionCarriesACPConfig(t *testing.T) {
+	s, cm := runnerServer(t, &fakeRunner{})
+	w := serve(t, s, http.MethodPost, "/api/sessions",
+		`{"agent":"acp:Claude","acp_config":{"model":"m2","think":"false"}}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("create %d: %s", w.Code, w.Body)
+	}
+	var created struct {
+		Session models.Conversation `json:"session"`
+	}
+	if err := jsonUnmarshal(w.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	loaded, err := cm.LoadConversation(created.Session.ID)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.ACPConfig["model"] != "m2" || loaded.ACPConfig["think"] != "false" {
+		t.Fatalf("the ACP choices were lost: %#v", loaded.ACPConfig)
 	}
 }
 

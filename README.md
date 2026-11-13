@@ -16,7 +16,7 @@ A simple cross-platform AI chat client built with Go and [MyGo](https://github.c
 - 🏠 **Quick Start Home** - Centered composer with capability cards and project (workspace) / Agent selectors
 - 🤖 **Multi-Provider, Multi-Model** - OpenAI, Anthropic, Claude, Ollama, Qwen, DeepSeek, Gemini, the local magpie gateway and any OpenAI-compatible API. Each provider holds a list of models; every type ships a disabled example config with its brand logo
 - 🧵 **Provider Groups** - Bundle the models of several providers into one logical model name and route across them with fallback, round-robin or random selection
-- 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills) and ACP Agents (local coding CLIs)
+- 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills) and ACP Agents (local coding CLIs, with version check and one-click upgrade)
 - 🔧 **Tools & MCP** - Built-in tools and whole MCP servers toggle per chat/agent, with search; an MCP marketplace is bundled
 - 📚 **Skills** - Scans local SKILL directories, with per-agent selection and search
 - 📖 **Knowledge Bases** - Index local text documents into a pure-Go SQLite FTS5 store and retrieve them offline; agents search them with the `knowledge_search` tool
@@ -215,7 +215,7 @@ Grouped by workspace; create, rename, delete, and search. Hide or show the list 
 
 - **Built-in Chat** remembers its global model / tool / MCP / Skill selection and reloads it on start
 - **Custom Agents** define an availability whitelist in Settings (models are multi-select), all enabled by default and temporary toggles in chat
-- **ACP Agents** expose the modes and options the protocol provides
+- **ACP Agents** expose the modes and options the protocol provides, and each connection can check its CLI's installed version against the newest release (npm registry or GitHub releases), with a one-click upgrade where the install method is known
 
 ### Knowledge Bases
 

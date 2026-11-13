@@ -3,8 +3,43 @@ package ui
 import (
 	"testing"
 
+	mgo "github.com/egoist/mygo/ui"
+
 	"chatgo/internal/config"
 )
+
+// A configured model's tag shares its title's line, so the entry reads as one
+// row instead of a name with a chip underneath.
+func TestModelRefreshTagSharesTheTitleLine(t *testing.T) {
+	cw := testWindow()
+	cw.section = sectionSettings
+	cw.settings.tab = 0
+	cw.cfg.Providers = []config.Provider{{
+		Name: "p", Type: config.ProviderTypeOpenAI, APIKey: "k",
+		Model: "openai/gpt-4o", Models: []string{"openai/gpt-4o"}, Enabled: true,
+	}}
+	cw.modelRef = modelRefreshState{
+		open: true, provider: 0, name: "p",
+		found:      []string{"openai/gpt-4o", "openai/new-model"},
+		chosen:     map[string]bool{},
+		configured: map[string]bool{"openai/gpt-4o": true},
+	}
+	tr := mgo.NewTester(cw.view, 1280, 820)
+	for range 6 {
+		tr.Frame()
+	}
+	title, ok := tr.Find("openai/gpt-4o")
+	if !ok {
+		t.Fatalf("the model row is missing; texts: %v", tr.Texts())
+	}
+	tag, ok := tr.Find("已配置")
+	if !ok {
+		t.Fatalf("the configured tag is missing; texts: %v", tr.Texts())
+	}
+	if tag.Y+tag.H <= title.Y || title.Y+title.H <= tag.Y {
+		t.Fatalf("the tag is not on the title's line: title %v, tag %v", title, tag)
+	}
+}
 
 // TestModelRefreshMergeKeepsExistingModels covers the merge rule: ticked
 // models are added, and a model the user configured by hand survives even

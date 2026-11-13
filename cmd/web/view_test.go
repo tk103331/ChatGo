@@ -93,6 +93,31 @@ func TestWebViewRendersExpandedProcess(t *testing.T) {
 	renderApp(t, a, 1180, 820)
 }
 
+// The picker renders open, on every tab: tools, MCP and skills each draw
+// their switches.
+func TestWebToolPickerRenders(t *testing.T) {
+	a := testApp()
+	a.tools = []toolInfo{
+		{ID: "builtin:filesystem", Name: "filesystem", Kind: "builtin", Enabled: true},
+		{ID: "mcp:docs", Name: "docs", Kind: "mcp", Enabled: true},
+	}
+	a.skills = []skillInfo{
+		{ID: "s1", Name: "Review", Token: "Review"},
+		{ID: "s2", Name: "Write", Token: "Write"},
+	}
+	a.skillsOn = []string{"s1"}
+	for tab := 0; tab < 3; tab++ {
+		a.toolTab = tab
+		renderApp(t, a, 1180, 820)
+	}
+	// A query filtering everything out, and the pane hint on an empty tab.
+	a.toolQuery = "不存在的项"
+	renderApp(t, a, 1180, 820)
+	a.skills = nil
+	a.toolTab = 2
+	renderApp(t, a, 1180, 820)
+}
+
 func TestWebViewRendersNarrow(t *testing.T) {
 	a := testApp()
 	renderApp(t, a, 520, 800)
@@ -172,7 +197,37 @@ func TestWebViewRendersNewSessionDialog(t *testing.T) {
 	a := testApp()
 	a.newSessionOpen = true
 	a.newAgent = "agent:Reviewer"
-	a.newWorkspace = "/tmp/project"
+	a.newProject = "/tmp/project"
+	a.newTree = "/tmp/project"
+	a.modelsByAgent = map[string]modelsByAgentState{
+		"agent:Reviewer": {models: []modelInfo{{Ref: "Local::llama3", Label: "Local · llama3"}}},
+	}
+	a.newModel = "Local::llama3"
+	a.newDraft = "帮我跑一遍测试"
+	renderApp(t, a, 1180, 820)
+}
+
+// The desktop-style pickers render when the runtime offers projects, and the
+// branch picker appears for a new worktree.
+func TestWebViewRendersNewSessionProjects(t *testing.T) {
+	a := testApp()
+	a.newSessionOpen = true
+	a.projects = []projectInfo{{
+		Main: "/tmp/project",
+		Worktrees: []treeInfo{
+			{Path: "/tmp/project", Branch: "main"},
+			{Path: "/tmp/wt/feat", Branch: "feat"},
+		},
+		Branches: []string{"main", "feat"},
+	}}
+	a.newProject = "/tmp/project"
+	a.newTree = newTreeCreate
+	a.newBranch = "feat"
+	renderApp(t, a, 1180, 820)
+	// An ACP agent shows the command instead of the model picker.
+	a.newAgent = "acp:OpenCode"
+	a.agents = append(a.agents, agentInfo{Ref: "acp:OpenCode", Name: "OpenCode", Kind: "acp",
+		Description: "opencode acp"})
 	renderApp(t, a, 1180, 820)
 }
 

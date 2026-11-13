@@ -235,6 +235,9 @@ type ChatWindow struct {
 	acpForm         acpForm
 	acpCatalogOpen  bool
 	acpCatalogQuery string
+	// acpUpd holds each connection's version-check result under its name.
+	// Entries appear on the first check and are read on the main thread only.
+	acpUpd map[string]*acpUpdState
 
 	mcp mcpState
 
@@ -349,6 +352,7 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		channels:       newChannelManager(),
 		grabber:        capture.New(),
 		quickReplyIDs:  map[string]bool{},
+		acpUpd:         map[string]*acpUpdState{},
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd
@@ -376,6 +380,9 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	go cw.startMCP()
 	go cw.autoTaskLoop()
 	go cw.startChannels()
+	// Warm every enabled ACP connection one at a time: the 新会话 page reads
+	// their model lists and config options from this cache.
+	go cw.acpStartupInit()
 	return cw, nil
 }
 

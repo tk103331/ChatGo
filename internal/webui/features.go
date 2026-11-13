@@ -2,7 +2,11 @@ package webui
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -50,6 +54,118 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 		workspaces = s.runner.Workspaces()
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"workspaces": workspaces})
+}
+
+// handleProjects lists the projects and their worktrees a new session may
+// run in, grouped the way the desktop's 新会话 page groups them.
+func (s *Server) handleProjects(w http.ResponseWriter, r *http.Request) {
+	var projects []ProjectInfo
+	if s.runner != nil {
+		projects = s.runner.Projects()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"projects": projects})
+}
+
+// handleModels lists the models an agent reference may run.
+func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
+	var models []ModelInfo
+	if s.runner != nil {
+		models = s.runner.Models(r.URL.Query().Get("agent"))
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"models": models})
+}
+
+// handleACPOptions lists the session config options an ACP agent's runtime
+// offers — the model, the modes, the toggles — with the values each one
+// takes. The first request may take a while: it waits for the startup
+// warm-up to land.
+func (s *Server) handleACPOptions(w http.ResponseWriter, r *http.Request) {
+	if !s.requireRunner(w) {
+		return
+	}
+	agent := r.URL.Query().Get("agent")
+	writeJSON(w, http.StatusOK, map[string]any{
+		"options": s.runner.ACPOptions(agent),
+	})
+}
+
+// handleCreateWorktree adds a working tree of a project and answers with its
+// path, so the new session can open in it.
+func (s *Server) handleCreateWorktree(w http.ResponseWriter, r *http.Request) {
+	if !s.requireRunner(w) {
+		return
+	}
+	var body struct {
+		Project   string `json:"project"`
+		Branch    string `json:"branch"`
+		NewBranch bool   `json:"new_branch"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	path, err := s.runner.CreateWorktree(body.Project, body.Branch, body.NewBranch)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"path": path})
+}
+
+// FSItem is one subdirectory of a browsed host directory.
+type FSItem struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// handleFS lists the subdirectories of a directory on this host, so a phone
+// can pick a workspace without typing blind paths. An empty dir starts at the
+// user's home. Only directories are listed and nothing is opened: the read is
+// as much of the host as the rest of the web surface already touches.
+func (s *Server) handleFS(w http.ResponseWriter, r *http.Request) {
+	dir := strings.TrimSpace(r.URL.Query().Get("dir"))
+	if dir == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err)
+			return
+		}
+		dir = home
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	info, err := os.Stat(abs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("目录不存在：%s", dir))
+		return
+	}
+	if !info.IsDir() {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("不是目录：%s", dir))
+		return
+	}
+	files, err := os.ReadDir(abs)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, fmt.Errorf("无法读取目录：%s", err))
+		return
+	}
+	entries := make([]FSItem, 0, len(files))
+	for _, f := range files {
+		if !f.IsDir() {
+			continue
+		}
+		entries = append(entries, FSItem{Name: f.Name(), Path: filepath.Join(abs, f.Name())})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Name < entries[j].Name })
+	parent := ""
+	if abs != string(filepath.Separator) {
+		parent = filepath.Dir(abs)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"dir": abs, "parent": parent, "entries": entries,
+	})
 }
 
 // handleSkills lists the slash-menu skills for an agent reference.

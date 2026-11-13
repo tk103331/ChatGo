@@ -12,7 +12,7 @@ import (
 	mcore "chatgo/internal/ui/uikit"
 )
 
-// homeView is the welcome page: capability cards, the same agent, project and
+// homeView is the welcome page: the brand, the same agent, project and
 // worktree pickers the "新会话" tab uses, the composer and recent chats.
 func (cw *ChatWindow) homeView(c *mgo.Context) {
 	if cw.create.ws == "" {
@@ -20,32 +20,20 @@ func (cw *ChatWindow) homeView(c *mgo.Context) {
 	}
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	var example string
-	mgo.Scroll(c).Fill().Children(func() {
-		mgo.Column(c).FillWidth().AlignItems(mgo.Stretch).Children(func() {
-			mgo.Column(c).FillWidth().MaxWidth(createWidth).AlignSelf(mgo.Center).
-				AlignItems(mgo.Center).Gap(u*3).Padding(u*6, u*4).Children(func() {
-				mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-					mgo.Icon(c, assets.BrandMark()).Size(56, 56).TextColor(k.Accent)
-					mgo.Text(c, "ChatGo").FontSize(mcore.FontSize(c, mtheme.H1Size)).
-						FontWeight(600).TextColor(k.Text)
-				})
-				view := kit.CapabilityCards(c, []kit.CapabilityCard{
-					{Title: "多模型", Description: "OpenAI、Claude、Gemini 等主流模型", Icon: icons.Must("bot"), Examples: []string{"用一句话介绍你自己"}},
-					{Title: "Agents 工具", Description: "内置工具与 MCP 服务器，按需自动调用", Icon: icons.Must("terminal"), Examples: []string{"帮我看看这个项目有哪些文件"}},
-					{Title: "多会话", Description: "会话自动保存，支持搜索、重命名与导出", Icon: icons.Must("message-square"), Examples: []string{"写一个 Go 的快速排序"}},
-				}, kit.CapabilityCardsOptions{Columns: 3})
-				view.Element.FillWidth()
-				example = view.Example
-				cw.createSelectors(c, "首页")
-				cw.startComposer(c, "输入消息，Enter 开始对话", cw.startFromCreate)
-				cw.recentConversations(c)
+	mgo.Column(c).Fill().MinHeight(0).Justify(mgo.Center).
+		AlignItems(mgo.Center).Padding(u * 4).Children(func() {
+		mgo.Column(c).FillWidth().MaxWidth(createWidth).AlignSelf(mgo.Center).
+			AlignItems(mgo.Center).Gap(u*2).Padding(u*5, u*4).Children(func() {
+			mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
+				mgo.Icon(c, assets.BrandMark()).Size(44, 44).TextColor(k.Accent)
+				mgo.Text(c, "ChatGo").FontSize(mcore.FontSize(c, mtheme.H1Size)).
+					FontWeight(600).TextColor(k.Text)
 			})
+			cw.createSelectors(c, "首页")
+			cw.startComposer(c, "输入消息，Enter 开始对话", cw.startFromCreate)
+			cw.recentConversations(c)
 		})
 	})
-	if example != "" {
-		cw.draft = example
-	}
 }
 
 // recentConversations lists the ten most recent saved conversations in a
@@ -56,9 +44,24 @@ func (cw *ChatWindow) recentConversations(c *mgo.Context) {
 	}
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
+	open := mgo.Local(c.Root(), "home:recent-conversations:open", func() bool { return false })
 	mgo.Column(c).FillWidth().Gap(u * 1.5).Children(func() {
-		mgo.Text(c, "最近会话").FontWeight(600).TextColor(k.TextMuted).
-			FontSize(mcore.FontSize(c, mtheme.CaptionSize))
+		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
+			mgo.Text(c, "最近会话").FontWeight(600).TextColor(k.TextMuted).
+				FontSize(mcore.FontSize(c, mtheme.CaptionSize)).Grow(1)
+			arrow := "chevron-right"
+			label := "展开最近会话"
+			if *open {
+				arrow = "chevron-down"
+				label = "收起最近会话"
+			}
+			if mcore.IconAction(c, icons.Must(arrow), label).Clicked() {
+				*open = !*open
+			}
+		})
+		if !*open {
+			return
+		}
 		mgo.Scroll(c).FillWidth().MaxHeight(mcore.Density(c).ControlHeight() * 9).Children(func() {
 			mgo.Column(c).FillWidth().Gap(u * 1.5).Children(func() {
 				for i, conv := range cw.convs {

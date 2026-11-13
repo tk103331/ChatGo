@@ -56,6 +56,12 @@ type app struct {
 	skillsFor  string
 	skillsOn   []string
 	toolsOpen  bool
+	// toolTab selects the tab of the tool picker and the three fields keep
+	// one search query per tab, like the desktop's 工具与技能 menu.
+	toolTab    int
+	toolQuery  string
+	mcpQuery   string
+	skillQuery string
 
 	pending         *interactionInfo
 	askAnswers      map[string]string
@@ -66,9 +72,38 @@ type app struct {
 
 	newSessionOpen    bool
 	newSessionClosing bool
-	newTitle          string
-	newAgent          string
-	newWorkspace      string
+	// The 新会话 form mirrors the desktop's create page: agent, project,
+	// worktree or branch, model and the first message.
+	newAgent     string
+	newProject   string // project main path, or newProjectCustom
+	newCustomDir string // typed directory when newProject is newProjectCustom
+	// fsBrowse is the host directory browser behind 新建工作区: it walks the
+	// server's own file system so a phone can pick a workspace.
+	fsOpen       bool
+	fsDir        string
+	fsParent     string
+	fsEntries    []fsItem
+	fsLoading    bool
+	fsErr        string
+	newTree      string // worktree path, or newTreeCreate
+	newBranch    string
+	newNewBranch bool
+	newModel     string
+	newDraft     string
+	newCreating  bool
+
+	projects  []projectInfo
+	models    []modelInfo
+	modelsFor string
+	// modelsByAgent caches each agent reference's model list for the
+	// new-session model picker, fetched per chosen agent.
+	modelsByAgent map[string]modelsByAgentState
+	// acpOptions caches each ACP agent's session config options for the
+	// new-session dialog.
+	acpOptions map[string]acpOptionsState
+	// newACPConfig holds the ACP option choices made in the new-session
+	// dialog: a config id to the value picked for it.
+	newACPConfig map[string]string
 
 	attachments []attachmentRef
 	attaching   bool

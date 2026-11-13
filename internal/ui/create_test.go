@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	mgo "github.com/egoist/mygo/ui"
+
 	"chatgo/internal/config"
 	"chatgo/pkg/models"
 )
@@ -15,12 +17,37 @@ func TestCreateTabRenders(t *testing.T) {
 	cw := worktreeWindow(t, dir)
 	cw.openCreateTab()
 	tr := cw.tester(1000, 700, "新会话")
-	// The model picker's trigger reads as the chosen model, so it is matched
-	// by that rather than by the word 模型.
-	for _, want := range []string{"Agent", "项目", "工作树", "OpenAI · gpt-4", "发送"} {
+	// The Agent picker and the model picker are separate: the model one
+	// reads as the chosen model.
+	for _, want := range []string{"Agent", "项目", "工作树", "gpt-4", "发送"} {
 		if !tr.HasText(want) {
 			t.Fatalf("the create tab lacks %q; texts: %v", want, tr.Texts())
 		}
+	}
+}
+
+// The create row's pickers share one style: the agent trigger is the same
+// width, height and baseline as the project picker beside it, so the row
+// reads as one set of fields.
+func TestCreatePickersShareOneStyle(t *testing.T) {
+	dir := newTestRepo(t)
+	cw := worktreeWindow(t, dir)
+	cw.create.ws = dir
+	cw.openCreateTab()
+	tr := cw.tester(1000, 700, "新会话")
+	agent, ok := tr.AccessByRole(mgo.RoleButton, chatAgentName)
+	if !ok {
+		t.Fatalf("the create row has no agent trigger; texts: %v", tr.Texts())
+	}
+	project, ok := tr.AccessByRole(mgo.RoleButton, filepath.Base(dir))
+	if !ok {
+		t.Fatalf("the create row has no project trigger; texts: %v", tr.Texts())
+	}
+	if agent.Bounds.W != project.Bounds.W || agent.Bounds.H != project.Bounds.H {
+		t.Fatalf("the pickers differ in size: agent %v, project %v", agent.Bounds, project.Bounds)
+	}
+	if agent.Bounds.Y != project.Bounds.Y {
+		t.Fatalf("the pickers do not share a baseline: agent %v, project %v", agent.Bounds, project.Bounds)
 	}
 }
 
@@ -327,7 +354,7 @@ func TestCreateAgentPickerIsSearchableWithIcons(t *testing.T) {
 	for range 4 {
 		tr.Frame()
 	}
-	for _, want := range []string{"Helper", "PiAgent", "搜索 Agent"} {
+	for _, want := range []string{"Helper", "PiAgent"} {
 		if !containsText(tr.Texts(), want) {
 			t.Fatalf("the agent dropdown lacks %q: %v", want, tr.Texts())
 		}
@@ -343,7 +370,7 @@ func TestHomeMatchesCreateTab(t *testing.T) {
 	cw.cfg.Agents = []config.AgentDef{{Name: "Helper"}}
 	cw.cfg.ACPAgents = []config.ACPConnection{{Name: "PiAgent", Command: "pi"}}
 	tr := cw.tester(1000, 700, "工作树")
-	for _, want := range []string{"Agent", "项目", "工作树", "OpenAI · gpt-4", "发送"} {
+	for _, want := range []string{"Agent", "项目", "工作树", "gpt-4", "发送"} {
 		if !tr.HasText(want) {
 			t.Fatalf("the home page lacks %q; texts: %v", want, tr.Texts())
 		}
@@ -354,29 +381,31 @@ func TestHomeMatchesCreateTab(t *testing.T) {
 	for range 4 {
 		tr.Frame()
 	}
-	for _, want := range []string{"Helper", "PiAgent", "搜索 Agent"} {
+	for _, want := range []string{"Helper", "PiAgent"} {
 		if !tr.HasText(want) {
 			t.Fatalf("the agent search lacks %q; texts: %v", want, tr.Texts())
 		}
 	}
 }
 
-// The model picker in the composer is the same searchable component, so it
-// has a search box the old bespoke selector lacked.
-func TestCreateModelPickerIsSearchable(t *testing.T) {
+// The model picker in the composer is one searchable list of every model the
+// agent may run.
+func TestCreateModelPickerRenders(t *testing.T) {
 	dir := newTestRepo(t)
 	cw := worktreeWindow(t, dir)
 	cw.create.ws = dir
 	cw.openCreateTab()
 	tr := cw.tester(1000, 700, "新会话")
-	if err := tr.Click("OpenAI · gpt-4"); err != nil {
+	if err := tr.Click("gpt-4"); err != nil {
 		t.Fatalf("open the model dropdown: %v", err)
 	}
 	for range 4 {
 		tr.Frame()
 	}
-	if !containsText(tr.Texts(), "搜索模型") {
-		t.Fatalf("the model picker is not the searchable component: %v", tr.Texts())
+	for _, want := range []string{"选择模型", "gpt-4o", "OpenAI"} {
+		if !containsText(tr.Texts(), want) {
+			t.Fatalf("the model picker lacks %q: %v", want, tr.Texts())
+		}
 	}
 }
 

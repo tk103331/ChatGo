@@ -56,8 +56,9 @@ func textAction(c *mgo.Context, label string, enabled bool) bool {
 	return b.Clicked() && enabled
 }
 
-// selectRow renders one two-line entry: a checkbox with the title, then the
-// detail truncated to one line with the full text as its tooltip.
+// selectRow renders one entry: a checkbox with its title and tags on one
+// line, then the detail truncated to one line with the full text as its
+// tooltip.
 func selectRow(c *mgo.Context, item selectItem, checked bool, onToggle func(bool)) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
@@ -68,24 +69,24 @@ func selectRow(c *mgo.Context, item selectItem, checked bool, onToggle func(bool
 		row.Background(k.SurfaceHover)
 	}
 	row.Children(func() {
-		v := checked
-		if mgo.Checkbox(c, &v, item.Title).FillWidth().MinWidth(0).Changed() {
-			onToggle(v)
-		}
+		// The tags ride the title's line, right after it, so a configured
+		// model reads as one entry instead of a two-line block.
+		mgo.Row(c).FillWidth().MinWidth(0).Gap(u).AlignItems(mgo.Center).Children(func() {
+			v := checked
+			if mgo.Checkbox(c, &v, item.Title).Shrink(1).MinWidth(0).Changed() {
+				onToggle(v)
+			}
+			for _, tag := range item.Tags {
+				agentTag(c, tag)
+			}
+			mgo.Spacer(c)
+		})
 		if item.Desc != "" {
 			// The detail is indented to the checkbox's label and tooltipped,
 			// so a long description stays readable without widening the list.
 			mgo.Text(c, item.Desc).FontSize(caption).TextColor(k.TextMuted).
 				Padding(0, 0, 0, u*3).MinWidth(0).SingleLine().Ellipsis("…").
 				Tooltip(item.Desc)
-		}
-		if len(item.Tags) > 0 {
-			mgo.Row(c).FillWidth().MinWidth(0).Gap(u/2).Wrap().
-				Padding(0, 0, 0, u*3).Children(func() {
-				for _, tag := range item.Tags {
-					agentTag(c, tag)
-				}
-			})
 		}
 	})
 }

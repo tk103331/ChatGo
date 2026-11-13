@@ -13,7 +13,7 @@
 - 🎨 **原生界面** - MyGo GPU 自绘，沿用其原生浅色/深色主题，自绘标题栏
 - 🏠 **首页快速开始** - 居中输入框 + 能力卡片，并可选项目（工作区）与 Agent
 - 🤖 **多 Provider、多模型** - 支持 OpenAI、Anthropic、Claude、Ollama、Qwen、DeepSeek、Gemini、本机 magpie 网关及任意 OpenAI 兼容接口；每个 Provider 可配置多个模型，每种类型自带一条默认不启用的示例配置与品牌 logo
-- 🧩 **Agent** - 内置 Chat、自定义 Agent（模型/内置工具/MCP/Skill 白名单）、ACP Agent（本地编码 CLI）
+- 🧩 **Agent** - 内置 Chat、自定义 Agent（模型/内置工具/MCP/Skill 白名单）、ACP Agent（本地编码 CLI，支持检查版本与一键升级）
 - 🔧 **工具与 MCP** - 按会话/Agent 勾选内置工具与整个 MCP 服务器，支持检索；内置 MCP 市场
 - 📚 **Skill** - 扫描本地 SKILL 目录，按 Agent 选择并支持检索
 - 🗂️ **工作区与面板** - 会话按工作区分组、可折叠；聊天/预览/文件面板可拖拽；多 Tab 文件预览与 Git 差异面板
@@ -206,7 +206,7 @@ quick_panel:
 
 - **内置 Chat**：记住全局的模型/工具/MCP/Skill 选择，下次启动自动恢复
 - **自定义 Agent**：在设置里定义可用白名单（模型可多选），默认全启用，聊天中可临时关闭
-- **ACP Agent**：按 ACP 协议提供的模式与选项控制
+- **ACP Agent**：按 ACP 协议提供的模式与选项控制；每个连接可检查 CLI 已安装版本与最新发布版（npm registry 或 GitHub Releases），已知安装方式的提供一键升级
 
 ### 知识库
 

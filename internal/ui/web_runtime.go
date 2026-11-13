@@ -3,11 +3,17 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	acp "github.com/coder/acp-go-sdk"
 
+	"chatgo/internal/config"
 	"chatgo/internal/llm"
 	"chatgo/internal/webui"
 	"chatgo/pkg/models"
@@ -54,9 +60,16 @@ func (r webRuntime) Agents() []webui.AgentInfo {
 			out = append(out, info)
 		}
 		for _, a := range cw.cfg.ACPAgents {
+			if a.Disabled {
+				continue
+			}
+			// The command is what tells two ACP connections apart, the way
+			// the desktop's 新会话 page prints it under the picker.
+			cmd := strings.TrimSpace(a.Command + " " + strings.Join(a.Args, " "))
 			out = append(out, webui.AgentInfo{
 				Ref: "acp:" + a.Name, Name: a.Name, Kind: "acp",
-				Description: a.Command, Icon: a.Icon, Workspace: a.Cwd,
+				Disabled:    cw.acpModelError(a.Name) != "",
+				Description: cmd, Icon: a.Icon, Workspace: a.Cwd,
 			})
 		}
 		return out
@@ -75,13 +88,16 @@ func (r webRuntime) Tools(agent string) []webui.ToolInfo {
 		for _, t := range cw.cfg.BuiltinTools {
 			id := "builtin:" + t.Name
 			out = append(out, webui.ToolInfo{
-				ID: id, Name: t.Name, Kind: "builtin", Enabled: on[id],
+				ID: id, Name: t.Name,
+				Description: config.GetBuiltinToolDescription(t.Type),
+				Kind:        "builtin", Enabled: on[id],
 			})
 		}
 		for _, s := range cw.cfg.MCPServers {
 			id := "mcp:" + s.Name
 			out = append(out, webui.ToolInfo{
-				ID: id, Name: s.Name, Kind: "mcp", Enabled: on[id],
+				ID: id, Name: s.Name, Description: cw.mcpServerDesc(s.Name),
+				Kind: "mcp", Enabled: on[id],
 			})
 		}
 		return out
@@ -91,6 +107,201 @@ func (r webRuntime) Tools(agent string) []webui.ToolInfo {
 func (r webRuntime) Workspaces() []string {
 	cw := r.cw
 	return onMain(cw, func() []string { return cw.workspaces() })
+}
+
+// Projects groups the known directories into projects and lists every
+// worktree with its branch, the data the desktop's 新会话 pickers show.
+// A directory outside any repository is its own project without trees.
+func (r webRuntime) Projects() []webui.ProjectInfo {
+	cw := r.cw
+	return onMain(cw, func() []webui.ProjectInfo {
+		seen := map[string]bool{}
+		out := make([]webui.ProjectInfo, 0, len(cw.cfg.Workspaces)+1)
+		for _, ws := range cw.workspaces() {
+			project, _ := readProjectTrees(ws)
+			main := ws
+			if project != nil && project.Main != "" {
+				main = project.Main
+			}
+			if seen[main] {
+				continue
+			}
+			seen[main] = true
+			info := webui.ProjectInfo{Main: main}
+			if project != nil {
+				for _, path := range project.Worktrees {
+					info.Worktrees = append(info.Worktrees, webui.TreeInfo{
+						Path: path, Branch: project.TreeBranches[path],
+					})
+				}
+				info.Branches = project.Branches
+			}
+			out = append(out, info)
+		}
+		return out
+	})
+}
+
+// Models lists the model references a session may run, the same list the
+// desktop's composer model picker offers: the built-in Chat gets every
+// configured model and provider group, a custom agent its whitelist. Provider
+// groups are left out: the session target resolves one provider and model,
+// which a group's routing cannot name.
+func (r webRuntime) Models(agent string) []webui.ModelInfo {
+	cw := r.cw
+	return onMain(cw, func() []webui.ModelInfo {
+		if strings.HasPrefix(agent, "acp:") {
+			return nil
+		}
+		refs := cw.modelRefsFor(agent)
+		out := make([]webui.ModelInfo, 0, len(refs))
+		for _, ref := range refs {
+			if cw.isGroupRef(ref) {
+				continue
+			}
+			name, model := splitModelRef(ref)
+			var typ string
+			if name != "" {
+				if p, ok := cw.findProvider(name); ok {
+					typ = p.Type
+				}
+			}
+			out = append(out, webui.ModelInfo{
+				Ref: ref, Label: model, Provider: name, ProviderType: typ,
+			})
+		}
+		return out
+	})
+}
+
+// ACPOptions answers with the session config options an ACP connection's
+// runtime offers: the model, the modes, the toggles, each with the values it
+// takes. A cached answer returns at once; the first miss waits for the
+// warm-up to land, so the browser's single fetch shows them. The wait happens
+// on the HTTP handler's goroutine, never on the app's UI thread.
+func (r webRuntime) ACPOptions(agent string) []webui.ACPConfigOptionInfo {
+	name := strings.TrimPrefix(agent, "acp:")
+	if name == agent || name == "" {
+		return nil
+	}
+	cw := r.cw
+	deadline := time.Now().Add(25 * time.Second)
+	for {
+		opts := cw.acpConfigs(name)
+		if len(opts) > 0 {
+			return acpConfigOptions(opts)
+		}
+		if cw.acpModelError(name) != "" || !cw.acpModelsLoading(name) || time.Now().After(deadline) {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// acpConfigOptions turns the runtime's options into the shape the browser
+// renders: every option with its values and its current choice.
+func acpConfigOptions(opts []acp.SessionConfigOption) []webui.ACPConfigOptionInfo {
+	var out []webui.ACPConfigOptionInfo
+	for _, opt := range opts {
+		switch {
+		case opt.Select != nil:
+			values := []webui.ACPConfigValue{}
+			if ungrouped := opt.Select.Options.Ungrouped; ungrouped != nil {
+				for _, o := range *ungrouped {
+					values = append(values, webui.ACPConfigValue{
+						Value: string(o.Value), Name: o.Name,
+					})
+				}
+			}
+			if grouped := opt.Select.Options.Grouped; grouped != nil {
+				for _, g := range *grouped {
+					for _, o := range g.Options {
+						values = append(values, webui.ACPConfigValue{
+							Value: string(o.Value), Name: o.Name,
+						})
+					}
+				}
+			}
+			current := string(opt.Select.CurrentValue)
+			kind := "select"
+			if opt.Select.Category != nil &&
+				*opt.Select.Category == acp.SessionConfigOptionCategoryModel {
+				kind = "model"
+			}
+			out = append(out, webui.ACPConfigOptionInfo{
+				ID: string(opt.Select.Id), Name: opt.Select.Name,
+				Current: current, Kind: kind, Options: values,
+			})
+		case opt.Boolean != nil:
+			out = append(out, webui.ACPConfigOptionInfo{
+				ID: string(opt.Boolean.Id), Name: opt.Boolean.Name,
+				Current: strconv.FormatBool(opt.Boolean.CurrentValue), Kind: "boolean",
+			})
+		}
+	}
+	return out
+}
+
+// CreateWorktree runs the same checks and git invocation as the desktop's
+// worktree creation, reporting problems as errors instead of toasts.
+func (r webRuntime) CreateWorktree(project, branch string, newBranch bool) (string, error) {
+	cw := r.cw
+	// onMain infers a single result type, so the path and error travel
+	// together.
+	res := onMain(cw, func() struct {
+		path string
+		err  error
+	} {
+		path, err := createWorktreeIn(cw, project, branch, newBranch)
+		return struct {
+			path string
+			err  error
+		}{path, err}
+	})
+	return res.path, res.err
+}
+
+// createWorktreeIn is CreateWorktree's body, run on the app's main thread.
+func createWorktreeIn(cw *ChatWindow, project, branch string, newBranch bool) (string, error) {
+	project = strings.TrimSpace(project)
+	branch = strings.TrimSpace(branch)
+	if project == "" {
+		return "", fmt.Errorf("请选择项目")
+	}
+	if branch == "" {
+		return "", fmt.Errorf("请填写分支名")
+	}
+	path := defaultWorktreePath(project, branch)
+	if _, err := os.Stat(path); err == nil {
+		return "", fmt.Errorf("目录已存在：%s", path)
+	}
+	branches := gitBranchNames(project)
+	if !newBranch && !containsStr(branches, branch) {
+		return "", fmt.Errorf("分支不存在：%s", branch)
+	}
+	if newBranch && containsStr(branches, branch) {
+		return "", fmt.Errorf("分支已存在：%s", branch)
+	}
+	if gitBranchCheckedOut(project, branch) {
+		return "", fmt.Errorf("分支已被其他工作树签出：%s", branch)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return "", fmt.Errorf("创建目录失败：%w", err)
+	}
+	args := []string{"worktree", "add"}
+	if newBranch {
+		args = append(args, "-b", branch, path)
+	} else {
+		args = append(args, path, branch)
+	}
+	out, err := gitRun(project, args...)
+	if err != nil {
+		return "", errors.New(worktreeError(out, err))
+	}
+	// The desktop's own worktree tab and session list must see the tree.
+	cw.loadWorktrees()
+	cw.bumpConvGit(project)
+	return path, nil
 }
 
 func (r webRuntime) Skills(agent string) []webui.SkillInfo {

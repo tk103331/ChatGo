@@ -108,9 +108,10 @@ func (a *app) commitDelete() {
 
 // overlays draws the modal dialogs on top of the conversation.
 func (a *app) overlays(c *ui.Context) {
+	t := c.Theme()
 	a.renameDialog(c)
 	a.deleteDialog(c)
-	a.newSessionDialog(c)
+	a.newSessionDialog(c, t)
 	a.revertDialog(c)
 	a.roomEditor(c)
 	a.roomDeleteDialog(c)

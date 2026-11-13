@@ -1188,7 +1188,7 @@ func TestComposerSelectorsAreConsistent(t *testing.T) {
 		tr.Frame()
 	}
 	texts := tr.Texts()
-	if !containsText(texts, "OpenAI · gpt-4") {
+	if !containsText(texts, "gpt-4") {
 		t.Fatalf("the composer lacks the model selector: %v", texts)
 	}
 	if err := tr.Click("工具与技能"); err != nil {

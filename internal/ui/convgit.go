@@ -101,29 +101,9 @@ func (cw *ChatWindow) loadConvGit(ws string) {
 // readConvGit builds a workspace's git summary, or nil when it is not inside
 // a repository.
 func readConvGit(ws string) *convGitInfo {
-	if gitOut(ws, "rev-parse", "--is-inside-work-tree") != "true" {
+	project, branch := readProjectTrees(ws)
+	if project == nil || branch == "" {
 		return nil
-	}
-	branch := gitOut(ws, "rev-parse", "--abbrev-ref", "HEAD")
-	if branch == "HEAD" {
-		if h := gitOut(ws, "rev-parse", "--short", "HEAD"); h != "" {
-			branch = h + " (detached)"
-		}
-	}
-	if branch == "" {
-		return nil
-	}
-	// The worktree list heads with the main tree, so it gives the project's
-	// identity, every tree that belongs to it, and the branch each tree has
-	// checked out.
-	ts := gitWorktrees(ws)
-	if len(ts) == 0 {
-		return nil
-	}
-	project := &Project{Main: ts[0].Path, Branches: gitBranchNames(ws), TreeBranches: map[string]string{}}
-	for _, t := range ts {
-		project.Worktrees = append(project.Worktrees, t.Path)
-		project.TreeBranches[t.Path] = t.Branch
 	}
 	stat := gitDiffStat(ws)
 	var modified, added, deleted, untracked int
@@ -155,6 +135,38 @@ func readConvGit(ws string) *convGitInfo {
 		Modified: modified, Added: added, Deleted: deleted, Untracked: untracked,
 		DiffAdded: stat[0], DiffDeleted: stat[1],
 	}
+}
+
+// readProjectTrees is the git summary a session-start picker needs: the
+// project's main tree, every worktree with the branch it has checked out,
+// the local branch list, and ws's own branch. Nil when ws is not inside a
+// repository.
+func readProjectTrees(ws string) (*Project, string) {
+	if gitOut(ws, "rev-parse", "--is-inside-work-tree") != "true" {
+		return nil, ""
+	}
+	branch := gitOut(ws, "rev-parse", "--abbrev-ref", "HEAD")
+	if branch == "HEAD" {
+		if h := gitOut(ws, "rev-parse", "--short", "HEAD"); h != "" {
+			branch = h + " (detached)"
+		}
+	}
+	if branch == "" {
+		return nil, ""
+	}
+	// The worktree list heads with the main tree, so it gives the project's
+	// identity, every tree that belongs to it, and the branch each tree has
+	// checked out.
+	ts := gitWorktrees(ws)
+	if len(ts) == 0 {
+		return nil, ""
+	}
+	project := &Project{Main: ts[0].Path, Branches: gitBranchNames(ws), TreeBranches: map[string]string{}}
+	for _, t := range ts {
+		project.Worktrees = append(project.Worktrees, t.Path)
+		project.TreeBranches[t.Path] = t.Branch
+	}
+	return project, branch
 }
 
 // convGitProject is the project a workspace's conversations belong to, or nil

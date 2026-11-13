@@ -16,6 +16,36 @@ import (
 	"chatgo/internal/ui/uikit"
 )
 
+// FieldOptions configure a FieldColumn.
+type FieldOptions struct {
+	// Width fixes the field; zero lets it fill the row or dialog.
+	Width float32
+	// Name labels the field for assistive technology when the visible caption
+	// alone would be ambiguous; it defaults to the caption.
+	Name string
+}
+
+// FieldColumn lays out one labeled picker the way the 新会话 rows do: a muted
+// caption above the control, both left-aligned, so every picker of a form
+// shares one label style. draw builds the control inside the column and owns
+// its width and height.
+func FieldColumn(c *mgo.Context, label string, opts FieldOptions, draw func()) mgo.Element {
+	name := opts.Name
+	if name == "" {
+		name = label
+	}
+	col := mgo.Column(c).Shrink(0).Gap(uikit.Unit(c)).Label(name)
+	if opts.Width > 0 {
+		col.Width(opts.Width)
+	}
+	col.Children(func() {
+		mgo.Text(c, label).FontSize(uikit.FontSize(c, theme.CaptionSize)).
+			TextColor(uikit.Tokens(c).TextMuted).Shrink(0)
+		draw()
+	})
+	return col
+}
+
 // InputResult is what a text control built and reported this frame.
 type InputResult struct {
 	Element mgo.Element

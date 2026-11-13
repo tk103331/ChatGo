@@ -53,6 +53,7 @@ type agentInfo struct {
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
 	Kind        string   `json:"kind"`
+	Disabled    bool     `json:"disabled,omitempty"`
 	Icon        string   `json:"icon,omitempty"`
 	Models      []string `json:"models,omitempty"`
 	Tools       []string `json:"tools,omitempty"`
@@ -61,10 +62,11 @@ type agentInfo struct {
 }
 
 type toolInfo struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Kind    string `json:"kind"`
-	Enabled bool   `json:"enabled"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Kind        string `json:"kind"`
+	Enabled     bool   `json:"enabled"`
 }
 
 type skillInfo struct {
@@ -72,6 +74,65 @@ type skillInfo struct {
 	Name        string `json:"name"`
 	Token       string `json:"token"`
 	Description string `json:"description,omitempty"`
+}
+
+type treeInfo struct {
+	Path   string `json:"path"`
+	Branch string `json:"branch"`
+}
+
+// projectInfo is one project a new session may run in, with the worktrees
+// and branches the desktop's 新会话 page offers.
+type projectInfo struct {
+	Main      string     `json:"main"`
+	Worktrees []treeInfo `json:"worktrees,omitempty"`
+	Branches  []string   `json:"branches,omitempty"`
+}
+
+// modelInfo is one model a new session may run.
+type modelInfo struct {
+	Ref          string `json:"ref"`
+	Label        string `json:"label"`
+	Provider     string `json:"provider,omitempty"`
+	ProviderType string `json:"provider_type,omitempty"`
+}
+
+// fsItem is one subdirectory of a browsed host directory.
+type fsItem struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// acpOptionsState is what the new-session dialog knows about one ACP
+// agent's session config options, fetched from the runtime on demand.
+type acpOptionsState struct {
+	loading bool
+	err     string
+	options []acpConfigOptionInfo
+}
+
+// acpConfigOptionInfo is one session config option an ACP agent's runtime
+// exposes: the model, a mode or a toggle.
+type acpConfigOptionInfo struct {
+	ID      string           `json:"id"`
+	Name    string           `json:"name"`
+	Current string           `json:"current"`
+	Kind    string           `json:"kind,omitempty"`
+	Options []acpConfigValue `json:"options,omitempty"`
+}
+
+// acpConfigValue is one value a config option can take.
+type acpConfigValue struct {
+	Value string `json:"value"`
+	Name  string `json:"name"`
+}
+
+// modelsByAgentState is one agent reference's model list for the new-session
+// picker, fetched from /api/models per chosen agent.
+type modelsByAgentState struct {
+	loading bool
+	err     string
+	models  []modelInfo
 }
 
 type askItem struct {

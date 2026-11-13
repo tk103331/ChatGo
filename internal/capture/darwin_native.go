@@ -5,6 +5,7 @@ package capture
 import (
 	"bytes"
 	"fmt"
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -250,7 +251,14 @@ func goString(id objc.ID) string {
 
 // withPool runs fn inside an autorelease pool, which matters on the
 // goroutines that read a selection: they run outside the app's own loop.
+//
+// The pool is a per-OS-thread stack: pushing on one thread and draining on
+// another corrupts the runtime's page list, which later takes objc calls
+// down with it. Go migrates goroutines between threads at will, so the
+// goroutine pins itself across the pool's whole lifetime.
 func withPool(fn func()) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	if loadNative() != nil {
 		fn()
 		return

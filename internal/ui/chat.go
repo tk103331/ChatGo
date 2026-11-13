@@ -190,27 +190,7 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 		}
 		return
 	}
-	opts := make([]kit.SearchSelectOption[string], 0, len(refs))
-	for _, ref := range refs {
-		opts = append(opts, kit.SearchSelectOption[string]{
-			Value: ref, Label: cw.refLabel(ref), Leading: cw.providerLeading(c, ref),
-		})
-	}
-	cur := cw.currentModelRef()
-	if !containsStr(refs, cur) {
-		cur = refs[0]
-	}
-	r := kit.SearchSelect(c, &cur, opts, kit.SearchSelectOptions[string]{
-		Label: "模型", Placeholder: "选择模型", SearchPlaceholder: "搜索模型", Up: true,
-	})
-	r.Element.MaxWidth(260).MinWidth(0)
-	if r.Changed() {
-		cw.setModelRef(cur)
-		if cw.currentAgent == "" {
-			cw.saveChatSelection()
-		}
-		cw.switchProvider(cw.provider)
-	}
+	cw.modelPickerButton(c, refs)
 }
 
 // providerLeading draws the brand mark of the provider a model reference
