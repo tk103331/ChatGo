@@ -38,6 +38,10 @@ type pluginUIState struct {
 	catalogErr      string
 	showInstallable bool
 
+	// catalog is the market's index state: the list it shows, where it
+	// came from and the refresh in flight.
+	catalog pluginCatalogState
+
 	settings    map[string]string
 	settingsFor string
 	list        mgo.ListState

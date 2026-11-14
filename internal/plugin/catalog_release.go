@@ -16,10 +16,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -56,11 +58,6 @@ func Catalog() []CatalogEntry {
 // CatalogBase is the release the per-plugin zips download from. Overridable
 // for tests.
 var CatalogBase = "https://github.com/tk103331/ChatGo/releases/download/plugins"
-
-// CatalogDownloadURL is where one entry's zip lives on the release.
-func CatalogDownloadURL(entry CatalogEntry) string {
-	return CatalogBase + "/plugin-" + entry.ID + ".zip"
-}
 
 // catalogDownloadTimeout bounds one zip download. Generous: the release CDN
 // can be slow on some networks, and a zip is small enough that waiting
@@ -137,11 +134,13 @@ func catalogFetch(ctx context.Context, url string) ([]byte, error) {
 }
 
 // PackCatalog zips every plugin of plugins/catalog into the per-plugin
-// zips the release publishes, writing them to out and returning the index
-// entries with their hashes. It is the release step's entry point; the
-// shipped zips and the embedded index come from the same run, so the
-// hashes always match.
-func PackCatalog(catalogDir, out string) ([]CatalogEntry, error) {
+// zips the release publishes, writing them to out and returning the index.
+// A plugin whose manifest version matches the previous index keeps its
+// entry and its zip — only changed plugins are re-packed — so a release
+// uploads just what moved. The zips carry their version in the name
+// (plugin-<id>-<version>.zip) so several versions can coexist on the
+// release and an older app keeps downloading the version its index names.
+func PackCatalog(catalogDir, out string, previous []CatalogEntry) ([]CatalogEntry, error) {
 	entries, err := os.ReadDir(catalogDir)
 	if err != nil {
 		return nil, err
@@ -149,7 +148,12 @@ func PackCatalog(catalogDir, out string) ([]CatalogEntry, error) {
 	if err := os.MkdirAll(out, 0o755); err != nil {
 		return nil, err
 	}
+	prev := make(map[string]CatalogEntry, len(previous))
+	for _, e := range previous {
+		prev[e.ID] = e
+	}
 	var index []CatalogEntry
+	var packed, kept int
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
@@ -159,11 +163,18 @@ func PackCatalog(catalogDir, out string) ([]CatalogEntry, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
+		// Unchanged since the previous release: keep the entry as it was,
+		// and let the existing release asset serve it.
+		if old, ok := prev[manifest.ID]; ok && old.Version == manifest.Version {
+			index = append(index, old)
+			kept++
+			continue
+		}
 		buf, sum, err := zipPluginDir(dir)
 		if err != nil {
 			return nil, err
 		}
-		zipName := "plugin-" + manifest.ID + ".zip"
+		zipName := catalogZipName(manifest.ID, manifest.Version)
 		if err := os.WriteFile(path.Join(out, zipName), buf.Bytes(), 0o644); err != nil {
 			return nil, err
 		}
@@ -172,8 +183,61 @@ func PackCatalog(catalogDir, out string) ([]CatalogEntry, error) {
 			Description: manifest.Description,
 			Kind:        catalogKindOf(manifest), SHA256: sum,
 		})
+		packed++
 	}
+	// Stable order: the index diffs read as a whole and the release notes
+	// list what changed by scanning the diff.
+	sort.Slice(index, func(i, j int) bool { return index[i].ID < index[j].ID })
+	packLog.Printf("packed %d, kept %d unchanged", packed, kept)
 	return index, nil
+}
+
+// packLog reports the incremental pack's outcome; a var so tests can
+// silence it.
+var packLog = log.New(os.Stderr, "gen-plugin-catalog: ", 0)
+
+// catalogZipName is the release asset name of one plugin version.
+func catalogZipName(id, version string) string {
+	return "plugin-" + id + "-" + version + ".zip"
+}
+
+// CatalogDownloadURL is where one entry's versioned zip lives on the
+// release.
+func CatalogDownloadURL(entry CatalogEntry) string {
+	return CatalogBase + "/" + catalogZipName(entry.ID, entry.Version)
+}
+
+// CatalogIndexFile is the asset name the index itself is published under,
+// so the app can refresh its catalog metadata from the release.
+const CatalogIndexFile = "catalog-index.json"
+
+// CatalogIndexURL is where the latest index lives on the release.
+func CatalogIndexURL() string {
+	return CatalogBase + "/" + CatalogIndexFile
+}
+
+// FetchCatalogIndex downloads the release's latest index. An entry the
+// embedded list lacks or names with another version arrives here first,
+// so the market can offer an update before the app itself ships it.
+func FetchCatalogIndex(ctx context.Context) ([]CatalogEntry, error) {
+	data, err := catalogFetch(ctx, CatalogIndexURL())
+	if err != nil {
+		return nil, fmt.Errorf("获取插件目录索引失败：%w", err)
+	}
+	var entries []CatalogEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, fmt.Errorf("插件目录索引无法解析: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("插件目录索引为空")
+	}
+	// Every id must be safe before it can be built into a download URL.
+	for _, e := range entries {
+		if !catalogIDSafe(e.ID) {
+			return nil, fmt.Errorf("插件目录索引含非法条目: %s", e.ID)
+		}
+	}
+	return entries, nil
 }
 
 // catalogKindOf names the plugins page's filter category of a manifest.

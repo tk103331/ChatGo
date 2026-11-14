@@ -19,16 +19,32 @@ func TestPluginInstallableSectionListsCatalog(t *testing.T) {
 	cw.settings.tab = 10
 	tr := mgo.NewTester(cw.view, 1200, 800)
 	tr.Frame()
-	if !tr.HasText("可安装目录") {
-		t.Fatalf("the plugins tab lacks the installable section; texts: %v", tr.Texts())
+	// The market section: present even when everything is installed, with
+	// the index source badge and a manual refresh.
+	if !tr.HasText("插件市场") {
+		t.Fatalf("the plugins tab lacks the market section; texts: %v", tr.Texts())
 	}
-	// Expand it and check the entries show with an install button.
-	if err := tr.Click("展开"); err != nil {
-		t.Fatalf("expand the section: %v", err)
+	if !tr.HasText("索引 · 内置") {
+		t.Fatalf("the market should name where its index came from; texts: %v", tr.Texts())
 	}
-	tr.Frame()
-	if !tr.HasText("安装") {
-		t.Fatalf("the installable rows lack an install button; texts: %v", tr.Texts())
+	if !tr.HasText("更新索引") {
+		t.Fatalf("the market lacks a manual index refresh; texts: %v", tr.Texts())
+	}
+	// With nothing installed, the rows carry install buttons.
+	cw2 := testWindow()
+	m := plugin.NewManager(cw2.cfg)
+	m.LoadAll()
+	cw2.plugins = m
+	cw2.section = sectionSettings
+	cw2.settings.tab = 10
+	tr2 := mgo.NewTester(cw2.view, 1200, 800)
+	tr2.Frame()
+	if err := tr2.Click("展开"); err != nil {
+		t.Fatalf("expand the market: %v", err)
+	}
+	tr2.Frame()
+	if !tr2.HasText("安装") {
+		t.Fatalf("the market rows lack an install button; texts: %v", tr2.Texts())
 	}
 }
 

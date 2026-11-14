@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - name: Pack the catalog zips
+      - name: Pack the catalog zips (changed only)
         run: go run ./tools/gen-plugin-catalog -catalog plugins/catalog -out dist/plugins
       - name: Check the committed index matches the packed zips
         run: |
@@ -55,12 +55,20 @@ jobs:
           # to the same release so the app's URL never moves.
           if ! gh release view plugins --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release create plugins --repo "$GITHUB_REPOSITORY" \
-              --title "插件目录" --notes "ChatGo 内置目录的逐插件安装包。应用通过 catalog-index.json 按需下载。"
+              --title "插件目录" --notes "ChatGo 插件市场的逐插件安装包。应用通过 catalog-index.json 按需下载。"
           fi
-          # Upload every zip, replacing an asset of the same name so a
-          # re-run refreshes the whole catalog in place.
-          gh release upload plugins dist/plugins/*.zip --repo "$GITHUB_REPOSITORY" --clobber
+          # Upload this run's changed zips and the index. Versioned names
+          # (plugin-<id>-<version>.zip) keep an older app's downloads
+          # working; --clobber replaces an asset only when a version is
+          # re-tagged with different contents.
+          if ls dist/plugins/*.zip > /dev/null 2>&1; then
+            gh release upload plugins dist/plugins/*.zip --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            echo "no changed plugin zips this run"
+          fi
+          # The index always travels: it is what the app refreshes from.
+          gh release upload plugins dist/plugins/catalog-index.json --repo "$GITHUB_REPOSITORY" --clobber
           # Record which tag produced the assets now published.
           gh release edit plugins --repo "$GITHUB_REPOSITORY" \
-            --notes "插件目录（由 $TAG 打包发布）。应用通过 catalog-index.json 校验 SHA-256 后按需下载安装。"
-          echo "published $(ls dist/plugins | wc -l) plugin zips to the plugins release"
+            --notes "插件市场（由 $TAG 打包发布）。应用通过 catalog-index.json 校验 SHA-256 后按需下载安装。"
+          echo "published $(ls dist/plugins/*.zip 2>/dev/null | wc -l) changed plugin zip(s) and the index"
