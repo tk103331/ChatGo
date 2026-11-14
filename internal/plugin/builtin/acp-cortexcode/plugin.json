@@ -1,0 +1,18 @@
+{
+  "id": "acp-cortexcode",
+  "name": "CortexCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「CortexCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "CortexCode",
+      "command": "cortex",
+      "args": [
+        "acp",
+        "serve"
+      ]
+    }
+  ]
+}

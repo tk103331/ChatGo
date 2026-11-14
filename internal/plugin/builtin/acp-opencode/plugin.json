@@ -1,0 +1,17 @@
+{
+  "id": "acp-opencode",
+  "name": "OpenCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「OpenCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "OpenCode",
+      "command": "opencode",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

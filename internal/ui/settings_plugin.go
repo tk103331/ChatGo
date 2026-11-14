@@ -23,14 +23,28 @@ func (cw *ChatWindow) pluginsTab(c *mgo.Context) {
 		return
 	}
 	infos := cw.plugins.List()
+	visible := filterPlugins(infos, cw.pluginUI.filter, cw.pluginUI.query)
 	mgo.Column(c).Fill().Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
 			mgo.Text(c, "插件").FontWeight(600).Grow(1)
-			mgo.Text(c, "共 "+strconv.Itoa(len(infos))+" 个").FontSize(small).TextColor(k.TextMuted)
+			mgo.Text(c, "共 "+strconv.Itoa(len(visible))+" / "+strconv.Itoa(len(infos))+" 个").
+				FontSize(small).TextColor(k.TextMuted)
 			if kit.Button(c, "安装插件", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.pluginUI.installOpen = !cw.pluginUI.installOpen
 			}
 		})
+		// The category filter and the name search narrow the list — most of
+		// it is the per-vendor built-in catalogs, and finding one plugin
+		// among seventy needs both.
+		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+			cw.pluginFilterControl(c)
+			in := kit.SearchInput(c, &cw.pluginUI.query, kit.SearchInputOptions{Placeholder: "搜索插件", Label: "搜索插件"})
+			in.Element.Grow(1).MinWidth(0)
+		})
+		if len(infos) > 0 && len(visible) == 0 {
+			mgo.Text(c, "没有符合过滤条件的插件").TextColor(k.TextMuted)
+			return
+		}
 		if len(infos) == 0 {
 			mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u).Children(func() {
 				mgo.Icon(c, icons.Must("layout-grid")).Size(40, 40).TextColor(k.TextMuted)
@@ -40,12 +54,71 @@ func (cw *ChatWindow) pluginsTab(c *mgo.Context) {
 			return
 		}
 		mgo.Row(c).Grow(1).MinHeight(0).Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-			cw.pluginList(c, infos)
+			cw.pluginList(c, visible)
 			mgo.Divider(c)
-			cw.pluginDetail(c, infos)
+			cw.pluginDetail(c, visible)
 		})
 	})
 	cw.pluginInstallDialog(c)
+}
+
+// pluginFilterControl is the category segmented control.
+func (cw *ChatWindow) pluginFilterControl(c *mgo.Context) {
+	filters := pluginFilterCategories()
+	opts := make([]kit.SelectOption[string], 0, len(filters))
+	for _, f := range filters {
+		opts = append(opts, kit.SelectOption[string]{Value: f.id, Label: f.label})
+	}
+	kit.Select(c, &cw.pluginUI.filter, opts, kit.SelectOptions{
+		Label: "插件类型", Placeholder: "全部类型",
+	})
+}
+
+// pluginFilter is one selectable category of the plugins page.
+type pluginFilter struct {
+	id    string
+	label string
+	// match reports whether an info belongs to the category.
+	match func(plugin.Info) bool
+}
+
+// pluginFilterCategories lists the filters in display order: everything,
+// then the kinds the built-in catalogs and importers fill, then the rest.
+func pluginFilterCategories() []pluginFilter {
+	return []pluginFilter{
+		{"", "全部", func(plugin.Info) bool { return true }},
+		{"catalog-providers", "模型目录", func(i plugin.Info) bool { return i.Counts.CatalogProviders > 0 }},
+		{"catalog-acp", "ACP 目录", func(i plugin.Info) bool { return i.Counts.CatalogACP > 0 }},
+		{"importers", "导入器", func(i plugin.Info) bool { return i.Counts.Importers > 0 }},
+		{"builtin", "内置", func(i plugin.Info) bool { return i.Builtin }},
+		{"installed", "已安装", func(i plugin.Info) bool { return !i.Builtin }},
+	}
+}
+
+// filterPlugins narrows the list by the chosen category and the name query.
+func filterPlugins(infos []plugin.Info, filterID, query string) []plugin.Info {
+	var category *pluginFilter
+	for i := range pluginFilterCategories() {
+		cats := pluginFilterCategories()
+		if cats[i].id == filterID {
+			category = &cats[i]
+			break
+		}
+	}
+	q := strings.ToLower(strings.TrimSpace(query))
+	out := make([]plugin.Info, 0, len(infos))
+	for _, info := range infos {
+		if category != nil && category.id != "" && !category.match(info) {
+			continue
+		}
+		if q != "" && !strings.Contains(strings.ToLower(info.Name), q) &&
+			!strings.Contains(strings.ToLower(info.Description), q) &&
+			!strings.Contains(strings.ToLower(info.ID), q) {
+			continue
+		}
+		out = append(out, info)
+	}
+	return out
 }
 
 // pluginList is the left column of installed plugins.
@@ -66,7 +139,12 @@ func (cw *ChatWindow) pluginList(c *mgo.Context, infos []plugin.Info) {
 			}
 			b.Children(func() {
 				mgo.Column(c).Grow(1).MinWidth(0).Gap(u * 0.3).Children(func() {
-					mgo.Text(c, info.Name).FontWeight(600).SingleLine()
+					mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+						mgo.Text(c, info.Name).FontWeight(600).SingleLine().Grow(1).MinWidth(0).Ellipsis("…")
+						if info.Builtin {
+							mgo.Text(c, "内置").FontSize(small).TextColor(k.Accent).Shrink(0)
+						}
+					})
 					state := "已禁用"
 					color := k.TextMuted
 					switch info.Status {
@@ -75,7 +153,19 @@ func (cw *ChatWindow) pluginList(c *mgo.Context, infos []plugin.Info) {
 					case plugin.StatusError:
 						state, color = "错误", k.Danger
 					}
-					mgo.Text(c, state+" · v"+info.Version).FontSize(small).TextColor(color).SingleLine()
+					line := state + " · v" + info.Version
+					// A catalog plugin's line names what it offers, so the
+					// filter's categories read on the rows too.
+					if info.Counts.CatalogProviders > 0 {
+						line += " · 模型目录"
+					}
+					if info.Counts.CatalogACP > 0 {
+						line += " · ACP 目录"
+					}
+					if info.Counts.Importers > 0 {
+						line += " · 导入器"
+					}
+					mgo.Text(c, line).FontSize(small).TextColor(color).SingleLine().Ellipsis("…")
 				})
 			})
 			if b.Clicked() {

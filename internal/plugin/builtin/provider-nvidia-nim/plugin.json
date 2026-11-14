@@ -1,0 +1,17 @@
+{
+  "id": "provider-nvidia-nim",
+  "name": "NVIDIA NIM",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「NVIDIA NIM」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "NVIDIA NIM",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://integrate.api.nvidia.com/v1",
+      "keysURL": "https://build.nvidia.com/settings/api-keys"
+    }
+  ]
+}

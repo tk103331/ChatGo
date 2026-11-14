@@ -1,0 +1,18 @@
+{
+  "id": "acp-grok",
+  "name": "Grok",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Grok」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Grok",
+      "command": "grok",
+      "args": [
+        "agent",
+        "stdio"
+      ]
+    }
+  ]
+}

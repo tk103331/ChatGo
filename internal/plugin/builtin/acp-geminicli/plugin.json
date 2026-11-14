@@ -1,0 +1,17 @@
+{
+  "id": "acp-geminicli",
+  "name": "GeminiCLI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「GeminiCLI」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "GeminiCLI",
+      "command": "gemini",
+      "args": [
+        "--acp"
+      ]
+    }
+  ]
+}

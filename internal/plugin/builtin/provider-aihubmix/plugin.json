@@ -1,0 +1,17 @@
+{
+  "id": "provider-aihubmix",
+  "name": "AiHubMix",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「AiHubMix」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "AiHubMix",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://aihubmix.com/v1",
+      "keysURL": "https://console.aihubmix.com/token"
+    }
+  ]
+}

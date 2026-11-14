@@ -1,0 +1,20 @@
+{
+  "id": "acp-fastagent",
+  "name": "FastAgent",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「FastAgent」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "FastAgent",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "fast-agent-acp",
+        "fast-agent-acp",
+        "-x"
+      ]
+    }
+  ]
+}

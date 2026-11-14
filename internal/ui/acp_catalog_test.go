@@ -30,15 +30,12 @@ func ensureBuiltinCatalog(t *testing.T, cw *ChatWindow, id string) {
 	}
 }
 
-// The built-in ACP catalog plugins carry the shipped agent list through the
-// manager: every entry names a command, and the paseo-checked rules hold —
-// Cursor runs cursor-agent, Gemini and Qwen answer --acp, Cline speaks ACP
-// natively.
+// The built-in per-agent catalog plugins carry the shipped ACP list: every
+// entry names a command, and the paseo-checked rules hold — Cursor runs
+// cursor-agent, Gemini and Qwen answer --acp, Cline speaks ACP natively.
 func TestACPCatalogFromPlugins(t *testing.T) {
 	isolateHome(t)
 	cw := catalogTestWindow(t)
-	ensureBuiltinCatalog(t, cw, "acp-catalog-mainstream")
-	ensureBuiltinCatalog(t, cw, "acp-catalog-extended")
 	entries := cw.pluginACPCatalog()
 	if len(entries) < 40 {
 		t.Fatalf("the built-in catalogs should hold the shipped list, got %d entries", len(entries))
@@ -69,38 +66,36 @@ func TestACPCatalogFromPlugins(t *testing.T) {
 			t.Fatalf("%q has no command", e.Name)
 		}
 	}
-	// Groups: the two plugins' groups both show.
-	groups := plugin.CatalogGroupOrder(entries, func(e plugin.ACPPresetEntry) string { return e.Group })
-	if len(groups) != 2 {
-		t.Fatalf("expected the mainstream and extended groups, got %v", groups)
+	// One plugin per agent: the group of every entry is its own plugin.
+	for _, e := range entries {
+		if e.Group != e.Plugin {
+			t.Fatalf("%q's group should be its plugin name: %q vs %q", e.Name, e.Group, e.Plugin)
+		}
 	}
 }
 
-// Disabling a catalog plugin removes its entries from the dialog's list —
-// the settings page is where a user hides a whole group of suggestions.
-func TestACPCatalogDisabledPluginHidden(t *testing.T) {
+// Disabling one agent's catalog plugin removes exactly that agent from the
+// dialog's list — the per-plugin granularity the plugins page promises.
+func TestACPCatalogPerPluginToggle(t *testing.T) {
 	isolateHome(t)
 	cw := catalogTestWindow(t)
-	ensureBuiltinCatalog(t, cw, "acp-catalog-mainstream")
-	ensureBuiltinCatalog(t, cw, "acp-catalog-extended")
-	if err := cw.plugins.SetEnabled("acp-catalog-extended", false, nil, nil); err != nil {
+	if err := cw.plugins.SetEnabled("acp-cursor", false, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	entries := cw.pluginACPCatalog()
 	for _, e := range entries {
-		if e.Group == "扩展 Agent" {
-			t.Fatalf("a disabled plugin's group must be absent, found %q", e.Name)
+		if e.Name == "Cursor" {
+			t.Fatal("the disabled plugin's entry must be absent")
 		}
 	}
-	// The mainstream group survives.
 	found := false
 	for _, e := range entries {
-		if e.Name == "ClaudeCode" {
+		if e.Name == "GeminiCLI" {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatal("the mainstream group vanished with the extended plugin off")
+		t.Fatal("disabling one plugin must leave the others in place")
 	}
 }
 
@@ -109,7 +104,6 @@ func TestACPCatalogDisabledPluginHidden(t *testing.T) {
 func TestAddACPFromCatalogLandsTheEntry(t *testing.T) {
 	isolateHome(t)
 	cw := catalogTestWindow(t)
-	ensureBuiltinCatalog(t, cw, "acp-catalog-mainstream")
 	e := plugin.ACPPresetEntry{Name: "Fake", Command: "npx", Args: []string{"-y", "fake-acp"}}
 	cw.addACPFromCatalog(e)
 	if len(cw.cfg.ACPAgents) != 1 {
@@ -118,5 +112,75 @@ func TestAddACPFromCatalogLandsTheEntry(t *testing.T) {
 	conn := cw.cfg.ACPAgents[0]
 	if conn.Command != "npx" || conn.Disabled {
 		t.Fatalf("an npx entry should be added enabled: %+v", conn)
+	}
+}
+
+// The plugins page filters: the category narrows by contribution kind, and
+// the query by name.
+func TestPluginFilters(t *testing.T) {
+	isolateHome(t)
+	cw := catalogTestWindow(t)
+	infos := cw.plugins.List()
+	if len(infos) < 70 {
+		t.Fatalf("the per-entry built-ins should number the catalog, got %d", len(infos))
+	}
+	provs := filterPlugins(infos, "catalog-providers", "")
+	for _, i := range provs {
+		if i.Counts.CatalogProviders == 0 {
+			t.Fatalf("%q landed in the provider filter without a provider entry", i.Name)
+		}
+	}
+	if len(provs) < 30 {
+		t.Fatalf("the provider filter should hold the vendors and relays, got %d", len(provs))
+	}
+	byQuery := filterPlugins(infos, "", "gemini")
+	if len(byQuery) == 0 {
+		t.Fatal("the name query should find the Gemini plugins")
+	}
+	// The query searches the name, the id and the description, so it finds
+	// both the Gemini preset plugins and the importer that reads Gemini
+	// CLI's configuration.
+	anyGeminiPreset := false
+	for _, i := range byQuery {
+		if strings.Contains(strings.ToLower(i.Name), "gemini") {
+			anyGeminiPreset = true
+		}
+	}
+	if !anyGeminiPreset {
+		t.Fatalf("no preset matched the name: %v", byQuery)
+	}
+	// The query also searches the description, where the importer names its
+	// sources: a search for an agent's name finds the importer that reads
+	// its configuration.
+	byDesc := filterPlugins(infos, "", "cursor")
+	found := false
+	for _, i := range byDesc {
+		if i.ID == "agent-importers" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("a search naming a source agent should find the importer")
+	}
+	// Built-in vs installed.
+	builtin := filterPlugins(infos, "builtin", "")
+	for _, i := range builtin {
+		if !i.Builtin {
+			t.Fatalf("%q is filtered as built-in but is not", i.Name)
+		}
+	}
+	// Disabled entries stay listed (a catalog off is still on the books).
+	if err := cw.plugins.SetEnabled("acp-cursor", false, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	infos = cw.plugins.List()
+	stillListed := false
+	for _, i := range infos {
+		if i.ID == "acp-cursor" {
+			stillListed = true
+		}
+	}
+	if !stillListed {
+		t.Fatal("a disabled plugin must stay listed, ready to enable again")
 	}
 }

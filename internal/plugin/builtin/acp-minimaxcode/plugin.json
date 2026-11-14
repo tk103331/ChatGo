@@ -1,0 +1,21 @@
+{
+  "id": "acp-minimaxcode",
+  "name": "MiniMaxCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「MiniMaxCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "MiniMaxCode",
+      "command": "npx",
+      "args": [
+        "-y",
+        "-p",
+        "@minimax-ai/code",
+        "mcode",
+        "acp"
+      ]
+    }
+  ]
+}

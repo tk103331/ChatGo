@@ -1,0 +1,18 @@
+{
+  "id": "acp-piagent",
+  "name": "PiAgent",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「PiAgent」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "PiAgent",
+      "command": "npx",
+      "args": [
+        "-y",
+        "pi-acp"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "acp-cline",
+  "name": "Cline",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Cline」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Cline",
+      "command": "npx",
+      "args": [
+        "-y",
+        "cline",
+        "--acp"
+      ]
+    }
+  ]
+}

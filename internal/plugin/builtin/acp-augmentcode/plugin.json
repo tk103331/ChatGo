@@ -1,0 +1,22 @@
+{
+  "id": "acp-augmentcode",
+  "name": "AugmentCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「AugmentCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "AugmentCode",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@augmentcode/auggie",
+        "--acp"
+      ],
+      "env": {
+        "AUGMENT_DISABLE_AUTO_UPDATE": "1"
+      }
+    }
+  ]
+}

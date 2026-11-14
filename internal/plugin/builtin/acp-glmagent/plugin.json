@@ -1,0 +1,18 @@
+{
+  "id": "acp-glmagent",
+  "name": "GLMAgent",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「GLMAgent」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "GLMAgent",
+      "command": "npx",
+      "args": [
+        "-y",
+        "glm-acp-agent"
+      ]
+    }
+  ]
+}

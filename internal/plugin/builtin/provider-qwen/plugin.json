@@ -1,0 +1,17 @@
+{
+  "id": "provider-qwen",
+  "name": "Qwen",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "阿里云百炼 · 国内站",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Qwen",
+      "type": "qwen",
+      "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "note": "阿里云百炼 · 国内站",
+      "keysURL": "https://bailian.console.aliyun.com/?tab=model#/api-key"
+    }
+  ]
+}

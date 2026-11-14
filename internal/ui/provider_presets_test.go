@@ -16,9 +16,6 @@ import (
 func TestProviderCatalogFromPlugins(t *testing.T) {
 	isolateHome(t)
 	cw := catalogTestWindow(t)
-	ensureBuiltinCatalog(t, cw, "provider-catalog-vendors")
-	ensureBuiltinCatalog(t, cw, "provider-catalog-relays")
-	ensureBuiltinCatalog(t, cw, "provider-catalog-local")
 	entries := cw.pluginProviderCatalog()
 	if len(entries) < 30 {
 		t.Fatalf("the built-in catalogs should hold the shipped list, got %d entries", len(entries))
@@ -38,7 +35,7 @@ func TestProviderCatalogFromPlugins(t *testing.T) {
 		if e.Type == config.ProviderTypeCustom && e.APIType != "" && !apiKnown[e.APIType] {
 			t.Fatalf("%q: unknown custom api type %q", e.Name, e.APIType)
 		}
-		if e.BaseURL == "" && !isLocalGroup(e.Group) {
+		if e.BaseURL == "" && !isLocalPreset(e) {
 			t.Fatalf("%q: a remote preset needs its API address", e.Name)
 		}
 		if strings.TrimSpace(e.Name) == "" {
@@ -47,10 +44,13 @@ func TestProviderCatalogFromPlugins(t *testing.T) {
 	}
 }
 
-// isLocalGroup reports whether the group is the local-servers one, whose
-// presets may live anywhere the user runs them.
-func isLocalGroup(group string) bool {
-	return strings.Contains(group, "本地")
+// isLocalPreset reports whether the entry is one of the local-server
+// presets, whose address is the user's own and may be empty.
+func isLocalPreset(e plugin.ProviderPresetEntry) bool {
+	return strings.Contains(e.Plugin, "ollama") ||
+		strings.Contains(e.Plugin, "lm-studio") ||
+		strings.Contains(e.Plugin, "vllm") ||
+		strings.Contains(e.Plugin, "lm-engine")
 }
 
 // Adding from the plugin catalog appends a provider preconfigured with the
@@ -59,7 +59,6 @@ func isLocalGroup(group string) bool {
 func TestAddProviderFromPreset(t *testing.T) {
 	isolateHome(t)
 	cw := catalogTestWindow(t)
-	ensureBuiltinCatalog(t, cw, "provider-catalog-vendors")
 	entries := cw.pluginProviderCatalog()
 	var glm *plugin.ProviderPresetEntry
 	for i := range entries {
@@ -104,9 +103,6 @@ func TestAddProviderFromPreset(t *testing.T) {
 func TestProviderPresetCatalogDialogRenders(t *testing.T) {
 	isolateHome(t)
 	cw := catalogTestWindow(t)
-	ensureBuiltinCatalog(t, cw, "provider-catalog-vendors")
-	ensureBuiltinCatalog(t, cw, "provider-catalog-relays")
-	ensureBuiltinCatalog(t, cw, "provider-catalog-local")
 	cw.section = sectionSettings
 	cw.settings.tab = 0
 	cw.presetCatalogOpen = true

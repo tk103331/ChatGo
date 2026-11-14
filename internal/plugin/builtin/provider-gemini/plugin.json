@@ -1,0 +1,16 @@
+{
+  "id": "provider-gemini",
+  "name": "Gemini",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Gemini」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Gemini",
+      "type": "gemini",
+      "baseURL": "https://generativelanguage.googleapis.com",
+      "keysURL": "https://aistudio.google.com/apikey"
+    }
+  ]
+}

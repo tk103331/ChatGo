@@ -1,0 +1,17 @@
+{
+  "id": "provider-fireworks",
+  "name": "Fireworks",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Fireworks」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Fireworks",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.fireworks.ai/inference/v1",
+      "keysURL": "https://app.fireworks.ai/settings/users/api-keys"
+    }
+  ]
+}

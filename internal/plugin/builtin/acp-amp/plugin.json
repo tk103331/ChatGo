@@ -1,0 +1,14 @@
+{
+  "id": "acp-amp",
+  "name": "Amp",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Amp」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Amp",
+      "command": "amp-acp"
+    }
+  ]
+}

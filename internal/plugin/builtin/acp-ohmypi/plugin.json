@@ -1,0 +1,17 @@
+{
+  "id": "acp-ohmypi",
+  "name": "OhMyPi",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「OhMyPi」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "OhMyPi",
+      "command": "omp",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

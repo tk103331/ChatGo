@@ -1,0 +1,14 @@
+{
+  "id": "acp-pig",
+  "name": "PiG",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「PiG」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "PiG",
+      "command": "pig-acp"
+    }
+  ]
+}

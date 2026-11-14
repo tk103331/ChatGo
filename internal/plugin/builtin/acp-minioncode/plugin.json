@@ -1,0 +1,20 @@
+{
+  "id": "acp-minioncode",
+  "name": "MinionCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「MinionCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "MinionCode",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "minion-code",
+        "minion-code",
+        "acp"
+      ]
+    }
+  ]
+}

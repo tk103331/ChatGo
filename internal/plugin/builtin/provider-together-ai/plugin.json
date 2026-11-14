@@ -1,0 +1,17 @@
+{
+  "id": "provider-together-ai",
+  "name": "Together AI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Together AI」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Together AI",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.together.xyz/v1",
+      "keysURL": "https://api.together.ai/settings/api-keys"
+    }
+  ]
+}

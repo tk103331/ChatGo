@@ -54,6 +54,9 @@ type InstanceState struct {
 
 	// skills are the plugin's skill bodies, resolved at load time.
 	skills []SkillContribution
+
+	// builtin marks a shipped plugin materialised from the embedded set.
+	builtin bool
 }
 
 // Info is the UI-facing snapshot of one plugin.
@@ -74,6 +77,10 @@ type Info struct {
 	Values      map[string]string
 	Source      config.PluginSource
 	Counts      Counts
+	// Builtin marks a shipped plugin: its catalog entries and importers
+	// come with the app, and the plugins page badges it so a user knows it
+	// is not one they installed.
+	Builtin bool
 }
 
 // Counts is how many items each contribution kind provides.
@@ -81,6 +88,8 @@ type Counts struct {
 	Tools, Providers, Middleware, MCPServers, ACPAgents, Agents int
 	Skills, Themes, Commands, Contexts, Triggers, Channels      int
 	Events, Importers                                           int
+	// CatalogProviders and CatalogACP count the add-dialog suggestions.
+	CatalogProviders, CatalogACP int
 }
 
 // NewManager builds a manager over the default plugin directories.
@@ -334,6 +343,14 @@ func (inst *InstanceState) info() Info {
 		Triggers: len(inst.Manifest.Triggers), Channels: len(inst.Manifest.Channels),
 		Events: len(inst.Manifest.Events), Importers: len(inst.Manifest.Importers),
 	}
+	for _, e := range inst.Manifest.Catalog {
+		switch e.Kind {
+		case CatalogProviders:
+			counts.CatalogProviders++
+		case CatalogACP:
+			counts.CatalogACP++
+		}
+	}
 	return Info{
 		ID: inst.Manifest.ID, Name: inst.Manifest.Name, Version: inst.Manifest.Version,
 		Author: inst.Manifest.Author, Description: inst.Manifest.Description,
@@ -342,6 +359,7 @@ func (inst *InstanceState) info() Info {
 		Missing:  MissingPermissions(inst.Manifest, inst.Ref.Permissions),
 		Settings: inst.Manifest.Settings, Values: cloneSettings(inst.Ref.Settings),
 		Source: inst.Ref.Source, Counts: counts,
+		Builtin: inst.builtin,
 	}
 }
 

@@ -1,0 +1,17 @@
+{
+  "id": "provider-xai-grok",
+  "name": "xAI Grok",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「xAI Grok」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "xAI Grok",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.x.ai/v1",
+      "keysURL": "https://console.x.ai"
+    }
+  ]
+}

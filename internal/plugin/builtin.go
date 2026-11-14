@@ -90,6 +90,7 @@ func (m *Manager) ensureBuiltin() {
 			DataDir:  filepath.Join(m.dataRoot, manifest.ID),
 			Ref:      ref,
 			status:   StatusDisabled,
+			builtin:  true,
 		}
 	}
 	m.mu.Unlock()

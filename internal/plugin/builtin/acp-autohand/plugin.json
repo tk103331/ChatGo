@@ -1,0 +1,18 @@
+{
+  "id": "acp-autohand",
+  "name": "Autohand",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Autohand」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Autohand",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@autohandai/autohand-acp"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "provider-kimi",
+  "name": "Kimi",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "月之暗面 Moonshot",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Kimi",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.moonshot.cn/v1",
+      "note": "月之暗面 Moonshot",
+      "keysURL": "https://platform.moonshot.cn/console/api-keys"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "acp-claudecode",
+  "name": "ClaudeCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「ClaudeCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "ClaudeCode",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@zed-industries/claude-code-acp"
+      ]
+    }
+  ]
+}

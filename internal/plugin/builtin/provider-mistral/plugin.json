@@ -1,0 +1,17 @@
+{
+  "id": "provider-mistral",
+  "name": "Mistral",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Mistral」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Mistral",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.mistral.ai/v1",
+      "keysURL": "https://console.mistral.ai/api-keys"
+    }
+  ]
+}

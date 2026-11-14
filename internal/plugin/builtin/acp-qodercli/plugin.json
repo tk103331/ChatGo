@@ -1,0 +1,19 @@
+{
+  "id": "acp-qodercli",
+  "name": "QoderCLI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「QoderCLI」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "QoderCLI",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@qoder-ai/qodercli",
+        "--acp"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "acp-kirocli",
+  "name": "KiroCLI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「KiroCLI」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "KiroCLI",
+      "command": "kiro-cli",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "provider-openai",
+  "name": "OpenAI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「OpenAI」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "OpenAI",
+      "type": "openai",
+      "baseURL": "https://api.openai.com/v1",
+      "keysURL": "https://platform.openai.com/api-keys"
+    }
+  ]
+}

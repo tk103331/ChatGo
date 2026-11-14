@@ -1,0 +1,23 @@
+{
+  "id": "acp-factorydroid",
+  "name": "FactoryDroid",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「FactoryDroid」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "FactoryDroid",
+      "command": "droid",
+      "args": [
+        "exec",
+        "--output-format",
+        "acp-daemon"
+      ],
+      "env": {
+        "DROID_DISABLE_AUTO_UPDATE": "true",
+        "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
+      }
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "id": "acp-mistralvibe",
+  "name": "MistralVibe",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「MistralVibe」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "MistralVibe",
+      "command": "vibe-acp"
+    }
+  ]
+}

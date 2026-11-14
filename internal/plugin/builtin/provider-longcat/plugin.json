@@ -1,0 +1,18 @@
+{
+  "id": "provider-longcat",
+  "name": "LongCat 美团",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "LongCat API 平台",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "LongCat 美团",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.longcat.chat/openai/v1",
+      "note": "LongCat API 平台",
+      "keysURL": "https://longcat.chat/platform/api_keys"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "provider-lm-engine",
+  "name": "LM Engine",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "MLX 本地推理，默认端口 8000",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "LM Engine",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "http://localhost:8000/v1",
+      "note": "MLX 本地推理，默认端口 8000"
+    }
+  ]
+}

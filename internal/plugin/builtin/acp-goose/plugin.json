@@ -1,0 +1,17 @@
+{
+  "id": "acp-goose",
+  "name": "Goose",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Goose」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Goose",
+      "command": "goose",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

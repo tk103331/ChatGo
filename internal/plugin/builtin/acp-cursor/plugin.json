@@ -1,0 +1,17 @@
+{
+  "id": "acp-cursor",
+  "name": "Cursor",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Cursor」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Cursor",
+      "command": "cursor-agent",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

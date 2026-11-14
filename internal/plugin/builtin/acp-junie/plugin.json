@@ -1,0 +1,18 @@
+{
+  "id": "acp-junie",
+  "name": "Junie",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Junie」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Junie",
+      "command": "junie",
+      "args": [
+        "--acp",
+        "true"
+      ]
+    }
+  ]
+}

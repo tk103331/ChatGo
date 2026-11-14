@@ -1,0 +1,18 @@
+{
+  "id": "provider-zhipu-glm",
+  "name": "智谱 GLM",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "按量计费；Coding Plan 用 https://open.bigmodel.cn/api/coding/paas/v4",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "智谱 GLM",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://open.bigmodel.cn/api/paas/v4",
+      "note": "按量计费；Coding Plan 用 https://open.bigmodel.cn/api/coding/paas/v4",
+      "keysURL": "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys"
+    }
+  ]
+}

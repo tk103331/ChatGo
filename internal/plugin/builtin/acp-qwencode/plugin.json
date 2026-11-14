@@ -1,0 +1,17 @@
+{
+  "id": "acp-qwencode",
+  "name": "QwenCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「QwenCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "QwenCode",
+      "command": "qwen",
+      "args": [
+        "--acp"
+      ]
+    }
+  ]
+}

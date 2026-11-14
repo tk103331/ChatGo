@@ -1,0 +1,17 @@
+{
+  "id": "acp-devincli",
+  "name": "DevinCLI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「DevinCLI」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "DevinCLI",
+      "command": "devin",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

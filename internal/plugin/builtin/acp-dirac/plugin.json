@@ -1,0 +1,19 @@
+{
+  "id": "acp-dirac",
+  "name": "Dirac",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Dirac」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Dirac",
+      "command": "npx",
+      "args": [
+        "-y",
+        "dirac-cli",
+        "--acp"
+      ]
+    }
+  ]
+}

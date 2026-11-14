@@ -26,6 +26,11 @@ type pluginUIState struct {
 	installBusy bool
 	installErr  string
 
+	// filter is the category the list shows ("" = all), query the name
+	// search, so the many built-in catalog plugins can be narrowed down.
+	filter string
+	query  string
+
 	settings    map[string]string
 	settingsFor string
 	list        mgo.ListState

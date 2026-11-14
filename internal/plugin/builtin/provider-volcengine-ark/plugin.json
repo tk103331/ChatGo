@@ -1,0 +1,18 @@
+{
+  "id": "provider-volcengine-ark",
+  "name": "火山方舟 Ark",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "按量计费；Coding Plan 用 https://ark.cn-beijing.volces.com/api/coding/v3",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "火山方舟 Ark",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://ark.cn-beijing.volces.com/api/v3",
+      "note": "按量计费；Coding Plan 用 https://ark.cn-beijing.volces.com/api/coding/v3",
+      "keysURL": "https://ark.volcengine.com/region:cn-beijing/apikey"
+    }
+  ]
+}

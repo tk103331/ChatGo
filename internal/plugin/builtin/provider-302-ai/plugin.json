@@ -1,0 +1,17 @@
+{
+  "id": "provider-302-ai",
+  "name": "302.AI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「302.AI」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "302.AI",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.302.ai/v1",
+      "keysURL": "https://302.ai/api-keys/list"
+    }
+  ]
+}

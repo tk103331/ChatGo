@@ -1,0 +1,18 @@
+{
+  "id": "provider-opencode-zen",
+  "name": "OpenCode Zen",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "免费模型无需密钥",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "OpenCode Zen",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://opencode.ai/zen/v1",
+      "note": "免费模型无需密钥",
+      "keysURL": "https://opencode.ai/auth"
+    }
+  ]
+}

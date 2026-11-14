@@ -1,0 +1,16 @@
+{
+  "id": "provider-ollama",
+  "name": "Ollama",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "本地模型服务",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Ollama",
+      "type": "ollama",
+      "baseURL": "http://localhost:11434",
+      "note": "本地模型服务"
+    }
+  ]
+}

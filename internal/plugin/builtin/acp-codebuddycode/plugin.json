@@ -1,0 +1,17 @@
+{
+  "id": "acp-codebuddycode",
+  "name": "CodebuddyCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「CodebuddyCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "CodebuddyCode",
+      "command": "codebuddy",
+      "args": [
+        "--acp"
+      ]
+    }
+  ]
+}

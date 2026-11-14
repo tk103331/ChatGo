@@ -1,0 +1,17 @@
+{
+  "id": "acp-stakpak",
+  "name": "Stakpak",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Stakpak」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Stakpak",
+      "command": "stakpak",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

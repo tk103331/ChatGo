@@ -1,0 +1,18 @@
+{
+  "id": "provider-modelscope",
+  "name": "ModelScope 魔搭",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "魔搭 API-Inference，Access Token 作密钥",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "ModelScope 魔搭",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api-inference.modelscope.cn/v1",
+      "note": "魔搭 API-Inference，Access Token 作密钥",
+      "keysURL": "https://modelscope.cn/my/myaccesstoken"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "provider-deepseek",
+  "name": "DeepSeek",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「DeepSeek」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "DeepSeek",
+      "type": "deepseek",
+      "baseURL": "https://api.deepseek.com/v1",
+      "keysURL": "https://platform.deepseek.com/api_keys"
+    }
+  ]
+}

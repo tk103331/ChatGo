@@ -1,0 +1,18 @@
+{
+  "id": "provider-minimax",
+  "name": "MiniMax",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "MiniMax 国内站",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "MiniMax",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.minimaxi.com/v1",
+      "note": "MiniMax 国内站",
+      "keysURL": "https://platform.minimaxi.com/user-center/basic-information/interface-key"
+    }
+  ]
+}

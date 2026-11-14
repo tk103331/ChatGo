@@ -1,0 +1,18 @@
+{
+  "id": "acp-traecli",
+  "name": "TRAECLI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「TRAECLI」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "TRAECLI",
+      "command": "traecli",
+      "args": [
+        "acp",
+        "serve"
+      ]
+    }
+  ]
+}

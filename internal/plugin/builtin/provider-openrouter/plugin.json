@@ -1,0 +1,18 @@
+{
+  "id": "provider-openrouter",
+  "name": "OpenRouter",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "一家密钥聚合各家模型",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "OpenRouter",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://openrouter.ai/api/v1",
+      "note": "一家密钥聚合各家模型",
+      "keysURL": "https://openrouter.ai/keys"
+    }
+  ]
+}

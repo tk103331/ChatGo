@@ -1,0 +1,20 @@
+{
+  "id": "acp-vtcode",
+  "name": "VTCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「VTCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "VTCode",
+      "command": "vtcode",
+      "args": [
+        "acp"
+      ],
+      "env": {
+        "VT_ACP_ENABLED": "1"
+      }
+    }
+  ]
+}

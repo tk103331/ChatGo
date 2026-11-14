@@ -1,0 +1,17 @@
+{
+  "id": "acp-kilo",
+  "name": "Kilo",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Kilo」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Kilo",
+      "command": "kilo",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

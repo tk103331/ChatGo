@@ -1,0 +1,19 @@
+{
+  "id": "acp-nova",
+  "name": "Nova",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Nova」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Nova",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@compass-ai/nova",
+        "acp"
+      ]
+    }
+  ]
+}

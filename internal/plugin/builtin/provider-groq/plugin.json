@@ -1,0 +1,18 @@
+{
+  "id": "provider-groq",
+  "name": "Groq",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "高速推理",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Groq",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.groq.com/openai/v1",
+      "note": "高速推理",
+      "keysURL": "https://console.groq.com/keys"
+    }
+  ]
+}

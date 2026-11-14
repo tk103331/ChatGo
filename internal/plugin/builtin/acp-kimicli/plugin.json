@@ -1,0 +1,17 @@
+{
+  "id": "acp-kimicli",
+  "name": "KimiCLI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「KimiCLI」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "KimiCLI",
+      "command": "kimi",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

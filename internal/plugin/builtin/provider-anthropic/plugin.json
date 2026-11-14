@@ -1,0 +1,16 @@
+{
+  "id": "provider-anthropic",
+  "name": "Anthropic",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Anthropic」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Anthropic",
+      "type": "anthropic",
+      "baseURL": "https://api.anthropic.com",
+      "keysURL": "https://console.anthropic.com/settings/keys"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "acp-hermes",
+  "name": "Hermes",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「Hermes」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "Hermes",
+      "command": "hermes",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

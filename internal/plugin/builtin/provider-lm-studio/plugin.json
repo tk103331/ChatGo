@@ -1,0 +1,17 @@
+{
+  "id": "provider-lm-studio",
+  "name": "LM Studio",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "本地服务器，默认端口 1234",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "LM Studio",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "http://localhost:1234/v1",
+      "note": "本地服务器，默认端口 1234"
+    }
+  ]
+}

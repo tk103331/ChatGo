@@ -1,0 +1,18 @@
+{
+  "id": "provider-kimi-global",
+  "name": "Kimi (Global)",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "Kimi 国际站",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Kimi (Global)",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.moonshot.ai/v1",
+      "note": "Kimi 国际站",
+      "keysURL": "https://platform.kimi.ai/console/api-keys"
+    }
+  ]
+}

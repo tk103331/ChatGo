@@ -1,0 +1,19 @@
+{
+  "id": "acp-dimcode",
+  "name": "DimCode",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「DimCode」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "DimCode",
+      "command": "npx",
+      "args": [
+        "-y",
+        "dimcode",
+        "acp"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "provider-z-ai",
+  "name": "Z.ai",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "GLM 海外站",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "Z.ai",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.z.ai/api/paas/v4",
+      "note": "GLM 海外站",
+      "keysURL": "https://z.ai/manage-apikey/apikey-list"
+    }
+  ]
+}

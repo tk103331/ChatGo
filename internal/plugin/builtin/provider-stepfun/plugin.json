@@ -1,0 +1,17 @@
+{
+  "id": "provider-stepfun",
+  "name": "StepFun 阶跃星辰",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「StepFun 阶跃星辰」模型 Provider 预置目录",
+  "catalog": [
+    {
+      "kind": "providers",
+      "name": "StepFun 阶跃星辰",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.stepfun.com/v1",
+      "keysURL": "https://platform.stepfun.com/interface-key"
+    }
+  ]
+}

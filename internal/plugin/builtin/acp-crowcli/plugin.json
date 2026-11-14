@@ -1,0 +1,17 @@
+{
+  "id": "acp-crowcli",
+  "name": "CrowCLI",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「CrowCLI」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "CrowCLI",
+      "command": "crow-cli",
+      "args": [
+        "acp"
+      ]
+    }
+  ]
+}

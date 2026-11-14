@@ -1,0 +1,18 @@
+{
+  "id": "acp-deepseekharness",
+  "name": "DeepSeekHarness",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "「DeepSeekHarness」ACP Agent 目录条目",
+  "catalog": [
+    {
+      "kind": "acp",
+      "name": "DeepSeekHarness",
+      "command": "npx",
+      "args": [
+        "-y",
+        "deepseek-acp"
+      ]
+    }
+  ]
+}
