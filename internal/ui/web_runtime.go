@@ -198,6 +198,133 @@ func (r webRuntime) ACPOptions(agent string) []webui.ACPConfigOptionInfo {
 	}
 }
 
+// SessionACPOptions lists a live session's own options, warming the session
+// in first when it has not started, so an existing ACP conversation shows
+// the model and switches its runtime really holds. The wait runs on the HTTP
+// handler's goroutine, never on the app's UI thread.
+func (r webRuntime) SessionACPOptions(convID string) []webui.ACPConfigOptionInfo {
+	cw := r.cw
+	conv, err := cw.convManager.LoadConversation(convID)
+	if err != nil || !strings.HasPrefix(conv.Agent, "acp:") {
+		return nil
+	}
+	name := strings.TrimPrefix(conv.Agent, "acp:")
+	if _, ok := cw.findACPConn(name); !ok {
+		return nil
+	}
+	// The warm-up and the snapshot of the options run on the UI thread; the
+	// polling that waits for the warm-up runs here.
+	onMain(cw, func() bool { cw.acpWarmup(conv); return true })
+	deadline := time.Now().Add(25 * time.Second)
+	for {
+		opts := onMain(cw, func() []acp.SessionConfigOption {
+			rt := cw.acpRuntimeFor(convID)
+			if rt == nil {
+				return nil
+			}
+			return append([]acp.SessionConfigOption(nil), rt.configs...)
+		})
+		if len(opts) > 0 {
+			return acpConfigOptions(opts)
+		}
+		if time.Now().After(deadline) {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// acpConfigTarget is one prepared session-config change: the request to send
+// and the value to restore when the CLI refuses it.
+type acpConfigTarget struct {
+	rt     *acpConv
+	req    acp.SetSessionConfigOptionRequest
+	isMode bool
+	mode   acp.SessionModeId
+	old    string
+}
+
+// SetSessionConfig applies one config choice to a live session and reports
+// the CLI's refusal. The request is prepared and the result applied on the
+// UI thread; the RPC itself runs here.
+func (r webRuntime) SetSessionConfig(convID, configID, value string) error {
+	cw := r.cw
+	t := onMain(cw, func() (t acpConfigTarget) {
+		t.rt = cw.acpRuntimeFor(convID)
+		if t.rt == nil || t.rt.conn == nil {
+			return
+		}
+		if configID == "mode" {
+			t.isMode = true
+			t.mode = acp.SessionModeId(value)
+			t.old = string(t.rt.modeID)
+			return
+		}
+		for _, opt := range t.rt.configs {
+			switch {
+			case opt.Select != nil && string(opt.Select.Id) == configID:
+				t.req.ValueId = &acp.SetSessionConfigOptionValueId{
+					SessionId: t.rt.sessionID, ConfigId: opt.Select.Id,
+					Value: acp.SessionConfigValueId(value),
+				}
+				t.old = string(opt.Select.CurrentValue)
+				return
+			case opt.Boolean != nil && string(opt.Boolean.Id) == configID:
+				b, err := strconv.ParseBool(value)
+				if err != nil {
+					return
+				}
+				t.req.Boolean = &acp.SetSessionConfigOptionBoolean{
+					SessionId: t.rt.sessionID, ConfigId: opt.Boolean.Id, Value: b,
+				}
+				t.old = strconv.FormatBool(opt.Boolean.CurrentValue)
+				return
+			}
+		}
+		return
+	})
+	if t.rt == nil || t.rt.conn == nil {
+		return fmt.Errorf("ACP 会话尚未启动")
+	}
+	if t.isMode {
+		ctx, cancel := context.WithTimeout(context.Background(), acpSetTimeout)
+		defer cancel()
+		_, err := t.rt.conn.SetSessionMode(ctx, acp.SetSessionModeRequest{
+			SessionId: t.rt.sessionID, ModeId: t.mode,
+		})
+		onMain(cw, func() bool {
+			if err != nil {
+				t.rt.modeID = acp.SessionModeId(t.old)
+			} else {
+				t.rt.modeID = t.mode
+				cw.acpPersist(t.rt, "mode", value)
+			}
+			cw.invalidate()
+			return true
+		})
+		return err
+	}
+	if t.req.ValueId == nil && t.req.Boolean == nil {
+		return fmt.Errorf("未知的配置项：%s", configID)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), acpSetTimeout)
+	defer cancel()
+	resp, err := t.rt.conn.SetSessionConfigOption(ctx, t.req)
+	onMain(cw, func() bool {
+		if err != nil {
+			cw.acpRestoreConfig(t.rt, configID, t.old)
+		} else {
+			if len(resp.ConfigOptions) > 0 {
+				t.rt.configs = resp.ConfigOptions
+			}
+			cw.acpPersist(t.rt, configID, value)
+		}
+		cw.invalidate()
+		return true
+	})
+	return err
+}
+
 // acpConfigOptions turns the runtime's options into the shape the browser
 // renders: every option with its values and its current choice.
 func acpConfigOptions(opts []acp.SessionConfigOption) []webui.ACPConfigOptionInfo {

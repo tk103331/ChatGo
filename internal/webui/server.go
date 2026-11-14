@@ -196,6 +196,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/projects", s.handleProjects)
 	mux.HandleFunc("GET /api/models", s.handleModels)
 	mux.HandleFunc("GET /api/acp-options", s.handleACPOptions)
+	mux.HandleFunc("GET /api/sessions/{id}/acp-options", s.handleSessionACPOptions)
+	mux.HandleFunc("PUT /api/sessions/{id}/acp-config", s.handleSetSessionConfig)
 	mux.HandleFunc("GET /api/fs", s.handleFS)
 	mux.HandleFunc("POST /api/worktrees", s.handleCreateWorktree)
 	mux.HandleFunc("GET /api/skills", s.handleSkills)

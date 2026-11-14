@@ -6,9 +6,7 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 	mgo "github.com/egoist/mygo/ui"
 
-	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
-	mcore "chatgo/internal/ui/uikit"
 )
 
 // acpConfigItem is one selectable control in the composer's ACP row: a
@@ -21,11 +19,12 @@ type acpConfigItem struct {
 	boolean *acp.SessionConfigOptionBoolean
 }
 
-// acpChoiceSink takes a config choice: the live session sends it to the CLI,
-// the 新会话 page keeps it for the session it is about to start.
+// acpChoiceSink takes a config choice together with the value it replaces:
+// the live session sends it to the CLI and restores the old value when the
+// CLI refuses; the 新会话 page keeps it for the session it is about to start.
 type acpChoiceSink struct {
-	selectValue func(id acp.SessionConfigId, value acp.SessionConfigValueId)
-	boolValue   func(id acp.SessionConfigId, value bool)
+	selectValue func(id acp.SessionConfigId, value, old acp.SessionConfigValueId)
+	boolValue   func(id acp.SessionConfigId, value, old bool)
 }
 
 // acpConfigItemsFromOptions builds the controls for a list of config options.
@@ -108,7 +107,8 @@ func acpConfigName(rank int) string {
 }
 
 // acpControls shows the ACP session's modes and configuration options in the
-// composer's row, the way a conversation's composer shows them.
+// composer's row through the shared config row: the first three inline, the
+// rest behind the settings popover.
 func (cw *ChatWindow) acpControls(c *mgo.Context) {
 	if cw.cur == nil {
 		return
@@ -117,173 +117,123 @@ func (cw *ChatWindow) acpControls(c *mgo.Context) {
 	if rt == nil {
 		return
 	}
-	cw.acpControlRow(c, cw.acpConfigItems(rt), "session", func(it acpConfigItem, _ bool) {
-		cw.acpConfigControl(c, rt, it, false)
+	items := cw.acpConfigItems(rt)
+	scope := "conv:" + cw.cur.ID
+	kitItems := make([]kit.ConfigItem, len(items))
+	for i, it := range items {
+		kitItems[i] = kit.ConfigItem{Name: it.label, Kind: acpOptionKind(it), Rank: it.rank}
+	}
+	kit.ConfigRow(c, kitItems, scope, func(i int, allowButtons bool) {
+		cw.acpConfigControl(c, rt, items[i], scope, allowButtons)
 	})
 }
 
-// acpControlRow shows the first three controls in the composer's row and puts
-// the remaining controls in a small settings popover. The popover contains
-// only controls that are not already visible in the composer.
-func (cw *ChatWindow) acpControlRow(c *mgo.Context, items []acpConfigItem, scope string, control func(acpConfigItem, bool)) {
-	u := mcore.Density(c).Unit()
-	const visible = 3
-	var extras []acpConfigItem
-	for _, it := range items {
-		if it.rank >= visible {
-			extras = append(extras, it)
-		}
-	}
-	if len(extras) == 0 {
-		mgo.Row(c).Gap(u * 2).AlignItems(mgo.End).Children(func() {
-			for _, it := range items {
-				control(it, false)
-			}
-		})
-		return
-	}
-	open := cw.acpConfigPopoverOpen(c, scope)
-	var settings mgo.Element
-	mgo.Row(c).Gap(u * 2).AlignItems(mgo.End).Children(func() {
-		for _, it := range items {
-			if it.rank >= visible {
-				continue
-			}
-			control(it, false)
-		}
-		settings = kit.IconButton(c, icons.Must("sliders-horizontal"), "ACP 设置", kit.IconButtonOptions{Variant: kit.Secondary}).
-			Tooltip("ACP 设置")
-		if settings.Clicked() {
-			*open = !*open
-		}
-	})
-	kit.Popover(c, settings, open, kit.PopoverOptions{
-		Label: "ACP 设置", Width: 320, Up: true,
-	}, func() {
-		mgo.Column(c).FillWidth().Gap(u * 2).Children(func() {
-			for _, it := range extras {
-				kit.FieldColumn(c, acpOptionTypeLabel(it), kit.FieldOptions{}, func() {
-					control(it, true)
-				})
-			}
-		})
-	})
-}
-
-// acpOptionTypeLabel gives each setting a visible type/name in the popover;
-// the trigger itself only needs to show its current value.
-func acpOptionTypeLabel(it acpConfigItem) string {
-	switch {
-	case it.mode != nil:
-		return "模式"
-	case it.boolean != nil:
-		return it.label + "（开关）"
-	case it.acpsel != nil:
-		return it.label + "（选择）"
-	default:
-		return it.label
-	}
-}
-
-// acpConfigPopoverOpen is the shared popover state for one frame's controls.
-func (cw *ChatWindow) acpConfigPopoverOpen(c *mgo.Context, scope string) *bool {
-	return mgo.Local(c.Root(), "acp:config:open:"+scope, func() bool { return false })
-}
-
-// acpConfigControl renders one control of a running session: the mode picker
-// and the config options, which the session sends to the CLI.
-func (cw *ChatWindow) acpConfigControl(c *mgo.Context, rt *acpConv, it acpConfigItem, allowButtons bool) {
+// acpConfigControl renders one control of a running session. The choice is
+// optimistic on screen but saved on the conversation only once the CLI
+// accepts it.
+func (cw *ChatWindow) acpConfigControl(c *mgo.Context, rt *acpConv, it acpConfigItem, scope string, allowButtons bool) {
+	o := kit.ConfigControlOptions{AllowButtons: allowButtons}
 	switch {
 	case it.mode != nil:
 		opts := make([]kit.SearchSelectOption[string], 0, len(rt.modes))
 		for _, m := range rt.modes {
 			opts = append(opts, kit.SearchSelectOption[string]{Value: string(m.Id), Label: m.Name})
 		}
+		old := rt.modeID
 		cur := string(rt.modeID)
-		acpChoiceControl(c, &cur, opts, "模式", allowButtons, func(value string) {
-			cw.acpSetMode(rt, acp.SessionModeId(value))
-		})
-	default:
-		cw.acpOptionControl(c, it, acpChoiceSink{
-			selectValue: func(id acp.SessionConfigId, value acp.SessionConfigValueId) {
-				cw.acpSetConfigValue(rt, id, value)
-			},
-			boolValue: func(id acp.SessionConfigId, value bool) {
-				cw.acpSetConfigBool(rt, id, value)
-			},
-		}, allowButtons)
+		o.Key, o.Label = scope+":mode", "模式"
+		if kit.ConfigControl(c, &cur, opts, o) {
+			cw.acpSetMode(rt, acp.SessionModeId(cur), old)
+		}
+	case it.acpsel != nil:
+		s := it.acpsel
+		old := s.CurrentValue
+		cur := string(s.CurrentValue)
+		o.Key, o.Label = scope+":"+string(s.Id), s.Name
+		if s.Description != nil {
+			o.Description = *s.Description
+		}
+		if kit.ConfigControl(c, &cur, acpSearchSelectOptions(s.Options), o) {
+			s.CurrentValue = acp.SessionConfigValueId(cur)
+			cw.acpSetConfigValue(rt, s.Id, acp.SessionConfigValueId(cur), old)
+		}
+	case it.boolean != nil:
+		b := it.boolean
+		old := b.CurrentValue
+		cur := "off"
+		if old {
+			cur = "on"
+		}
+		o.Key, o.Label = scope+":"+string(b.Id), b.Name
+		if b.Description != nil {
+			o.Description = *b.Description
+		}
+		if kit.ConfigControl(c, &cur, []kit.SearchSelectOption[string]{
+			{Value: "on", Label: "开"},
+			{Value: "off", Label: "关"},
+		}, o) {
+			b.CurrentValue = cur == "on"
+			cw.acpSetConfigBool(rt, b.Id, cur == "on", old)
+		}
 	}
 }
 
-// acpOptionControl renders one config option as a SearchSelect popover in the
-// composer row or the ACP settings popover, and hands the choice to the sink.
-func (cw *ChatWindow) acpOptionControl(c *mgo.Context, it acpConfigItem, sink acpChoiceSink, allowButtons bool) {
+// acpOptionKind names a setting's kind for the settings popover's caption:
+// the trigger shows only the current value, so the popover's field label is
+// where the option's name and type are spelled out.
+func acpOptionKind(it acpConfigItem) string {
+	switch {
+	case it.mode != nil:
+		return "模式"
+	case it.boolean != nil:
+		return "开关"
+	case it.acpsel != nil:
+		return "选择"
+	default:
+		return ""
+	}
+}
+
+// acpOptionControl renders one config option for a session that has not
+// started yet, handing the choice and the value it replaces to the sink.
+func (cw *ChatWindow) acpOptionControl(c *mgo.Context, it acpConfigItem, scope string, allowButtons bool, sink acpChoiceSink) {
+	o := kit.ConfigControlOptions{AllowButtons: allowButtons}
 	switch {
 	case it.acpsel != nil:
 		s := it.acpsel
+		old := s.CurrentValue
 		cur := string(s.CurrentValue)
-		acpChoiceControl(c, &cur, acpSearchSelectOptions(s.Options), s.Name, allowButtons, func(value string) {
-			s.CurrentValue = acp.SessionConfigValueId(value)
-			sink.selectValue(s.Id, acp.SessionConfigValueId(value))
-		})
+		o.Key, o.Label = scope+":"+string(s.Id), s.Name
+		if s.Description != nil {
+			o.Description = *s.Description
+		}
+		if kit.ConfigControl(c, &cur, acpSearchSelectOptions(s.Options), o) {
+			s.CurrentValue = acp.SessionConfigValueId(cur)
+			sink.selectValue(s.Id, acp.SessionConfigValueId(cur), old)
+		}
 	case it.boolean != nil:
 		b := it.boolean
+		old := b.CurrentValue
 		cur := "off"
-		if b.CurrentValue {
+		if old {
 			cur = "on"
 		}
-		acpChoiceControl(c, &cur, []kit.SearchSelectOption[string]{
+		o.Key, o.Label = scope+":"+string(b.Id), b.Name
+		if b.Description != nil {
+			o.Description = *b.Description
+		}
+		if kit.ConfigControl(c, &cur, []kit.SearchSelectOption[string]{
 			{Value: "on", Label: "开"},
 			{Value: "off", Label: "关"},
-		}, b.Name, allowButtons, func(value string) {
+		}, o) {
 			b.CurrentValue = cur == "on"
-			sink.boolValue(b.Id, b.CurrentValue)
-		})
-	}
-}
-
-// acpChoiceControl keeps the composer on a select control, while allowing
-// the compact ACP settings popover to turn very small option sets into
-// buttons. Up to ten values use a plain select; larger lists are searchable.
-func acpChoiceControl(c *mgo.Context, value *string, opts []kit.SearchSelectOption[string], label string, allowButtons bool, changed func(string)) {
-	if allowButtons && len(opts) <= 3 {
-		mgo.Row(c).Gap(mcore.Density(c).Unit()).Wrap().Children(func() {
-			for _, opt := range opts {
-				opt := opt
-				variant := kit.Secondary
-				if opt.Value == *value {
-					variant = kit.Primary
-				}
-				if kit.Button(c, opt.Label, kit.ButtonOptions{Variant: variant}).Clicked() {
-					*value = opt.Value
-					changed(opt.Value)
-				}
-			}
-		})
-		return
-	}
-	if len(opts) <= 10 {
-		plain := make([]kit.SelectOption[string], 0, len(opts))
-		for _, opt := range opts {
-			plain = append(plain, kit.SelectOption[string]{Value: opt.Value, Label: opt.Label})
+			sink.boolValue(b.Id, cur == "on", old)
 		}
-		r := kit.Select(c, value, plain, kit.SelectOptions{Label: label, Placeholder: label, MinWidth: 130})
-		if r.Changed() {
-			changed(*value)
-		}
-		return
-	}
-	r := kit.SearchSelect(c, value, opts, kit.SearchSelectOptions[string]{
-		Label: label, Placeholder: label, SearchPlaceholder: "搜索" + label, Up: true,
-	})
-	r.Element.MaxWidth(130).MinWidth(0)
-	if r.Changed() {
-		changed(*value)
 	}
 }
 
 // acpSearchSelectOptions converts an adapter's option list into SearchSelect
-// choices, the same content acpSelectOptions feeds a plain Select.
+// choices, flattening grouped lists the way a coding CLI reports them.
 func acpSearchSelectOptions(o acp.SessionConfigSelectOptions) []kit.SearchSelectOption[string] {
 	var out []kit.SearchSelectOption[string]
 	add := func(list []acp.SessionConfigSelectOption) {

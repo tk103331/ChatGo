@@ -20,8 +20,9 @@ func (cw *ChatWindow) homeView(c *mgo.Context) {
 	}
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	mgo.Column(c).Fill().MinHeight(0).Justify(mgo.Center).
-		AlignItems(mgo.Center).Padding(u * 4).Children(func() {
+	// The block centers when the window is tall enough and scrolls when it
+	// is not.
+	viewportCenter(c, "home", func() {
 		mgo.Column(c).FillWidth().MaxWidth(createWidth).AlignSelf(mgo.Center).
 			AlignItems(mgo.Center).Gap(u*2).Padding(u*5, u*4).Children(func() {
 			mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {

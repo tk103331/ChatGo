@@ -84,13 +84,20 @@ func (cw *ChatWindow) ensureConvGit(ws string) {
 	go cw.loadConvGit(ws)
 }
 
-// loadConvGit reads ws's summary and stores it on the main thread.
+// loadConvGit reads ws's summary and stores it on the main thread. A
+// directory outside any repository is cached as a summary without a
+// project, so "not a repository" is remembered distinctly from "still
+// loading" and is never probed again.
 func (cw *ChatWindow) loadConvGit(ws string) {
-	info := readConvGit(ws)
+	info, isRepo := readConvGit(ws)
 	cw.postMain(func() {
 		cw.convGit.mu.Lock()
-		if info != nil {
+		switch {
+		case isRepo:
 			cw.convGit.info[ws] = info
+		case cw.convGit.info[ws] == nil:
+			// No project marks a plain directory, not a pending load.
+			cw.convGit.info[ws] = &convGitInfo{}
 		}
 		delete(cw.convGit.loading, ws)
 		cw.convGit.mu.Unlock()
@@ -98,12 +105,12 @@ func (cw *ChatWindow) loadConvGit(ws string) {
 	})
 }
 
-// readConvGit builds a workspace's git summary, or nil when it is not inside
-// a repository.
-func readConvGit(ws string) *convGitInfo {
+// readConvGit builds a workspace's git summary. The second result reports
+// whether the directory is inside a repository at all.
+func readConvGit(ws string) (*convGitInfo, bool) {
 	project, branch := readProjectTrees(ws)
 	if project == nil || branch == "" {
-		return nil
+		return nil, false
 	}
 	stat := gitDiffStat(ws)
 	var modified, added, deleted, untracked int
@@ -134,7 +141,7 @@ func readConvGit(ws string) *convGitInfo {
 		Branch: branch, Changes: len(files), Project: project,
 		Modified: modified, Added: added, Deleted: deleted, Untracked: untracked,
 		DiffAdded: stat[0], DiffDeleted: stat[1],
-	}
+	}, true
 }
 
 // readProjectTrees is the git summary a session-start picker needs: the
@@ -182,6 +189,18 @@ func (cw *ChatWindow) convGitProject(ws string) *Project {
 		return nil
 	}
 	return info.Project
+}
+
+// convGitLoaded reports whether ws's summary has landed, whether or not the
+// directory is a repository. False while the read is pending, so callers can
+// tell "still loading" from "not a repository".
+func (cw *ChatWindow) convGitLoaded(ws string) bool {
+	if ws == "" {
+		return false
+	}
+	cw.convGit.mu.Lock()
+	defer cw.convGit.mu.Unlock()
+	return cw.convGit.info[ws] != nil
 }
 
 // convGitGroup is the grouping key a conversation's workspace falls under:

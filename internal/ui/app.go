@@ -151,7 +151,10 @@ type ChatWindow struct {
 	imp       importState
 	modelRef  modelRefreshState
 
-	draft        string
+	draft string
+	// drafts holds each conversation's half-written message, so switching
+	// tabs keeps every conversation's composer to itself.
+	drafts       map[string]string
 	mentionRoot  string
 	mentionFiles []kit.ContextItem
 	provider     string

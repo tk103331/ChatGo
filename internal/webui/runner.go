@@ -50,6 +50,12 @@ type Runner interface {
 	// model, the modes, the toggles — with the values each one offers. Empty
 	// when the CLI offers none or the warm-up has not landed yet.
 	ACPOptions(agent string) []ACPConfigOptionInfo
+	// SessionACPOptions lists the config options of a live session, warming
+	// the session in first when it has not started yet.
+	SessionACPOptions(convID string) []ACPConfigOptionInfo
+	// SetSessionConfig applies one config choice to a live session and
+	// reports the CLI's refusal, so the caller can roll its control back.
+	SetSessionConfig(convID, configID, value string) error
 	// CreateWorktree adds a working tree of a project on branch and returns
 	// its path. newBranch creates the branch first.
 	CreateWorktree(project, branch string, newBranch bool) (string, error)

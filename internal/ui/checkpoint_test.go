@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	mgo "github.com/egoist/mygo/ui"
 
@@ -208,25 +209,47 @@ func TestCheckpointFindAndReset(t *testing.T) {
 }
 
 // The chat page shows the rewind control on an assistant reply once the
-// experimental checkpoint level is on, and hides it when off.
+// experimental checkpoint level is on, and hides it when off. Copy stays
+// visible without hovering — it is the action a reader reaches for — while
+// the destructive rewind waits for the hover, so it is never the only thing
+// on screen.
 func TestChatShowsRewindButtonPerCheckpointLevel(t *testing.T) {
 	for _, level := range []string{"turn", "batch"} {
-		cw := checkpointWindow(t, level)
-		cw.mode = modeChat
-		cw.cur = &models.Conversation{ID: "c1", Title: "t",
-			Messages: []models.Message{{ID: "m1", Role: "assistant", Content: "ok"}}}
-		cw.convs = []models.Conversation{*cw.cur}
-		cw.focusConvTab(cw.cur)
-		tr := mgo.NewTester(cw.view, 1000, 700)
-		for range 5 {
-			tr.Frame()
+		tr := checkpointChatTester(t, checkpointWindow(t, level))
+		if _, ok := tr.Find("复制"); !ok {
+			t.Fatalf("level %q: copy should show without hovering; texts: %v", level, tr.Texts())
 		}
+		if _, ok := tr.Find("回退到此点"); ok {
+			t.Fatalf("level %q: the rewind should wait for a hover; texts: %v", level, tr.Texts())
+		}
+		at, ok := tr.Find("ok")
+		if !ok {
+			t.Fatalf("level %q: no message to hover; texts: %v", level, tr.Texts())
+		}
+		tr.Move(at.X+at.W/2, at.Y+at.H/2)
+		tr.Advance(700 * time.Millisecond)
+		tr.Frame()
 		if _, ok := tr.Find("回退到此点"); !ok {
-			t.Fatalf("level %q: rewind control missing; texts: %v", level, tr.Texts())
+			t.Fatalf("level %q: hovering the reply should reveal the rewind; texts: %v", level, tr.Texts())
 		}
 	}
 
-	cw := checkpointWindow(t, "off")
+	tr := checkpointChatTester(t, checkpointWindow(t, "off"))
+	at, ok := tr.Find("ok")
+	if !ok {
+		t.Fatalf("off: no message to hover; texts: %v", tr.Texts())
+	}
+	tr.Move(at.X+at.W/2, at.Y+at.H/2)
+	tr.Advance(700 * time.Millisecond)
+	tr.Frame()
+	if _, ok := tr.Find("回退到此点"); ok {
+		t.Fatalf("off level still shows the rewind control; texts: %v", tr.Texts())
+	}
+}
+
+// checkpointChatTester renders a one-reply chat page under the tester.
+func checkpointChatTester(t *testing.T, cw *ChatWindow) *mgo.Tester {
+	t.Helper()
 	cw.mode = modeChat
 	cw.cur = &models.Conversation{ID: "c1", Title: "t",
 		Messages: []models.Message{{ID: "m1", Role: "assistant", Content: "ok"}}}
@@ -236,7 +259,5 @@ func TestChatShowsRewindButtonPerCheckpointLevel(t *testing.T) {
 	for range 5 {
 		tr.Frame()
 	}
-	if _, ok := tr.Find("回退到此点"); ok {
-		t.Fatalf("off level still shows the rewind control; texts: %v", tr.Texts())
-	}
+	return tr
 }

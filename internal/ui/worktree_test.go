@@ -393,15 +393,19 @@ func (e *wtEnv) waitFor(what string, cond func() bool) {
 }
 
 // tester renders the window until want appears, draining the queue between
-// frames, and returns the tester so the caller can inspect the layout.
+// frames, and returns the tester so the caller can inspect the layout. At
+// least two frames render, so a layout that settles on the second frame — a
+// viewport-measured centering, say — is already settled.
 func (e *wtEnv) tester(width, height int, want string) *mgo.Tester {
 	e.t.Helper()
 	tr := mgo.NewTester(e.view, width, height)
 	deadline := time.Now().Add(10 * time.Second)
+	frames := 0
 	for time.Now().Before(deadline) {
 		e.q.drain()
 		tr.Frame()
-		if tr.HasText(want) {
+		frames++
+		if frames >= 2 && tr.HasText(want) {
 			return tr
 		}
 	}

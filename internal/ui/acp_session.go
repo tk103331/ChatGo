@@ -14,8 +14,6 @@ import (
 
 	"chatgo/internal/config"
 	"chatgo/pkg/models"
-
-	"chatgo/internal/ui/kit"
 )
 
 // acpState holds every piece of ACP runtime state, guarded by mu.
@@ -165,33 +163,101 @@ func (cw *ChatWindow) acpInitializing(convID string) bool {
 	return starting && cw.acp.convs[convID] == nil
 }
 
-func (cw *ChatWindow) acpSetMode(rt *acpConv, id acp.SessionModeId) {
+// acpSetTimeout bounds one config request to the CLI; a hung adapter must
+// not leave the control in "applied" state forever.
+const acpSetTimeout = 15 * time.Second
+
+// acpSetMode asks the CLI to switch the session's mode. The new mode shows
+// on screen right away, but it is saved on the conversation only once the
+// CLI accepts it; a refusal restores the previous mode and says why briefly.
+func (cw *ChatWindow) acpSetMode(rt *acpConv, id, old acp.SessionModeId) {
 	rt.modeID = id
-	cw.acpPersist(rt, "mode", string(id))
+	cw.invalidate()
 	conn, sess := rt.conn, rt.sessionID
 	go func() {
-		_, _ = conn.SetSessionMode(context.Background(), acp.SetSessionModeRequest{SessionId: sess, ModeId: id})
+		ctx, cancel := context.WithTimeout(context.Background(), acpSetTimeout)
+		defer cancel()
+		_, err := conn.SetSessionMode(ctx, acp.SetSessionModeRequest{SessionId: sess, ModeId: id})
+		cw.postMain(func() {
+			if err != nil {
+				if rt.modeID == id {
+					rt.modeID = old
+				}
+				cw.toastErrorDetail("模式切换未生效", acpFirstLine(err.Error()))
+				cw.invalidate()
+				return
+			}
+			cw.acpPersist(rt, "mode", string(id))
+		})
 	}()
 }
 
-func (cw *ChatWindow) acpSetConfigValue(rt *acpConv, id acp.SessionConfigId, value acp.SessionConfigValueId) {
-	cw.acpPersist(rt, string(id), string(value))
+// acpSetConfigValue asks the CLI to move a select option to value. The
+// runtime's own answer replaces the local copy, so the control shows what
+// the CLI really holds; a refusal restores the old value.
+func (cw *ChatWindow) acpSetConfigValue(rt *acpConv, id acp.SessionConfigId, value, old acp.SessionConfigValueId) {
 	conn, sess := rt.conn, rt.sessionID
 	go func() {
-		_, _ = conn.SetSessionConfigOption(context.Background(), acp.SetSessionConfigOptionRequest{
+		ctx, cancel := context.WithTimeout(context.Background(), acpSetTimeout)
+		defer cancel()
+		resp, err := conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
 			ValueId: &acp.SetSessionConfigOptionValueId{SessionId: sess, ConfigId: id, Value: value},
 		})
+		cw.postMain(func() {
+			if err != nil {
+				cw.acpRestoreConfig(rt, string(id), string(old))
+				cw.toastErrorDetail("配置未生效", acpFirstLine(err.Error()))
+				cw.invalidate()
+				return
+			}
+			if len(resp.ConfigOptions) > 0 {
+				rt.configs = resp.ConfigOptions
+			}
+			cw.acpPersist(rt, string(id), string(value))
+			cw.invalidate()
+		})
 	}()
 }
 
-func (cw *ChatWindow) acpSetConfigBool(rt *acpConv, id acp.SessionConfigId, value bool) {
-	cw.acpPersist(rt, string(id), strconv.FormatBool(value))
+// acpSetConfigBool is acpSetConfigValue for a boolean option.
+func (cw *ChatWindow) acpSetConfigBool(rt *acpConv, id acp.SessionConfigId, value, old bool) {
 	conn, sess := rt.conn, rt.sessionID
 	go func() {
-		_, _ = conn.SetSessionConfigOption(context.Background(), acp.SetSessionConfigOptionRequest{
+		ctx, cancel := context.WithTimeout(context.Background(), acpSetTimeout)
+		defer cancel()
+		resp, err := conn.SetSessionConfigOption(ctx, acp.SetSessionConfigOptionRequest{
 			Boolean: &acp.SetSessionConfigOptionBoolean{SessionId: sess, ConfigId: id, Value: value},
 		})
+		cw.postMain(func() {
+			if err != nil {
+				cw.acpRestoreConfig(rt, string(id), strconv.FormatBool(old))
+				cw.toastErrorDetail("配置未生效", acpFirstLine(err.Error()))
+				cw.invalidate()
+				return
+			}
+			if len(resp.ConfigOptions) > 0 {
+				rt.configs = resp.ConfigOptions
+			}
+			cw.acpPersist(rt, string(id), strconv.FormatBool(value))
+			cw.invalidate()
+		})
 	}()
+}
+
+// acpRestoreConfig puts a select or boolean option back to value after the
+// CLI refused a change, so the control never shows a choice the runtime
+// rejected.
+func (cw *ChatWindow) acpRestoreConfig(rt *acpConv, id, value string) {
+	for _, opt := range rt.configs {
+		switch {
+		case opt.Select != nil && string(opt.Select.Id) == id:
+			opt.Select.CurrentValue = acp.SessionConfigValueId(value)
+		case opt.Boolean != nil && string(opt.Boolean.Id) == id:
+			if b, err := strconv.ParseBool(value); err == nil {
+				opt.Boolean.CurrentValue = b
+			}
+		}
+	}
 }
 
 // acpSetModeState records a mode change reported by the agent.
@@ -219,24 +285,6 @@ func (cw *ChatWindow) acpSetConfigState(sess acp.SessionId, opts []acp.SessionCo
 		rt.configs = opts
 		cw.invalidate()
 	}
-}
-
-func acpSelectOptions(o acp.SessionConfigSelectOptions) []kit.SelectOption[string] {
-	var out []kit.SelectOption[string]
-	add := func(list []acp.SessionConfigSelectOption) {
-		for _, it := range list {
-			out = append(out, kit.SelectOption[string]{Value: string(it.Value), Label: it.Name})
-		}
-	}
-	if o.Ungrouped != nil {
-		add(*o.Ungrouped)
-	}
-	if o.Grouped != nil {
-		for _, g := range *o.Grouped {
-			add(g.Options)
-		}
-	}
-	return out
 }
 
 // acpConfigCoversModes reports whether the adapter's config options already
@@ -574,6 +622,12 @@ func (cw *ChatWindow) acpApplySaved(rt *acpConv, conv *models.Conversation) {
 		}
 		switch {
 		case opt.Select != nil:
+			// A saved value the runtime no longer offers is dropped rather
+			// than forced on it: the option keeps the CLI's own current
+			// choice instead of a value it would reject.
+			if !acpSelectHasValue(opt.Select, v) {
+				continue
+			}
 			opt.Select.CurrentValue = acp.SessionConfigValueId(v)
 			_, _ = rt.conn.SetSessionConfigOption(context.Background(), acp.SetSessionConfigOptionRequest{
 				ValueId: &acp.SetSessionConfigOptionValueId{SessionId: rt.sessionID, ConfigId: id, Value: acp.SessionConfigValueId(v)},
@@ -589,6 +643,29 @@ func (cw *ChatWindow) acpApplySaved(rt *acpConv, conv *models.Conversation) {
 			})
 		}
 	}
+}
+
+// acpSelectHasValue reports whether the option still offers value.
+func acpSelectHasValue(s *acp.SessionConfigOptionSelect, value string) bool {
+	has := func(list []acp.SessionConfigSelectOption) bool {
+		for _, it := range list {
+			if string(it.Value) == value {
+				return true
+			}
+		}
+		return false
+	}
+	if s.Options.Ungrouped != nil && has(*s.Options.Ungrouped) {
+		return true
+	}
+	if s.Options.Grouped != nil {
+		for _, g := range *s.Options.Grouped {
+			if has(g.Options) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // acpWarmup starts a conversation's ACP session so its model and config

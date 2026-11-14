@@ -79,19 +79,33 @@ func (cw *ChatWindow) createIsACP() bool {
 	return strings.HasPrefix(cw.create.agent, "acp:")
 }
 
+// viewportCenter is a Scroll that centers its content when the viewport is
+// taller than it and scrolls when it is shorter. A scroll hands its content
+// the content's own height, so the column's minimum height follows the
+// scroll's measured viewport height from the previous frame: that gives the
+// Justify(Center) a measure to distribute in, and the content still grows
+// past it on a short window.
+func viewportCenter(c *mgo.Context, key string, children func()) {
+	scroll := mgo.Scroll(c).Fill()
+	h := mgo.Local(scroll, "chatgo:viewport-center:"+key, func() float32 { return 0 })
+	scroll.Children(func() {
+		mgo.Column(c).MinHeight(*h).FillWidth().Justify(mgo.Center).
+			AlignItems(mgo.Center).Children(children)
+	})
+	if b := scroll.Bounds(); b.H > 0 {
+		*h = b.H
+	}
+}
+
 // createBody is the "新会话" tab: the choice rows, the composer in the
 // middle, and the agent-specific controls under it. The block is centered in
-// both directions and width-capped, the way the home page's composer is.
-//
-// It is laid out directly in the pane, not inside a Scroll: a scroll gives
-// its content the content's own height, so Justify(Center) would have nothing
-// to distribute and the block would sit against the top edge.
+// both directions and width-capped, the way the home page's composer is, and
+// it scrolls on a window too short to hold it.
 func (cw *ChatWindow) createBody(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Justify(mgo.Center).
-		AlignItems(mgo.Center).Padding(u * 4).Children(func() {
+	viewportCenter(c, "create", func() {
 		mgo.Column(c).FillWidth().MaxWidth(createWidth).AlignSelf(mgo.Center).
 			Gap(u * 2).Children(func() {
 			mgo.Text(c, "新会话").FontSize(mcore.FontSize(c, mtheme.H2Size)).
@@ -141,7 +155,13 @@ func (cw *ChatWindow) createAgentSelect(c *mgo.Context, scope string) {
 		Width: createPickerWidth, Name: scope + " Agent",
 	}, func() {
 		cw.agentPickerButton(c, &cw.create.agent, func(ref string) {
+			if ref == cw.create.agent {
+				return
+			}
 			cw.create.agent = ref
+			// Another agent's options are not this one's: drop the ACP
+			// choices made for the previous agent.
+			cw.create.acpConfig = nil
 			cw.invalidate()
 		})
 	})
@@ -173,12 +193,32 @@ func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context, scope string) {
 		cw.create.ws = p.Main
 	}
 	opts := make([]kit.SearchSelectOption[string], 0, len(projects))
+	seen := map[string]bool{}
 	for _, ws := range projects {
+		seen[ws] = true
 		name := filepath.Base(ws)
 		if name == "" || name == "." || name == string(filepath.Separator) {
 			name = ws
 		}
 		opts = append(opts, kit.SearchSelectOption[string]{Value: ws, Label: name})
+	}
+	// A directory outside any repository is its own entry, so choosing one
+	// keeps the conversation in it instead of an endless "loading" and a
+	// repeat probe every frame.
+	for _, ws := range cw.workspaces() {
+		if seen[ws] {
+			continue
+		}
+		cw.ensureConvGit(ws)
+		if !cw.convGitLoaded(ws) || cw.convGitProject(ws) != nil {
+			continue
+		}
+		seen[ws] = true
+		name := filepath.Base(ws)
+		if name == "" || name == "." || name == string(filepath.Separator) {
+			name = ws
+		}
+		opts = append(opts, kit.SearchSelectOption[string]{Value: ws, Label: name, Note: middleEllipsis(ws, worktreePathWidth)})
 	}
 	kit.FieldColumn(c, "项目", kit.FieldOptions{
 		Width: createPickerWidth, Name: scope + " 项目",
@@ -224,12 +264,25 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context, scope string) {
 	k := mcore.Tokens(c)
 	p := cw.convGitProject(cw.create.ws)
 	if p == nil {
-		// The project's summary may still be loading; ask for it and say so,
-		// so the worktree selector appears as soon as it lands.
-		if cw.create.ws != "" {
-			cw.ensureConvGit(cw.create.ws)
+		if cw.create.ws == "" {
+			return
 		}
-		mgo.Text(c, "正在读取项目工作树…").FontSize(caption).TextColor(k.TextMuted)
+		// The summary may still be loading; ask for it and say so, so the
+		// worktree selector appears as soon as it lands.
+		cw.ensureConvGit(cw.create.ws)
+		if !cw.convGitLoaded(cw.create.ws) {
+			mgo.Text(c, "正在读取项目工作树…").FontSize(caption).TextColor(k.TextMuted)
+			return
+		}
+		// Not a repository: the directory itself is where the session runs.
+		kit.FieldColumn(c, "工作区", kit.FieldOptions{
+			Width: createPickerWidth, Name: scope + " 工作区",
+		}, func() {
+			b := kit.Button(c, filepath.Base(cw.create.ws), kit.ButtonOptions{
+				Variant: kit.Secondary, Disabled: true,
+			}).Tooltip("该目录不是 Git 仓库，会话将直接在其中运行")
+			b.MaxWidth(createPickerWidth).MinWidth(0)
+		})
 		return
 	}
 	// No worktree chosen yet means the main tree, whatever way the project
@@ -326,8 +379,8 @@ func (cw *ChatWindow) startComposer(c *mgo.Context, placeholder string, start fu
 }
 
 // createACPControls shows the ACP agent's model and the options its runtime
-// offers in the composer's row, the way a conversation's composer shows them.
-// The choices wait in the page's state until the session starts.
+// offers in the composer's row, through the same shared row a conversation
+// uses. The choices wait in the page's state until the session starts.
 func (cw *ChatWindow) createACPControls(c *mgo.Context) {
 	name := strings.TrimPrefix(cw.create.agent, "acp:")
 	if name == cw.create.agent || name == "" {
@@ -341,16 +394,20 @@ func (cw *ChatWindow) createACPControls(c *mgo.Context) {
 		return
 	}
 	items := cw.createACPItems(opts)
-	sink := acpChoiceSink{
-		selectValue: func(id acp.SessionConfigId, value acp.SessionConfigValueId) {
-			cw.createACPSet(string(id), string(value))
-		},
-		boolValue: func(id acp.SessionConfigId, value bool) {
-			cw.createACPSet(string(id), strconv.FormatBool(value))
-		},
+	kitItems := make([]kit.ConfigItem, len(items))
+	for i, it := range items {
+		kitItems[i] = kit.ConfigItem{Name: it.label, Kind: acpOptionKind(it), Rank: it.rank}
 	}
-	cw.acpControlRow(c, items, "create", func(it acpConfigItem, allowButtons bool) {
-		cw.acpOptionControl(c, it, sink, allowButtons)
+	scope := "create:" + name
+	kit.ConfigRow(c, kitItems, scope, func(i int, allowButtons bool) {
+		cw.acpOptionControl(c, items[i], scope, allowButtons, acpChoiceSink{
+			selectValue: func(id acp.SessionConfigId, value, _ acp.SessionConfigValueId) {
+				cw.createACPSet(string(id), string(value))
+			},
+			boolValue: func(id acp.SessionConfigId, value, _ bool) {
+				cw.createACPSet(string(id), strconv.FormatBool(value))
+			},
+		})
 	})
 }
 

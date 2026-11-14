@@ -94,9 +94,9 @@ func (cw *ChatWindow) modelPickerButton(c *mgo.Context, refs []string) {
 		label = cw.modelPickRowLabel(refs[0])
 	}
 	// The control is a plain button, like the ACP options beside it in the
-	// composer's row.
+	// composer's row; hovering spells out which model is active.
 	b := kit.Button(c, label, kit.ButtonOptions{Variant: kit.Secondary})
-	b.MaxWidth(280).MinWidth(0)
+	b.MaxWidth(280).MinWidth(0).Tooltip("当前模型：" + label)
 	open := mgo.Local(b, "modelpicker.open", func() bool { return false })
 	query := mgo.Local(b, "modelpicker.query", func() string { return "" })
 	if b.Clicked() {

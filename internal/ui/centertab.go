@@ -754,8 +754,13 @@ func (cw *ChatWindow) attachConvTab(tab *centerTab) {
 	if err != nil {
 		return
 	}
+	from := ""
+	if cw.cur != nil {
+		from = cw.cur.ID
+	}
 	cw.cur = conv
 	cw.mode = modeChat
+	cw.switchDraft(from, conv.ID)
 	if conv.Workspace != "" {
 		cw.pointAtWorkspace(conv.Workspace)
 	}

@@ -12,19 +12,22 @@ import (
 	"chatgo/pkg/models"
 )
 
-// A workspace outside a repository has no summary, so its row stays one line.
+// A workspace outside a repository has no summary, so its row stays one
+// line; the caller still learns it is not a repository, so it is remembered
+// rather than probed again.
 func TestReadConvGitOutsideRepo(t *testing.T) {
 	isolateHome(t)
 	dir := t.TempDir()
-	if info := readConvGit(dir); info != nil {
-		t.Fatalf("a plain directory must yield no summary, got %+v", info)
+	info, isRepo := readConvGit(dir)
+	if isRepo || info != nil {
+		t.Fatalf("a plain directory must yield no summary, got %+v (repo=%v)", info, isRepo)
 	}
 }
 
 // A repository reports its branch and how many files are changed.
 func TestReadConvGitReadsRepository(t *testing.T) {
 	dir := newTestRepo(t)
-	info := readConvGit(dir)
+	info, _ := readConvGit(dir)
 	if info == nil {
 		t.Fatal("a repository must have a summary")
 	}
@@ -38,7 +41,7 @@ func TestReadConvGitReadsRepository(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "new.txt"), []byte("x\ny\nz\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	info = readConvGit(dir)
+	info, _ = readConvGit(dir)
 	if info.Changes != 1 {
 		t.Fatalf("one untracked file is one change, got %d", info.Changes)
 	}
@@ -168,7 +171,7 @@ func TestReadConvGitDetachedHead(t *testing.T) {
 	if out, err := gitRun(dir, "worktree", "add", "--detach", wt); err != nil {
 		t.Fatalf("worktree add: %v: %s", err, out)
 	}
-	info := readConvGit(wt)
+	info, _ := readConvGit(wt)
 	if info == nil {
 		t.Fatal("a detached working tree still has a summary")
 	}
@@ -185,7 +188,7 @@ func TestReadConvGitGroupsUnderMainTree(t *testing.T) {
 	if out, err := gitRun(dir, "worktree", "add", "-b", "group", wt); err != nil {
 		t.Fatalf("worktree add: %v: %s", err, out)
 	}
-	info := readConvGit(wt)
+	info, _ := readConvGit(wt)
 	if info == nil {
 		t.Fatal("a working tree has a summary")
 	}
@@ -193,7 +196,7 @@ func TestReadConvGitGroupsUnderMainTree(t *testing.T) {
 		t.Errorf("the tree belongs to project %+v, want the main tree %q", info.Project, dir)
 	}
 	// The main tree belongs to the project headed by itself.
-	main := readConvGit(dir)
+	main, _ := readConvGit(dir)
 	if main.Project == nil || main.Project.Main != dir {
 		t.Errorf("the main tree belongs to %+v, want itself", main.Project)
 	}
@@ -212,7 +215,7 @@ func TestProjectCollectsAllWorktrees(t *testing.T) {
 			t.Fatalf("worktree add: %v: %s", err, out)
 		}
 	}
-	info := readConvGit(dir)
+	info, _ := readConvGit(dir)
 	if info.Project == nil {
 		t.Fatal("a repository has a project")
 	}

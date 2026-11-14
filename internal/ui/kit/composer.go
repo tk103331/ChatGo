@@ -88,14 +88,14 @@ func PromptComposer(c *mgo.Context, value *string, opts PromptComposerOptions) I
 		r = NewInputResult(r.Element, area.Input, area.Changed(),
 			area.Submitted() && !opts.Composing && strings.TrimSpace(*value) != "")
 		if opts.Tools != nil || opts.Actions != nil {
-			mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Grow(1).Children(func() {
+			mgo.Row(c).FillWidth().MinWidth(0).Gap(u * 2).AlignItems(mgo.End).Children(func() {
+				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Grow(1).MinWidth(0).Wrap().Children(func() {
 					if opts.Tools != nil {
 						opts.Tools()
 					}
 				})
 				if opts.Actions != nil {
-					opts.Actions()
+					mgo.Row(c).Shrink(0).Gap(u).AlignItems(mgo.Center).Children(opts.Actions)
 				}
 			})
 		}

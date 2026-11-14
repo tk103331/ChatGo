@@ -103,6 +103,12 @@ func (f *fakeRunner) Models(agent string) []ModelInfo { return nil }
 
 func (f *fakeRunner) ACPOptions(agent string) []ACPConfigOptionInfo { return nil }
 
+func (f *fakeRunner) SessionACPOptions(convID string) []ACPConfigOptionInfo { return nil }
+
+func (f *fakeRunner) SetSessionConfig(convID, configID, value string) error {
+	return nil
+}
+
 func (f *fakeRunner) CreateWorktree(project, branch string, newBranch bool) (string, error) {
 	return "", nil
 }

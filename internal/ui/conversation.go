@@ -98,8 +98,13 @@ func (cw *ChatWindow) selectConversation(id string) {
 // openConversation shows conv in its working tree's tab group, adding its
 // chat tab next to the sessions already open in that tree.
 func (cw *ChatWindow) openConversation(conv *models.Conversation) {
+	from := ""
+	if cw.cur != nil {
+		from = cw.cur.ID
+	}
 	cw.cur = conv
 	cw.mode = modeChat
+	cw.switchDraft(from, conv.ID)
 	cw.pointAtWorkspace(conv.Workspace)
 	cw.applyConversationAgent(conv)
 	cw.applyConversationModel(conv)
@@ -124,9 +129,34 @@ func (cw *ChatWindow) applyConversationModel(conv *models.Conversation) {
 	}
 }
 
+// switchDraft moves the composer's text from one conversation to another:
+// the outgoing conversation keeps its half-written message, and the incoming
+// one brings back whatever it had the last time it was open.
+func (cw *ChatWindow) switchDraft(from, to string) {
+	if from == to {
+		return
+	}
+	if from != "" {
+		if cw.drafts == nil {
+			cw.drafts = map[string]string{}
+		}
+		cw.drafts[from] = cw.draft
+	}
+	if to == "" {
+		cw.draft = ""
+		return
+	}
+	cw.draft = cw.drafts[to]
+}
+
 // sendDraft appends the draft as a user turn and streams the assistant reply.
 
 func (cw *ChatWindow) sendDraft() {
+	// One conversation answers one turn at a time: while a reply streams,
+	// the composer keeps editing but Enter starts nothing.
+	if cw.streamingCur() {
+		return
+	}
 	text := strings.TrimSpace(cw.draft)
 	if text == "" {
 		return
@@ -218,8 +248,13 @@ func (cw *ChatWindow) startAppSession(id string) {
 	cw.ensureAppState()
 	if convID := cw.appConv[id]; convID != "" {
 		if conv, err := cw.convManager.LoadConversation(convID); err == nil {
+			from := ""
+			if cw.cur != nil {
+				from = cw.cur.ID
+			}
 			cw.cur = conv
 			cw.mode = modeChat
+			cw.switchDraft(from, conv.ID)
 			cw.applyApp(id)
 			cw.scrollChatToEnd()
 			return

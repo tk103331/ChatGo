@@ -518,6 +518,13 @@ func (a *app) composerTools(c *ui.Context, t *ui.Theme) {
 	u := uikit.Unit(c)
 	ui.Row(c).Gap(u).AlignItems(ui.Center).Wrap().Children(func() {
 		a.contextButton(c, t)
+		// An ACP session brings its own runtime: its model and options show
+		// here, the way the desktop's composer does, instead of the local
+		// model and tool pickers.
+		if a.cap(capACP) && strings.HasPrefix(a.agentRef, "acp:") && a.current() != nil {
+			a.sessionACPControls(c, t)
+			return
+		}
 		a.modelSelector(c, t)
 		a.agentSelector(c, t)
 		a.toolsButton(c, t)

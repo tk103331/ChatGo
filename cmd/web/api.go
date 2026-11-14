@@ -223,6 +223,19 @@ func apiPatch(path string, body any, out any) error {
 	return apiDo(req, out)
 }
 
+func apiPut(path string, body any, out any) error {
+	data, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPut, path, bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return apiDo(req, out)
+}
+
 func apiDo(req *http.Request, out any) error {
 	resp, err := webClient.Do(req)
 	if err != nil {

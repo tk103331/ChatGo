@@ -408,21 +408,15 @@ func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, 
 	}
 	u := mcore.Density(c).Unit()
 	mgo.Row(c).Gap(u).MinHeight(mcore.Density(c).ControlHeight()).AlignItems(mgo.Center).Children(func() {
-		if !reveal {
-			// Without hover only the destructive rewind stays, so a
-			// checkpoint is never hidden from the user who needs it.
-			if cw.checkpointEnabled() && msg.Role == "assistant" && msg.ID != "" {
-				if mcore.IconAction(c, icons.Must("history"), "回退到此点").Tooltip("回退到此点").Clicked() {
-					cw.askConfirmAs("回退到此点",
-						"将把代码回退到该回复完成时的 checkpoint。此回复之后的所有改动都会丢失，且不可撤销。",
-						"回退", func() { cw.revertToMessage(msg.ID) })
-				}
-			}
-			return
-		}
+		// Copy is the action a reader reaches for on any message, so it
+		// stays visible without hovering; the rest appear on hover, and the
+		// destructive rewind is never the only thing on screen.
 		if mcore.IconAction(c, icons.Must("copy"), "复制").Tooltip("复制").Clicked() {
 			c.WriteClipboard(msg.Content)
 			cw.toast("已复制到剪贴板", mcore.SeveritySuccess)
+		}
+		if !reveal {
+			return
 		}
 		if msg.Role == "user" {
 			if mcore.IconAction(c, icons.Must("pencil"), "编辑").Tooltip("编辑").Clicked() {

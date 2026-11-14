@@ -61,24 +61,31 @@ func (cw *ChatWindow) chatMainArea(c *mgo.Context) {
 	cw.centerArea(c)
 }
 
+// chatWidth caps the conversation's reading measure — messages, the panels
+// and the composer — the way the home page caps its composer, so a wide pane
+// keeps a readable line length.
+const chatWidth float32 = 860
+
 // messageArea is the message list and the composer, without the sidebar.
 func (cw *ChatWindow) messageArea(c *mgo.Context, list *kit.MessageListState) {
 	msgs := cw.messages()
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	row := func(i int) { cw.messageRow(c, i, msgs[i]) }
-	mgo.Column(c).Fill().AlignItems(mgo.Stretch).Background(k.Background).Children(func() {
-		res := kit.MessageList(c, list, len(msgs), kit.MessageListOptions{
-			ID:    func(i int) string { return msgs[i].ID },
-			Date:  func(i int) time.Time { return msgs[i].Timestamp },
-			Label: func(i int) string { return msgs[i].Role },
-		}, row)
-		res.Element.Grow(1).MinHeight(0)
-		cw.acpPermissionPanel(c)
-		cw.askQuestionPanel(c)
-		cw.planPanel(c)
-		mgo.Column(c).Shrink(0).Padding(u*3, u*4).BorderWidth(mtheme.BorderWidth, 0, 0, 0).
-			BorderColor(k.Border).Children(func() { cw.composer(c) })
+	mgo.Column(c).Fill().AlignItems(mgo.Center).Background(k.Background).Children(func() {
+		mgo.Column(c).Fill().MaxWidth(chatWidth).MinWidth(0).AlignItems(mgo.Stretch).Children(func() {
+			res := kit.MessageList(c, list, len(msgs), kit.MessageListOptions{
+				ID:    func(i int) string { return msgs[i].ID },
+				Date:  func(i int) time.Time { return msgs[i].Timestamp },
+				Label: func(i int) string { return msgs[i].Role },
+			}, row)
+			res.Element.Grow(1).MinHeight(0)
+			cw.acpPermissionPanel(c)
+			cw.askQuestionPanel(c)
+			cw.planPanel(c)
+			mgo.Column(c).Shrink(0).FillWidth().Padding(u*3, u*4).BorderWidth(mtheme.BorderWidth, 0, 0, 0).
+				BorderColor(k.Border).Children(func() { cw.composer(c) })
+		})
 	})
 }
 
@@ -152,7 +159,7 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 	if !initializing {
 		cw.chatMenus(c, in)
 	}
-	if in.Submitted() && !initializing {
+	if in.Submitted() && !initializing && !cw.streamingCur() {
 		cw.sendDraft()
 	}
 	cw.modelSetupNotice(c)

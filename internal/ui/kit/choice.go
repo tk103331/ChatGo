@@ -165,6 +165,10 @@ type SearchSelectOptions[T comparable] struct {
 	// Up opens the list above the trigger, for a control at the bottom of a
 	// window where a list opening down would cover the input.
 	Up bool
+	// Key distinguishes controls whose labels match or whose owner changes.
+	Key string
+	// NoSearch keeps the same picker appearance for short lists.
+	NoSearch bool
 }
 
 // SearchSelectResult is a built SearchSelect and its events.
@@ -190,10 +194,6 @@ func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOpt
 		panic("kit: SearchSelect needs a value")
 	}
 	var r SearchSelectResult[T]
-	openKey, queryKey := searchSelectKeys(o.Label)
-	open := mgo.Local(c.Root(), openKey, func() bool { return false })
-	query := mgo.Local(c.Root(), queryKey, func() string { return "" })
-
 	label := o.Placeholder
 	if label == "" {
 		label = "请选择…"
@@ -208,6 +208,9 @@ func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOpt
 	trigger := Button(c, label, ButtonOptions{
 		Variant: Secondary, Disabled: o.Disabled, Leading: leading,
 	})
+	openKey, queryKey := searchSelectKeys(o.Key + ":" + o.Label)
+	open := mgo.Local(trigger, openKey, func() bool { return false })
+	query := mgo.Local(trigger, queryKey, func() string { return "" })
 	if o.Label != "" {
 		// The trigger shows the chosen value, so the control's own name has
 		// to come from Label or assistive technology hears only the value.
@@ -224,12 +227,18 @@ func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOpt
 		*open = !*open
 		*query = ""
 	}
+	if o.Disabled {
+		*open = false
+	}
 	if !*open {
 		return r
 	}
 	u := uikit.Unit(c)
 	k := uikit.Tokens(c)
 	q := strings.ToLower(strings.TrimSpace(*query))
+	if o.NoSearch {
+		q = ""
+	}
 	placeholder := o.SearchPlaceholder
 	if placeholder == "" {
 		placeholder = "搜索…"
@@ -238,59 +247,63 @@ func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOpt
 	if empty == "" {
 		empty = "无匹配项"
 	}
-	Popover(c, trigger, open, PopoverOptions{Label: o.Label, Up: o.Up}, func() {
-		// The filter field is named by its own placeholder, so two selectors
-		// on screen are told apart by assistive technology and in tests.
-		in := SearchInput(c, query, SearchInputOptions{Placeholder: placeholder, Label: placeholder})
-		in.Element.FillWidth()
-		uikit.AutoFocus(c, in.Input)
+	var header func()
+	if !o.NoSearch {
+		header = func() {
+			in := SearchInput(c, query, SearchInputOptions{Placeholder: placeholder, Label: placeholder})
+			in.Element.FillWidth()
+			uikit.AutoFocus(c, in.Input)
+		}
+	}
+	Popover(c, trigger, open, PopoverOptions{
+		Label: o.Label, Up: o.Up, Header: header, MaxHeight: u * 90,
+	}, func() {
 		shown := 0
 		hasAny := false
-		mgo.Scroll(c).MaxHeight(u * 80).Children(func() {
-			mgo.Column(c).FillWidth().Gap(1).Children(func() {
-				for _, opt := range opts {
-					hasAny = true
-					if q != "" && !strings.Contains(strings.ToLower(opt.Label), q) &&
-						!strings.Contains(strings.ToLower(opt.Note), q) {
-						continue
+		mgo.Column(c).FillWidth().Gap(1).Children(func() {
+			for _, opt := range opts {
+				hasAny = true
+				if q != "" && !strings.Contains(strings.ToLower(opt.Label), q) &&
+					!strings.Contains(strings.ToLower(opt.Note), q) {
+					continue
+				}
+				shown++
+				selected := opt.Value == *value
+				row := mgo.ButtonBase(c).FillWidth().MinHeight(uikit.Density(c).ControlHeight()).
+					Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
+					Justify(mgo.Start).Radius(theme.ControlRadius).
+					Cursor(mgo.CursorPointer).Selected(selected)
+				switch {
+				case selected:
+					row.Background(k.Selection)
+				case row.Hovered():
+					row.Background(k.SurfaceHover)
+				}
+				if row.Clicked() {
+					r.changed = opt.Value != *value
+					*value, *open = opt.Value, false
+				}
+				row.Children(func() {
+					if opt.Leading != nil {
+						opt.Leading()
 					}
-					shown++
-					selected := opt.Value == *value
-					row := mgo.ButtonBase(c).FillWidth().MinHeight(uikit.Density(c).ControlHeight()).
-						Padding(u, u*2).Gap(u).AlignItems(mgo.Center).
-						Justify(mgo.Start).Radius(theme.ControlRadius).
-						Cursor(mgo.CursorPointer).Selected(selected)
-					switch {
-					case selected:
-						row.Background(k.Selection)
-					case row.Hovered():
-						row.Background(k.SurfaceHover)
-					}
-					if row.Clicked() && opt.Value != *value {
-						*value, r.changed, *open = opt.Value, true, false
-					}
-					row.Children(func() {
-						if opt.Leading != nil {
-							opt.Leading()
-						}
-						// A Note makes the row two lines, the label above it,
-						// so a long second line never crowds the first.
-						mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
-							mgo.Text(c, opt.Label).SingleLine().FillWidth().
-								MinWidth(0).Ellipsis("…")
-							if opt.Note != "" {
-								mgo.Text(c, opt.Note).SingleLine().FillWidth().MinWidth(0).
-									FontSize(uikit.FontSize(c, theme.CaptionSize)).
-									TextColor(k.TextMuted).Ellipsis("…")
-							}
-						})
-						if selected {
-							mgo.Icon(c, icons.Must("check")).Size(14, 14).
-								TextColor(k.Accent).Shrink(0)
+					// A Note makes the row two lines, the label above it,
+					// so a long second line never crowds the first.
+					mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
+						mgo.Text(c, opt.Label).SingleLine().FillWidth().
+							MinWidth(0).Ellipsis("…")
+						if opt.Note != "" {
+							mgo.Text(c, opt.Note).SingleLine().FillWidth().MinWidth(0).
+								FontSize(uikit.FontSize(c, theme.CaptionSize)).
+								TextColor(k.TextMuted).Ellipsis("…")
 						}
 					})
-				}
-			})
+					if selected {
+						mgo.Icon(c, icons.Must("check")).Size(14, 14).
+							TextColor(k.Accent).Shrink(0)
+					}
+				})
+			}
 		})
 		name := strings.TrimSpace(*query)
 		switch {
@@ -315,8 +328,9 @@ func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOpt
 	return r
 }
 
-// searchSelectKeys names the local state a SearchSelect keeps, per Label so
-// two selectors on screen stay independent.
+// searchSelectKeys names the local state a SearchSelect keeps, per Key and
+// Label so two selectors on screen — or the same control in two
+// conversations — stay independent.
 func searchSelectKeys(label string) (open, query string) {
 	open, query = "chatgo.searchselect.open", "chatgo.searchselect.query"
 	if label != "" {

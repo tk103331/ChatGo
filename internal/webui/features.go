@@ -89,6 +89,54 @@ func (s *Server) handleACPOptions(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// handleSessionACPOptions lists the config options of a live session's own
+// runtime, so an existing ACP conversation shows the same controls the
+// desktop's composer does.
+func (s *Server) handleSessionACPOptions(w http.ResponseWriter, r *http.Request) {
+	if !s.requireRunner(w) {
+		return
+	}
+	id := r.PathValue("id")
+	if !validID(id) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid session id"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"options": s.runner.SessionACPOptions(id),
+	})
+}
+
+// handleSetSessionConfig applies one config choice to a live session; the
+// CLI's refusal comes back as an error so the browser can restore the old
+// value on its control.
+func (s *Server) handleSetSessionConfig(w http.ResponseWriter, r *http.Request) {
+	if !s.requireRunner(w) {
+		return
+	}
+	id := r.PathValue("id")
+	if !validID(id) {
+		writeError(w, http.StatusBadRequest, errors.New("invalid session id"))
+		return
+	}
+	var body struct {
+		ID    string `json:"id"`
+		Value string `json:"value"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if strings.TrimSpace(body.ID) == "" {
+		writeError(w, http.StatusBadRequest, errors.New("config id is empty"))
+		return
+	}
+	if err := s.runner.SetSessionConfig(id, body.ID, body.Value); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
 // handleCreateWorktree adds a working tree of a project and answers with its
 // path, so the new session can open in it.
 func (s *Server) handleCreateWorktree(w http.ResponseWriter, r *http.Request) {

@@ -104,6 +104,10 @@ type app struct {
 	// newACPConfig holds the ACP option choices made in the new-session
 	// dialog: a config id to the value picked for it.
 	newACPConfig map[string]string
+	// sessACP caches the open ACP session's config options, and sessACPFor
+	// names the session they belong to.
+	sessACP    acpOptionsState
+	sessACPFor string
 
 	attachments []attachmentRef
 	attaching   bool
@@ -341,8 +345,16 @@ func (a *app) send() {
 						}
 					}
 				}
-				a.attachments = attachments
-				a.skillsOn = skills
+				// The unsent message comes back only when the same session
+				// is still on screen, and only when nothing newer was typed,
+				// so the failure never clobbers another conversation's draft.
+				if a.activeID() == id && strings.TrimSpace(a.draft) == "" {
+					a.draft = text
+				}
+				if a.activeID() == id {
+					a.attachments = attachments
+					a.skillsOn = skills
+				}
 				a.setRunning(false)
 				a.status = err.Error()
 			})
