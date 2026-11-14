@@ -303,3 +303,61 @@ func TestProviderCandidatesCarryModelTags(t *testing.T) {
 		t.Fatalf("the count is replaced by the tags, got %q", it.Desc)
 	}
 }
+
+// The import dialog's scanning state can be cancelled, its empty state
+// offers the market, and skills keep the overwrite switch in the pinned
+// header rather than a bare corner.
+func TestImportDialogStates(t *testing.T) {
+	isolateHome(t)
+	cw := importTestWindow(t)
+	cw.section = sectionSettings
+
+	// Scanning: a cancel button closes the dialog.
+	cw.imp = importState{open: true, kind: importMCP, chosen: map[string]bool{}, scanning: true}
+	tr := mgo.NewTester(cw.view, 1000, 800)
+	tr.Frame()
+	if err := tr.Click("取消"); err != nil {
+		t.Fatalf("the scanning state should be cancellable: %v", err)
+	}
+	tr.Frame()
+	if cw.imp.open {
+		t.Fatal("cancel closed nothing")
+	}
+
+	// Empty scan: the market hand-over shows.
+	cw.imp = importState{open: true, kind: importMCP, chosen: map[string]bool{}, scanned: true}
+	tr = mgo.NewTester(cw.view, 1000, 800)
+	tr.Frame()
+	if !tr.HasText("去插件市场") {
+		t.Fatalf("the empty state should offer the market; texts: %v", tr.Texts())
+	}
+	if err := tr.Click("去插件市场"); err != nil {
+		t.Fatalf("go to market: %v", err)
+	}
+	tr.Frame()
+	if cw.imp.open || cw.pluginUI.marketTab != 1 || cw.pluginUI.marketFilter != "importers" {
+		t.Fatalf("the empty state's market jump missed: open=%v tab=%d filter=%q",
+			cw.imp.open, cw.pluginUI.marketTab, cw.pluginUI.marketFilter)
+	}
+
+	// Skills: the overwrite switch sits in the pinned header with its
+	// explanation, and the bulk actions stay visible.
+	cw.section = sectionSettings
+	cw.imp = importState{
+		open: true, kind: importSkills, chosen: map[string]bool{}, scanned: true,
+		groups: []importGroup{{From: "Claude Code", Items: []importCandidate{
+			{ID: "Claude Code|demo", Title: "demo", Desc: "/skills/demo"},
+		}}},
+	}
+	tr = mgo.NewTester(cw.view, 1000, 800)
+	tr.Frame()
+	for _, want := range []string{"覆盖同名 Skill（默认保留本地修改）", "全选", "已选 0/1"} {
+		if !tr.HasText(want) {
+			t.Fatalf("the skills dialog lacks %q; texts: %v", want, tr.Texts())
+		}
+	}
+	// The search placeholder names the kind.
+	if !tr.HasText("搜索 Skill") {
+		t.Fatalf("the search placeholder should name the kind; texts: %v", tr.Texts())
+	}
+}

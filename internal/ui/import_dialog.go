@@ -72,7 +72,9 @@ func importDialogTitle(kind importKind) string {
 	}
 }
 
-// importDialog renders the scan results with per-entry checkboxes.
+// importDialog renders the scan results with per-entry checkboxes. The
+// search field and the bulk actions stay pinned above the scrolling
+// entries, so a long list never buries them.
 func (cw *ChatWindow) importDialog(c *mgo.Context) {
 	if !cw.imp.open {
 		return
@@ -85,6 +87,9 @@ func (cw *ChatWindow) importDialog(c *mgo.Context) {
 		Title:       importDialogTitle(kind),
 		Description: importDialogHint(kind),
 		Width:       680,
+		// A long catalog of skills needs the entries to scroll inside the
+		// dialog, not the dialog to grow past the window.
+		MaxHeight: 560,
 		Actions: func() {
 			// The market offers what the scan could not: an importer plugin
 			// for an agent the built-ins do not read, or a vendor preset.
@@ -112,37 +117,99 @@ func (cw *ChatWindow) importDialog(c *mgo.Context) {
 				mgo.Text(c, cw.imp.status).FontSize(caption).TextColor(k.TextMuted).MaxLines(2)
 			}
 			if cw.imp.scanning {
-				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-					mcore.Spinner(c, mcore.SpinnerOptions{Size: 14})
-					mgo.Text(c, "正在扫描其他 Agent 的配置…").FontSize(caption).TextColor(k.TextMuted)
+				mgo.Column(c).FillWidth().AlignItems(mgo.Center).Gap(u).Padding(u * 4).Children(func() {
+					mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+						mcore.Spinner(c, mcore.SpinnerOptions{Size: 14})
+						mgo.Text(c, "正在扫描其他 Agent 的配置…").FontSize(caption).TextColor(k.TextMuted)
+					})
+					if kit.Button(c, "取消", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
+						cw.imp.open = false
+					}
 				})
 				return
 			}
 			if cw.imp.scanned && len(cw.imp.groups) == 0 {
-				mgo.Text(c, "没有发现可导入的内容。请确认已安装 Claude Code、Codex、OpenCode 等并配置过。").
-					FontSize(caption).TextColor(k.TextMuted)
+				mgo.Column(c).FillWidth().AlignItems(mgo.Center).Gap(u).Padding(u * 3).Children(func() {
+					mgo.Icon(c, icons.Must("search")).Size(28, 28).TextColor(k.TextMuted)
+					mgo.Text(c, "没有发现可导入的内容").FontSize(caption).TextColor(k.Text)
+					mgo.Text(c, "请确认已安装并配置过 Claude Code、Codex、OpenCode 等 Agent；").
+						FontSize(caption).TextColor(k.TextMuted)
+					mgo.Text(c, "或到插件市场安装对应 Agent 的导入器。").
+						FontSize(caption).TextColor(k.TextMuted)
+					if kit.Button(c, "去插件市场", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
+						cw.imp.open = false
+						cw.goPluginMarket("importers")
+					}
+				})
 				return
 			}
+			// The pinned part carries the search, the bulk actions and the
+			// per-kind options; the entries scroll under them.
+			var body func() bool
 			items, groupOf := cw.importFlatItems()
-			mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-				if kind != importSkills {
-					mgo.Spacer(c)
-				} else {
-					ov := cw.imp.overwrite
-					if mgo.Checkbox(c, &ov, "覆盖同名").Changed() {
-						cw.imp.overwrite = ov
-					}
-					mgo.Spacer(c)
-				}
-			})
-			changed := selectListGrouped(c, &cw.imp.query, "搜索", items, groupOf,
+			pinned := func() {
+				mgo.Column(c).FillWidth().MinWidth(0).Gap(u).Children(func() {
+					cw.importBulkHeader(c, kind, items)
+				})
+			}
+			_, body = selectListGroupedSplit(c, &cw.imp.query, "搜索 "+importKindLabel(kind), items, groupOf,
 				func(id string) bool { return cw.imp.chosen[id] },
 				func(id string, on bool) { cw.imp.chosen[id] = on })
-			if changed {
-				c.Invalidate()
-			}
+			pinned()
+			mgo.Scroll(c).FillWidth().MinHeight(0).Children(func() {
+				mgo.Column(c).FillWidth().MinWidth(0).Children(func() {
+					if body() {
+						c.Invalidate()
+					}
+				})
+			})
 		})
 	})
+}
+
+// importBulkHeader is the pinned header above the scrolling entries: the
+// search field, the select/clear actions and the per-kind option row
+// (覆盖同名 for skills, where a re-import can replace a local edit).
+func (cw *ChatWindow) importBulkHeader(c *mgo.Context, kind importKind, items []selectItem) {
+	u := mcore.Density(c).Unit()
+	mgo.Column(c).FillWidth().MinWidth(0).Gap(u).Children(func() {
+		in := kit.SearchInput(c, &cw.imp.query, kit.SearchInputOptions{
+			Placeholder: "搜索 " + importKindLabel(kind), Label: "搜索 " + importKindLabel(kind),
+		})
+		in.Element.FillWidth()
+		shown := filterSelectItems(items, cw.imp.query)
+		on := 0
+		for _, it := range shown {
+			if cw.imp.chosen[it.ID] {
+				on++
+			}
+		}
+		all, none := selectListHeader(c, on, len(shown))
+		if all || none {
+			for _, it := range shown {
+				cw.imp.chosen[it.ID] = all
+			}
+			c.Invalidate()
+		}
+		if kind == importSkills {
+			ov := cw.imp.overwrite
+			if mgo.Checkbox(c, &ov, "覆盖同名 Skill（默认保留本地修改）").Changed() {
+				cw.imp.overwrite = ov
+			}
+		}
+	})
+}
+
+// importKindLabel is a kind's short name for the search placeholder.
+func importKindLabel(kind importKind) string {
+	switch kind {
+	case importMCP:
+		return "MCP 服务"
+	case importProviders:
+		return "模型"
+	default:
+		return "Skill"
+	}
 }
 
 // importMarketKind maps an import dialog's kind to the market tab filter
