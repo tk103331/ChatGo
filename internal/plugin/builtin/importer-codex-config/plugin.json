@@ -1,0 +1,38 @@
+{
+  "id": "importer-codex-config",
+  "name": "Codex 配置导入",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "从 Codex 的 config.toml 导入 MCP 服务器与模型 Provider",
+  "importers": [
+    {
+      "id": "codex",
+      "label": "Codex",
+      "kinds": [
+        "mcp",
+        "providers"
+      ],
+      "files": [
+        {
+          "path": "~/.codex/config.toml"
+        }
+      ],
+      "format": "toml",
+      "mapping": {
+        "mcp": {
+          "root": "/mcp_servers",
+          "name": "@key",
+          "command": "command",
+          "args": "args",
+          "env": "env"
+        },
+        "providers": {
+          "root": "/model_providers",
+          "name": "@key",
+          "baseURL": "base_url",
+          "apiKey": "env_key"
+        }
+      }
+    }
+  ]
+}

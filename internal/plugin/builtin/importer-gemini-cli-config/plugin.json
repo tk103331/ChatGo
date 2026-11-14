@@ -1,0 +1,33 @@
+{
+  "id": "importer-gemini-cli-config",
+  "name": "Gemini CLI 配置导入",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "从 Gemini CLI 的 settings.json 导入 MCP 服务器",
+  "importers": [
+    {
+      "id": "gemini-cli",
+      "label": "Gemini CLI",
+      "kinds": [
+        "mcp"
+      ],
+      "files": [
+        {
+          "path": "~/.gemini/settings.json"
+        }
+      ],
+      "format": "json",
+      "mapping": {
+        "mcp": {
+          "root": "/mcpServers",
+          "name": "@key",
+          "command": "command",
+          "args": "args",
+          "env": "env",
+          "url": "url",
+          "headers": "headers"
+        }
+      }
+    }
+  ]
+}

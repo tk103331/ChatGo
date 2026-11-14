@@ -1,0 +1,20 @@
+{
+  "id": "importer-opencode-skills",
+  "name": "OpenCode Skills 导入",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "从 OpenCode 的 ~/.opencode/skill(s) 导入 Skills",
+  "importers": [
+    {
+      "id": "opencode-skills",
+      "label": "OpenCode",
+      "kinds": [
+        "skills"
+      ],
+      "dirs": [
+        "~/.opencode/skill",
+        "~/.opencode/skills"
+      ]
+    }
+  ]
+}

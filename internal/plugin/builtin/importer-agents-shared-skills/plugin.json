@@ -1,0 +1,19 @@
+{
+  "id": "importer-agents-shared-skills",
+  "name": "共享 Agents Skills 导入",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "从共享目录 ~/.agents/skills 导入 Skills",
+  "importers": [
+    {
+      "id": "agents-shared-skills",
+      "label": "Agents (共享)",
+      "kinds": [
+        "skills"
+      ],
+      "dirs": [
+        "~/.agents/skills"
+      ]
+    }
+  ]
+}

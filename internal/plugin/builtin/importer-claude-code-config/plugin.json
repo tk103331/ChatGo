@@ -1,0 +1,48 @@
+{
+  "id": "importer-claude-code-config",
+  "name": "Claude Code 配置导入",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "从 Claude Code 的配置导入 MCP 服务器与模型 Provider",
+  "importers": [
+    {
+      "id": "claude-code",
+      "label": "Claude Code",
+      "kinds": [
+        "mcp",
+        "providers"
+      ],
+      "files": [
+        {
+          "path": "~/.claude.json"
+        },
+        {
+          "path": "~/.claude/settings.json"
+        },
+        {
+          "path": "~/.claude/settings.local.json"
+        },
+        {
+          "path": ".mcp.json"
+        }
+      ],
+      "format": "json",
+      "mapping": {
+        "mcp": {
+          "root": "/mcpServers",
+          "name": "@key",
+          "type": "type",
+          "command": "command",
+          "args": "args",
+          "env": "env",
+          "url": "url",
+          "headers": "headers"
+        },
+        "providers": {
+          "root": "/customApiKeyResponses",
+          "name": "@key"
+        }
+      }
+    }
+  ]
+}

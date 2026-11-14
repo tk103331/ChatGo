@@ -155,7 +155,7 @@ func TestPluginFilters(t *testing.T) {
 	byDesc := filterPlugins(infos, "", "cursor")
 	found := false
 	for _, i := range byDesc {
-		if i.ID == "agent-importers" {
+		if i.ID == "importer-cursor-config" {
 			found = true
 		}
 	}

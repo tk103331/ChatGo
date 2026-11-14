@@ -38,7 +38,7 @@ func importTestHome(t *testing.T) string {
 }
 
 // importTestWindow is a test window with the plugin manager up and the
-// built-in agent-importers plugin enabled, so a scan finds the temp home's
+// built-in importer plugins enabled, so a scan finds the temp home's
 // agent configurations the way the app's would.
 func importTestWindow(t *testing.T) *ChatWindow {
 	t.Helper()
@@ -47,11 +47,16 @@ func importTestWindow(t *testing.T) *ChatWindow {
 	m := plugin.NewManager(cfg)
 	m.LoadAll()
 	m.EnsureBuiltin()
-	// The built-in agent-importers must be on for the scan; it came enabled
-	// with the app, but an earlier test may have turned it off.
-	if inst, ok := m.Info("agent-importers"); !ok || inst.Status == plugin.StatusDisabled {
-		if err := m.SetEnabled("agent-importers", true, nil, nil); err != nil {
-			t.Fatal(err)
+	// The built-in config importers must be on for the scan; they came
+	// enabled with the app, but an earlier test may have turned one off.
+	for _, id := range []string{
+		"importer-claude-code-config", "importer-opencode-config",
+		"importer-claude-code-skills",
+	} {
+		if inst, ok := m.Info(id); !ok || inst.Status == plugin.StatusDisabled {
+			if err := m.SetEnabled(id, true, nil, nil); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 	cw.plugins = m
@@ -72,7 +77,7 @@ func TestScanImportableGroupsBySource(t *testing.T) {
 	}
 	// The built-in agent-importers plugin carries the shipped sources, so
 	// the groups carry its name.
-	if seen["plugin: agent-importers · Claude Code"] != 1 || seen["plugin: agent-importers · OpenCode"] != 1 {
+	if seen["Claude Code"] != 1 || seen["OpenCode"] != 1 {
 		t.Fatalf("unexpected grouping %+v", seen)
 	}
 

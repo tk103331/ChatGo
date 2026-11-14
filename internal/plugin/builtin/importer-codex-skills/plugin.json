@@ -1,0 +1,20 @@
+{
+  "id": "importer-codex-skills",
+  "name": "Codex Skills 导入",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "从 Codex 的 ~/.codex/skill(s) 导入 Skills",
+  "importers": [
+    {
+      "id": "codex-skills",
+      "label": "Codex",
+      "kinds": [
+        "skills"
+      ],
+      "dirs": [
+        "~/.codex/skills",
+        "~/.codex/skill"
+      ]
+    }
+  ]
+}

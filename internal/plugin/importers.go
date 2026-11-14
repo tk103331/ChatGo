@@ -51,7 +51,9 @@ func (m *Manager) DiscoverImports(workdir, kind string) []ImportCandidate {
 			if !importerHasKind(spec, kind) {
 				continue
 			}
-			from := "plugin: " + inst.Manifest.ID + " · " + firstNonEmpty(spec.Label, spec.ID)
+			// One plugin per importer now, so the importer's own label names
+			// the group — "Claude Code" reads better than the plugin id.
+			from := firstNonEmpty(spec.Label, spec.ID)
 			for _, cand := range inst.readImporter(spec, workdir, kind) {
 				key := strings.ToLower(cand.Name)
 				if cand.Name == "" || seen[key] {
@@ -332,7 +334,8 @@ func (m *Manager) DiscoverSkillImports(workdir string) []ImportCandidate {
 			if !importerHasKind(spec, "skills") || len(spec.Dirs) == 0 {
 				continue
 			}
-			from := "plugin: " + inst.Manifest.ID + " · " + firstNonEmpty(spec.Label, spec.ID)
+			// As DiscoverImports: the importer's own label names the group.
+			from := firstNonEmpty(spec.Label, spec.ID)
 			for _, dir := range spec.Dirs {
 				root, err := importerPath(dir, workdir)
 				if err != nil {

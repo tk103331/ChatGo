@@ -1,0 +1,48 @@
+{
+  "id": "importer-opencode-config",
+  "name": "OpenCode 配置导入",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "从 OpenCode 的配置导入 MCP 服务器与模型 Provider",
+  "importers": [
+    {
+      "id": "opencode",
+      "label": "OpenCode",
+      "kinds": [
+        "mcp",
+        "providers"
+      ],
+      "files": [
+        {
+          "path": "~/.config/opencode/opencode.json"
+        },
+        {
+          "path": "~/.opencode/opencode.json"
+        },
+        {
+          "path": "opencode.json"
+        }
+      ],
+      "format": "json",
+      "mapping": {
+        "mcp": {
+          "root": "/mcp",
+          "name": "@key",
+          "type": "type",
+          "command": "command",
+          "args": "command",
+          "env": "environment",
+          "url": "url",
+          "headers": "headers"
+        },
+        "providers": {
+          "root": "/provider",
+          "name": "@key",
+          "baseURL": "/options/baseURL",
+          "apiKey": "/options/apiKey",
+          "models": "/models"
+        }
+      }
+    }
+  ]
+}

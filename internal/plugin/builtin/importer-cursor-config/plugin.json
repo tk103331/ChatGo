@@ -1,0 +1,36 @@
+{
+  "id": "importer-cursor-config",
+  "name": "Cursor 配置导入",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "从 Cursor 的 mcp.json 导入 MCP 服务器",
+  "importers": [
+    {
+      "id": "cursor",
+      "label": "Cursor",
+      "kinds": [
+        "mcp"
+      ],
+      "files": [
+        {
+          "path": "~/.cursor/mcp.json"
+        },
+        {
+          "path": ".cursor/mcp.json"
+        }
+      ],
+      "format": "json",
+      "mapping": {
+        "mcp": {
+          "root": "/mcpServers",
+          "name": "@key",
+          "command": "command",
+          "args": "args",
+          "env": "env",
+          "url": "url",
+          "headers": "headers"
+        }
+      }
+    }
+  ]
+}

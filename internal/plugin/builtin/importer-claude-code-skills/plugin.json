@@ -1,0 +1,19 @@
+{
+  "id": "importer-claude-code-skills",
+  "name": "Claude Code Skills 导入",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "从 Claude Code 的 ~/.claude/skills 导入 Skills",
+  "importers": [
+    {
+      "id": "claude-code-skills",
+      "label": "Claude Code",
+      "kinds": [
+        "skills"
+      ],
+      "dirs": [
+        "~/.claude/skills"
+      ]
+    }
+  ]
+}
