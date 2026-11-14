@@ -51,6 +51,11 @@ type Manifest struct {
 	// ToolResult declares that the entry module exports onToolResult, a hook
 	// that may rewrite every tool result before the model sees it.
 	ToolResult bool `json:"toolResult,omitempty"`
+	// Catalog entries are the add-dialog suggestions a plugin contributes:
+	// model provider presets and ACP agents listed under the add dialogs,
+	// which become real entities only when the user clicks. Disabling the
+	// plugin hides its group; entities already added stay.
+	Catalog []CatalogSpec `json:"catalog,omitempty"`
 }
 
 // Limits bounds the plugin's JavaScript runtime.
@@ -205,6 +210,32 @@ type ImporterSpec struct {
 	Files   []ImporterFile `json:"files,omitempty"`
 	Format  string         `json:"format,omitempty"`
 	Mapping map[string]any `json:"mapping,omitempty"`
+}
+
+// CatalogSpec is one add-dialog suggestion a plugin contributes: a model
+// provider preset or an ACP agent. Unlike Providers or ACPAgents — which a
+// plugin injects as live entities on load — a catalog entry is inert until
+// the user picks it, so a catalog plugin can offer dozens of vendors
+// without filling the settings page on its own.
+type CatalogSpec struct {
+	// Kind is "providers" or "acp".
+	Kind string `json:"kind"`
+	// Group names the section the entries list under in the dialog.
+	Group string `json:"group,omitempty"`
+
+	// Provider fields, for kind "providers".
+	Name    string `json:"name,omitempty"`
+	Type    string `json:"type,omitempty"`
+	APIType string `json:"apiType,omitempty"`
+	BaseURL string `json:"baseURL,omitempty"`
+	Note    string `json:"note,omitempty"`
+	KeysURL string `json:"keysURL,omitempty"`
+
+	// ACP fields, for kind "acp": one entry per ACP connection. Env rides
+	// the connection the way ACPSpec's does.
+	Command string            `json:"command,omitempty"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
 }
 
 // ImporterFile is one configuration file an importer reads.

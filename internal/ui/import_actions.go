@@ -19,8 +19,7 @@ func (cw *ChatWindow) startImportScan() {
 	cw.imp.scanned = false
 	cw.imp.groups = nil
 	go func() {
-		groups := scanImportable(kind, workdir)
-		groups = append(groups, cw.pluginImportGroups(kind, workdir)...)
+		groups := scanImportable(cw, kind, workdir)
 		cw.postMain(func() {
 			if !cw.imp.open || cw.imp.kind != kind {
 				return
@@ -40,8 +39,11 @@ func (cw *ChatWindow) startImportScan() {
 	}()
 }
 
-// scanImportable groups what the other agents offer for a kind.
-func scanImportable(kind importKind, workdir string) []importGroup {
+// scanImportable groups what the other agents offer for a kind. The
+// built-in agent-importers plugin carries the shipped source list (Claude
+// Code, OpenCode, Codex, Cursor, Gemini CLI); a disabled plugin's sources
+// are absent because the manager only reports what is enabled.
+func scanImportable(cw *ChatWindow, kind importKind, workdir string) []importGroup {
 	byFrom := map[string]*importGroup{}
 	order := []string{}
 	add := func(from string, it importCandidate) {
@@ -53,33 +55,28 @@ func scanImportable(kind importKind, workdir string) []importGroup {
 		}
 		g.Items = append(g.Items, it)
 	}
-	switch kind {
-	case importSkills:
-		for _, st := range agentimport.Available(workdir) {
-			for _, f := range st.Skills {
-				add(st.Source.Name, importCandidate{
-					ID:    st.Source.Name + "|" + f.Name,
-					Title: f.Name,
-					Desc:  f.Dir,
+	if cw.plugins != nil {
+		switch kind {
+		case importSkills:
+			for _, c := range cw.plugins.DiscoverSkillImports(workdir) {
+				add(c.From, importCandidate{
+					ID: c.From + "|" + c.Name, Title: c.Name, Desc: c.Path,
 				})
 			}
-		}
-	case importMCP:
-		for _, c := range agentimport.DiscoverMCP(workdir) {
-			add(c.From, importCandidate{
-				ID:    c.From + "|" + c.Name,
-				Title: c.Name,
-				Desc:  mcpCandidateDesc(c),
-			})
-		}
-	case importProviders:
-		for _, p := range agentimport.DiscoverProviders(workdir) {
-			add(p.From, importCandidate{
-				ID:    p.From + "|" + p.Name,
-				Title: p.Name,
-				Desc:  providerCandidateDesc(p),
-				Tags:  modelTags(p.Models),
-			})
+		case importMCP:
+			for _, c := range cw.plugins.DiscoverImports(workdir, "mcp") {
+				add(c.From, importCandidate{
+					ID: c.From + "|" + c.Name, Title: c.Name,
+					Desc: pluginMCPDesc(c),
+				})
+			}
+		case importProviders:
+			for _, c := range cw.plugins.DiscoverImports(workdir, "providers") {
+				add(c.From, importCandidate{
+					ID: c.From + "|" + c.Name, Title: c.Name,
+					Desc: pluginProviderDesc(c), Tags: modelTags(c.Models),
+				})
+			}
 		}
 	}
 	out := make([]importGroup, 0, len(order))
@@ -89,8 +86,8 @@ func scanImportable(kind importKind, workdir string) []importGroup {
 	return out
 }
 
-// mcpCandidateDesc summarizes an MCP server for the list.
-func mcpCandidateDesc(c agentimport.MCPCandidate) string {
+// pluginMCPDesc summarizes an importer's MCP candidate for the list.
+func pluginMCPDesc(c plugin.ImportCandidate) string {
 	target := strings.TrimSpace(c.Command + " " + strings.Join(c.Args, " "))
 	if target == "" {
 		target = c.URL
@@ -98,13 +95,16 @@ func mcpCandidateDesc(c agentimport.MCPCandidate) string {
 	if target == "" {
 		return c.Type
 	}
+	if c.Type == "" {
+		return target
+	}
 	return c.Type + " · " + target
 }
 
-// providerCandidateDesc summarizes a provider for the list.
-func providerCandidateDesc(p agentimport.ProviderCandidate) string {
-	parts := []string{p.BaseURL}
-	if p.APIKey != "" {
+// pluginProviderDesc summarizes an importer's provider candidate.
+func pluginProviderDesc(c plugin.ImportCandidate) string {
+	parts := []string{c.BaseURL}
+	if c.APIKey != "" {
 		parts = append(parts, "含 API Key")
 	}
 	return strings.Join(parts, " · ")
@@ -160,7 +160,9 @@ func (cw *ChatWindow) runImport() {
 	}
 }
 
-// runSkillImport copies the chosen skills into ~/.chatgo/skills.
+// runSkillImport copies the chosen skills into ~/.chatgo/skills. The scan
+// comes from the enabled importers (the built-in agent-importers plugin
+// carries the shipped sources); the copy itself is agentimport's.
 func (cw *ChatWindow) runSkillImport() {
 	workdir := cw.fileRoot()
 	overwrite := cw.imp.overwrite
@@ -168,21 +170,6 @@ func (cw *ChatWindow) runSkillImport() {
 	cw.imp.busy = true
 	go func() {
 		var total agentimport.ImportResult
-		for _, st := range agentimport.Available(workdir) {
-			names := wanted[st.Source.Name]
-			if len(names) == 0 {
-				continue
-			}
-			res, err := agentimport.Import(st.Source, names, overwrite)
-			if err != nil {
-				total.Errors = append(total.Errors, err.Error())
-				continue
-			}
-			total.Imported = append(total.Imported, res.Imported...)
-			total.Skipped = append(total.Skipped, res.Skipped...)
-			total.Failed = append(total.Failed, res.Failed...)
-			total.Errors = append(total.Errors, res.Errors...)
-		}
 		if cw.plugins != nil {
 			for _, c := range cw.plugins.DiscoverSkillImports(workdir) {
 				if !containsStr(wanted[c.From], c.Name) {
@@ -218,23 +205,6 @@ func (cw *ChatWindow) runSkillImport() {
 func (cw *ChatWindow) runMCPImport() {
 	wanted := cw.chosenIDs()
 	added := 0
-	for _, c := range agentimport.DiscoverMCP(cw.fileRoot()) {
-		if !wanted[c.From+"|"+c.Name] {
-			continue
-		}
-		srv := config.MCPServer{
-			Name:    cw.uniqueMCPName(c.Name),
-			Type:    config.MCPServerType(c.Type),
-			Enabled: false,
-			Command: c.Command,
-			Args:    c.Args,
-			Env:     c.Env,
-			URL:     c.URL,
-			Headers: c.Headers,
-		}
-		cw.cfg.MCPServers = append(cw.cfg.MCPServers, srv)
-		added++
-	}
 	if cw.plugins != nil {
 		for _, c := range cw.plugins.DiscoverImports(cw.fileRoot(), "mcp") {
 			if !wanted[c.From+"|"+c.Name] {
@@ -264,27 +234,6 @@ func (cw *ChatWindow) runMCPImport() {
 func (cw *ChatWindow) runProviderImport() {
 	wanted := cw.chosenIDs()
 	added := 0
-	for _, p := range agentimport.DiscoverProviders(cw.fileRoot()) {
-		if !wanted[p.From+"|"+p.Name] {
-			continue
-		}
-		models := importedModels(p.Models)
-		model := ""
-		if len(models) > 0 {
-			model = models[0]
-		}
-		cw.cfg.Providers = append(cw.cfg.Providers, config.Provider{
-			Name:    cw.uniqueProviderName(p.Name),
-			Type:    config.ProviderTypeCustom,
-			APIType: config.ProviderTypeOpenAI,
-			APIKey:  p.APIKey,
-			BaseURL: p.BaseURL,
-			Model:   model,
-			Models:  models,
-			Enabled: false,
-		})
-		added++
-	}
 	if cw.plugins != nil {
 		for _, p := range cw.plugins.DiscoverImports(cw.fileRoot(), "providers") {
 			if !wanted[p.From+"|"+p.Name] {
@@ -376,51 +325,4 @@ func uniqueName(name string, taken func(string) bool) string {
 			return candidate
 		}
 	}
-}
-
-// pluginImportGroups appends the groups plugin-declared importers found.
-func (cw *ChatWindow) pluginImportGroups(kind importKind, workdir string) []importGroup {
-	if cw.plugins == nil {
-		return nil
-	}
-	pluginKind := "mcp"
-	if kind == importProviders {
-		pluginKind = "providers"
-	}
-	byFrom := map[string]*importGroup{}
-	var order []string
-	var candidates []plugin.ImportCandidate
-	if kind == importSkills {
-		candidates = cw.plugins.DiscoverSkillImports(workdir)
-	} else {
-		candidates = cw.plugins.DiscoverImports(workdir, pluginKind)
-	}
-	for _, c := range candidates {
-		g, ok := byFrom[c.From]
-		if !ok {
-			g = &importGroup{From: c.From}
-			byFrom[c.From] = g
-			order = append(order, c.From)
-		}
-		desc := c.BaseURL
-		tags := modelTags(c.Models)
-		if kind == importSkills {
-			desc = c.Path
-		}
-		if pluginKind == "mcp" && kind != importSkills {
-			target := strings.TrimSpace(c.Command + " " + strings.Join(c.Args, " "))
-			if target == "" {
-				target = c.URL
-			}
-			desc = strings.TrimSpace(c.Type + " · " + target)
-		}
-		g.Items = append(g.Items, importCandidate{
-			ID: c.From + "|" + c.Name, Title: c.Name, Desc: desc, Tags: tags,
-		})
-	}
-	out := make([]importGroup, 0, len(order))
-	for _, from := range order {
-		out = append(out, *byFrom[from])
-	}
-	return out
 }

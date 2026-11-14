@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"chatgo/internal/config"
+	"chatgo/internal/plugin"
 
 	mgo "github.com/egoist/mygo/ui"
 )
@@ -36,10 +37,32 @@ func importTestHome(t *testing.T) string {
 	return home
 }
 
+// importTestWindow is a test window with the plugin manager up and the
+// built-in agent-importers plugin enabled, so a scan finds the temp home's
+// agent configurations the way the app's would.
+func importTestWindow(t *testing.T) *ChatWindow {
+	t.Helper()
+	cw := testWindow()
+	cfg := cw.cfg
+	m := plugin.NewManager(cfg)
+	m.LoadAll()
+	m.EnsureBuiltin()
+	// The built-in agent-importers must be on for the scan; it came enabled
+	// with the app, but an earlier test may have turned it off.
+	if inst, ok := m.Info("agent-importers"); !ok || inst.Status == plugin.StatusDisabled {
+		if err := m.SetEnabled("agent-importers", true, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cw.plugins = m
+	return cw
+}
+
 func TestScanImportableGroupsBySource(t *testing.T) {
 	importTestHome(t)
+	cw := importTestWindow(t)
 
-	mcp := scanImportable(importMCP, "")
+	mcp := scanImportable(cw, importMCP, "")
 	if len(mcp) != 2 {
 		t.Fatalf("expected two MCP sources, got %+v", mcp)
 	}
@@ -47,11 +70,13 @@ func TestScanImportableGroupsBySource(t *testing.T) {
 	for _, g := range mcp {
 		seen[g.From] = len(g.Items)
 	}
-	if seen["Claude Code"] != 1 || seen["OpenCode"] != 1 {
+	// The built-in agent-importers plugin carries the shipped sources, so
+	// the groups carry its name.
+	if seen["plugin: agent-importers · Claude Code"] != 1 || seen["plugin: agent-importers · OpenCode"] != 1 {
 		t.Fatalf("unexpected grouping %+v", seen)
 	}
 
-	providers := scanImportable(importProviders, "")
+	providers := scanImportable(cw, importProviders, "")
 	if len(providers) != 1 || len(providers[0].Items) != 1 {
 		t.Fatalf("expected one provider, got %+v", providers)
 	}
@@ -59,7 +84,7 @@ func TestScanImportableGroupsBySource(t *testing.T) {
 		t.Fatalf("unexpected provider %+v", providers[0].Items[0])
 	}
 
-	skills := scanImportable(importSkills, "")
+	skills := scanImportable(cw, importSkills, "")
 	if len(skills) != 1 || skills[0].Items[0].Title != "demo" {
 		t.Fatalf("expected the claude skill, got %+v", skills)
 	}
@@ -67,9 +92,9 @@ func TestScanImportableGroupsBySource(t *testing.T) {
 
 func TestRunMCPImportAddsDisabledServers(t *testing.T) {
 	importTestHome(t)
-	cw := testWindow()
+	cw := importTestWindow(t)
 	cw.imp = importState{open: true, kind: importMCP, chosen: map[string]bool{}}
-	cw.imp.groups = scanImportable(importMCP, "")
+	cw.imp.groups = scanImportable(cw, importMCP, "")
 	for _, g := range cw.imp.groups {
 		for _, it := range g.Items {
 			cw.imp.chosen[it.ID] = true
@@ -93,9 +118,9 @@ func TestRunMCPImportAddsDisabledServers(t *testing.T) {
 
 func TestRunProviderImportCreatesCustomProvider(t *testing.T) {
 	importTestHome(t)
-	cw := testWindow()
+	cw := importTestWindow(t)
 	cw.imp = importState{open: true, kind: importProviders, chosen: map[string]bool{}}
-	cw.imp.groups = scanImportable(importProviders, "")
+	cw.imp.groups = scanImportable(cw, importProviders, "")
 	for _, g := range cw.imp.groups {
 		for _, it := range g.Items {
 			cw.imp.chosen[it.ID] = true
@@ -123,12 +148,12 @@ func TestRunProviderImportCreatesCustomProvider(t *testing.T) {
 // server or provider the user already configured.
 func TestImportNeverOverwritesExistingNames(t *testing.T) {
 	importTestHome(t)
-	cw := testWindow()
+	cw := importTestWindow(t)
 	cw.cfg.MCPServers = []config.MCPServer{{Name: "memory", Command: "mine"}}
 	cw.cfg.Providers = []config.Provider{{Name: "deepseek", Type: "deepseek", APIKey: "mine"}}
 
 	cw.imp = importState{open: true, kind: importMCP, chosen: map[string]bool{}}
-	cw.imp.groups = scanImportable(importMCP, "")
+	cw.imp.groups = scanImportable(cw, importMCP, "")
 	for _, g := range cw.imp.groups {
 		for _, it := range g.Items {
 			cw.imp.chosen[it.ID] = true
@@ -149,7 +174,7 @@ func TestImportNeverOverwritesExistingNames(t *testing.T) {
 	}
 
 	cw.imp = importState{open: true, kind: importProviders, chosen: map[string]bool{}}
-	cw.imp.groups = scanImportable(importProviders, "")
+	cw.imp.groups = scanImportable(cw, importProviders, "")
 	for _, g := range cw.imp.groups {
 		for _, it := range g.Items {
 			cw.imp.chosen[it.ID] = true
@@ -167,10 +192,10 @@ func TestImportNeverOverwritesExistingNames(t *testing.T) {
 func TestImportDialogRenders(t *testing.T) {
 	importTestHome(t)
 	for _, kind := range []importKind{importSkills, importMCP, importProviders} {
-		cw := testWindow()
+		cw := importTestWindow(t)
 		cw.section = sectionSettings
 		cw.imp = importState{open: true, kind: kind, chosen: map[string]bool{}}
-		cw.imp.groups = scanImportable(kind, "")
+		cw.imp.groups = scanImportable(cw, kind, "")
 		cw.imp.scanned = true
 		for _, g := range cw.imp.groups {
 			for _, it := range g.Items {
@@ -254,6 +279,7 @@ func parseOverflow(tag string) (int, error) {
 func TestProviderCandidatesCarryModelTags(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	cw := importTestWindow(t)
 	path := filepath.Join(home, ".config", "opencode", "opencode.json")
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
@@ -265,7 +291,7 @@ func TestProviderCandidatesCarryModelTags(t *testing.T) {
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	groups := scanImportable(importProviders, "")
+	groups := scanImportable(cw, importProviders, "")
 	if len(groups) != 1 || len(groups[0].Items) != 1 {
 		t.Fatalf("expected one provider, got %+v", groups)
 	}

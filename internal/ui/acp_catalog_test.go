@@ -3,102 +3,120 @@ package ui
 import (
 	"strings"
 	"testing"
+
+	"chatgo/internal/plugin"
 )
 
-// acpCatalogEntryOf finds a catalog entry by name.
-func acpCatalogEntryOf(t *testing.T, name string) acpCatalogEntry {
+// catalogTestWindow is a window with the plugin manager and the built-in
+// catalogs enabled, the way the app runs.
+func catalogTestWindow(t *testing.T) *ChatWindow {
 	t.Helper()
-	for _, e := range acpCatalog() {
-		if e.Name == name {
-			return e
-		}
-	}
-	t.Fatalf("catalog has no %q entry", name)
-	return acpCatalogEntry{}
+	cw := testWindow()
+	m := plugin.NewManager(cw.cfg)
+	m.LoadAll()
+	m.EnsureBuiltin()
+	cw.plugins = m
+	return cw
 }
 
-// Every catalog entry names a command, and none of them starts a CLI the
-// way its interactive session would: the commands were checked against
-// paseo's catalog, where a missing acp subcommand (or a wrong binary name)
-// is the difference between the protocol and a REPL that never answers.
-func TestACPCatalogCommandsMatchPaseo(t *testing.T) {
-	for _, e := range acpCatalog() {
+// ensureBuiltinCatalog turns a built-in catalog plugin on, so a test sees
+// its entries even if an earlier test disabled it.
+func ensureBuiltinCatalog(t *testing.T, cw *ChatWindow, id string) {
+	t.Helper()
+	if inst, ok := cw.plugins.Info(id); !ok || inst.Status == plugin.StatusDisabled {
+		if err := cw.plugins.SetEnabled(id, true, nil, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// The built-in ACP catalog plugins carry the shipped agent list through the
+// manager: every entry names a command, and the paseo-checked rules hold —
+// Cursor runs cursor-agent, Gemini and Qwen answer --acp, Cline speaks ACP
+// natively.
+func TestACPCatalogFromPlugins(t *testing.T) {
+	isolateHome(t)
+	cw := catalogTestWindow(t)
+	ensureBuiltinCatalog(t, cw, "acp-catalog-mainstream")
+	ensureBuiltinCatalog(t, cw, "acp-catalog-extended")
+	entries := cw.pluginACPCatalog()
+	if len(entries) < 40 {
+		t.Fatalf("the built-in catalogs should hold the shipped list, got %d entries", len(entries))
+	}
+	find := func(name string) plugin.ACPPresetEntry {
+		for _, e := range entries {
+			if e.Name == name {
+				return e
+			}
+		}
+		t.Fatalf("no %q entry", name)
+		return plugin.ACPPresetEntry{}
+	}
+	if e := find("Cursor"); e.Command != "cursor-agent" || !containsStr(e.Args, "acp") {
+		t.Fatalf("Cursor should run cursor-agent acp, got %s %v", e.Command, e.Args)
+	}
+	if e := find("GeminiCLI"); !containsStr(e.Args, "--acp") {
+		t.Fatalf("Gemini needs --acp, got %s %v", e.Command, e.Args)
+	}
+	if e := find("Cline"); e.Command != "npx" || !containsStr(e.Args, "cline") || containsStr(e.Args, "cline-acp") {
+		t.Fatalf("Cline should run npx cline --acp, got %s %v", e.Command, e.Args)
+	}
+	if e := find("FactoryDroid"); !containsStr(e.Args, "acp-daemon") || e.Env["DROID_DISABLE_AUTO_UPDATE"] != "true" {
+		t.Fatalf("Factory Droid's command or env was lost: %s %v %v", e.Command, e.Args, e.Env)
+	}
+	for _, e := range entries {
 		if strings.TrimSpace(e.Command) == "" {
 			t.Fatalf("%q has no command", e.Name)
 		}
 	}
-	// Cursor's binary is cursor-agent; "agent" collides with other tools.
-	if e := acpCatalogEntryOf(t, "Cursor"); e.Command != "cursor-agent" || !containsStr(e.Args, "acp") {
-		t.Fatalf("Cursor should run cursor-agent acp, got %s %v", e.Command, e.Args)
-	}
-	// Gemini, Qwen and Goose speak ACP behind a flag or subcommand; the bare
-	// command would open their interactive sessions.
-	if e := acpCatalogEntryOf(t, "GeminiCLI"); !containsStr(e.Args, "--acp") {
-		t.Fatalf("Gemini needs --acp, got %s %v", e.Command, e.Args)
-	}
-	if e := acpCatalogEntryOf(t, "QwenCode"); !containsStr(e.Args, "--acp") {
-		t.Fatalf("Qwen needs --acp, got %s %v", e.Command, e.Args)
-	}
-	for _, name := range []string{"Goose", "KimiCLI", "Kilo", "Hermes"} {
-		if e := acpCatalogEntryOf(t, name); !containsStr(e.Args, "acp") {
-			t.Fatalf("%s needs its acp subcommand, got %s %v", name, e.Command, e.Args)
-		}
-	}
-	// Cline speaks ACP natively now; the cline-acp wrapper is outdated.
-	e := acpCatalogEntryOf(t, "Cline")
-	if e.Command != "npx" || !containsStr(e.Args, "cline") || containsStr(e.Args, "cline-acp") {
-		t.Fatalf("Cline should run npx cline --acp, got %s %v", e.Command, e.Args)
-	}
-	// MiniMax publishes its binary under the package's unscoped name, so the
-	// npx invocation must name both.
-	if e := acpCatalogEntryOf(t, "MiniMaxCode"); !containsStr(e.Args, "-p") || !containsStr(e.Args, "mcode") {
-		t.Fatalf("MiniMax needs -p <package> mcode acp, got %s %v", e.Command, e.Args)
-	}
-	// Factory Droid runs the daemon output format with its own updater off.
-	e = acpCatalogEntryOf(t, "FactoryDroid")
-	if !containsStr(e.Args, "acp-daemon") {
-		t.Fatalf("Factory Droid needs --output-format acp-daemon, got %s %v", e.Command, e.Args)
-	}
-	if e.Env["DROID_DISABLE_AUTO_UPDATE"] != "true" {
-		t.Fatalf("Factory Droid should disable its own updater, got %v", e.Env)
+	// Groups: the two plugins' groups both show.
+	groups := plugin.CatalogGroupOrder(entries, func(e plugin.ACPPresetEntry) string { return e.Group })
+	if len(groups) != 2 {
+		t.Fatalf("expected the mainstream and extended groups, got %v", groups)
 	}
 }
 
-// A catalog entry's env rides the connection it adds, so adapters that need
-// a variable set get it without the user knowing it exists.
-func TestAddACPFromCatalogCarriesEnv(t *testing.T) {
+// Disabling a catalog plugin removes its entries from the dialog's list —
+// the settings page is where a user hides a whole group of suggestions.
+func TestACPCatalogDisabledPluginHidden(t *testing.T) {
 	isolateHome(t)
-	cw := testWindow()
-	cw.addACPFromCatalog(acpCatalogEntryOf(t, "AugmentCode"))
+	cw := catalogTestWindow(t)
+	ensureBuiltinCatalog(t, cw, "acp-catalog-mainstream")
+	ensureBuiltinCatalog(t, cw, "acp-catalog-extended")
+	if err := cw.plugins.SetEnabled("acp-catalog-extended", false, nil, nil); err != nil {
+		t.Fatal(err)
+	}
+	entries := cw.pluginACPCatalog()
+	for _, e := range entries {
+		if e.Group == "扩展 Agent" {
+			t.Fatalf("a disabled plugin's group must be absent, found %q", e.Name)
+		}
+	}
+	// The mainstream group survives.
+	found := false
+	for _, e := range entries {
+		if e.Name == "ClaudeCode" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the mainstream group vanished with the extended plugin off")
+	}
+}
+
+// addACPFromCatalog still lands the entry: enabled when the command can
+// run, disabled with a hint when it cannot.
+func TestAddACPFromCatalogLandsTheEntry(t *testing.T) {
+	isolateHome(t)
+	cw := catalogTestWindow(t)
+	ensureBuiltinCatalog(t, cw, "acp-catalog-mainstream")
+	e := plugin.ACPPresetEntry{Name: "Fake", Command: "npx", Args: []string{"-y", "fake-acp"}}
+	cw.addACPFromCatalog(e)
 	if len(cw.cfg.ACPAgents) != 1 {
 		t.Fatalf("the entry was not added: %+v", cw.cfg.ACPAgents)
 	}
 	conn := cw.cfg.ACPAgents[0]
-	if conn.Env["AUGMENT_DISABLE_AUTO_UPDATE"] != "1" {
-		t.Fatalf("the env was lost: %+v", conn.Env)
-	}
-	if conn.Command != "npx" {
-		t.Fatalf("the command was lost: %+v", conn)
-	}
-	// An npx connection can run the moment it is added, so it starts
-	// enabled; a binary the shell cannot resolve starts disabled instead
-	// of a warm-up that is bound to fail.
-	if conn.Disabled {
-		t.Fatal("an npx connection should start enabled")
-	}
-}
-
-// A catalog entry whose command the shell cannot resolve starts disabled:
-// enabling it would only queue a warm-up failure.
-func TestAddACPFromCatalogDisablesUninstalledCLI(t *testing.T) {
-	isolateHome(t)
-	t.Setenv("PATH", t.TempDir())
-	cw := testWindow()
-	cw.addACPFromCatalog(acpCatalogEntryOf(t, "Goose"))
-	if len(cw.cfg.ACPAgents) != 1 {
-		t.Fatalf("the entry was not added: %+v", cw.cfg.ACPAgents)
-	}
-	if !cw.cfg.ACPAgents[0].Disabled {
-		t.Fatal("an uninstalled CLI should start disabled")
+	if conn.Command != "npx" || conn.Disabled {
+		t.Fatalf("an npx entry should be added enabled: %+v", conn)
 	}
 }

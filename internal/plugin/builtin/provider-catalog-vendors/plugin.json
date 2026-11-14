@@ -1,0 +1,176 @@
+{
+  "id": "provider-catalog-vendors",
+  "name": "模型厂商目录",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "主流模型厂商的预置目录（OpenAI、Anthropic、Gemini、DeepSeek、Kimi、GLM 等）",
+  "catalog": [
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "OpenAI",
+      "type": "openai",
+      "baseURL": "https://api.openai.com/v1",
+      "keysURL": "https://platform.openai.com/api-keys"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "Anthropic",
+      "type": "anthropic",
+      "baseURL": "https://api.anthropic.com",
+      "keysURL": "https://console.anthropic.com/settings/keys"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "Gemini",
+      "type": "gemini",
+      "baseURL": "https://generativelanguage.googleapis.com",
+      "keysURL": "https://aistudio.google.com/apikey"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "DeepSeek",
+      "type": "deepseek",
+      "baseURL": "https://api.deepseek.com/v1",
+      "keysURL": "https://platform.deepseek.com/api_keys"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "Qwen",
+      "type": "qwen",
+      "baseURL": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      "note": "阿里云百炼 · 国内站",
+      "keysURL": "https://bailian.console.aliyun.com/?tab=model#/api-key"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "Qwen International",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+      "note": "DashScope 国际站",
+      "keysURL": "https://modelstudio.console.alibabacloud.com/?tab=playground#/api-key"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "Kimi",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.moonshot.cn/v1",
+      "note": "月之暗面 Moonshot",
+      "keysURL": "https://platform.moonshot.cn/console/api-keys"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "Kimi (Global)",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.moonshot.ai/v1",
+      "note": "Kimi 国际站",
+      "keysURL": "https://platform.kimi.ai/console/api-keys"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "智谱 GLM",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://open.bigmodel.cn/api/paas/v4",
+      "note": "按量计费；Coding Plan 用 https://open.bigmodel.cn/api/coding/paas/v4",
+      "keysURL": "https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "Z.ai",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.z.ai/api/paas/v4",
+      "note": "GLM 海外站",
+      "keysURL": "https://z.ai/manage-apikey/apikey-list"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "MiniMax",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.minimaxi.com/v1",
+      "note": "MiniMax 国内站",
+      "keysURL": "https://platform.minimaxi.com/user-center/basic-information/interface-key"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "MiniMax (Global)",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.minimax.io/v1",
+      "note": "MiniMax 国际站",
+      "keysURL": "https://platform.minimax.io/user-center/basic-information/interface-key"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "xAI Grok",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.x.ai/v1",
+      "keysURL": "https://console.x.ai"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "Mistral",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.mistral.ai/v1",
+      "keysURL": "https://console.mistral.ai/api-keys"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "StepFun 阶跃星辰",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.stepfun.com/v1",
+      "keysURL": "https://platform.stepfun.com/interface-key"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "火山方舟 Ark",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://ark.cn-beijing.volces.com/api/v3",
+      "note": "按量计费；Coding Plan 用 https://ark.cn-beijing.volces.com/api/coding/v3",
+      "keysURL": "https://ark.volcengine.com/region:cn-beijing/apikey"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "腾讯混元",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.hunyuan.cloud.tencent.com/v1",
+      "keysURL": "https://console.cloud.tencent.com/hunyuan/api-key"
+    },
+    {
+      "kind": "providers",
+      "group": "厂商直连",
+      "name": "LongCat 美团",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.longcat.chat/openai/v1",
+      "note": "LongCat API 平台",
+      "keysURL": "https://longcat.chat/platform/api_keys"
+    }
+  ]
+}

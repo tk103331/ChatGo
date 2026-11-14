@@ -12,6 +12,7 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/config"
+	"chatgo/internal/plugin"
 	"chatgo/internal/shellenv"
 
 	"chatgo/internal/ui/icons"
@@ -40,73 +41,6 @@ type acpForm struct {
 	disabled   bool
 }
 
-type acpCatalogEntry struct {
-	Name        string
-	Command     string
-	Args        []string
-	Description string
-	Homepage    string
-	// Env carries the extra environment an adapter needs — paseo's catalog
-	// entries set things like disabling a CLI's own auto-update, which
-	// otherwise races the app's own upgrade button.
-	Env map[string]string
-}
-
-// acpCatalog lists the ACP agents the app knows how to start, with the
-// command line each one's own documentation says speaks ACP — checked
-// against paseo's catalog (packages/app/src/data/acp-provider-catalog.ts):
-// a CLI started without its acp subcommand would open an interactive
-// session instead of the protocol.
-func acpCatalog() []acpCatalogEntry {
-	return []acpCatalogEntry{
-		{Name: "ClaudeCode", Command: "npx", Args: []string{"-y", "@zed-industries/claude-code-acp"}, Description: "Anthropic Claude Code", Homepage: "https://claude.com"},
-		{Name: "ClaudeAgentSDK", Command: "npx", Args: []string{"-y", "@zed-industries/claude-agent-acp"}, Description: "Claude Agent SDK via Zed 适配器", Homepage: "https://github.com/zed-industries/claude-agent-acp"},
-		{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}, Description: "OpenCode AI 编程助手", Homepage: "https://github.com/sst/opencode"},
-		{Name: "CodexCLI", Command: "npx", Args: []string{"-y", "@agentclientprotocol/codex-acp"}, Description: "OpenAI Codex CLI", Homepage: "https://github.com/openai/codex"},
-		{Name: "Cursor", Command: "cursor-agent", Args: []string{"acp"}, Description: "Cursor CLI Agent", Homepage: "https://cursor.com"},
-		{Name: "GeminiCLI", Command: "gemini", Args: []string{"--acp"}, Description: "Google Gemini CLI", Homepage: "https://github.com/google-gemini/gemini-cli"},
-		{Name: "KiroCLI", Command: "kiro-cli", Args: []string{"acp"}, Description: "AWS Kiro CLI", Homepage: "https://kiro.dev"},
-		{Name: "GitHubCopilot", Command: "copilot", Description: "GitHub Copilot CLI", Homepage: "https://github.com/features/copilot"},
-		{Name: "Goose", Command: "goose", Args: []string{"acp"}, Description: "Block Goose AI Agent", Homepage: "https://block.github.io/goose/"},
-		{Name: "QwenCode", Command: "qwen", Args: []string{"--acp"}, Description: "阿里通义灵码 Qwen Code", Homepage: "https://github.com/QwenLM/qwen-code"},
-		{Name: "KimiCLI", Command: "kimi", Args: []string{"acp"}, Description: "月之暗面 Kimi Code CLI", Homepage: "https://github.com/MoonshotAI/kimi-cli"},
-		{Name: "GLMAgent", Command: "npx", Args: []string{"-y", "glm-acp-agent"}, Description: "智谱 GLM Coding Plan ACP Agent（glm-5.3 系列）", Homepage: "https://github.com/stefandevo/glm-acp-agent"},
-		{Name: "Grok", Command: "grok", Args: []string{"agent", "stdio"}, Description: "xAI Grok Build（需 SuperGrok 或 X Premium+ 订阅）", Homepage: "https://docs.x.ai/build/overview"},
-		{Name: "Junie", Command: "junie", Args: []string{"--acp", "true"}, Description: "JetBrains Junie CLI", Homepage: "https://junie.jetbrains.com/docs/junie-cli-acp.html"},
-		{Name: "Kilo", Command: "kilo", Args: []string{"acp"}, Description: "Kilo 开源编程 Agent", Homepage: "https://kilo.ai/docs/code-with-ai/platforms/cli"},
-		{Name: "MiniMaxCode", Command: "npx", Args: []string{"-y", "-p", "@minimax-ai/code", "mcode", "acp"}, Description: "MiniMax Code 终端编程 Agent", Homepage: "https://agent.minimax.io"},
-		{Name: "DevinCLI", Command: "devin", Args: []string{"acp"}, Description: "Cognition Devin 终端版", Homepage: "https://cli.devin.ai"},
-		{Name: "Amp", Command: "amp-acp", Description: "Amp 前沿编程 Agent 的 ACP 包装", Homepage: "https://github.com/tao12345666333/amp-acp"},
-		{Name: "AugmentCode", Command: "npx", Args: []string{"-y", "@augmentcode/auggie", "--acp"}, Env: map[string]string{"AUGMENT_DISABLE_AUTO_UPDATE": "1"}, Description: "Augment Code Auggie CLI", Homepage: "https://www.augmentcode.com/"},
-		{Name: "TRAECLI", Command: "traecli", Args: []string{"acp", "serve"}, Description: "字节跳动 TRAE CLI", Homepage: "https://docs.trae.cn/cli_get-started-with-trae-cli"},
-		{Name: "CodebuddyCode", Command: "codebuddy", Args: []string{"--acp"}, Description: "腾讯云 CodeBuddy CLI", Homepage: "https://www.codebuddy.cn/cli/"},
-		{Name: "CortexCode", Command: "cortex", Args: []string{"acp", "serve"}, Description: "Snowflake Cortex Code", Homepage: "https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code-cli"},
-		{Name: "CodeWhale", Command: "codewhale", Args: []string{"serve", "--acp"}, Description: "CodeWhale 终端编程 Agent", Homepage: "https://codewhale.net/"},
-		{Name: "CrowCLI", Command: "crow-cli", Args: []string{"acp"}, Description: "Crow 极简 ACP 编程 Agent", Homepage: "https://crow-ai.dev/"},
-		{Name: "DeepAgents", Command: "npx", Args: []string{"-y", "deepagents-acp"}, Description: "LangChain DeepAgents", Homepage: "https://docs.langchain.com/oss/javascript/deepagents/overview"},
-		{Name: "DimCode", Command: "npx", Args: []string{"-y", "dimcode", "acp"}, Description: "DimCode 编程 Agent", Homepage: "https://dimcode.dev"},
-		{Name: "Dirac", Command: "npx", Args: []string{"-y", "dirac-cli", "--acp"}, Description: "Dirac 开源编程 Agent", Homepage: "https://dirac.run"},
-		{Name: "FastAgent", Command: "uvx", Args: []string{"--from", "fast-agent-acp", "fast-agent-acp", "-x"}, Description: "fast-agent 多后端编程 Agent", Homepage: "https://fast-agent.ai/acp/"},
-		{Name: "Hermes", Command: "hermes", Args: []string{"acp"}, Description: "Nous Research Hermes 自进化 Agent", Homepage: "https://hermes-agent.nousresearch.com"},
-		{Name: "MinionCode", Command: "uvx", Args: []string{"--from", "minion-code", "minion-code", "acp"}, Description: "Minion Code 编程助手", Homepage: "https://github.com/femto/minion-code"},
-		{Name: "MistralVibe", Command: "vibe-acp", Description: "Mistral Vibe 开源编程助手", Homepage: "https://github.com/mistralai/mistral-vibe"},
-		{Name: "Nova", Command: "npx", Args: []string{"-y", "@compass-ai/nova", "acp"}, Description: "Compass AI Nova", Homepage: "https://www.compassap.ai/portfolio/nova.html"},
-		{Name: "Poolside", Command: "pool", Args: []string{"acp"}, Description: "Poolside 编程 Agent", Homepage: "https://docs.poolside.ai/cli/pool"},
-		{Name: "Stakpak", Command: "stakpak", Args: []string{"acp"}, Description: "Stakpak 开源 Rust DevOps Agent", Homepage: "https://stakpak.dev/"},
-		{Name: "VTCode", Command: "vtcode", Args: []string{"acp"}, Env: map[string]string{"VT_ACP_ENABLED": "1"}, Description: "VT Code 开源编程 Agent", Homepage: "https://github.com/vinhnx/VTCode"},
-		{Name: "Autohand", Command: "npx", Args: []string{"-y", "@autohandai/autohand-acp"}, Description: "Autohand Code", Homepage: "https://www.autohand.ai/cli/"},
-		{Name: "PiG", Command: "pig-acp", Description: "PiG — Pi 的 Go 实现（需先 pig install npm:@pi-in-go/pigpen-acp 并 pig acp install 构建 pig-acp）", Homepage: "https://pi-in-go.dev"},
-		{Name: "Cline", Command: "npx", Args: []string{"-y", "cline", "--acp"}, Description: "Cline AI 助手", Homepage: "https://cline.bot"},
-		{Name: "Dockercagent", Command: "cagent", Description: "Docker cagent", Homepage: "https://github.com/docker/cagent"},
-		{Name: "FactoryDroid", Command: "droid", Args: []string{"exec", "--output-format", "acp-daemon"}, Env: map[string]string{"DROID_DISABLE_AUTO_UPDATE": "true", "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"}, Description: "Factory Droid", Homepage: "https://factory.ai"},
-		{Name: "OpenHands", Command: "openhands", Args: []string{"acp"}, Description: "OpenHands AI Agent", Homepage: "https://docs.openhands.dev"},
-		{Name: "QoderCLI", Command: "npx", Args: []string{"-y", "@qoder-ai/qodercli", "--acp"}, Description: "Qoder CLI", Homepage: "https://docs.qoder.com/cli/acp"},
-		{Name: "PiAgent", Command: "npx", Args: []string{"-y", "pi-acp"}, Description: "Pi coding agent ACP 适配器", Homepage: "https://github.com/victor-software-house/pi-acp"},
-		{Name: "DeepSeekHarness", Command: "npx", Args: []string{"-y", "deepseek-acp"}, Description: "DeepSeek Harness ACP 适配器", Homepage: "https://github.com/xintaofei/deepseek-acp"},
-		{Name: "OhMyPi", Command: "omp", Args: []string{"acp"}, Description: "Oh My Pi coding agent", Homepage: "https://omp.sh"},
-	}
-}
-
 func (cw *ChatWindow) hasACPConn(name string) bool {
 	for _, a := range cw.cfg.ACPAgents {
 		if strings.EqualFold(a.Name, name) {
@@ -122,7 +56,7 @@ func (cw *ChatWindow) hasACPConn(name string) bool {
 // no install either. Anything else has to be installed first, so that
 // connection starts disabled with a hint instead of a warm-up that is
 // bound to fail.
-func acpEntryAutoStarts(e acpCatalogEntry) bool {
+func acpEntryAutoStarts(e plugin.ACPPresetEntry) bool {
 	base := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(e.Command, ".exe"), ".cmd"))
 	switch base {
 	case "npx", "uvx":
@@ -132,7 +66,7 @@ func acpEntryAutoStarts(e acpCatalogEntry) bool {
 	return ok
 }
 
-func (cw *ChatWindow) addACPFromCatalog(e acpCatalogEntry) {
+func (cw *ChatWindow) addACPFromCatalog(e plugin.ACPPresetEntry) {
 	if cw.hasACPConn(e.Name) {
 		cw.toast("已存在同名连接", mcore.SeverityInfo)
 		return
@@ -161,64 +95,81 @@ func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	kit.Dialog(c, &cw.acpCatalogOpen, kit.DialogOptions{
-		Title: "从目录添加 Agent",
+		Title: "从插件添加 Agent",
 		Width: 560,
 	}, func() {
 		mgo.Column(c).Gap(u * 2).Children(func() {
 			in := kit.SearchInput(c, &cw.acpCatalogQuery, kit.SearchInputOptions{Placeholder: "搜索 Agent", Label: "搜索"})
 			in.Element.FillWidth()
 			q := strings.ToLower(strings.TrimSpace(cw.acpCatalogQuery))
-			var items []acpCatalogEntry
-			for _, e := range acpCatalog() {
-				if q != "" && !strings.Contains(strings.ToLower(e.Name), q) && !strings.Contains(strings.ToLower(e.Description), q) {
-					continue
+			entries := cw.pluginACPCatalog()
+			if q != "" {
+				var kept []plugin.ACPPresetEntry
+				for _, e := range entries {
+					if !strings.Contains(strings.ToLower(e.Name), q) {
+						continue
+					}
+					kept = append(kept, e)
 				}
-				items = append(items, e)
+				entries = kept
 			}
-			if len(items) == 0 {
-				mgo.Text(c, "没有匹配的 Agent").TextColor(k.TextMuted)
+			if len(entries) == 0 {
+				mgo.Text(c, "没有匹配的 Agent。目录由内置插件提供，可在插件设置中启用。").TextColor(k.TextMuted)
 				return
 			}
+			groups := plugin.CatalogGroupOrder(entries, func(e plugin.ACPPresetEntry) string { return e.Group })
 			mgo.Scroll(c).MaxHeight(400).Children(func() {
-				mgo.Column(c).Gap(u).Children(func() {
-					for _, e := range items {
-						e := e
-						mgo.Row(c).Key(e.Name).FillWidth().Gap(u*2).AlignItems(mgo.Center).
-							Padding(u, u*2).Radius(mtheme.CardRadius).Border(mtheme.BorderWidth, k.Border).
-							Children(func() {
-								acpIcon(c, e.Name, 24, 24)
-								mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
-									mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-										mgo.Text(c, e.Name).FontWeight(600).SingleLine()
-										// What adding will do: an npx or uvx
-										// entry runs right away; anything
-										// else names an install the user
-										// does first.
-										if acpEntryAutoStarts(e) {
-											mgo.Text(c, "自动拉取").FontSize(caption).TextColor(k.Success)
-										} else {
-											mgo.Text(c, "需先安装 CLI").FontSize(caption).TextColor(k.TextMuted)
-										}
+				mgo.Column(c).Gap(u * 2).Children(func() {
+					for _, group := range groups {
+						mgo.Text(c, group).FontSize(caption).FontWeight(600).TextColor(k.TextMuted)
+						for _, e := range entries {
+							if e.Group != group {
+								continue
+							}
+							e := e
+							mgo.Row(c).Key(e.Name).FillWidth().Gap(u*2).AlignItems(mgo.Center).
+								Padding(u, u*2).Radius(mtheme.CardRadius).Border(mtheme.BorderWidth, k.Border).
+								Children(func() {
+									acpIcon(c, e.Name, 24, 24)
+									mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
+										mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+											mgo.Text(c, e.Name).FontWeight(600).SingleLine()
+											// What adding will do: an npx or uvx
+											// entry runs right away; anything
+											// else names an install the user
+											// does first.
+											if acpEntryAutoStarts(e) {
+												mgo.Text(c, "自动拉取").FontSize(caption).TextColor(k.Success)
+											} else {
+												mgo.Text(c, "需先安装 CLI").FontSize(caption).TextColor(k.TextMuted)
+											}
+										})
+										cmdline := e.Command + " " + strings.Join(e.Args, " ")
+										mgo.Text(c, cmdline).
+											Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).SingleLine().Ellipsis("…").
+											Tooltip(cmdline)
 									})
-									cmdline := e.Command + " " + strings.Join(e.Args, " ")
-									mgo.Text(c, cmdline).
-										Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).SingleLine().Ellipsis("…").
-										Tooltip(cmdline)
-									if e.Description != "" {
-										mgo.Text(c, e.Description).FontSize(caption).TextColor(k.TextMuted).MaxLines(1)
+									if cw.hasACPConn(e.Name) {
+										mgo.Text(c, "已添加").FontSize(caption).TextColor(k.Success).Shrink(0)
+									} else if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+										cw.addACPFromCatalog(e)
 									}
 								})
-								if cw.hasACPConn(e.Name) {
-									mgo.Text(c, "已添加").FontSize(caption).TextColor(k.Success).Shrink(0)
-								} else if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
-									cw.addACPFromCatalog(e)
-								}
-							})
+						}
 					}
 				})
 			})
 		})
 	})
+}
+
+// pluginACPCatalog reads the ACP suggestions from the plugin manager, nil
+// when no manager is up (tests without plugins).
+func (cw *ChatWindow) pluginACPCatalog() []plugin.ACPPresetEntry {
+	if cw.plugins == nil {
+		return nil
+	}
+	return cw.plugins.ACPCatalog()
 }
 
 func (cw *ChatWindow) addNewACP() {

@@ -1,0 +1,104 @@
+{
+  "id": "provider-catalog-relays",
+  "name": "模型中转目录",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "聚合中转与开源推理平台的预置目录（OpenRouter、SiliconFlow、Groq 等）",
+  "catalog": [
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "OpenRouter",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://openrouter.ai/api/v1",
+      "note": "一家密钥聚合各家模型",
+      "keysURL": "https://openrouter.ai/keys"
+    },
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "SiliconFlow 硅基流动",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.siliconflow.cn/v1",
+      "note": "国内站；国际站为 api.siliconflow.com",
+      "keysURL": "https://cloud.siliconflow.cn/account/ak"
+    },
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "Together AI",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.together.xyz/v1",
+      "keysURL": "https://api.together.ai/settings/api-keys"
+    },
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "Fireworks",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.fireworks.ai/inference/v1",
+      "keysURL": "https://app.fireworks.ai/settings/users/api-keys"
+    },
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "Groq",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.groq.com/openai/v1",
+      "note": "高速推理",
+      "keysURL": "https://console.groq.com/keys"
+    },
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "NVIDIA NIM",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://integrate.api.nvidia.com/v1",
+      "keysURL": "https://build.nvidia.com/settings/api-keys"
+    },
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "ModelScope 魔搭",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api-inference.modelscope.cn/v1",
+      "note": "魔搭 API-Inference，Access Token 作密钥",
+      "keysURL": "https://modelscope.cn/my/myaccesstoken"
+    },
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "302.AI",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://api.302.ai/v1",
+      "keysURL": "https://302.ai/api-keys/list"
+    },
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "AiHubMix",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://aihubmix.com/v1",
+      "keysURL": "https://console.aihubmix.com/token"
+    },
+    {
+      "kind": "providers",
+      "group": "聚合中转",
+      "name": "OpenCode Zen",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "https://opencode.ai/zen/v1",
+      "note": "免费模型无需密钥",
+      "keysURL": "https://opencode.ai/auth"
+    }
+  ]
+}

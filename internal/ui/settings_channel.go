@@ -255,7 +255,7 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 				mgo.Text(c, "ACP").
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Row(c).Gap(u).Children(func() {
-					if kit.Button(c, "从目录添加", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
+					if kit.Button(c, "从插件添加", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
 						cw.acpCatalogOpen = true
 					}
 					if kit.Button(c, "新增", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("plus")}).Clicked() {
@@ -264,7 +264,7 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 				})
 			})
 			if len(cw.cfg.ACPAgents) == 0 {
-				mgo.Text(c, "暂无连接，从目录添加或手动新增").TextColor(k.TextMuted).
+				mgo.Text(c, "暂无连接，从插件添加或手动新增").TextColor(k.TextMuted).
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize))
 			}
 			for i := range cw.cfg.ACPAgents {

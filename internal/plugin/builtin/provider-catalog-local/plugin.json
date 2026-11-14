@@ -1,0 +1,44 @@
+{
+  "id": "provider-catalog-local",
+  "name": "本地模型目录",
+  "version": "1.0.0",
+  "author": "ChatGo",
+  "description": "本地推理服务的预置目录（Ollama、LM Studio、vLLM 等）",
+  "catalog": [
+    {
+      "kind": "providers",
+      "group": "本地模型",
+      "name": "Ollama",
+      "type": "ollama",
+      "baseURL": "http://localhost:11434",
+      "note": "本地模型服务"
+    },
+    {
+      "kind": "providers",
+      "group": "本地模型",
+      "name": "LM Studio",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "http://localhost:1234/v1",
+      "note": "本地服务器，默认端口 1234"
+    },
+    {
+      "kind": "providers",
+      "group": "本地模型",
+      "name": "vLLM",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "http://localhost:8000/v1",
+      "note": "本地推理服务器，默认端口 8000"
+    },
+    {
+      "kind": "providers",
+      "group": "本地模型",
+      "name": "LM Engine",
+      "type": "custom",
+      "apiType": "openai",
+      "baseURL": "http://localhost:8000/v1",
+      "note": "MLX 本地推理，默认端口 8000"
+    }
+  ]
+}

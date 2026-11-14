@@ -273,17 +273,26 @@ func stringsAt(item map[string]any, ptr string) []string {
 	if !ok {
 		return nil
 	}
-	list, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(list))
-	for _, x := range list {
-		if s, ok := x.(string); ok {
-			out = append(out, s)
+	switch x := v.(type) {
+	case []any:
+		out := make([]string, 0, len(x))
+		for _, s := range x {
+			if str, ok := s.(string); ok {
+				out = append(out, str)
+			}
 		}
+		return out
+	case map[string]any:
+		// An object as a model list — OpenCode's providers hold
+		// {"model-id": {}} — reads as its keys.
+		keys := make([]string, 0, len(x))
+		for k := range x {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		return keys
 	}
-	return out
+	return nil
 }
 
 func mapAt(item map[string]any, ptr string) map[string]string {

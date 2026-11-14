@@ -21,50 +21,6 @@ type ImportResult struct {
 // skill directory cannot fill the disk unnoticed.
 const maxSkillFileBytes = 16 << 20
 
-// Import copies the named skills of a source into ~/.chatgo/skills. A skill
-// whose directory already exists is skipped unless overwrite is set, so an
-// import never silently replaces a local edit.
-func Import(src Source, names []string, overwrite bool) (ImportResult, error) {
-	var result ImportResult
-	dest, err := HomeDir()
-	if err != nil {
-		return result, err
-	}
-	if err := os.MkdirAll(dest, 0o755); err != nil {
-		return result, err
-	}
-	wanted := make(map[string]bool, len(names))
-	for _, n := range names {
-		wanted[n] = true
-	}
-	for _, found := range Discover(src) {
-		if len(wanted) > 0 && !wanted[found.Name] {
-			continue
-		}
-		target := filepath.Join(dest, found.Name)
-		if _, err := os.Stat(target); err == nil {
-			if !overwrite {
-				result.Skipped = append(result.Skipped, found.Name)
-				continue
-			}
-			if err := os.RemoveAll(target); err != nil {
-				result.Failed = append(result.Failed, found.Name)
-				result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", found.Name, err))
-				continue
-			}
-		}
-		if err := copyTree(found.Dir, target); err != nil {
-			// A partial copy would look like a broken skill, so remove it.
-			_ = os.RemoveAll(target)
-			result.Failed = append(result.Failed, found.Name)
-			result.Errors = append(result.Errors, fmt.Sprintf("%s: %v", found.Name, err))
-			continue
-		}
-		result.Imported = append(result.Imported, found.Name)
-	}
-	return result, nil
-}
-
 // copyTree copies a skill directory, skipping hidden entries and symlinks: a
 // skill is plain files, and following links could escape the source tree.
 func copyTree(src, dst string) error {
