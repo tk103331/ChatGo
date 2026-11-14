@@ -31,6 +31,13 @@ type pluginUIState struct {
 	filter string
 	query  string
 
+	// installable holds the catalog entries not installed yet, its query
+	// and the id of the entry a download is running for.
+	installQuery    string
+	installing      string
+	catalogErr      string
+	showInstallable bool
+
 	settings    map[string]string
 	settingsFor string
 	list        mgo.ListState

@@ -1,22 +1,37 @@
 package ui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"chatgo/internal/plugin"
 )
 
-// catalogTestWindow is a window with the plugin manager and the built-in
-// catalogs enabled, the way the app runs.
+// catalogTestWindow is a window with the plugin manager and the shipped
+// catalog plugins registered from the source tree, the way the app has
+// them after a user installed the ones they wanted. Tests read the
+// sources directly — the release download path is exercised by
+// TestInstallCatalogDownloadsAndVerifies instead.
 func catalogTestWindow(t *testing.T) *ChatWindow {
 	t.Helper()
 	cw := testWindow()
 	m := plugin.NewManager(cw.cfg)
 	m.LoadAll()
-	m.EnsureBuiltin()
+	m.RegisterCatalogForTest(catalogSourceDir(t))
 	cw.plugins = m
 	return cw
+}
+
+// catalogSourceDir is the shipped plugin sources inside the repository.
+func catalogSourceDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join("..", "..", "plugins", "catalog")
+	if _, err := os.Stat(dir); err != nil {
+		t.Skip("the catalog sources are not present")
+	}
+	return dir
 }
 
 // ensureBuiltinCatalog turns a built-in catalog plugin on, so a test sees

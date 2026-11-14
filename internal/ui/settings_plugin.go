@@ -43,21 +43,18 @@ func (cw *ChatWindow) pluginsTab(c *mgo.Context) {
 		})
 		if len(infos) > 0 && len(visible) == 0 {
 			mgo.Text(c, "没有符合过滤条件的插件").TextColor(k.TextMuted)
-			return
-		}
-		if len(infos) == 0 {
-			mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u).Children(func() {
-				mgo.Icon(c, icons.Must("layout-grid")).Size(40, 40).TextColor(k.TextMuted)
-				mgo.Text(c, "还没有插件").TextColor(k.TextMuted)
-				mgo.Text(c, "支持目录、ZIP、Git 与 npm 四种来源").FontSize(small).TextColor(k.TextMuted)
+		} else {
+			mgo.Row(c).Grow(1).MinHeight(0).Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
+				cw.pluginList(c, visible)
+				mgo.Divider(c)
+				cw.pluginDetail(c, visible)
 			})
-			return
 		}
-		mgo.Row(c).Grow(1).MinHeight(0).Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-			cw.pluginList(c, visible)
-			mgo.Divider(c)
-			cw.pluginDetail(c, visible)
-		})
+		// The installable catalog: the shipped plugins the release offers
+		// as zips — provider presets, ACP agents, importers. Installing one
+		// downloads its zip from the GitHub release; an entry already
+		// installed shows its state instead of a button.
+		cw.pluginInstallableSection(c)
 	})
 	cw.pluginInstallDialog(c)
 }

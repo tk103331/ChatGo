@@ -38,7 +38,7 @@ func importTestHome(t *testing.T) string {
 }
 
 // importTestWindow is a test window with the plugin manager up and the
-// built-in importer plugins enabled, so a scan finds the temp home's
+// shipped importer plugins enabled, so a scan finds the temp home's
 // agent configurations the way the app's would.
 func importTestWindow(t *testing.T) *ChatWindow {
 	t.Helper()
@@ -46,19 +46,7 @@ func importTestWindow(t *testing.T) *ChatWindow {
 	cfg := cw.cfg
 	m := plugin.NewManager(cfg)
 	m.LoadAll()
-	m.EnsureBuiltin()
-	// The built-in config importers must be on for the scan; they came
-	// enabled with the app, but an earlier test may have turned one off.
-	for _, id := range []string{
-		"importer-claude-code-config", "importer-opencode-config",
-		"importer-claude-code-skills",
-	} {
-		if inst, ok := m.Info(id); !ok || inst.Status == plugin.StatusDisabled {
-			if err := m.SetEnabled(id, true, nil, nil); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
+	m.RegisterCatalogForTest(catalogSourceDir(t))
 	cw.plugins = m
 	return cw
 }

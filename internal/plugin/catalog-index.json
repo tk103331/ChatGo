@@ -1,0 +1,690 @@
+[
+  {
+    "id": "acp-amp",
+    "name": "Amp",
+    "version": "1.0.0",
+    "description": "「Amp」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "83161686c5091486478817b59f5dc2316bc6c890d0e1305f3e100b8359372fb4"
+  },
+  {
+    "id": "acp-augmentcode",
+    "name": "AugmentCode",
+    "version": "1.0.0",
+    "description": "「AugmentCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "33e55a5369b71d34e8e408cb02988d9116508d6f7416ffb775af1b39a9a603a0"
+  },
+  {
+    "id": "acp-autohand",
+    "name": "Autohand",
+    "version": "1.0.0",
+    "description": "「Autohand」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "4e69e18a9ad57a6cda2b6ac7b22387f5d6c3189350e2f471afc7bc99b2bb289f"
+  },
+  {
+    "id": "acp-claudeagentsdk",
+    "name": "ClaudeAgentSDK",
+    "version": "1.0.0",
+    "description": "「ClaudeAgentSDK」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "baeb45279e837bb6aa8b1077c66a779cd526c7864d37d80c407aad59f393957a"
+  },
+  {
+    "id": "acp-claudecode",
+    "name": "ClaudeCode",
+    "version": "1.0.0",
+    "description": "「ClaudeCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "bb630883614905ea65986f0bfda9262d1ddbfc7bd9a6d73d0410364cf83867d4"
+  },
+  {
+    "id": "acp-cline",
+    "name": "Cline",
+    "version": "1.0.0",
+    "description": "「Cline」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "fb2490079fd81320d0c326bec9c8b32549e32ad471442dde8e28801f750ba7b4"
+  },
+  {
+    "id": "acp-codebuddycode",
+    "name": "CodebuddyCode",
+    "version": "1.0.0",
+    "description": "「CodebuddyCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "16ffa7dda9352915fcd38be98d6b628717676545059230533f2381db4c43982a"
+  },
+  {
+    "id": "acp-codewhale",
+    "name": "CodeWhale",
+    "version": "1.0.0",
+    "description": "「CodeWhale」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "038510b058cbbecc2cc9569ebdce3769d3183753a24964b8bef3dd7f5ae6a016"
+  },
+  {
+    "id": "acp-codexcli",
+    "name": "CodexCLI",
+    "version": "1.0.0",
+    "description": "「CodexCLI」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "29368e1593dbf94aff3e00dbcf72449026d65b4a77f428fe94230ccb35a49756"
+  },
+  {
+    "id": "acp-cortexcode",
+    "name": "CortexCode",
+    "version": "1.0.0",
+    "description": "「CortexCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "a83e50d6797fa4a0220f21dd62823bf9176f2ec5644c73c0b8f2e8a0df6f8df4"
+  },
+  {
+    "id": "acp-crowcli",
+    "name": "CrowCLI",
+    "version": "1.0.0",
+    "description": "「CrowCLI」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "003cf01f96eea19d6204c3ba2893c982976ee3999b59ec2ffc3ac75f43ed178e"
+  },
+  {
+    "id": "acp-cursor",
+    "name": "Cursor",
+    "version": "1.0.0",
+    "description": "「Cursor」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "7bb72fa61f034bf6ece93c74fb888272f28238883b596fbf77e2abc14bd48e66"
+  },
+  {
+    "id": "acp-deepagents",
+    "name": "DeepAgents",
+    "version": "1.0.0",
+    "description": "「DeepAgents」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "fe5958aa828f9011e6b3a9fff4a8618f8712462562d69d7ec1f1507ffe7cb83a"
+  },
+  {
+    "id": "acp-deepseekharness",
+    "name": "DeepSeekHarness",
+    "version": "1.0.0",
+    "description": "「DeepSeekHarness」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "4d33cfc9a874aee8ff8831827ae5c1725386a7dcc2aa0adb335bd78f0d726955"
+  },
+  {
+    "id": "acp-devincli",
+    "name": "DevinCLI",
+    "version": "1.0.0",
+    "description": "「DevinCLI」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "ce06c537528b4d0230677310a4d559506c8bd7f78de2af93b551e0cbb0120b6a"
+  },
+  {
+    "id": "acp-dimcode",
+    "name": "DimCode",
+    "version": "1.0.0",
+    "description": "「DimCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "184d984de525b41f76c93c2d9f30f40b236ee4b47e31ecc3b4487a6f3f3a6765"
+  },
+  {
+    "id": "acp-dirac",
+    "name": "Dirac",
+    "version": "1.0.0",
+    "description": "「Dirac」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "1c8f2d9d27849c300c6d1e4b8c2667276e7b6559676291b2b7f8664a13511687"
+  },
+  {
+    "id": "acp-dockercagent",
+    "name": "Dockercagent",
+    "version": "1.0.0",
+    "description": "「Dockercagent」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "44548cb6cc312ffc7cd392679b62436f9b7b14e500f4e874f7244e710939dbb9"
+  },
+  {
+    "id": "acp-factorydroid",
+    "name": "FactoryDroid",
+    "version": "1.0.0",
+    "description": "「FactoryDroid」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "317fb00b9f353ff27925a3de1f03a8ff965ae08b4de6b3f5c8d3fe15b7f445f6"
+  },
+  {
+    "id": "acp-fastagent",
+    "name": "FastAgent",
+    "version": "1.0.0",
+    "description": "「FastAgent」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "f1d23455039e2b0207c60bfde87342ee7473985aaa9bb3dcb71f1bdf0fbfb53a"
+  },
+  {
+    "id": "acp-geminicli",
+    "name": "GeminiCLI",
+    "version": "1.0.0",
+    "description": "「GeminiCLI」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "6dd7764e77119ef69db8afa4dff0667a03db21ac524a5c467d26b333755940a1"
+  },
+  {
+    "id": "acp-githubcopilot",
+    "name": "GitHubCopilot",
+    "version": "1.0.0",
+    "description": "「GitHubCopilot」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "934c8d563d08273cd42d72759b796403b6e041de52e59304ff7379a34cddd1c9"
+  },
+  {
+    "id": "acp-glmagent",
+    "name": "GLMAgent",
+    "version": "1.0.0",
+    "description": "「GLMAgent」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "2a50cc7e8bf89d0215621e2ef1d0284238660269c697e68b57082c53df31c0ee"
+  },
+  {
+    "id": "acp-goose",
+    "name": "Goose",
+    "version": "1.0.0",
+    "description": "「Goose」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "145ff1c63b8f5f88d42abe45fbe7d7f6fcebb4a4083ccbd79fd96447dec92453"
+  },
+  {
+    "id": "acp-grok",
+    "name": "Grok",
+    "version": "1.0.0",
+    "description": "「Grok」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "4f1f117bae4774206088ef9fbfcb065324e7704fb27aadc6f04668b201144dd1"
+  },
+  {
+    "id": "acp-hermes",
+    "name": "Hermes",
+    "version": "1.0.0",
+    "description": "「Hermes」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "891c986291991d33d93eb0119be90044789594da2ebabbffc869d4e6f850a247"
+  },
+  {
+    "id": "acp-junie",
+    "name": "Junie",
+    "version": "1.0.0",
+    "description": "「Junie」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "b972df09a2641479fa1b2b48121c073c028a3f326cf402372f686f783fae3989"
+  },
+  {
+    "id": "acp-kilo",
+    "name": "Kilo",
+    "version": "1.0.0",
+    "description": "「Kilo」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "6e1d0e19aaf163a52855aa5d4e1f87854340b8487767069768e6e7a8c8e23bdf"
+  },
+  {
+    "id": "acp-kimicli",
+    "name": "KimiCLI",
+    "version": "1.0.0",
+    "description": "「KimiCLI」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "c0fb75716dc04dd0a4945e8d6fa19a4254ac70ab9403670f5b941fcd8a9a1267"
+  },
+  {
+    "id": "acp-kirocli",
+    "name": "KiroCLI",
+    "version": "1.0.0",
+    "description": "「KiroCLI」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "3f502d95aa817150dc0d5a552baf04db4ca6cccafef8e8c89622497a8cc97e22"
+  },
+  {
+    "id": "acp-minimaxcode",
+    "name": "MiniMaxCode",
+    "version": "1.0.0",
+    "description": "「MiniMaxCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "05e828f7bd31f121937957796b5c8e9b8b06c5e0c3d29a20677472436a8f8a9b"
+  },
+  {
+    "id": "acp-minioncode",
+    "name": "MinionCode",
+    "version": "1.0.0",
+    "description": "「MinionCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "a03524c436711434bc91c5d749a9cab9c2dbdf7dd9fcc8769527351ee0947d5b"
+  },
+  {
+    "id": "acp-mistralvibe",
+    "name": "MistralVibe",
+    "version": "1.0.0",
+    "description": "「MistralVibe」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "5826402f6e6bcc65a8406ba16a75231854209f33094c219d7f4f55825617c78e"
+  },
+  {
+    "id": "acp-nova",
+    "name": "Nova",
+    "version": "1.0.0",
+    "description": "「Nova」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "28266f14e05286b2780068fc4ec28884198ef4023918a8c41f61a86dd47bf6b9"
+  },
+  {
+    "id": "acp-ohmypi",
+    "name": "OhMyPi",
+    "version": "1.0.0",
+    "description": "「OhMyPi」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "3983e9be75d7fb296d87f0d1f977010fb5d92b33eb30998117a17952a87fb875"
+  },
+  {
+    "id": "acp-opencode",
+    "name": "OpenCode",
+    "version": "1.0.0",
+    "description": "「OpenCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "c07fdf3c5eb5fa2508ae75b27af2f144ea2b9f09fcda04d99754e5e7a444955d"
+  },
+  {
+    "id": "acp-openhands",
+    "name": "OpenHands",
+    "version": "1.0.0",
+    "description": "「OpenHands」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "ab7c95e166158c640faac87b59538eb847e47a46f77b8ae023e40f2db53fcdb7"
+  },
+  {
+    "id": "acp-piagent",
+    "name": "PiAgent",
+    "version": "1.0.0",
+    "description": "「PiAgent」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "0f573dc4f9d918de0b41a784f06698809d30b8fef71879a3f68911d4d0ed292b"
+  },
+  {
+    "id": "acp-pig",
+    "name": "PiG",
+    "version": "1.0.0",
+    "description": "「PiG」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "47deb50ba97ac0904c323cc62ae68b658029abb7829052d783ea07fabaf094f7"
+  },
+  {
+    "id": "acp-poolside",
+    "name": "Poolside",
+    "version": "1.0.0",
+    "description": "「Poolside」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "acd30962dfeec557f479ce852672857f6da3ad36b3fbcf7f5806ef6350f15456"
+  },
+  {
+    "id": "acp-qodercli",
+    "name": "QoderCLI",
+    "version": "1.0.0",
+    "description": "「QoderCLI」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "c70440e541d19d35be1237bb1d14c0c5ece59162070f18eabcd7e717d5fe3177"
+  },
+  {
+    "id": "acp-qwencode",
+    "name": "QwenCode",
+    "version": "1.0.0",
+    "description": "「QwenCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "b7af7df415aa01be01d0ede2946b16de5dce0040627114b3f0a7771fdbe60bad"
+  },
+  {
+    "id": "acp-stakpak",
+    "name": "Stakpak",
+    "version": "1.0.0",
+    "description": "「Stakpak」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "57073115b608cd77398364c64204eef396a7d9b3676a9e20149f18e10eb4716c"
+  },
+  {
+    "id": "acp-traecli",
+    "name": "TRAECLI",
+    "version": "1.0.0",
+    "description": "「TRAECLI」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "1b7f9e74137eb4d486ce50560c9c78f7f8bdfe1974ba2a3b49fc7b77b2d0c7c3"
+  },
+  {
+    "id": "acp-vtcode",
+    "name": "VTCode",
+    "version": "1.0.0",
+    "description": "「VTCode」ACP Agent 目录条目",
+    "kind": "catalog-acp",
+    "sha256": "96a2822e629fead18a5aa3081e67ceada14ed1ad4255a005a6d4bf0a2b1028ad"
+  },
+  {
+    "id": "importer-agents-shared-skills",
+    "name": "共享 Agents Skills 导入",
+    "version": "1.0.0",
+    "description": "从共享目录 ~/.agents/skills 导入 Skills",
+    "kind": "importers",
+    "sha256": "b2b57f9e1d4a624fb0f49959dadde51c0efb5d23c1b5e247bfa60efd62ed3e7a"
+  },
+  {
+    "id": "importer-claude-code-config",
+    "name": "Claude Code 配置导入",
+    "version": "1.0.0",
+    "description": "从 Claude Code 的配置导入 MCP 服务器与模型 Provider",
+    "kind": "importers",
+    "sha256": "d0b3939f2e7cdb809a306b0d48f82074fb60af077178a77faa854f34bec1c347"
+  },
+  {
+    "id": "importer-claude-code-skills",
+    "name": "Claude Code Skills 导入",
+    "version": "1.0.0",
+    "description": "从 Claude Code 的 ~/.claude/skills 导入 Skills",
+    "kind": "importers",
+    "sha256": "70face82a80c4e60a6d4016afd697b3c2eb34790530081f2be8fd8e1f3c6642c"
+  },
+  {
+    "id": "importer-codex-config",
+    "name": "Codex 配置导入",
+    "version": "1.0.0",
+    "description": "从 Codex 的 config.toml 导入 MCP 服务器与模型 Provider",
+    "kind": "importers",
+    "sha256": "129184e2901c384c64ca6fd09afedb268da3f0abfcfd97bf23d7374568439950"
+  },
+  {
+    "id": "importer-codex-skills",
+    "name": "Codex Skills 导入",
+    "version": "1.0.0",
+    "description": "从 Codex 的 ~/.codex/skill(s) 导入 Skills",
+    "kind": "importers",
+    "sha256": "d7004fb294e0e508454ca435e7c247be0a14ced1f4b65a5ccf8f6fdc3e3fd053"
+  },
+  {
+    "id": "importer-cursor-config",
+    "name": "Cursor 配置导入",
+    "version": "1.0.0",
+    "description": "从 Cursor 的 mcp.json 导入 MCP 服务器",
+    "kind": "importers",
+    "sha256": "228012385f5541115dbb87c3de828183c107fe6d4bbfbfdcc493d01ed679e68f"
+  },
+  {
+    "id": "importer-gemini-cli-config",
+    "name": "Gemini CLI 配置导入",
+    "version": "1.0.0",
+    "description": "从 Gemini CLI 的 settings.json 导入 MCP 服务器",
+    "kind": "importers",
+    "sha256": "0921a638d5e3304598a6c45f8a95cf24eef7488b470cd027f0fdc05fe91eaa8c"
+  },
+  {
+    "id": "importer-opencode-config",
+    "name": "OpenCode 配置导入",
+    "version": "1.0.0",
+    "description": "从 OpenCode 的配置导入 MCP 服务器与模型 Provider",
+    "kind": "importers",
+    "sha256": "8ba246642b6296660b0abd8f8ff1ca54d3d2c3be4575f89db55d9435ca1d6a5a"
+  },
+  {
+    "id": "importer-opencode-skills",
+    "name": "OpenCode Skills 导入",
+    "version": "1.0.0",
+    "description": "从 OpenCode 的 ~/.opencode/skill(s) 导入 Skills",
+    "kind": "importers",
+    "sha256": "0a3c8e65a326d283dedfa621963561b359f095bf9f9ed5ab6113d780e63f5e79"
+  },
+  {
+    "id": "provider-302-ai",
+    "name": "302.AI",
+    "version": "1.0.0",
+    "description": "「302.AI」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "13d2926880f2ea2664a739d0d153449db9be6a477e252daf2e9f8554a9e8f99d"
+  },
+  {
+    "id": "provider-aihubmix",
+    "name": "AiHubMix",
+    "version": "1.0.0",
+    "description": "「AiHubMix」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "af5df3110eacd5e708f429b4096c5603a857e69142c5cf97dc467e5038d372c0"
+  },
+  {
+    "id": "provider-anthropic",
+    "name": "Anthropic",
+    "version": "1.0.0",
+    "description": "「Anthropic」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "fe082203470762d9656461a2a135b52a98d1448419deccf2a88c7d22841335b9"
+  },
+  {
+    "id": "provider-deepseek",
+    "name": "DeepSeek",
+    "version": "1.0.0",
+    "description": "「DeepSeek」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "da0fa20218d1b2a31b16143588a851e7ae8b1d543884d9b2155c4c32dc16b32a"
+  },
+  {
+    "id": "provider-fireworks",
+    "name": "Fireworks",
+    "version": "1.0.0",
+    "description": "「Fireworks」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "204ca774e728f918b6b8b7f71ea7783391916e569a95ced7eba6372890b85150"
+  },
+  {
+    "id": "provider-gemini",
+    "name": "Gemini",
+    "version": "1.0.0",
+    "description": "「Gemini」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "5aa1d651b6a98e83536eafcec292e653319f1e04850460a7892bfee35224b00b"
+  },
+  {
+    "id": "provider-groq",
+    "name": "Groq",
+    "version": "1.0.0",
+    "description": "高速推理",
+    "kind": "catalog-providers",
+    "sha256": "720bac690a9320317a1f59a1f099172c369bf302825db81b346ebafa0d3143b4"
+  },
+  {
+    "id": "provider-kimi",
+    "name": "Kimi",
+    "version": "1.0.0",
+    "description": "月之暗面 Moonshot",
+    "kind": "catalog-providers",
+    "sha256": "50b4942007a1364e020131b084f5b43c6ff85cb007b9e85de0e9989025189443"
+  },
+  {
+    "id": "provider-kimi-global",
+    "name": "Kimi (Global)",
+    "version": "1.0.0",
+    "description": "Kimi 国际站",
+    "kind": "catalog-providers",
+    "sha256": "151a75bc945bea658187c96b9522522302f634e2490d9b28543011f3d0d88520"
+  },
+  {
+    "id": "provider-lm-engine",
+    "name": "LM Engine",
+    "version": "1.0.0",
+    "description": "MLX 本地推理，默认端口 8000",
+    "kind": "catalog-providers",
+    "sha256": "7e2f0e55c7b5c0f83e8f9d56908f1ff69c391eff9dd90ef278f55ce003ec6e58"
+  },
+  {
+    "id": "provider-lm-studio",
+    "name": "LM Studio",
+    "version": "1.0.0",
+    "description": "本地服务器，默认端口 1234",
+    "kind": "catalog-providers",
+    "sha256": "e3485a7f0167a743646945f8ac925cc84fe5e36edabc90b92c57cf517dd81fb1"
+  },
+  {
+    "id": "provider-longcat",
+    "name": "LongCat 美团",
+    "version": "1.0.0",
+    "description": "LongCat API 平台",
+    "kind": "catalog-providers",
+    "sha256": "1b3e66b0f317d9264d2760a81158ba066f35c21bd91563b7cd4a8db5e9bb7854"
+  },
+  {
+    "id": "provider-minimax",
+    "name": "MiniMax",
+    "version": "1.0.0",
+    "description": "MiniMax 国内站",
+    "kind": "catalog-providers",
+    "sha256": "1c5519ce6b4409f42132f09f4a3f70fd0e3d854ba197834fa458333906a9bb26"
+  },
+  {
+    "id": "provider-minimax-global",
+    "name": "MiniMax (Global)",
+    "version": "1.0.0",
+    "description": "MiniMax 国际站",
+    "kind": "catalog-providers",
+    "sha256": "a53c1f3acd7e6e39e98dd8100137e300f6f9bfa91a60f41b22be836a95e4f4fa"
+  },
+  {
+    "id": "provider-mistral",
+    "name": "Mistral",
+    "version": "1.0.0",
+    "description": "「Mistral」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "e826b96f08a26535b0cc9e951585e44c547fb68c2fbe41ab34cb70ee3115cea9"
+  },
+  {
+    "id": "provider-modelscope",
+    "name": "ModelScope 魔搭",
+    "version": "1.0.0",
+    "description": "魔搭 API-Inference，Access Token 作密钥",
+    "kind": "catalog-providers",
+    "sha256": "aa634f6c66df25799875869c5e81774e60ce5c0674743c729fab7f4b23729c32"
+  },
+  {
+    "id": "provider-nvidia-nim",
+    "name": "NVIDIA NIM",
+    "version": "1.0.0",
+    "description": "「NVIDIA NIM」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "192684408a7fb6146ccb8ba374e406d943fd1ca4d6b74337042be9d8271994cb"
+  },
+  {
+    "id": "provider-ollama",
+    "name": "Ollama",
+    "version": "1.0.0",
+    "description": "本地模型服务",
+    "kind": "catalog-providers",
+    "sha256": "0c994b9037cfd0d501fe89a4d08514f554a298d878ff2e390694a596f3c7c970"
+  },
+  {
+    "id": "provider-openai",
+    "name": "OpenAI",
+    "version": "1.0.0",
+    "description": "「OpenAI」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "458932a4c3f206d6bc5d51b87183681b5a1a599f3f676ce5db720d6952c97d6d"
+  },
+  {
+    "id": "provider-opencode-zen",
+    "name": "OpenCode Zen",
+    "version": "1.0.0",
+    "description": "免费模型无需密钥",
+    "kind": "catalog-providers",
+    "sha256": "58893889bcf02346790d40fc74bf2ac19ce98afd947c24d7d1f7efc50b9e30af"
+  },
+  {
+    "id": "provider-openrouter",
+    "name": "OpenRouter",
+    "version": "1.0.0",
+    "description": "一家密钥聚合各家模型",
+    "kind": "catalog-providers",
+    "sha256": "963dca44723530b18b730682fd76fd98f6e938d797248432f3f6bde1727d6763"
+  },
+  {
+    "id": "provider-qwen",
+    "name": "Qwen",
+    "version": "1.0.0",
+    "description": "阿里云百炼 · 国内站",
+    "kind": "catalog-providers",
+    "sha256": "52e66f2801a7b06f50136c64b02b400e8c37666a6bb278f4ba3464db11aa4524"
+  },
+  {
+    "id": "provider-qwen-international",
+    "name": "Qwen International",
+    "version": "1.0.0",
+    "description": "DashScope 国际站",
+    "kind": "catalog-providers",
+    "sha256": "e8265bee6e005fa89393f00c58771f36d5aebd8f2fbe7f1b10eb086ae4967828"
+  },
+  {
+    "id": "provider-siliconflow",
+    "name": "SiliconFlow 硅基流动",
+    "version": "1.0.0",
+    "description": "国内站；国际站为 api.siliconflow.com",
+    "kind": "catalog-providers",
+    "sha256": "47a2a7fb70f63e6b86b09041ea5a130c114230da1907ff48579e655f87d8f065"
+  },
+  {
+    "id": "provider-stepfun",
+    "name": "StepFun 阶跃星辰",
+    "version": "1.0.0",
+    "description": "「StepFun 阶跃星辰」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "4eae02cd930f82d8833109f31a5900a3278d1a9132414ff4eccb1cad85f1160d"
+  },
+  {
+    "id": "provider-tencent-hunyuan",
+    "name": "腾讯混元",
+    "version": "1.0.0",
+    "description": "「腾讯混元」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "d5254b9c0fc563a86bd93cd2452be830de0b3dd8d19cc44ab6f759159c9d566c"
+  },
+  {
+    "id": "provider-together-ai",
+    "name": "Together AI",
+    "version": "1.0.0",
+    "description": "「Together AI」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "917270e16865417523b9e6a9c1293ef87410eb984e4dee6473b5e7cf557399b5"
+  },
+  {
+    "id": "provider-vllm",
+    "name": "vLLM",
+    "version": "1.0.0",
+    "description": "本地推理服务器，默认端口 8000",
+    "kind": "catalog-providers",
+    "sha256": "2d12d3f71f1b17b3178ab46e94434a4499c24cfdc9342a1eb8290cdf1b4d7136"
+  },
+  {
+    "id": "provider-volcengine-ark",
+    "name": "火山方舟 Ark",
+    "version": "1.0.0",
+    "description": "按量计费；Coding Plan 用 https://ark.cn-beijing.volces.com/api/coding/v3",
+    "kind": "catalog-providers",
+    "sha256": "87404a8282eacd51c33c64bcbcaa195e2e07906e9109253c60e108532e0ca353"
+  },
+  {
+    "id": "provider-xai-grok",
+    "name": "xAI Grok",
+    "version": "1.0.0",
+    "description": "「xAI Grok」模型 Provider 预置目录",
+    "kind": "catalog-providers",
+    "sha256": "f30fc069991bf57f5dd43b4f8844cea772eeb0d554fc09fc0b9264063b2f109a"
+  },
+  {
+    "id": "provider-z-ai",
+    "name": "Z.ai",
+    "version": "1.0.0",
+    "description": "GLM 海外站",
+    "kind": "catalog-providers",
+    "sha256": "b7de795c872ef38606febab1a71d262d4a57f883689b646a4a0346338b1356fa"
+  },
+  {
+    "id": "provider-zhipu-glm",
+    "name": "智谱 GLM",
+    "version": "1.0.0",
+    "description": "按量计费；Coding Plan 用 https://open.bigmodel.cn/api/coding/paas/v4",
+    "kind": "catalog-providers",
+    "sha256": "528aec9e5764f8d185db7103d9766337b402e425164e5f52de12da8fae3cd959"
+  }
+]

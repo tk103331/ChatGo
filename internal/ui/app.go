@@ -378,10 +378,10 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 	// agents and themes are merged into the live config here.
 	cw.plugins = plugin.NewManager(cfg)
 	cw.plugins.LoadAll()
-	// The shipped catalogs materialise as built-in plugins: the add dialogs
-	// read their suggestions through the plugin manager, and the settings
-	// page can disable a whole catalog group.
-	cw.plugins.EnsureBuiltin()
+	// Releases before the catalog materialised every shipped plugin under
+	// plugins/.builtin; those copies are gone from the app, so remove them
+	// and leave the enabled flags for the install-on-demand catalog.
+	cw.plugins.RemoveLegacyBuiltin()
 	cw.syncPluginChannelTypes()
 	cw.reloadConvs()
 	// Load the skill bodies once on the main thread: background tasks read
