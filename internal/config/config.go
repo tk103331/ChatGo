@@ -436,6 +436,11 @@ type Provider struct {
 	// openai_responses, claude or gemini. Requests are written with the OpenAI
 	// Chat format and converted to APIType, and the response is converted back.
 	APIType string `yaml:"api_type,omitempty"`
+	// ModelsURL overrides the endpoint the model list is fetched from, for a
+	// gateway whose list lives somewhere other than the protocol's own
+	// {base}/models — a plugin-contributed provider names its own. Empty
+	// uses the protocol's address.
+	ModelsURL string `yaml:"models_url,omitempty"`
 	// Preset marks a shipped example whose name and type are fixed.
 	Preset bool `yaml:"preset,omitempty"`
 	// Headers are static request headers, used by plugin-contributed providers

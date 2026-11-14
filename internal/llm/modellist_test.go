@@ -317,3 +317,78 @@ func TestMagpieListsWithoutACredential(t *testing.T) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
+
+// TestListModelsFromCustomURL pins the plugin-facing feature: a provider
+// with ModelsURL fetches its list from wherever the plugin said, with the
+// provider's static headers and its protocol's credential, and accepts the
+// shape the gateway happens to answer in.
+func TestListModelsFromCustomURL(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want []string
+	}{
+		{"string array", `["a","b"]`, []string{"a", "b"}},
+		{"object array by id", `[{"id":"a"},{"id":"b"}]`, []string{"a", "b"}},
+		{"object array by name", `[{"name":"a"},{"name":"b"}]`, []string{"a", "b"}},
+		{"object array by model", `[{"model":"a"},{"model":"b"}]`, []string{"a", "b"}},
+		{"openai shape", `{"data":[{"id":"a"},{"id":"b"}]}`, []string{"a", "b"}},
+		{"ollama shape", `{"models":[{"name":"a"},{"name":"b"}]}`, []string{"a", "b"}},
+		{"gemini shape with prefix", `{"models":[{"name":"models/gemini-x"}]}`, []string{"gemini-x"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var gotTenant, gotAuth string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/gateway/list" {
+					t.Fatalf("asked %q, want the custom endpoint", r.URL.Path)
+				}
+				gotTenant = r.Header.Get("X-Tenant")
+				gotAuth = r.Header.Get("Authorization")
+				fmt.Fprint(w, tc.body)
+			}))
+			defer srv.Close()
+			p := config.Provider{
+				Name: "plug", Type: config.ProviderTypeCustom, APIKey: "k",
+				ModelsURL: srv.URL + "/gateway/list",
+				Headers:   map[string]string{"X-Tenant": "acme"},
+			}
+			got, err := ListModels(context.Background(), p)
+			if err != nil {
+				t.Fatalf("list failed: %v", err)
+			}
+			if !reflect.DeepEqual(got, tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+			if gotTenant != "acme" {
+				t.Fatalf("the static header was lost: %q", gotTenant)
+			}
+			if gotAuth != "Bearer k" {
+				t.Fatalf("the protocol credential was lost: %q", gotAuth)
+			}
+		})
+	}
+}
+
+// A relative ModelsURL rides the provider's own base, so a plugin names a
+// path on the gateway it already configured.
+func TestListModelsRelativeCustomURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/llm/catalog" {
+			t.Fatalf("asked %q, want the joined path", r.URL.Path)
+		}
+		fmt.Fprint(w, `{"data":[{"id":"x"}]}`)
+	}))
+	defer srv.Close()
+	p := config.Provider{
+		Name: "plug", Type: config.ProviderTypeCustom,
+		BaseURL: srv.URL + "/v1", ModelsURL: "/llm/catalog",
+	}
+	got, err := ListModels(context.Background(), p)
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if want := []string{"x"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}

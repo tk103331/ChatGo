@@ -50,12 +50,16 @@ func ListModels(ctx context.Context, p config.Provider) ([]string, error) {
 
 	var names []string
 	var err error
-	switch p.EffectiveAPIType() {
-	case config.ProviderTypeAnthropic, config.ProviderTypeClaude:
+	switch {
+	case strings.TrimSpace(p.ModelsURL) != "":
+		// The provider names its own list endpoint, so the response's shape
+		// is the gateway's, not the protocol's; parse what it returned.
+		names, err = listModelsFromURL(ctx, p)
+	case p.EffectiveAPIType() == config.ProviderTypeAnthropic || p.EffectiveAPIType() == config.ProviderTypeClaude:
 		names, err = listAnthropicModels(ctx, p)
-	case config.ProviderTypeOllama:
+	case p.EffectiveAPIType() == config.ProviderTypeOllama:
 		names, err = listOllamaModels(ctx, p)
-	case config.ProviderTypeGemini:
+	case p.EffectiveAPIType() == config.ProviderTypeGemini:
 		names, err = listGeminiModels(ctx, p)
 	default:
 		names, err = listOpenAIModels(ctx, p)
@@ -64,6 +68,91 @@ func ListModels(ctx context.Context, p config.Provider) ([]string, error) {
 		return nil, err
 	}
 	return cleanModelNames(names), nil
+}
+
+// listModelsFromURL reads a provider's own model-list endpoint. A gateway
+// answers in any of the shapes the ecosystem uses, so the body is probed
+// rather than assumed: an array of strings, an array of objects with ids,
+// the OpenAI {data:[{id}]}, Anthropic and Gemini shapes among them.
+func listModelsFromURL(ctx context.Context, p config.Provider) ([]string, error) {
+	endpoint := strings.TrimSpace(p.ModelsURL)
+	// A relative URL rides the provider's own base, the way its requests do.
+	if !strings.Contains(endpoint, "://") {
+		endpoint = joinURL(modelListBaseURL(p), strings.TrimPrefix(endpoint, "/"))
+	}
+	// The provider's static headers ride along — a gateway's list endpoint
+	// often wants the same version or tenant header its chat does — with
+	// the credential of the protocol it speaks.
+	var body json.RawMessage
+	if err := getJSONCustom(ctx, p, endpoint, authModeFor(p.EffectiveAPIType()), &body); err != nil {
+		return nil, err
+	}
+	return modelNamesFromBody(body, p.Name)
+}
+
+// authModeFor picks the credential header style of a provider's protocol.
+func authModeFor(apiType string) authMode {
+	switch apiType {
+	case config.ProviderTypeAnthropic, config.ProviderTypeClaude:
+		return anthropicAuth
+	case config.ProviderTypeGemini:
+		return geminiAuth
+	case config.ProviderTypeOllama:
+		return noAuth
+	default:
+		return openAIAuth
+	}
+}
+
+// modelNamesFromBody pulls model names out of a list response in any of the
+// shapes seen in the wild, so a plugin's endpoint is not required to mimic a
+// particular vendor.
+func modelNamesFromBody(data []byte, provider string) ([]string, error) {
+	// An array of strings: ["model-a", "model-b"].
+	var arr []string
+	if err := json.Unmarshal(data, &arr); err == nil {
+		return arr, nil
+	}
+	// An array of objects: [{"id": "…"} or {"name": "…"} or {"model": "…"}].
+	var objs []map[string]any
+	if err := json.Unmarshal(data, &objs); err == nil {
+		return namesFromObjects(objs), nil
+	}
+	// A field holding either of those: OpenAI's {data: …}, Anthropic's,
+	// Ollama's {models: …}, Gemini's {models: [{name: "models/…"}]}, or a
+	// custom {models: [{"model": "…"}]}.
+	var wrap struct {
+		Data   json.RawMessage `json:"data"`
+		Models json.RawMessage `json:"models"`
+	}
+	if err := json.Unmarshal(data, &wrap); err != nil {
+		return nil, fmt.Errorf("模型「%s」返回的列表无法解析：%s", provider, snippet(data))
+	}
+	for _, raw := range [][]byte{wrap.Data, wrap.Models} {
+		if len(raw) == 0 {
+			continue
+		}
+		if names, err := modelNamesFromBody(raw, provider); err == nil && len(names) > 0 {
+			return names, nil
+		}
+	}
+	return nil, fmt.Errorf("模型「%s」返回的列表无法解析：%s", provider, snippet(data))
+}
+
+// namesFromObjects reads one name per object, trying each key the ecosystem
+// uses, and strips Gemini's "models/" prefix so the id matches what a chat
+// request takes.
+func namesFromObjects(objs []map[string]any) []string {
+	out := make([]string, 0, len(objs))
+	for _, o := range objs {
+		for _, key := range []string{"id", "name", "model", "slug"} {
+			if s, ok := o[key].(string); ok && strings.TrimSpace(s) != "" {
+				out = append(out, strings.TrimPrefix(s, "models/"))
+				break
+			}
+		}
+	}
+	return out
 }
 
 // listOpenAIModels reads the OpenAI-compatible GET {base}/models, which every
@@ -179,11 +268,23 @@ const (
 // getJSON performs the GET and decodes it, turning a refusal into an error
 // that keeps the provider's own wording.
 func getJSON(ctx context.Context, p config.Provider, endpoint string, mode authMode, out any) error {
+	return getJSONCustom(ctx, p, endpoint, mode, out)
+}
+
+// getJSONCustom is getJSON with the provider's static headers applied, for
+// an endpoint the provider names itself — a plugin-contributed gateway that
+// wants its tenant or version header on the model list too.
+func getJSONCustom(ctx context.Context, p config.Provider, endpoint string, mode authMode, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return fmt.Errorf("模型「%s」的地址无效：%s", p.Name, firstLine(err.Error()))
 	}
 	req.Header.Set("Accept", "application/json")
+	for k, v := range p.Headers {
+		if strings.TrimSpace(k) != "" {
+			req.Header.Set(k, v)
+		}
+	}
 	key := strings.TrimSpace(p.APIKey)
 	switch mode {
 	case openAIAuth:

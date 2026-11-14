@@ -53,6 +53,9 @@ func TestLabPluginCapabilities(t *testing.T) {
 		cfg.Providers[0].Headers["X-Lab-Plugin"] != "1" || cfg.Providers[0].Enabled {
 		t.Fatalf("provider contribution = %+v", cfg.Providers)
 	}
+	if cfg.Providers[0].ModelsURL != "https://lab.invalid/llm/catalog" {
+		t.Fatalf("the plugin's modelsURL was lost: %+v", cfg.Providers[0])
+	}
 	if len(cfg.MCPServers) != 1 || cfg.MCPServers[0].Enabled {
 		t.Fatalf("mcp contribution = %+v", cfg.MCPServers)
 	}

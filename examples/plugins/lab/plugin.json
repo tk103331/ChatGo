@@ -110,6 +110,7 @@
       "type": "custom",
       "apiType": "openai",
       "baseURL": "https://lab.invalid/v1",
+      "modelsURL": "https://lab.invalid/llm/catalog",
       "models": [
         "lab-1",
         "lab-2"

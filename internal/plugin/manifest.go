@@ -80,11 +80,16 @@ type ToolSpec struct {
 
 // ProviderSpec is a model provider preset the plugin contributes.
 type ProviderSpec struct {
-	Name          string            `json:"name"`
-	Type          string            `json:"type,omitempty"`
-	APIType       string            `json:"apiType,omitempty"`
-	BaseURL       string            `json:"baseURL,omitempty"`
-	Models        []string          `json:"models,omitempty"`
+	Name    string   `json:"name"`
+	Type    string   `json:"type,omitempty"`
+	APIType string   `json:"apiType,omitempty"`
+	BaseURL string   `json:"baseURL,omitempty"`
+	Models  []string `json:"models,omitempty"`
+	// ModelsURL overrides where the model list is fetched from, for a
+	// gateway that serves it somewhere other than the protocol's own
+	// {base}/models. The fetched list fills the provider's Models, so a
+	// plugin ships few names and the endpoint supplies the rest.
+	ModelsURL     string            `json:"modelsURL,omitempty"`
 	APIKeySetting string            `json:"apiKeySetting,omitempty"`
 	Headers       map[string]string `json:"headers,omitempty"`
 	Enabled       *bool             `json:"enabled,omitempty"`

@@ -103,7 +103,8 @@ func (m *Manager) applyContributionsLocked(inst *InstanceState) error {
 		}
 		p := config.Provider{
 			Name: spec.Name, Type: config.ProviderTypeCustom, APIType: spec.APIType,
-			BaseURL: spec.BaseURL, Models: spec.Models, Headers: spec.Headers,
+			BaseURL: spec.BaseURL, ModelsURL: spec.ModelsURL,
+			Models: spec.Models, Headers: spec.Headers,
 			Enabled: true, Source: source,
 		}
 		if p.APIType == "" {
