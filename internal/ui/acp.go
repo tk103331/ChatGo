@@ -116,25 +116,40 @@ func (cw *ChatWindow) hasACPConn(name string) bool {
 	return false
 }
 
+// acpEntryAutoStarts reports whether a catalog entry can run the moment it
+// is added: an npx or uvx command pulls its own package, so the user has
+// nothing to install by hand, and a binary the shell already resolves needs
+// no install either. Anything else has to be installed first, so that
+// connection starts disabled with a hint instead of a warm-up that is
+// bound to fail.
+func acpEntryAutoStarts(e acpCatalogEntry) bool {
+	base := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(e.Command, ".exe"), ".cmd"))
+	switch base {
+	case "npx", "uvx":
+		return true
+	}
+	_, ok := shellenv.ResolveCommand(e.Command)
+	return ok
+}
+
 func (cw *ChatWindow) addACPFromCatalog(e acpCatalogEntry) {
 	if cw.hasACPConn(e.Name) {
 		cw.toast("已存在同名连接", mcore.SeverityInfo)
 		return
 	}
-	disabled := true
-	switch e.Name {
-	case "PiAgent", "CodexCLI":
-		disabled = false
-	}
+	enabled := acpEntryAutoStarts(e)
 	cw.cfg.ACPAgents = append(cw.cfg.ACPAgents, config.ACPConnection{
-		Name: e.Name, Command: e.Command, Args: e.Args, Env: e.Env, Disabled: disabled,
+		Name: e.Name, Command: e.Command, Args: e.Args, Env: e.Env, Disabled: !enabled,
 	})
 	_ = config.SaveConfig(cw.cfg)
 	cw.acpCatalogOpen = false
-	if disabled {
-		cw.toast("已添加 "+e.Name+"，请先安装对应 CLI 再启用", mcore.SeveritySuccess)
-	} else {
+	if enabled {
 		cw.toast("已添加并启用 "+e.Name, mcore.SeveritySuccess)
+		// The warm-up starts right away: an npx connection is expected to
+		// work out of the box, and its model list should greet the picker.
+		cw.acpWarmConnection(e.Name)
+	} else {
+		cw.toast("已添加 "+e.Name+"，请先安装对应 CLI 再启用", mcore.SeveritySuccess)
 	}
 }
 
@@ -173,9 +188,22 @@ func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {
 							Children(func() {
 								acpIcon(c, e.Name, 24, 24)
 								mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
-									mgo.Text(c, e.Name).FontWeight(600).SingleLine()
-									mgo.Text(c, e.Command+" "+strings.Join(e.Args, " ")).
-										Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).SingleLine().Ellipsis("…")
+									mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+										mgo.Text(c, e.Name).FontWeight(600).SingleLine()
+										// What adding will do: an npx or uvx
+										// entry runs right away; anything
+										// else names an install the user
+										// does first.
+										if acpEntryAutoStarts(e) {
+											mgo.Text(c, "自动拉取").FontSize(caption).TextColor(k.Success)
+										} else {
+											mgo.Text(c, "需先安装 CLI").FontSize(caption).TextColor(k.TextMuted)
+										}
+									})
+									cmdline := e.Command + " " + strings.Join(e.Args, " ")
+									mgo.Text(c, cmdline).
+										Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).SingleLine().Ellipsis("…").
+										Tooltip(cmdline)
 									if e.Description != "" {
 										mgo.Text(c, e.Description).FontSize(caption).TextColor(k.TextMuted).MaxLines(1)
 									}

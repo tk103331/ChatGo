@@ -80,4 +80,25 @@ func TestAddACPFromCatalogCarriesEnv(t *testing.T) {
 	if conn.Command != "npx" {
 		t.Fatalf("the command was lost: %+v", conn)
 	}
+	// An npx connection can run the moment it is added, so it starts
+	// enabled; a binary the shell cannot resolve starts disabled instead
+	// of a warm-up that is bound to fail.
+	if conn.Disabled {
+		t.Fatal("an npx connection should start enabled")
+	}
+}
+
+// A catalog entry whose command the shell cannot resolve starts disabled:
+// enabling it would only queue a warm-up failure.
+func TestAddACPFromCatalogDisablesUninstalledCLI(t *testing.T) {
+	isolateHome(t)
+	t.Setenv("PATH", t.TempDir())
+	cw := testWindow()
+	cw.addACPFromCatalog(acpCatalogEntryOf(t, "Goose"))
+	if len(cw.cfg.ACPAgents) != 1 {
+		t.Fatalf("the entry was not added: %+v", cw.cfg.ACPAgents)
+	}
+	if !cw.cfg.ACPAgents[0].Disabled {
+		t.Fatal("an uninstalled CLI should start disabled")
+	}
 }
