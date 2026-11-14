@@ -1,0 +1,66 @@
+name: Plugin Catalog
+
+# The installable catalog: pushing a plugins* tag packs every plugin of
+# plugins/catalog into a per-plugin zip and publishes them as the assets of
+# the "plugins" release, which the app's catalog index downloads from.
+# The index itself travels in the commit — run
+#   go run ./tools/gen-plugin-catalog
+# before tagging, so the committed catalog-index.json matches the zips.
+
+on:
+  push:
+    tags: ["plugins*"]
+  # A catalog change on main shows what the release would contain, without
+  # publishing anything.
+  pull_request:
+    paths: ["plugins/catalog/**", "tools/gen-plugin-catalog/**", "internal/plugin/catalog-index.json"]
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Pack the catalog zips
+        run: go run ./tools/gen-plugin-catalog -catalog plugins/catalog -out dist/plugins
+      - name: Check the committed index matches the packed zips
+        run: |
+          cp internal/plugin/catalog-index.json /tmp/committed.json
+          go run ./tools/gen-plugin-catalog -catalog plugins/catalog -out /tmp/check-plugins -index /tmp/regen.json
+          if ! diff -u /tmp/committed.json /tmp/regen.json; then
+            echo "::error::catalog-index.json is stale. Run 'go run ./tools/gen-plugin-catalog' and commit the result."
+            exit 1
+          fi
+      - name: Summarize
+        run: ls dist/plugins | wc -l && du -sh dist/plugins
+      - name: Upload the build artifacts
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-zips
+          path: dist/plugins/
+      - name: Publish to the plugins release
+        if: github.event_name == 'push' && startsWith(github.ref_name, 'plugins')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          # The release the app downloads from is the fixed "plugins" tag;
+          # a differently named tag (plugins-v2, plugins-2026.11) publishes
+          # to the same release so the app's URL never moves.
+          if ! gh release view plugins --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release create plugins --repo "$GITHUB_REPOSITORY" \
+              --title "插件目录" --notes "ChatGo 内置目录的逐插件安装包。应用通过 catalog-index.json 按需下载。"
+          fi
+          # Upload every zip, replacing an asset of the same name so a
+          # re-run refreshes the whole catalog in place.
+          gh release upload plugins dist/plugins/*.zip --repo "$GITHUB_REPOSITORY" --clobber
+          # Record which tag produced the assets now published.
+          gh release edit plugins --repo "$GITHUB_REPOSITORY" \
+            --notes "插件目录（由 $TAG 打包发布）。应用通过 catalog-index.json 校验 SHA-256 后按需下载安装。"
+          echo "published $(ls dist/plugins | wc -l) plugin zips to the plugins release"
