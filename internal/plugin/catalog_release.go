@@ -62,8 +62,10 @@ func CatalogDownloadURL(entry CatalogEntry) string {
 	return CatalogBase + "/plugin-" + entry.ID + ".zip"
 }
 
-// catalogDownloadTimeout bounds one zip download.
-const catalogDownloadTimeout = 30 * time.Second
+// catalogDownloadTimeout bounds one zip download. Generous: the release CDN
+// can be slow on some networks, and a zip is small enough that waiting
+// beats failing.
+const catalogDownloadTimeout = 60 * time.Second
 
 // catalogURLFor resolves one entry's download URL. A var so a test can
 // point it at a local server.
