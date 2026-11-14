@@ -13,6 +13,7 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 
 	"chatgo/internal/config"
+	mcore "chatgo/internal/ui/uikit"
 	"chatgo/pkg/models"
 )
 
@@ -524,6 +525,7 @@ func (cw *ChatWindow) acpEnsureSessionAt(conv *models.Conversation, conn config.
 	if _, err := clientConn.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion:    acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{},
+		ClientInfo:         acpClientInfo,
 	}); err != nil {
 		return fail(err)
 	}
@@ -544,7 +546,10 @@ func (cw *ChatWindow) acpEnsureSessionAt(conv *models.Conversation, conn config.
 	// a greeting, dropped until that prompt clears the mark.
 	cw.acp.greeting[rt.sessionID] = true
 	cw.acp.mu.Unlock()
-	cw.acpApplySaved(rt, conv)
+	// A refused saved choice must not keep the session from starting: the
+	// CLI's own current configuration stands, and the composer's controls
+	// follow the state the runtime reports.
+	_ = cw.acpApplySaved(rt, conv)
 	cw.invalidate()
 	return rt, nil
 }
@@ -562,18 +567,59 @@ func (cw *ChatWindow) acpKillProcess(rt *acpConv) {
 }
 
 // acpReap drops a session whose CLI exited so a later warmup restarts it.
-
+// An unexpected exit — the CLI was not closed by the app itself — also
+// fails every turn of the conversation still waiting on it, paseo's
+// session.runtime_failed: a coding CLI that dies mid-reply must leave no
+// spinner running behind it.
 func (cw *ChatWindow) acpReap(rt *acpConv) {
 	cw.acp.mu.Lock()
-	if cur := cw.acp.convs[rt.key]; cur == rt {
+	// Only a session still registered died on its own; acpShutdown and
+	// acpConvClose remove the slot before killing, so their reaps pass on.
+	unexpected := cw.acp.convs[rt.key] == rt
+	if unexpected {
 		delete(cw.acp.convs, rt.key)
 	}
 	if rt.sessionID != "" {
 		delete(cw.acp.convBySess, rt.sessionID)
 		delete(cw.acp.greeting, rt.sessionID)
 	}
+	conv := cw.acp.convObj[rt.convID]
 	cw.acp.mu.Unlock()
+	if unexpected {
+		cw.postMain(func() { cw.acpFailDeadTurns(rt.convID, conv) })
+	}
 	cw.invalidate()
+}
+
+// acpFailDeadTurns ends every running stream of a conversation whose CLI
+// exited: the empty reply left behind says what happened instead of waiting
+// for a process that will never answer.
+func (cw *ChatWindow) acpFailDeadTurns(convID string, conv *models.Conversation) {
+	failed := false
+	for msgID, s := range cw.streams {
+		if s.convID != convID {
+			continue
+		}
+		if conv != nil {
+			for i := range conv.Messages {
+				if conv.Messages[i].ID == msgID && strings.TrimSpace(conv.Messages[i].Content) == "" {
+					conv.Messages[i].Content = "⚠️ ACP 进程意外退出，请重试"
+				}
+			}
+		}
+		cw.endStream(msgID)
+		failed = true
+	}
+	if conv != nil && failed && cw.convManager != nil {
+		conv.UpdatedAt = time.Now()
+		_ = cw.convManager.SaveConversation(conv)
+	}
+	if failed && cw.cur != nil && cw.cur.ID == convID {
+		cw.toast("ACP 进程意外退出", mcore.SeverityError)
+	}
+	if failed {
+		cw.invalidate()
+	}
 }
 
 // acpTailBuffer keeps the last cap bytes written, for diagnosing a CLI that
@@ -603,15 +649,36 @@ func (b *acpTailBuffer) String() string {
 }
 
 // acpApplySaved restores a conversation's saved mode and config choices.
-
-func (cw *ChatWindow) acpApplySaved(rt *acpConv, conv *models.Conversation) {
+// The changes are applied in the order the runtime reports its options —
+// paseo's rule: one option can decide another (choosing a provider also
+// selects its saved model), and agents list the deciding one first — and
+// when one is refused, the choices already applied are put back to the
+// values the runtime held before the restore began, so a half-restored
+// session never keeps a mix of the saved and the previous choices.
+func (cw *ChatWindow) acpApplySaved(rt *acpConv, conv *models.Conversation) error {
+	ctx := context.Background()
+	// rollback holds, in reverse order of application, the requests that
+	// undo each applied change; undoing back to front keeps a refusal from
+	// leaving an earlier option set by a later one's side effects.
+	var rollback []acp.SetSessionConfigOptionRequest
+	restore := func() {
+		for i := len(rollback) - 1; i >= 0; i-- {
+			_, _ = rt.conn.SetSessionConfigOption(ctx, rollback[i])
+		}
+	}
+	oldMode := rt.modeID
 	if conv.ACPMode != "" {
 		for _, m := range rt.modes {
-			if string(m.Id) == conv.ACPMode {
-				rt.modeID = m.Id
-				_, _ = rt.conn.SetSessionMode(context.Background(), acp.SetSessionModeRequest{SessionId: rt.sessionID, ModeId: m.Id})
-				break
+			if string(m.Id) != conv.ACPMode {
+				continue
 			}
+			if _, err := rt.conn.SetSessionMode(ctx, acp.SetSessionModeRequest{
+				SessionId: rt.sessionID, ModeId: m.Id,
+			}); err != nil {
+				return err
+			}
+			rt.modeID = m.Id
+			break
 		}
 	}
 	for _, opt := range rt.configs {
@@ -628,21 +695,65 @@ func (cw *ChatWindow) acpApplySaved(rt *acpConv, conv *models.Conversation) {
 			if !acpSelectHasValue(opt.Select, v) {
 				continue
 			}
+			old := opt.Select.CurrentValue
+			req := acp.SetSessionConfigOptionRequest{
+				ValueId: &acp.SetSessionConfigOptionValueId{
+					SessionId: rt.sessionID, ConfigId: id, Value: acp.SessionConfigValueId(v),
+				},
+			}
+			if _, err := rt.conn.SetSessionConfigOption(ctx, req); err != nil {
+				restore()
+				cw.acpUnapplySavedMode(rt, oldMode)
+				return err
+			}
 			opt.Select.CurrentValue = acp.SessionConfigValueId(v)
-			_, _ = rt.conn.SetSessionConfigOption(context.Background(), acp.SetSessionConfigOptionRequest{
-				ValueId: &acp.SetSessionConfigOptionValueId{SessionId: rt.sessionID, ConfigId: id, Value: acp.SessionConfigValueId(v)},
-			})
+			if string(old) != v {
+				rollback = append(rollback, acp.SetSessionConfigOptionRequest{
+					ValueId: &acp.SetSessionConfigOptionValueId{
+						SessionId: rt.sessionID, ConfigId: id, Value: old,
+					},
+				})
+			}
 		case opt.Boolean != nil:
 			b, err := strconv.ParseBool(v)
 			if err != nil {
 				continue
 			}
+			old := opt.Boolean.CurrentValue
+			req := acp.SetSessionConfigOptionRequest{
+				Boolean: &acp.SetSessionConfigOptionBoolean{
+					SessionId: rt.sessionID, ConfigId: id, Value: b,
+				},
+			}
+			if _, err := rt.conn.SetSessionConfigOption(ctx, req); err != nil {
+				restore()
+				cw.acpUnapplySavedMode(rt, oldMode)
+				return err
+			}
 			opt.Boolean.CurrentValue = b
-			_, _ = rt.conn.SetSessionConfigOption(context.Background(), acp.SetSessionConfigOptionRequest{
-				Boolean: &acp.SetSessionConfigOptionBoolean{SessionId: rt.sessionID, ConfigId: id, Value: b},
-			})
+			if old != b {
+				rollback = append(rollback, acp.SetSessionConfigOptionRequest{
+					Boolean: &acp.SetSessionConfigOptionBoolean{
+						SessionId: rt.sessionID, ConfigId: id, Value: old,
+					},
+				})
+			}
 		}
 	}
+	return nil
+}
+
+// acpUnapplySavedMode puts the session's mode back after a refused config
+// restore, best effort: the rollback is the last chance to leave the CLI as
+// it was, so its own failure is not reported on top of the original error.
+func (cw *ChatWindow) acpUnapplySavedMode(rt *acpConv, old acp.SessionModeId) {
+	if rt.modeID == old {
+		return
+	}
+	_, _ = rt.conn.SetSessionMode(context.Background(), acp.SetSessionModeRequest{
+		SessionId: rt.sessionID, ModeId: old,
+	})
+	rt.modeID = old
 }
 
 // acpSelectHasValue reports whether the option still offers value.

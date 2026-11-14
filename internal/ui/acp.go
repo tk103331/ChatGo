@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	acp "github.com/coder/acp-go-sdk"
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
@@ -19,6 +20,12 @@ import (
 	mcore "chatgo/internal/ui/uikit"
 )
 
+// acpClientInfo names the app to the agent, the way paseo sends its own
+// name and version: a CLI can show the connected client, and some adapt
+// their behaviour to it.
+var acpClientInfo = &acp.Implementation{Name: "ChatGo", Version: "1"}
+
+// acpHandshakeTimeout bounds the initialize and new-session exchange.
 const acpHandshakeTimeout = 60 * time.Second
 
 type acpForm struct {

@@ -80,6 +80,7 @@ func acpProbeModels(cw *ChatWindow, conn config.ACPConnection) ([]acpModelOption
 	if _, err := client.Initialize(ctx, acp.InitializeRequest{
 		ProtocolVersion:    acp.ProtocolVersionNumber,
 		ClientCapabilities: acp.ClientCapabilities{},
+		ClientInfo:         acpClientInfo,
 	}); err != nil {
 		return fail(err)
 	}
