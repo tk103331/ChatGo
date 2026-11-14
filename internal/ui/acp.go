@@ -12,7 +12,6 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/config"
-	"chatgo/internal/plugin"
 	"chatgo/internal/shellenv"
 
 	"chatgo/internal/ui/icons"
@@ -48,128 +47,6 @@ func (cw *ChatWindow) hasACPConn(name string) bool {
 		}
 	}
 	return false
-}
-
-// acpEntryAutoStarts reports whether a catalog entry can run the moment it
-// is added: an npx or uvx command pulls its own package, so the user has
-// nothing to install by hand, and a binary the shell already resolves needs
-// no install either. Anything else has to be installed first, so that
-// connection starts disabled with a hint instead of a warm-up that is
-// bound to fail.
-func acpEntryAutoStarts(e plugin.ACPPresetEntry) bool {
-	base := strings.ToLower(strings.TrimSuffix(strings.TrimSuffix(e.Command, ".exe"), ".cmd"))
-	switch base {
-	case "npx", "uvx":
-		return true
-	}
-	_, ok := shellenv.ResolveCommand(e.Command)
-	return ok
-}
-
-func (cw *ChatWindow) addACPFromCatalog(e plugin.ACPPresetEntry) {
-	if cw.hasACPConn(e.Name) {
-		cw.toast("已存在同名连接", mcore.SeverityInfo)
-		return
-	}
-	enabled := acpEntryAutoStarts(e)
-	cw.cfg.ACPAgents = append(cw.cfg.ACPAgents, config.ACPConnection{
-		Name: e.Name, Command: e.Command, Args: e.Args, Env: e.Env, Disabled: !enabled,
-	})
-	_ = config.SaveConfig(cw.cfg)
-	cw.acpCatalogOpen = false
-	if enabled {
-		cw.toast("已添加并启用 "+e.Name, mcore.SeveritySuccess)
-		// The warm-up starts right away: an npx connection is expected to
-		// work out of the box, and its model list should greet the picker.
-		cw.acpWarmConnection(e.Name)
-	} else {
-		cw.toast("已添加 "+e.Name+"，请先安装对应 CLI 再启用", mcore.SeveritySuccess)
-	}
-}
-
-func (cw *ChatWindow) acpCatalogDialog(c *mgo.Context) {
-	if !cw.acpCatalogOpen {
-		return
-	}
-	k := mcore.Tokens(c)
-	u := mcore.Density(c).Unit()
-	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	kit.Dialog(c, &cw.acpCatalogOpen, kit.DialogOptions{
-		Title: "从插件添加 Agent",
-		Width: 560,
-	}, func() {
-		mgo.Column(c).Gap(u * 2).Children(func() {
-			in := kit.SearchInput(c, &cw.acpCatalogQuery, kit.SearchInputOptions{Placeholder: "搜索 Agent", Label: "搜索"})
-			in.Element.FillWidth()
-			q := strings.ToLower(strings.TrimSpace(cw.acpCatalogQuery))
-			entries := cw.pluginACPCatalog()
-			if q != "" {
-				var kept []plugin.ACPPresetEntry
-				for _, e := range entries {
-					if !strings.Contains(strings.ToLower(e.Name), q) {
-						continue
-					}
-					kept = append(kept, e)
-				}
-				entries = kept
-			}
-			if len(entries) == 0 {
-				mgo.Text(c, "没有匹配的 Agent。目录由内置插件提供，可在插件设置中启用。").TextColor(k.TextMuted)
-				return
-			}
-			groups := plugin.CatalogGroupOrder(entries, func(e plugin.ACPPresetEntry) string { return e.Group })
-			mgo.Scroll(c).MaxHeight(400).Children(func() {
-				mgo.Column(c).Gap(u * 2).Children(func() {
-					for _, group := range groups {
-						mgo.Text(c, group).FontSize(caption).FontWeight(600).TextColor(k.TextMuted)
-						for _, e := range entries {
-							if e.Group != group {
-								continue
-							}
-							e := e
-							mgo.Row(c).Key(e.Name).FillWidth().Gap(u*2).AlignItems(mgo.Center).
-								Padding(u, u*2).Radius(mtheme.CardRadius).Border(mtheme.BorderWidth, k.Border).
-								Children(func() {
-									acpIcon(c, e.Name, 24, 24)
-									mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
-										mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-											mgo.Text(c, e.Name).FontWeight(600).SingleLine()
-											// What adding will do: an npx or uvx
-											// entry runs right away; anything
-											// else names an install the user
-											// does first.
-											if acpEntryAutoStarts(e) {
-												mgo.Text(c, "自动拉取").FontSize(caption).TextColor(k.Success)
-											} else {
-												mgo.Text(c, "需先安装 CLI").FontSize(caption).TextColor(k.TextMuted)
-											}
-										})
-										cmdline := e.Command + " " + strings.Join(e.Args, " ")
-										mgo.Text(c, cmdline).
-											Font(mtheme.MonoFont).FontSize(caption).TextColor(k.TextMuted).SingleLine().Ellipsis("…").
-											Tooltip(cmdline)
-									})
-									if cw.hasACPConn(e.Name) {
-										mgo.Text(c, "已添加").FontSize(caption).TextColor(k.Success).Shrink(0)
-									} else if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
-										cw.addACPFromCatalog(e)
-									}
-								})
-						}
-					}
-				})
-			})
-		})
-	})
-}
-
-// pluginACPCatalog reads the ACP suggestions from the plugin manager, nil
-// when no manager is up (tests without plugins).
-func (cw *ChatWindow) pluginACPCatalog() []plugin.ACPPresetEntry {
-	if cw.plugins == nil {
-		return nil
-	}
-	return cw.plugins.ACPCatalog()
 }
 
 func (cw *ChatWindow) addNewACP() {

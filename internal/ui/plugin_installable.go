@@ -140,25 +140,31 @@ func (cw *ChatWindow) refreshCatalog() {
 // catalogIndexTimeout bounds one index fetch.
 const catalogIndexTimeout = 30 * time.Second
 
-// pluginInstallableSection lists the catalog entries not installed yet,
-// with a search and a download-and-install button per row. Installed
-// entries show their state; the ones from the old embedded releases show
-// a re-install affordance when their directory is gone but the flag says
-// they were on.
-func (cw *ChatWindow) pluginInstallableSection(c *mgo.Context) {
-	// The background once-per-launch refresh, and the market list.
+// goPluginMarket opens the settings' plugins page on its market tab,
+// filtered to the catalog kind the caller names — the 模型 and ACP pages'
+// "从插件添加" buttons hand the user to where the catalog actually lives.
+func (cw *ChatWindow) goPluginMarket(kind string) {
+	cw.section = sectionSettings
+	cw.settings.tab = 10 // the plugins tab, the last of the settings page
+	cw.pluginUI.marketTab = 1
+	cw.pluginUI.marketFilter = kind
+	cw.pluginUI.installQuery = ""
+	cw.invalidate()
+}
+
+// pluginMarketTab is the 插件市场 tab: the release's catalog entries —
+// provider presets, ACP agents, importers — with the type filter and the
+// name search the my-plugins tab has. Installing one downloads its zip
+// from the GitHub release; an entry already installed shows its state.
+func (cw *ChatWindow) pluginMarketTab(c *mgo.Context) {
+	// The once-per-launch background refresh, and the market list.
 	cw.maybeRefreshCatalog()
 	entries := cw.CatalogEntries()
-	if len(entries) == 0 {
-		return
-	}
 	st := &cw.pluginUI
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 
-	// The section folds behind its header, so the long list stays out of
-	// the way until the user means to browse it.
 	installed := map[string]bool{}
 	for _, info := range cw.plugins.List() {
 		installed[info.ID] = true
@@ -169,91 +175,93 @@ func (cw *ChatWindow) pluginInstallableSection(c *mgo.Context) {
 			pending = append(pending, e)
 		}
 	}
-	header := "插件市场（" + itoa(len(pending)) + " 个可安装）"
-	if st.showInstallable {
-		header = "收起插件市场（" + itoa(len(pending)) + " 个可安装）"
-	}
-	mgo.Box(c).FillWidth().Height(1).Background(k.Border)
-	mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
-		mgo.Text(c, header).FontWeight(600).Grow(1)
-		// Where the listed index came from, and a manual refresh beside it.
-		if src := st.catalog.source; src != "" {
-			mgo.Text(c, "索引 · "+src).FontSize(small).TextColor(k.TextMuted)
+	mgo.Column(c).Fill().Gap(u * 2).Children(func() {
+		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Gap(u).Children(func() {
+			mgo.Text(c, "共 "+itoa(len(pending))+" 个可安装").
+				FontSize(small).TextColor(k.TextMuted).Grow(1)
+			// Where the listed index came from, and a manual refresh beside it.
+			if src := st.catalog.source; src != "" {
+				mgo.Text(c, "索引 · "+src).FontSize(small).TextColor(k.TextMuted)
+			}
+			if st.catalog.refreshing {
+				mcore.Spinner(c, mcore.SpinnerOptions{Size: 12})
+			} else if mcore.IconAction(c, icons.Must("refresh-cw"), "更新索引").
+				Tooltip("从 GitHub 拉取最新目录索引").Clicked() {
+				cw.refreshCatalog()
+			}
+			if st.catalog.err != "" {
+				mgo.Text(c, st.catalog.err).FontSize(small).TextColor(k.Danger).MaxWidth(240).MaxLines(1).Ellipsis("…")
+			}
+		})
+		// The same filter-and-search shape as the my-plugins tab, over
+		// the catalog's own kinds.
+		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+			cw.marketFilterControl(c)
+			in := kit.SearchInput(c, &st.installQuery, kit.SearchInputOptions{Placeholder: "搜索插件市场", Label: "搜索插件市场"})
+			in.Element.Grow(1).MinWidth(0)
+		})
+		q := strings.ToLower(strings.TrimSpace(st.installQuery))
+		var shown []plugin.CatalogEntry
+		for _, e := range pending {
+			if st.marketFilter != "" && e.Kind != st.marketFilter {
+				continue
+			}
+			if q != "" && !strings.Contains(strings.ToLower(e.Name), q) &&
+				!strings.Contains(strings.ToLower(e.Description), q) &&
+				!strings.Contains(strings.ToLower(e.ID), q) {
+				continue
+			}
+			shown = append(shown, e)
 		}
-		if st.catalog.refreshing {
-			mcore.Spinner(c, mcore.SpinnerOptions{Size: 12})
-		} else if mcore.IconAction(c, icons.Must("refresh-cw"), "更新索引").
-			Tooltip("从 GitHub 拉取最新目录索引").Clicked() {
-			cw.refreshCatalog()
+		if len(shown) == 0 {
+			mgo.Text(c, "没有匹配的插件").FontSize(small).TextColor(k.TextMuted)
+			return
 		}
-		if st.catalog.err != "" {
-			mgo.Text(c, st.catalog.err).FontSize(small).TextColor(k.Danger).MaxWidth(240).MaxLines(1).Ellipsis("…")
-		}
-		if st.catalogErr != "" {
-			mgo.Text(c, st.catalogErr).FontSize(small).TextColor(k.Danger).MaxWidth(240).MaxLines(1).Ellipsis("…")
-		}
-		if mcore.IconAction(c, icons.Must(st.chevron()), "展开").Tooltip(header).Clicked() {
-			st.showInstallable = !st.showInstallable
-			st.catalogErr = ""
-		}
-	})
-	if !st.showInstallable {
-		return
-	}
-	in := kit.SearchInput(c, &st.installQuery, kit.SearchInputOptions{Placeholder: "搜索可安装插件", Label: "搜索可安装插件"})
-	in.Element.FillWidth()
-	q := strings.ToLower(strings.TrimSpace(st.installQuery))
-	var shown []plugin.CatalogEntry
-	for _, e := range pending {
-		if q != "" && !strings.Contains(strings.ToLower(e.Name), q) &&
-			!strings.Contains(strings.ToLower(e.Description), q) &&
-			!strings.Contains(strings.ToLower(e.ID), q) {
-			continue
-		}
-		shown = append(shown, e)
-	}
-	if len(shown) == 0 {
-		mgo.Text(c, "没有匹配的可安装插件").FontSize(small).TextColor(k.TextMuted)
-		return
-	}
-	mgo.Scroll(c).MaxHeight(300).Children(func() {
-		mgo.Column(c).Gap(u).Children(func() {
-			for _, e := range shown {
-				e := e
-				mgo.Row(c).Key(e.ID).FillWidth().Gap(u*2).AlignItems(mgo.Center).
-					Padding(u, u*2).Radius(mtheme.CardRadius).Border(mtheme.BorderWidth, k.Border).
-					Children(func() {
-						mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
-							mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
-								mgo.Text(c, e.Name).FontWeight(600).SingleLine()
-								mgo.Text(c, catalogKindLabel(e.Kind)).FontSize(small).TextColor(k.Accent)
+		mgo.Scroll(c).Fill().MinHeight(0).Children(func() {
+			mgo.Column(c).Gap(u).Children(func() {
+				for _, e := range shown {
+					e := e
+					mgo.Row(c).Key(e.ID).FillWidth().Gap(u*2).AlignItems(mgo.Center).
+						Padding(u, u*2).Radius(mtheme.CardRadius).Border(mtheme.BorderWidth, k.Border).
+						Children(func() {
+							mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
+								mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+									mgo.Text(c, e.Name).FontWeight(600).SingleLine()
+									mgo.Text(c, catalogKindLabel(e.Kind)).FontSize(small).TextColor(k.Accent)
+									mgo.Text(c, "v"+e.Version).FontSize(small).TextColor(k.TextMuted)
+								})
+								if e.Description != "" {
+									mgo.Text(c, e.Description).FontSize(small).TextColor(k.TextMuted).MaxLines(1)
+								}
 							})
-							if e.Description != "" {
-								mgo.Text(c, e.Description).FontSize(small).TextColor(k.TextMuted).MaxLines(1)
+							if st.installing == e.ID {
+								mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+									mcore.Spinner(c, mcore.SpinnerOptions{Size: 12})
+									mgo.Text(c, "下载中…").FontSize(small).TextColor(k.TextMuted)
+								})
+							} else if kit.Button(c, "安装", kit.ButtonOptions{
+								Variant: kit.Secondary, Disabled: st.installing != "",
+							}).Clicked() {
+								cw.installCatalogEntry(e)
 							}
 						})
-						if st.installing == e.ID {
-							mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-								mcore.Spinner(c, mcore.SpinnerOptions{Size: 12})
-								mgo.Text(c, "下载中…").FontSize(small).TextColor(k.TextMuted)
-							})
-						} else if kit.Button(c, "安装", kit.ButtonOptions{
-							Variant: kit.Secondary, Disabled: st.installing != "",
-						}).Clicked() {
-							cw.installCatalogEntry(e)
-						}
-					})
-			}
+				}
+			})
 		})
 	})
 }
 
-// chevron picks the disclosure arrow's direction.
-func (st *pluginUIState) chevron() string {
-	if st.showInstallable {
-		return "chevron-down"
+// marketFilterControl filters the market by the catalog's own kinds.
+func (cw *ChatWindow) marketFilterControl(c *mgo.Context) {
+	opts := []kit.SelectOption[string]{
+		{Value: "", Label: "全部类型"},
+		{Value: "catalog-providers", Label: "模型目录"},
+		{Value: "catalog-acp", Label: "ACP 目录"},
+		{Value: "importers", Label: "导入器"},
 	}
-	return "chevron-right"
+	kit.Select(c, &cw.pluginUI.marketFilter, opts, kit.SelectOptions{
+		Label: "插件类型", Placeholder: "全部类型",
+	})
 }
 
 // installCatalogEntry downloads and installs one catalog entry off the UI

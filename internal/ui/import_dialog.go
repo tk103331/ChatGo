@@ -5,6 +5,7 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
@@ -85,6 +86,12 @@ func (cw *ChatWindow) importDialog(c *mgo.Context) {
 		Description: importDialogHint(kind),
 		Width:       680,
 		Actions: func() {
+			// The market offers what the scan could not: an importer plugin
+			// for an agent the built-ins do not read, or a vendor preset.
+			if kit.Button(c, "从插件添加", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
+				cw.imp.open = false
+				cw.goPluginMarket(importMarketKind(kind))
+			}
 			if kit.Button(c, "取消", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 				cw.imp.open = false
 			}
@@ -136,6 +143,18 @@ func (cw *ChatWindow) importDialog(c *mgo.Context) {
 			}
 		})
 	})
+}
+
+// importMarketKind maps an import dialog's kind to the market tab filter
+// its "从插件添加" button lands on: skills and MCP both come from
+// importers, models from the provider catalog.
+func importMarketKind(kind importKind) string {
+	switch kind {
+	case importProviders:
+		return "catalog-providers"
+	default:
+		return "importers"
+	}
 }
 
 // importDialogHint explains where a kind is read from.

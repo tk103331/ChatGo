@@ -26,6 +26,9 @@ type pluginUIState struct {
 	installBusy bool
 	installErr  string
 
+	// marketTab selects the page's tab: 0 my plugins, 1 the market.
+	marketTab int
+
 	// filter is the category the list shows ("" = all), query the name
 	// search, so the many built-in catalog plugins can be narrowed down.
 	filter string
@@ -33,10 +36,11 @@ type pluginUIState struct {
 
 	// installable holds the catalog entries not installed yet, its query
 	// and the id of the entry a download is running for.
-	installQuery    string
-	installing      string
-	catalogErr      string
-	showInstallable bool
+	installQuery string
+	installing   string
+	catalogErr   string
+	// marketFilter narrows the market tab by the catalog's kind.
+	marketFilter string
 
 	// catalog is the market's index state: the list it shows, where it
 	// came from and the refresh in flight.

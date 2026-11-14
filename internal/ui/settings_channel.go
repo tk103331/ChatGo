@@ -256,7 +256,9 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Row(c).Gap(u).Children(func() {
 					if kit.Button(c, "从插件添加", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
-						cw.acpCatalogOpen = true
+						// The catalog lives in the plugins page's market tab;
+						// hand the user over there instead of a dialog here.
+						cw.goPluginMarket("catalog-acp")
 					}
 					if kit.Button(c, "新增", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("plus")}).Clicked() {
 						cw.addNewACP()
@@ -272,7 +274,6 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 			}
 		})
 	})
-	cw.acpCatalogDialog(c)
 }
 
 // channelCredentialFields draws the credential inputs a platform needs. The

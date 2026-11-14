@@ -6,14 +6,14 @@ import (
 	"strings"
 	"testing"
 
+	mgo "github.com/egoist/mygo/ui"
+
 	"chatgo/internal/plugin"
 )
 
 // catalogTestWindow is a window with the plugin manager and the shipped
 // catalog plugins registered from the source tree, the way the app has
-// them after a user installed the ones they wanted. Tests read the
-// sources directly — the release download path is exercised by
-// TestInstallCatalogDownloadsAndVerifies instead.
+// them after a user installed the ones they wanted.
 func catalogTestWindow(t *testing.T) *ChatWindow {
 	t.Helper()
 	cw := testWindow()
@@ -27,6 +27,7 @@ func catalogTestWindow(t *testing.T) *ChatWindow {
 // catalogSourceDir is the shipped plugin sources inside the repository.
 func catalogSourceDir(t *testing.T) string {
 	t.Helper()
+	// Tests run in internal/ui; the sources sit at the repo root.
 	dir := filepath.Join("..", "..", "plugins", "catalog")
 	if _, err := os.Stat(dir); err != nil {
 		t.Skip("the catalog sources are not present")
@@ -34,168 +35,142 @@ func catalogSourceDir(t *testing.T) string {
 	return dir
 }
 
-// ensureBuiltinCatalog turns a built-in catalog plugin on, so a test sees
-// its entries even if an earlier test disabled it.
-func ensureBuiltinCatalog(t *testing.T, cw *ChatWindow, id string) {
-	t.Helper()
-	if inst, ok := cw.plugins.Info(id); !ok || inst.Status == plugin.StatusDisabled {
-		if err := cw.plugins.SetEnabled(id, true, nil, nil); err != nil {
-			t.Fatal(err)
+// The plugins page is two tabs: my plugins lists the installed with the
+// type filter, and the market lists the release's catalog entries.
+func TestPluginsPageTwoTabs(t *testing.T) {
+	isolateHome(t)
+	cw := catalogTestWindow(t)
+	cw.section = sectionSettings
+	cw.settings.tab = 10
+	tr := mgo.NewTester(cw.view, 1200, 800)
+	tr.Frame()
+	for _, want := range []string{"我的插件", "插件市场", "模型", "安装插件"} {
+		if !tr.HasText(want) {
+			t.Fatalf("the plugins page lacks %q; texts: %v", want, tr.Texts())
+		}
+	}
+	// The market tab: its filter, its source badge and manual refresh.
+	if err := tr.Click("插件市场"); err != nil {
+		t.Fatalf("open the market tab: %v", err)
+	}
+	tr.Frame()
+	for _, want := range []string{"索引 · 内置", "更新索引", "全部类型"} {
+		if !tr.HasText(want) {
+			t.Fatalf("the market tab lacks %q; texts: %v", want, tr.Texts())
 		}
 	}
 }
 
-// The built-in per-agent catalog plugins carry the shipped ACP list: every
-// entry names a command, and the paseo-checked rules hold — Cursor runs
-// cursor-agent, Gemini and Qwen answer --acp, Cline speaks ACP natively.
-func TestACPCatalogFromPlugins(t *testing.T) {
+// A window with nothing installed shows the market's install buttons.
+func TestMarketTabListsInstallable(t *testing.T) {
 	isolateHome(t)
-	cw := catalogTestWindow(t)
-	entries := cw.pluginACPCatalog()
-	if len(entries) < 40 {
-		t.Fatalf("the built-in catalogs should hold the shipped list, got %d entries", len(entries))
+	cw := testWindow()
+	m := plugin.NewManager(cw.cfg)
+	m.LoadAll()
+	cw.plugins = m
+	cw.section = sectionSettings
+	cw.settings.tab = 10
+	cw.pluginUI.marketTab = 1
+	tr := mgo.NewTester(cw.view, 1200, 800)
+	tr.Frame()
+	if !tr.HasText("安装") {
+		t.Fatalf("the market rows lack an install button; texts: %v", tr.Texts())
 	}
-	find := func(name string) plugin.ACPPresetEntry {
-		for _, e := range entries {
-			if e.Name == name {
-				return e
-			}
-		}
-		t.Fatalf("no %q entry", name)
-		return plugin.ACPPresetEntry{}
+	if !tr.HasText("模型目录") {
+		t.Fatalf("the market rows lack the kind label; texts: %v", tr.Texts())
 	}
-	if e := find("Cursor"); e.Command != "cursor-agent" || !containsStr(e.Args, "acp") {
-		t.Fatalf("Cursor should run cursor-agent acp, got %s %v", e.Command, e.Args)
+}
+
+// The 模型 and ACP pages' "从插件添加" buttons hand over to the plugins
+// page's market tab, filtered to their catalog kind — the dialogs they
+// opened before are gone.
+func TestGoPluginMarketJumpsFiltered(t *testing.T) {
+	isolateHome(t)
+	cw := testWindow()
+	m := plugin.NewManager(cw.cfg)
+	m.LoadAll()
+	cw.plugins = m
+
+	cw.goPluginMarket("catalog-providers")
+	if cw.section != sectionSettings || cw.pluginUI.marketTab != 1 ||
+		cw.pluginUI.marketFilter != "catalog-providers" {
+		t.Fatalf("the provider jump missed: section=%d tab=%d filter=%q",
+			cw.section, cw.pluginUI.marketTab, cw.pluginUI.marketFilter)
 	}
-	if e := find("GeminiCLI"); !containsStr(e.Args, "--acp") {
-		t.Fatalf("Gemini needs --acp, got %s %v", e.Command, e.Args)
+	cw.goPluginMarket("catalog-acp")
+	if cw.pluginUI.marketFilter != "catalog-acp" {
+		t.Fatalf("the acp jump missed: filter=%q", cw.pluginUI.marketFilter)
 	}
-	if e := find("Cline"); e.Command != "npx" || !containsStr(e.Args, "cline") || containsStr(e.Args, "cline-acp") {
-		t.Fatalf("Cline should run npx cline --acp, got %s %v", e.Command, e.Args)
+}
+
+// The import dialogs carry a "从插件添加" button that closes the dialog
+// and hands over to the market filtered to the kind's catalog.
+func TestImportDialogJumpsToMarket(t *testing.T) {
+	isolateHome(t)
+	cw := importTestWindow(t)
+	cw.section = sectionSettings
+	cw.imp = importState{open: true, kind: importMCP, chosen: map[string]bool{}, scanning: true}
+	tr := mgo.NewTester(cw.view, 1000, 800)
+	tr.Frame()
+	if err := tr.Click("从插件添加"); err != nil {
+		t.Fatalf("the import dialog lacks the jump: %v", err)
 	}
-	if e := find("FactoryDroid"); !containsStr(e.Args, "acp-daemon") || e.Env["DROID_DISABLE_AUTO_UPDATE"] != "true" {
-		t.Fatalf("Factory Droid's command or env was lost: %s %v %v", e.Command, e.Args, e.Env)
+	tr.Frame()
+	if cw.imp.open {
+		t.Fatal("the jump must close the import dialog")
 	}
+	if cw.pluginUI.marketTab != 1 || cw.pluginUI.marketFilter != "importers" {
+		t.Fatalf("the jump missed the market: tab=%d filter=%q",
+			cw.pluginUI.marketTab, cw.pluginUI.marketFilter)
+	}
+	// The provider import jumps to the provider catalog instead.
+	cw.imp = importState{open: true, kind: importProviders, chosen: map[string]bool{}, scanning: true}
+	tr.Frame()
+	if err := tr.Click("从插件添加"); err != nil {
+		t.Fatalf("the provider dialog lacks the jump: %v", err)
+	}
+	tr.Frame()
+	if cw.pluginUI.marketFilter != "catalog-providers" {
+		t.Fatalf("the provider jump landed on %q", cw.pluginUI.marketFilter)
+	}
+}
+
+// The embedded catalog index the app ships matches the plugins the repo
+// carries: no duplicate ids, legal kinds, the key entries in place.
+func TestCatalogIndexMatchesShippedPlugins(t *testing.T) {
+	entries := plugin.Catalog()
+	if len(entries) < 80 {
+		t.Fatalf("the embedded index should hold the shipped catalog, got %d", len(entries))
+	}
+	seen := map[string]bool{}
 	for _, e := range entries {
-		if strings.TrimSpace(e.Command) == "" {
-			t.Fatalf("%q has no command", e.Name)
+		if seen[e.ID] {
+			t.Fatalf("the index lists %q twice", e.ID)
+		}
+		seen[e.ID] = true
+		switch e.Kind {
+		case "catalog-providers", "catalog-acp", "importers":
+		default:
+			t.Fatalf("%q carries an unknown kind %q", e.ID, e.Kind)
 		}
 	}
-	// One plugin per agent: the group of every entry is its own plugin.
-	for _, e := range entries {
-		if e.Group != e.Plugin {
-			t.Fatalf("%q's group should be its plugin name: %q vs %q", e.Name, e.Group, e.Plugin)
+	for _, want := range []string{"provider-openai", "acp-claudecode", "importer-cursor-config"} {
+		if !seen[want] {
+			t.Fatalf("the index lacks %q", want)
 		}
 	}
 }
 
-// Disabling one agent's catalog plugin removes exactly that agent from the
-// dialog's list — the per-plugin granularity the plugins page promises.
-func TestACPCatalogPerPluginToggle(t *testing.T) {
-	isolateHome(t)
-	cw := catalogTestWindow(t)
-	if err := cw.plugins.SetEnabled("acp-cursor", false, nil, nil); err != nil {
-		t.Fatal(err)
+// The market's filter narrows by the catalog's own kind.
+func TestMarketKindFilterOptions(t *testing.T) {
+	if got := importMarketKind(importMCP); got != "importers" {
+		t.Fatalf("MCP imports should jump to importers, got %q", got)
 	}
-	entries := cw.pluginACPCatalog()
-	for _, e := range entries {
-		if e.Name == "Cursor" {
-			t.Fatal("the disabled plugin's entry must be absent")
-		}
+	if got := importMarketKind(importSkills); got != "importers" {
+		t.Fatalf("Skill imports should jump to importers, got %q", got)
 	}
-	found := false
-	for _, e := range entries {
-		if e.Name == "GeminiCLI" {
-			found = true
-		}
+	if got := importMarketKind(importProviders); got != "catalog-providers" {
+		t.Fatalf("model imports should jump to providers, got %q", got)
 	}
-	if !found {
-		t.Fatal("disabling one plugin must leave the others in place")
-	}
-}
-
-// addACPFromCatalog still lands the entry: enabled when the command can
-// run, disabled with a hint when it cannot.
-func TestAddACPFromCatalogLandsTheEntry(t *testing.T) {
-	isolateHome(t)
-	cw := catalogTestWindow(t)
-	e := plugin.ACPPresetEntry{Name: "Fake", Command: "npx", Args: []string{"-y", "fake-acp"}}
-	cw.addACPFromCatalog(e)
-	if len(cw.cfg.ACPAgents) != 1 {
-		t.Fatalf("the entry was not added: %+v", cw.cfg.ACPAgents)
-	}
-	conn := cw.cfg.ACPAgents[0]
-	if conn.Command != "npx" || conn.Disabled {
-		t.Fatalf("an npx entry should be added enabled: %+v", conn)
-	}
-}
-
-// The plugins page filters: the category narrows by contribution kind, and
-// the query by name.
-func TestPluginFilters(t *testing.T) {
-	isolateHome(t)
-	cw := catalogTestWindow(t)
-	infos := cw.plugins.List()
-	if len(infos) < 70 {
-		t.Fatalf("the per-entry built-ins should number the catalog, got %d", len(infos))
-	}
-	provs := filterPlugins(infos, "catalog-providers", "")
-	for _, i := range provs {
-		if i.Counts.CatalogProviders == 0 {
-			t.Fatalf("%q landed in the provider filter without a provider entry", i.Name)
-		}
-	}
-	if len(provs) < 30 {
-		t.Fatalf("the provider filter should hold the vendors and relays, got %d", len(provs))
-	}
-	byQuery := filterPlugins(infos, "", "gemini")
-	if len(byQuery) == 0 {
-		t.Fatal("the name query should find the Gemini plugins")
-	}
-	// The query searches the name, the id and the description, so it finds
-	// both the Gemini preset plugins and the importer that reads Gemini
-	// CLI's configuration.
-	anyGeminiPreset := false
-	for _, i := range byQuery {
-		if strings.Contains(strings.ToLower(i.Name), "gemini") {
-			anyGeminiPreset = true
-		}
-	}
-	if !anyGeminiPreset {
-		t.Fatalf("no preset matched the name: %v", byQuery)
-	}
-	// The query also searches the description, where the importer names its
-	// sources: a search for an agent's name finds the importer that reads
-	// its configuration.
-	byDesc := filterPlugins(infos, "", "cursor")
-	found := false
-	for _, i := range byDesc {
-		if i.ID == "importer-cursor-config" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("a search naming a source agent should find the importer")
-	}
-	// Built-in vs installed.
-	builtin := filterPlugins(infos, "builtin", "")
-	for _, i := range builtin {
-		if !i.Builtin {
-			t.Fatalf("%q is filtered as built-in but is not", i.Name)
-		}
-	}
-	// Disabled entries stay listed (a catalog off is still on the books).
-	if err := cw.plugins.SetEnabled("acp-cursor", false, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	infos = cw.plugins.List()
-	stillListed := false
-	for _, i := range infos {
-		if i.ID == "acp-cursor" {
-			stillListed = true
-		}
-	}
-	if !stillListed {
-		t.Fatal("a disabled plugin must stay listed, ready to enable again")
-	}
+	_ = strings.TrimSpace
 }

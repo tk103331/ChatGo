@@ -13,29 +13,48 @@ import (
 	mcore "chatgo/internal/ui/uikit"
 )
 
-// pluginsTab lists installed plugins, installs new ones and edits settings.
+// pluginsTab manages installed plugins and browses the market, the MCP
+// page's shape: one segmented control, 我的插件 and 插件市场, each with
+// its own type filter and search.
 func (cw *ChatWindow) pluginsTab(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
-	small := mcore.FontSize(c, mtheme.CaptionSize)
 	if cw.plugins == nil {
 		mgo.Text(c, "插件系统未初始化").TextColor(k.TextMuted)
 		return
 	}
-	infos := cw.plugins.List()
-	visible := filterPlugins(infos, cw.pluginUI.filter, cw.pluginUI.query)
 	mgo.Column(c).Fill().Gap(u * 2).Children(func() {
 		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
-			mgo.Text(c, "插件").FontWeight(600).Grow(1)
-			mgo.Text(c, "共 "+strconv.Itoa(len(visible))+" / "+strconv.Itoa(len(infos))+" 个").
-				FontSize(small).TextColor(k.TextMuted)
+			kit.SegmentedControl(c, &cw.pluginUI.marketTab, []kit.Segment{
+				{Label: "我的插件"}, {Label: "插件市场"},
+			}, kit.SegmentedControlOptions{Label: "插件", Equal: true}).Width(320)
+			mgo.Spacer(c)
 			if kit.Button(c, "安装插件", kit.ButtonOptions{Variant: kit.Primary, Icon: icons.Must("plus")}).Clicked() {
 				cw.pluginUI.installOpen = !cw.pluginUI.installOpen
 			}
 		})
-		// The category filter and the name search narrow the list — most of
-		// it is the per-vendor built-in catalogs, and finding one plugin
-		// among seventy needs both.
+		if cw.pluginUI.marketTab == 1 {
+			cw.pluginMarketTab(c)
+			return
+		}
+		cw.myPluginsTab(c)
+	})
+	cw.pluginInstallDialog(c)
+}
+
+// myPluginsTab lists the installed plugins with the type filter and the
+// name search.
+func (cw *ChatWindow) myPluginsTab(c *mgo.Context) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	infos := cw.plugins.List()
+	visible := filterPlugins(infos, cw.pluginUI.filter, cw.pluginUI.query)
+	mgo.Column(c).Fill().Gap(u * 2).Children(func() {
+		mgo.Row(c).FillWidth().AlignItems(mgo.Center).Children(func() {
+			mgo.Text(c, "共 "+strconv.Itoa(len(visible))+" / "+strconv.Itoa(len(infos))+" 个").
+				FontSize(small).TextColor(k.TextMuted).Grow(1)
+		})
 		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
 			cw.pluginFilterControl(c)
 			in := kit.SearchInput(c, &cw.pluginUI.query, kit.SearchInputOptions{Placeholder: "搜索插件", Label: "搜索插件"})
@@ -43,20 +62,22 @@ func (cw *ChatWindow) pluginsTab(c *mgo.Context) {
 		})
 		if len(infos) > 0 && len(visible) == 0 {
 			mgo.Text(c, "没有符合过滤条件的插件").TextColor(k.TextMuted)
-		} else {
-			mgo.Row(c).Grow(1).MinHeight(0).Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
-				cw.pluginList(c, visible)
-				mgo.Divider(c)
-				cw.pluginDetail(c, visible)
-			})
+			return
 		}
-		// The installable catalog: the shipped plugins the release offers
-		// as zips — provider presets, ACP agents, importers. Installing one
-		// downloads its zip from the GitHub release; an entry already
-		// installed shows its state instead of a button.
-		cw.pluginInstallableSection(c)
+		if len(infos) == 0 {
+			mgo.Column(c).Grow(1).AlignItems(mgo.Center).Justify(mgo.Center).Gap(u).Children(func() {
+				mgo.Icon(c, icons.Must("layout-grid")).Size(40, 40).TextColor(k.TextMuted)
+				mgo.Text(c, "还没有插件").TextColor(k.TextMuted)
+				mgo.Text(c, "从插件市场安装，或支持目录、ZIP、Git 与 npm 四种来源").FontSize(small).TextColor(k.TextMuted)
+			})
+			return
+		}
+		mgo.Row(c).Grow(1).MinHeight(0).Gap(u * 3).AlignItems(mgo.Stretch).Children(func() {
+			cw.pluginList(c, visible)
+			mgo.Divider(c)
+			cw.pluginDetail(c, visible)
+		})
 	})
-	cw.pluginInstallDialog(c)
 }
 
 // pluginFilterControl is the category segmented control.
