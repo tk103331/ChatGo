@@ -287,6 +287,72 @@ func TestACPProbeVersionSubcommandFallback(t *testing.T) {
 	}
 }
 
+// An npm-installed CLI answers from its package.json without being run at
+// all — magpie's way: the binary is a symlink into node_modules, the shape
+// npm -g links them with, and the script would print a wrong version (or
+// worse, start something) if it were executed.
+func TestACPProbeVersionReadsPackageJSON(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "node_modules", "fake-acp")
+	bin := filepath.Join(pkgDir, "bin", "fake-acp")
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\necho 'wrong 9.9.9'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "package.json"),
+		[]byte(`{"name":"fake-acp","version":"1.4.2"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	binDir := filepath.Join(root, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(binDir, "fake-acp")
+	if err := os.Symlink(bin, link); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir)
+
+	res, err := acpProbeVersion(config.ACPConnection{Name: "Fake", Command: "fake-acp"})
+	if err != nil {
+		t.Fatalf("probe failed: %v", err)
+	}
+	if res.Version != "1.4.2" {
+		t.Fatalf("version = %q, want the package.json's 1.4.2, not the script's 9.9.9", res.Version)
+	}
+	if res.Path != link {
+		t.Fatalf("resolved path = %q, want %q", res.Path, link)
+	}
+}
+
+// A scoped package sits one level deeper, under node_modules/@scope/pkg,
+// and its package.json answers the same way.
+func TestACPPackageVersionScoped(t *testing.T) {
+	root := t.TempDir()
+	pkgDir := filepath.Join(root, "node_modules", "@zed-industries", "fake-acp")
+	bin := filepath.Join(pkgDir, "bin", "cli.js")
+	if err := os.MkdirAll(filepath.Dir(bin), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(bin, []byte("/* would run */"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkgDir, "package.json"),
+		[]byte(`{"name":"@zed-industries/fake-acp","version":"2.0.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := acpPackageVersion(bin); got != "2.0.0" {
+		t.Fatalf("scoped package version = %q, want 2.0.0", got)
+	}
+	// A file outside any package reads nothing, so the probe falls back to
+	// running the CLI.
+	if got := acpPackageVersion(filepath.Join(root, "loose-file")); got != "" {
+		t.Fatalf("a loose file has no package version, got %q", got)
+	}
+}
+
 // An unknown command is reported with the name, not a bare failure.
 func TestACPProbeVersionMissing(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())

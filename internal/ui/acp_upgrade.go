@@ -428,12 +428,47 @@ type acpProbeResult struct {
 	Package string
 }
 
+// acpPackageVersion reads the version out of the package.json of the npm
+// package the file at path is part of — magpie's trick (proc.Version): an
+// npm-installed CLI already carries in its own package.json the version its
+// --version would print, so nothing is run at all: no slow first run of an
+// npx wrapper, no macOS notice for a flagged binary, and no side effects a
+// --version can have (Cline checks for an update and self-installs on every
+// start, its --version included). "" when the file is in no package.
+func acpPackageVersion(path string) string {
+	real, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		real = path
+	}
+	// Walk up from the file: the first directory whose parent is
+	// node_modules is the package — a scoped one sits one level deeper,
+	// under node_modules/@scope/pkg.
+	for d := filepath.Dir(real); ; d = filepath.Dir(d) {
+		up := filepath.Dir(d)
+		if up == d {
+			return ""
+		}
+		if filepath.Base(up) == "node_modules" ||
+			strings.HasPrefix(filepath.Base(up), "@") && filepath.Base(filepath.Dir(up)) == "node_modules" {
+			var p struct {
+				Version string `json:"version"`
+			}
+			if b, err := os.ReadFile(filepath.Join(d, "package.json")); err == nil && json.Unmarshal(b, &p) == nil {
+				return p.Version
+			}
+			return ""
+		}
+	}
+}
+
 // acpProbeVersion asks the connection's CLI for its version. The command is
 // resolved from the system first, and the resolved path is reported back with
-// the answer. npx commands are probed with their package argument so the
-// adapter itself answers; other commands run with only --version, because
-// stored args such as "acp" would start a session instead. A CLI that only
-// answers the version subcommand gets that as a second try.
+// the answer. The npm package the CLI lives in answers from its package.json
+// without a process being started; only a CLI outside any package is run
+// with --version, because stored args such as "acp" would start a session
+// instead. npx commands are probed with their package argument so the
+// adapter itself answers. A CLI that only answers the version subcommand
+// gets that as a second try.
 func acpProbeVersion(conn config.ACPConnection) (acpProbeResult, error) {
 	fields := strings.Fields(strings.TrimSpace(conn.Command))
 	if len(fields) == 0 {
@@ -448,6 +483,12 @@ func acpProbeVersion(conn config.ACPConnection) (acpProbeResult, error) {
 	if acpIsNpx(conn.Command, conn.Args) {
 		res.Package = acpNpxPackage(conn.Args)
 		pkg = res.Package
+	} else if v := acpPackageVersion(path); v != "" {
+		// The package the resolved binary belongs to has already said its
+		// version; the row's subject is that binary, so the path is
+		// reported as resolved rather than through its symlinks.
+		res.Version = v
+		return res, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), acpVersionTimeout)
 	defer cancel()
@@ -473,8 +514,11 @@ func acpProbeVersion(conn config.ACPConnection) (acpProbeResult, error) {
 // acpRunCapture runs the resolved command with its stdout and stderr kept
 // apart: npx and npm print their own version-bearing notices on stderr, and
 // mixing the two streams is how a check could read the wrong version.
+// NO_COLOR keeps ANSI sequences out of the answer, so a decorated "1.2.3"
+// still parses.
 func acpRunCapture(ctx context.Context, path string, args []string) (string, string) {
 	c := acpExec(ctx, path, args)
+	c.Env = append(os.Environ(), "NO_COLOR=1")
 	var out, errOut strings.Builder
 	c.Stdout = &out
 	c.Stderr = &errOut
