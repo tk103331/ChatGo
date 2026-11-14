@@ -43,6 +43,10 @@ type createState struct {
 	// to the value picked for it. They ride the new conversation, so its
 	// session starts with them.
 	acpConfig map[string]string
+	// pickerW is the width the choice pickers take this frame, measured from
+	// the row's last frame so every picker shares the row however narrow
+	// the pane is. Zero until createSelectors first draws.
+	pickerW float32
 }
 
 // openCreateTab opens the "新会话" tab in the focused pane, at most one at a
@@ -121,12 +125,28 @@ func (cw *ChatWindow) createBody(c *mgo.Context) {
 // createSelectors lays out the agent, project, worktree and branch pickers as
 // one wrapping row. The home page reuses it, so starting a session asks for
 // the same things in the same place wherever it begins.
+//
+// The pickers share the row: each takes the quarter (or third, before a
+// branch is asked for) of the width the previous frame measured, capped at
+// createPickerWidth, so all of them stay on one row however narrow the pane
+// is and never spill the branch picker onto a second line.
 func (cw *ChatWindow) createSelectors(c *mgo.Context, scope string) {
 	u := mcore.Density(c).Unit()
+	gap := u * 2
+	count := 3
+	if cw.create.wt == createNewWorktree {
+		count = 4
+	}
+	row := mgo.Row(c).FillWidth().Shrink(0).Gap(gap).AlignItems(mgo.Start).Wrap()
 	// Every picker is a sibling of the same row, aligned at the top so their
 	// labels line up however tall a picker grows.
-	mgo.Row(c).FillWidth().Shrink(0).Gap(u * 2).AlignItems(mgo.Start).
-		Wrap().Children(func() {
+	rowW := mgo.Local(row, "chatgo:create:selectors:roww", func() float32 { return 0 })
+	if *rowW > 0 {
+		cw.create.pickerW = min((*rowW-gap*float32(count-1))/float32(count), createPickerWidth)
+	} else {
+		cw.create.pickerW = createPickerWidth
+	}
+	row.Children(func() {
 		cw.createAgentSelect(c, scope)
 		cw.createWorkspaceSelect(c, scope)
 		cw.createWorktreeSelect(c, scope)
@@ -134,15 +154,32 @@ func (cw *ChatWindow) createSelectors(c *mgo.Context, scope string) {
 			cw.createBranchSelect(c, scope)
 		}
 	})
+	if b := row.Bounds(); b.W > 0 {
+		*rowW = b.W
+	}
+}
+
+// pickerWidth is the width this frame's pickers take; the first frame falls
+// back to the cap.
+func (cw *ChatWindow) pickerWidth() float32 {
+	if cw.create.pickerW > 0 {
+		return cw.create.pickerW
+	}
+	return createPickerWidth
 }
 
 // createWidth caps the create block, so the composer keeps a readable
 // measure on a wide pane.
 const createWidth float32 = 760
 
-// createPickerWidth keeps the agent, project and worktree pickers wide
-// enough for a full name, rather than shrinking to their shortest value.
-const createPickerWidth float32 = 180
+// createPickerWidth caps a choice picker: wide enough for a full name on a
+// roomy pane, while createSelectors shrinks the pickers below it to share a
+// narrower row.
+const createPickerWidth float32 = 168
+
+// createPickerIconRoom is the horizontal room the 项目 picker's folder
+// button needs beside the select inside the same field.
+const createPickerIconRoom float32 = 36
 
 // createPickerHeight keeps the four pickers level with one another.
 const createPickerHeight float32 = 32
@@ -151,8 +188,9 @@ const createPickerHeight float32 = 32
 // picker that lists every assistant by Agent. Its
 // trigger shares the variant, width and height of the pickers beside it.
 func (cw *ChatWindow) createAgentSelect(c *mgo.Context, scope string) {
+	w := cw.pickerWidth()
 	kit.FieldColumn(c, "Agent", kit.FieldOptions{
-		Width: createPickerWidth, Name: scope + " Agent",
+		Width: w, Name: scope + " Agent",
 	}, func() {
 		cw.agentPickerButton(c, &cw.create.agent, func(ref string) {
 			if ref == cw.create.agent {
@@ -163,7 +201,7 @@ func (cw *ChatWindow) createAgentSelect(c *mgo.Context, scope string) {
 			// choices made for the previous agent.
 			cw.create.acpConfig = nil
 			cw.invalidate()
-		})
+		}, w)
 	})
 }
 
@@ -221,13 +259,13 @@ func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context, scope string) {
 		opts = append(opts, kit.SearchSelectOption[string]{Value: ws, Label: name, Note: middleEllipsis(ws, worktreePathWidth)})
 	}
 	kit.FieldColumn(c, "项目", kit.FieldOptions{
-		Width: createPickerWidth, Name: scope + " 项目",
+		Width: cw.pickerWidth(), Name: scope + " 项目",
 	}, func() {
 		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
 			sel := kit.SearchSelect(c, &cw.create.ws, opts, kit.SearchSelectOptions[string]{
 				Label: "项目", Placeholder: "选择项目",
 				SearchPlaceholder: "搜索项目", Empty: "没有项目，可先新增",
-				MinWidth: createPickerWidth, MinHeight: createPickerHeight,
+				MinWidth: cw.pickerWidth() - createPickerIconRoom, MinHeight: createPickerHeight,
 			})
 			sel.Element.Justify(mgo.Start)
 			if mcore.IconAction(c, icons.Must("folder"), "新增项目").Tooltip("新增项目").Clicked() {
@@ -276,12 +314,12 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context, scope string) {
 		}
 		// Not a repository: the directory itself is where the session runs.
 		kit.FieldColumn(c, "工作区", kit.FieldOptions{
-			Width: createPickerWidth, Name: scope + " 工作区",
+			Width: cw.pickerWidth(), Name: scope + " 工作区",
 		}, func() {
 			b := kit.Button(c, filepath.Base(cw.create.ws), kit.ButtonOptions{
 				Variant: kit.Secondary, Disabled: true,
 			}).Tooltip("该目录不是 Git 仓库，会话将直接在其中运行")
-			b.MaxWidth(createPickerWidth).MinWidth(0)
+			b.MaxWidth(cw.pickerWidth()).MinWidth(0)
 		})
 		return
 	}
@@ -305,12 +343,12 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context, scope string) {
 		})
 	}
 	kit.FieldColumn(c, "工作树", kit.FieldOptions{
-		Width: createPickerWidth, Name: scope + " 工作树",
+		Width: cw.pickerWidth(), Name: scope + " 工作树",
 	}, func() {
 		sel := kit.SearchSelect(c, &cw.create.wt, opts, kit.SearchSelectOptions[string]{
 			Label: "工作树", Placeholder: "选择工作树",
 			SearchPlaceholder: "搜索工作树", Empty: "此项目没有工作树",
-			MinWidth: createPickerWidth, MinHeight: createPickerHeight,
+			MinWidth: cw.pickerWidth(), MinHeight: createPickerHeight,
 		})
 		sel.Element.Justify(mgo.Start)
 	})
@@ -327,11 +365,11 @@ func (cw *ChatWindow) createBranchSelect(c *mgo.Context, scope string) {
 		branches = branchList(p.Branches)
 	}
 	kit.FieldColumn(c, "分支", kit.FieldOptions{
-		Width: createPickerWidth, Name: scope + " 分支",
+		Width: cw.pickerWidth(), Name: scope + " 分支",
 	}, func() {
 		sel := kit.BranchSelector(c, &cw.create.branch, branches,
 			kit.BranchSelectorOptions{AllowCreate: true, Key: "create", MinHeight: createPickerHeight})
-		sel.Element.MinWidth(createPickerWidth).Justify(mgo.Start)
+		sel.Element.MinWidth(cw.pickerWidth()).Justify(mgo.Start)
 		if sel.Changed() {
 			cw.create.newBranch = false
 		}

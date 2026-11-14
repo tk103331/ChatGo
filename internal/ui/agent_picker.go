@@ -88,11 +88,11 @@ func (cw *ChatWindow) agentPickMark(c *mgo.Context, ref string, size float32) {
 
 // agentPickerButton draws an agent control: a button naming the current agent,
 // opening the searchable picker popover. The model stays in its own picker.
-func (cw *ChatWindow) agentPickerButton(c *mgo.Context, current *string, onPick func(string)) {
+func (cw *ChatWindow) agentPickerButton(c *mgo.Context, current *string, onPick func(string), width float32) {
 	// The trigger matches the project and worktree pickers beside it in the
 	// 新会话 row: same emphasis, width and height, no leading mark.
 	b := kit.Button(c, agentPickLabel(*current), kit.ButtonOptions{Variant: kit.Secondary})
-	b.MinWidth(createPickerWidth).MaxWidth(createPickerWidth).MinHeight(createPickerHeight).
+	b.MinWidth(width).MaxWidth(width).MinHeight(createPickerHeight).
 		Justify(mgo.Start)
 	open := mgo.Local(b, "agentpicker.open", func() bool { return false })
 	query := mgo.Local(b, "agentpicker.query", func() string { return "" })

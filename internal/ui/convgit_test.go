@@ -316,8 +316,8 @@ func TestGroupedConvRowsMergeWorktrees(t *testing.T) {
 		{ID: "c2", Title: "linked", Workspace: wt},
 	}
 	cw.convGit = newConvGitState()
-	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir}}
-	cw.convGit.info[wt] = &convGitInfo{Project: &Project{Main: dir}}
+	cw.convGit.info[dir] = &convGitInfo{Branch: "main", Project: &Project{Main: dir}}
+	cw.convGit.info[wt] = &convGitInfo{Branch: "rows", Project: &Project{Main: dir}}
 
 	rows := cw.groupedConvRows()
 	if got := projectHeaders(rows); len(got) != 1 || got[0] != dir {
@@ -518,8 +518,8 @@ func TestGroupedConvRowsLabelsEachTree(t *testing.T) {
 		{ID: "c2", Title: "linked", Workspace: wt},
 	}
 	cw.convGit = newConvGitState()
-	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir}}
-	cw.convGit.info[wt] = &convGitInfo{Project: &Project{Main: dir}}
+	cw.convGit.info[dir] = &convGitInfo{Branch: "main", Project: &Project{Main: dir}}
+	cw.convGit.info[wt] = &convGitInfo{Branch: "label", Project: &Project{Main: dir}}
 
 	rows := cw.groupedConvRows()
 	if len(rows) != 5 {
@@ -562,8 +562,8 @@ func TestProjectHeaderCollapsesUnderItsOwnKey(t *testing.T) {
 		{ID: "c2", Title: "linked", Workspace: wt},
 	}
 	cw.convGit = newConvGitState()
-	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir}}
-	cw.convGit.info[wt] = &convGitInfo{Project: &Project{Main: dir}}
+	cw.convGit.info[dir] = &convGitInfo{Branch: "main", Project: &Project{Main: dir}}
+	cw.convGit.info[wt] = &convGitInfo{Branch: "coll", Project: &Project{Main: dir}}
 
 	rows := cw.groupedConvRows()
 	if len(rows) != 5 {
@@ -595,7 +595,7 @@ func TestSingleTreeProjectCollapses(t *testing.T) {
 		{ID: "c1", Title: "main", Workspace: dir},
 	}
 	cw.convGit = newConvGitState()
-	cw.convGit.info[dir] = &convGitInfo{Project: &Project{Main: dir}}
+	cw.convGit.info[dir] = &convGitInfo{Branch: "main", Project: &Project{Main: dir}}
 
 	rows := cw.groupedConvRows()
 	if len(rows) != 3 {

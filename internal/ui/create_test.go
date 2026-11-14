@@ -26,9 +26,10 @@ func TestCreateTabRenders(t *testing.T) {
 	}
 }
 
-// The create row's pickers share one style: the agent trigger is the same
-// width, height and baseline as the project picker beside it, so the row
-// reads as one set of fields.
+// The create row's pickers share one style: the agent trigger matches the
+// project picker's height and baseline, so the row reads as one set of
+// fields. Their widths differ by exactly the folder button's room: the
+// 项目 field holds the select and the 新增项目 button side by side.
 func TestCreatePickersShareOneStyle(t *testing.T) {
 	dir := newTestRepo(t)
 	cw := worktreeWindow(t, dir)
@@ -43,11 +44,54 @@ func TestCreatePickersShareOneStyle(t *testing.T) {
 	if !ok {
 		t.Fatalf("the create row has no project trigger; texts: %v", tr.Texts())
 	}
-	if agent.Bounds.W != project.Bounds.W || agent.Bounds.H != project.Bounds.H {
-		t.Fatalf("the pickers differ in size: agent %v, project %v", agent.Bounds, project.Bounds)
+	if agent.Bounds.H != project.Bounds.H {
+		t.Fatalf("the pickers differ in height: agent %v, project %v", agent.Bounds, project.Bounds)
 	}
 	if agent.Bounds.Y != project.Bounds.Y {
 		t.Fatalf("the pickers do not share a baseline: agent %v, project %v", agent.Bounds, project.Bounds)
+	}
+	if want := agent.Bounds.W - createPickerIconRoom; project.Bounds.W != want {
+		t.Fatalf("the project picker is %.0f wide, want %.0f (the agent's %.0f less the folder button's room)",
+			project.Bounds.W, want, agent.Bounds.W)
+	}
+}
+
+// On a pane too narrow for four capped pickers, the row shrinks them to fit
+// instead of spilling the branch picker onto a second line.
+func TestCreatePickersShareOneRowOnANarrowPane(t *testing.T) {
+	dir := newTestRepo(t)
+	cw := worktreeWindow(t, dir)
+	cw.leftHidden = true
+	cw.convGit.info[dir] = &convGitInfo{Project: &Project{
+		Main: dir, Worktrees: []string{dir},
+		Branches:     []string{"main"},
+		TreeBranches: map[string]string{dir: "main"},
+	}}
+	cw.create.ws = dir
+	cw.create.wt = createNewWorktree // the branch picker shows too
+	cw.openCreateTab()
+	// 640 pane: four pickers at the 168 cap plus gaps are 696, which does
+	// not fit, so the pickers must have shared the row out instead.
+	tr := cw.tester(640, 700, "新会话")
+	labels := map[string]float32{}
+	for _, name := range []string{"Agent", "项目", "工作树", "分支"} {
+		r, ok := tr.Find("新会话 " + name)
+		if !ok {
+			t.Fatalf("the %q label is missing; texts: %v", name, tr.Texts())
+		}
+		labels[name] = r.Y
+	}
+	var min, max float32 = labels["项目"], labels["项目"]
+	for _, y := range labels {
+		if y < min {
+			min = y
+		}
+		if y > max {
+			max = y
+		}
+	}
+	if max-min > 2 {
+		t.Fatalf("the pickers wrapped on a narrow pane: %v (spread %.1f)", labels, max-min)
 	}
 }
 

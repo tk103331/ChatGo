@@ -24,7 +24,7 @@ func (cw *ChatWindow) homeView(c *mgo.Context) {
 	// is not.
 	viewportCenter(c, "home", func() {
 		mgo.Column(c).FillWidth().MaxWidth(createWidth).AlignSelf(mgo.Center).
-			AlignItems(mgo.Center).Gap(u*2).Padding(u*5, u*4).Children(func() {
+			AlignItems(mgo.Center).Gap(u*2).Padding(u*5, u*2).Children(func() {
 			mgo.Row(c).Gap(u * 2).AlignItems(mgo.Center).Children(func() {
 				mgo.Icon(c, assets.BrandMark()).Size(44, 44).TextColor(k.Accent)
 				mgo.Text(c, "ChatGo").FontSize(mcore.FontSize(c, mtheme.H1Size)).
@@ -96,7 +96,7 @@ func (cw *ChatWindow) recentConversationRow(c *mgo.Context, conv models.Conversa
 				mgo.Text(c, kit.DateSeparatorWhen(convLast(conv), mcore.DateOf(c.Now()))).
 					FontSize(mcore.FontSize(c, mtheme.CaptionSize)).TextColor(k.TextMuted).Shrink(0)
 			})
-			if conv.Workspace != "" {
+			if workspaceMeaningful(conv.Workspace) {
 				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 					mgo.Icon(c, icons.Must("folder")).Size(12, 12).TextColor(k.TextMuted).Shrink(0)
 					mgo.Text(c, workspaceTitle(conv.Workspace)).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).

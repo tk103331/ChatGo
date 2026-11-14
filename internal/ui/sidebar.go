@@ -357,8 +357,14 @@ func (cw *ChatWindow) buildConvRows(collapsed map[string]bool) []convRow {
 			members[ws] = append(members[ws], i)
 		}
 		trees := cw.groupTrees(g, members)
-		labelled := len(trees) > 0
+		// A tree header that would repeat the project's own title — the
+		// project's only directory, a plain directory, the empty workspace —
+		// is dropped, so those sessions sit directly under the project
+		// instead of a duplicated layer. A git tree keeps its header: its
+		// branch names it where the project is named by its directory.
+		groupTitle := workspaceTitle(g)
 		for ti, t := range trees {
+			labelled := cw.worktreeHeaderLabel(t) != groupTitle
 			if labelled {
 				key := cw.treeCollapseKey(t, ti)
 				rows = append(rows, convRow{header: true, ws: t, sub: true, first: ti == 0, key: key})
@@ -469,6 +475,13 @@ func workspaceTitle(ws string) string {
 		return base
 	}
 	return ws
+}
+
+// workspaceMeaningful reports whether a workspace path tells the reader
+// anything: the empty workspace and the root directory carry no place, so a
+// recent row does better without the folder line at all.
+func workspaceMeaningful(ws string) bool {
+	return ws != "" && ws != string(filepath.Separator)
 }
 
 // convRow renders one conversation with open, rename, export and delete actions.

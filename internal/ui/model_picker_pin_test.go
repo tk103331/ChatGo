@@ -66,7 +66,7 @@ func TestAgentPickerSearchStaysWhileTheListScrolls(t *testing.T) {
 	view := func(c *mgo.Context) {
 		mcore.Use(c, mcore.Settings{Density: mtheme.Compact})
 		mgo.Column(c).Fill().Justify(mgo.Start).Children(func() {
-			cw.agentPickerButton(c, &current, func(string) {})
+			cw.agentPickerButton(c, &current, func(string) {}, createPickerWidth)
 		})
 	}
 	tr := mgo.NewTester(view, 600, 600)
