@@ -26,8 +26,24 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Download the previously published index
+        run: |
+          # The previous index is what the release actually serves: pull it
+          # so a pack diffs against published reality, not the commit. A
+          # missing asset (first release) falls back to packing everything.
+          if gh release download plugins --repo "$GITHUB_REPOSITORY" \
+              --pattern catalog-index.json --output /tmp/prev-index.json; then
+            cp /tmp/prev-index.json internal/plugin/catalog-index.prev.json
+            echo "diffing against the published index"
+          else
+            echo '{}' > internal/plugin/catalog-index.prev.json
+            echo "no published index; packing everything"
+          fi
       - name: Pack the catalog zips (changed only)
-        run: go run ./tools/gen-plugin-catalog -catalog plugins/catalog -out dist/plugins
+        run: |
+          go run ./tools/gen-plugin-catalog \
+            -catalog plugins/catalog -out dist/plugins \
+            -prev internal/plugin/catalog-index.prev.json
       - name: Check the committed index matches the packed zips
         run: |
           cp internal/plugin/catalog-index.json /tmp/committed.json

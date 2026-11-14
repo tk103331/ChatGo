@@ -163,18 +163,24 @@ func PackCatalog(catalogDir, out string, previous []CatalogEntry) ([]CatalogEntr
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", e.Name(), err)
 		}
-		// Unchanged since the previous release: keep the entry as it was,
-		// and let the existing release asset serve it.
+		// Unchanged since the previous release: keep the entry as it was —
+		// but only when its zip is already in hand. An entry the previous
+		// index knows but whose versioned zip has never been published
+		// (a naming-scheme switch, an interrupted release) still packs, so
+		// "kept" never points at an asset that does not exist.
+		zipName := catalogZipName(manifest.ID, manifest.Version)
 		if old, ok := prev[manifest.ID]; ok && old.Version == manifest.Version {
-			index = append(index, old)
-			kept++
-			continue
+			if data, err := os.ReadFile(path.Join(out, zipName)); err == nil {
+				_ = data
+				index = append(index, old)
+				kept++
+				continue
+			}
 		}
 		buf, sum, err := zipPluginDir(dir)
 		if err != nil {
 			return nil, err
 		}
-		zipName := catalogZipName(manifest.ID, manifest.Version)
 		if err := os.WriteFile(path.Join(out, zipName), buf.Bytes(), 0o644); err != nil {
 			return nil, err
 		}
