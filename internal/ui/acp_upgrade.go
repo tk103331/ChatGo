@@ -78,7 +78,7 @@ var acpUpgradeSources = map[string]acpUpgradeSource{
 	"GeminiCLI":       {Kind: acpUpdNPM, Package: "@google/gemini-cli", Upgrade: "npm install -g @google/gemini-cli@latest", Channel: acpUpdChannelNPM},
 	"GitHubCopilot":   {Kind: acpUpdNPM, Package: "@github/copilot", Upgrade: "npm install -g @github/copilot@latest", Channel: acpUpdChannelNPM},
 	"QwenCode":        {Kind: acpUpdNPM, Package: "@qwen-code/qwen-code", Upgrade: "npm install -g @qwen-code/qwen-code@latest", Channel: acpUpdChannelNPM},
-	"Cline":           {Kind: acpUpdNPM, Package: "cline-acp"},
+	"Cline":           {Kind: acpUpdNPM, Package: "cline"},
 	"PiAgent":         {Kind: acpUpdNPM, Package: "pi-acp"},
 	"DeepSeekHarness": {Kind: acpUpdNPM, Package: "deepseek-acp"},
 	"Goose":           {Kind: acpUpdGitHub, Repo: "aaif-goose/goose"},

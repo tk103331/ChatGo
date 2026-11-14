@@ -46,28 +46,61 @@ type acpCatalogEntry struct {
 	Args        []string
 	Description string
 	Homepage    string
+	// Env carries the extra environment an adapter needs — paseo's catalog
+	// entries set things like disabling a CLI's own auto-update, which
+	// otherwise races the app's own upgrade button.
+	Env map[string]string
 }
 
+// acpCatalog lists the ACP agents the app knows how to start, with the
+// command line each one's own documentation says speaks ACP — checked
+// against paseo's catalog (packages/app/src/data/acp-provider-catalog.ts):
+// a CLI started without its acp subcommand would open an interactive
+// session instead of the protocol.
 func acpCatalog() []acpCatalogEntry {
 	return []acpCatalogEntry{
 		{Name: "ClaudeCode", Command: "npx", Args: []string{"-y", "@zed-industries/claude-code-acp"}, Description: "Anthropic Claude Code", Homepage: "https://claude.com"},
 		{Name: "ClaudeAgentSDK", Command: "npx", Args: []string{"-y", "@zed-industries/claude-agent-acp"}, Description: "Claude Agent SDK via Zed 适配器", Homepage: "https://github.com/zed-industries/claude-agent-acp"},
 		{Name: "OpenCode", Command: "opencode", Args: []string{"acp"}, Description: "OpenCode AI 编程助手", Homepage: "https://github.com/sst/opencode"},
 		{Name: "CodexCLI", Command: "npx", Args: []string{"-y", "@agentclientprotocol/codex-acp"}, Description: "OpenAI Codex CLI", Homepage: "https://github.com/openai/codex"},
-		{Name: "Cursor", Command: "agent", Args: []string{"acp"}, Description: "Cursor CLI Agent", Homepage: "https://cursor.com"},
-		{Name: "GeminiCLI", Command: "gemini", Description: "Google Gemini CLI", Homepage: "https://github.com/google-gemini/gemini-cli"},
+		{Name: "Cursor", Command: "cursor-agent", Args: []string{"acp"}, Description: "Cursor CLI Agent", Homepage: "https://cursor.com"},
+		{Name: "GeminiCLI", Command: "gemini", Args: []string{"--acp"}, Description: "Google Gemini CLI", Homepage: "https://github.com/google-gemini/gemini-cli"},
 		{Name: "KiroCLI", Command: "kiro-cli", Args: []string{"acp"}, Description: "AWS Kiro CLI", Homepage: "https://kiro.dev"},
 		{Name: "GitHubCopilot", Command: "copilot", Description: "GitHub Copilot CLI", Homepage: "https://github.com/features/copilot"},
-		{Name: "Goose", Command: "goose", Description: "Block Goose AI Agent", Homepage: "https://block.github.io/goose/"},
-		{Name: "QwenCode", Command: "qwen", Description: "阿里通义灵码 Qwen Code", Homepage: "https://github.com/QwenLM/qwen-code"},
-		{Name: "KimiCLI", Command: "kimi", Description: "月之暗面 Kimi CLI", Homepage: "https://github.com/MoonshotAI/kimi-cli"},
+		{Name: "Goose", Command: "goose", Args: []string{"acp"}, Description: "Block Goose AI Agent", Homepage: "https://block.github.io/goose/"},
+		{Name: "QwenCode", Command: "qwen", Args: []string{"--acp"}, Description: "阿里通义灵码 Qwen Code", Homepage: "https://github.com/QwenLM/qwen-code"},
+		{Name: "KimiCLI", Command: "kimi", Args: []string{"acp"}, Description: "月之暗面 Kimi Code CLI", Homepage: "https://github.com/MoonshotAI/kimi-cli"},
+		{Name: "GLMAgent", Command: "npx", Args: []string{"-y", "glm-acp-agent"}, Description: "智谱 GLM Coding Plan ACP Agent（glm-5.3 系列）", Homepage: "https://github.com/stefandevo/glm-acp-agent"},
+		{Name: "Grok", Command: "grok", Args: []string{"agent", "stdio"}, Description: "xAI Grok Build（需 SuperGrok 或 X Premium+ 订阅）", Homepage: "https://docs.x.ai/build/overview"},
+		{Name: "Junie", Command: "junie", Args: []string{"--acp", "true"}, Description: "JetBrains Junie CLI", Homepage: "https://junie.jetbrains.com/docs/junie-cli-acp.html"},
+		{Name: "Kilo", Command: "kilo", Args: []string{"acp"}, Description: "Kilo 开源编程 Agent", Homepage: "https://kilo.ai/docs/code-with-ai/platforms/cli"},
+		{Name: "MiniMaxCode", Command: "npx", Args: []string{"-y", "-p", "@minimax-ai/code", "mcode", "acp"}, Description: "MiniMax Code 终端编程 Agent", Homepage: "https://agent.minimax.io"},
+		{Name: "DevinCLI", Command: "devin", Args: []string{"acp"}, Description: "Cognition Devin 终端版", Homepage: "https://cli.devin.ai"},
+		{Name: "Amp", Command: "amp-acp", Description: "Amp 前沿编程 Agent 的 ACP 包装", Homepage: "https://github.com/tao12345666333/amp-acp"},
+		{Name: "AugmentCode", Command: "npx", Args: []string{"-y", "@augmentcode/auggie", "--acp"}, Env: map[string]string{"AUGMENT_DISABLE_AUTO_UPDATE": "1"}, Description: "Augment Code Auggie CLI", Homepage: "https://www.augmentcode.com/"},
+		{Name: "TRAECLI", Command: "traecli", Args: []string{"acp", "serve"}, Description: "字节跳动 TRAE CLI", Homepage: "https://docs.trae.cn/cli_get-started-with-trae-cli"},
+		{Name: "CodebuddyCode", Command: "codebuddy", Args: []string{"--acp"}, Description: "腾讯云 CodeBuddy CLI", Homepage: "https://www.codebuddy.cn/cli/"},
+		{Name: "CortexCode", Command: "cortex", Args: []string{"acp", "serve"}, Description: "Snowflake Cortex Code", Homepage: "https://docs.snowflake.com/en/user-guide/cortex-code/cortex-code-cli"},
+		{Name: "CodeWhale", Command: "codewhale", Args: []string{"serve", "--acp"}, Description: "CodeWhale 终端编程 Agent", Homepage: "https://codewhale.net/"},
+		{Name: "CrowCLI", Command: "crow-cli", Args: []string{"acp"}, Description: "Crow 极简 ACP 编程 Agent", Homepage: "https://crow-ai.dev/"},
+		{Name: "DeepAgents", Command: "npx", Args: []string{"-y", "deepagents-acp"}, Description: "LangChain DeepAgents", Homepage: "https://docs.langchain.com/oss/javascript/deepagents/overview"},
+		{Name: "DimCode", Command: "npx", Args: []string{"-y", "dimcode", "acp"}, Description: "DimCode 编程 Agent", Homepage: "https://dimcode.dev"},
+		{Name: "Dirac", Command: "npx", Args: []string{"-y", "dirac-cli", "--acp"}, Description: "Dirac 开源编程 Agent", Homepage: "https://dirac.run"},
+		{Name: "FastAgent", Command: "uvx", Args: []string{"--from", "fast-agent-acp", "fast-agent-acp", "-x"}, Description: "fast-agent 多后端编程 Agent", Homepage: "https://fast-agent.ai/acp/"},
+		{Name: "Hermes", Command: "hermes", Args: []string{"acp"}, Description: "Nous Research Hermes 自进化 Agent", Homepage: "https://hermes-agent.nousresearch.com"},
+		{Name: "MinionCode", Command: "uvx", Args: []string{"--from", "minion-code", "minion-code", "acp"}, Description: "Minion Code 编程助手", Homepage: "https://github.com/femto/minion-code"},
+		{Name: "MistralVibe", Command: "vibe-acp", Description: "Mistral Vibe 开源编程助手", Homepage: "https://github.com/mistralai/mistral-vibe"},
+		{Name: "Nova", Command: "npx", Args: []string{"-y", "@compass-ai/nova", "acp"}, Description: "Compass AI Nova", Homepage: "https://www.compassap.ai/portfolio/nova.html"},
+		{Name: "Poolside", Command: "pool", Args: []string{"acp"}, Description: "Poolside 编程 Agent", Homepage: "https://docs.poolside.ai/cli/pool"},
+		{Name: "Stakpak", Command: "stakpak", Args: []string{"acp"}, Description: "Stakpak 开源 Rust DevOps Agent", Homepage: "https://stakpak.dev/"},
+		{Name: "VTCode", Command: "vtcode", Args: []string{"acp"}, Env: map[string]string{"VT_ACP_ENABLED": "1"}, Description: "VT Code 开源编程 Agent", Homepage: "https://github.com/vinhnx/VTCode"},
+		{Name: "Autohand", Command: "npx", Args: []string{"-y", "@autohandai/autohand-acp"}, Description: "Autohand Code", Homepage: "https://www.autohand.ai/cli/"},
 		{Name: "PiG", Command: "pig-acp", Description: "PiG — Pi 的 Go 实现（需先 pig install npm:@pi-in-go/pigpen-acp 并 pig acp install 构建 pig-acp）", Homepage: "https://pi-in-go.dev"},
-		{Name: "Cline", Command: "npx", Args: []string{"-y", "cline-acp"}, Description: "Cline AI 助手", Homepage: "https://cline.bot"},
+		{Name: "Cline", Command: "npx", Args: []string{"-y", "cline", "--acp"}, Description: "Cline AI 助手", Homepage: "https://cline.bot"},
 		{Name: "Dockercagent", Command: "cagent", Description: "Docker cagent", Homepage: "https://github.com/docker/cagent"},
-		{Name: "FactoryDroid", Command: "droid", Description: "Factory Droid", Homepage: "https://factory.ai"},
-		{Name: "AugmentCode", Command: "augment", Args: []string{"acp"}, Description: "Augment Code CLI", Homepage: "https://docs.augmentcode.com/cli/acp"},
+		{Name: "FactoryDroid", Command: "droid", Args: []string{"exec", "--output-format", "acp-daemon"}, Env: map[string]string{"DROID_DISABLE_AUTO_UPDATE": "true", "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"}, Description: "Factory Droid", Homepage: "https://factory.ai"},
 		{Name: "OpenHands", Command: "openhands", Args: []string{"acp"}, Description: "OpenHands AI Agent", Homepage: "https://docs.openhands.dev"},
-		{Name: "QoderCLI", Command: "qoder", Args: []string{"acp"}, Description: "Qoder CLI", Homepage: "https://docs.qoder.com/cli/acp"},
+		{Name: "QoderCLI", Command: "npx", Args: []string{"-y", "@qoder-ai/qodercli", "--acp"}, Description: "Qoder CLI", Homepage: "https://docs.qoder.com/cli/acp"},
 		{Name: "PiAgent", Command: "npx", Args: []string{"-y", "pi-acp"}, Description: "Pi coding agent ACP 适配器", Homepage: "https://github.com/victor-software-house/pi-acp"},
 		{Name: "DeepSeekHarness", Command: "npx", Args: []string{"-y", "deepseek-acp"}, Description: "DeepSeek Harness ACP 适配器", Homepage: "https://github.com/xintaofei/deepseek-acp"},
 		{Name: "OhMyPi", Command: "omp", Args: []string{"acp"}, Description: "Oh My Pi coding agent", Homepage: "https://omp.sh"},
@@ -94,7 +127,7 @@ func (cw *ChatWindow) addACPFromCatalog(e acpCatalogEntry) {
 		disabled = false
 	}
 	cw.cfg.ACPAgents = append(cw.cfg.ACPAgents, config.ACPConnection{
-		Name: e.Name, Command: e.Command, Args: e.Args, Disabled: disabled,
+		Name: e.Name, Command: e.Command, Args: e.Args, Env: e.Env, Disabled: disabled,
 	})
 	_ = config.SaveConfig(cw.cfg)
 	cw.acpCatalogOpen = false
