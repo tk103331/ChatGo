@@ -234,15 +234,8 @@ type ChatWindow struct {
 	iconMu    sync.Mutex
 	iconCache map[string]iconImage
 
-	acpList         mgo.ListState
-	acpForm         acpForm
-	acpCatalogOpen  bool
-	acpCatalogQuery string
-
-	// presetCatalog* is the model-provider catalog dialog: the mainstream
-	// presets, grouped as magpie's add sheet groups them.
-	presetCatalogOpen  bool
-	presetCatalogQuery string
+	acpList mgo.ListState
+	acpForm acpForm
 	// acpUpd holds each connection's version-check result under its name.
 	// Entries appear on the first check and are read on the main thread only.
 	acpUpd map[string]*acpUpdState

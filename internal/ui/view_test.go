@@ -138,13 +138,15 @@ func TestACPPageRenders(t *testing.T) {
 }
 
 func TestACPCatalogDialogRenders(t *testing.T) {
+	// The catalog itself moved to the plugins page's market tab; the ACP
+	// settings page still renders, and its "从插件添加" button hands over
+	// there instead of opening a dialog.
 	cw := testWindow()
 	cw.section = sectionSettings
 	cw.settings.tab = 2
-	cw.acpCatalogOpen = true
 	img := mgo.Render(cw.view, 1280, 820, 1)
 	if img == nil || img.Bounds().Dx() != 1280 {
-		t.Fatalf("acp catalog render failed: %v", img)
+		t.Fatalf("acp settings render failed: %v", img)
 	}
 }
 
