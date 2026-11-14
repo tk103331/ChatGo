@@ -548,7 +548,9 @@ func appendSegmentText(m *models.Message, kind, text string) {
 		m.Segments[n-1].Text += text
 		return
 	}
-	m.Segments = append(m.Segments, models.Segment{Kind: kind, Text: text})
+	// The new block's start time times the block before it: a thinking
+	// block runs from its own start to the next block's.
+	m.Segments = append(m.Segments, models.Segment{Kind: kind, Text: text, At: time.Now()})
 }
 
 // appendSegmentTool records a tool call as its own segment, updating the
@@ -583,7 +585,7 @@ func appendSegmentTool(m *models.Message, info llm.ToolCallInfo) {
 	if info.Duration > 0 {
 		tc.DurationMs = info.Duration.Milliseconds()
 	}
-	m.Segments = append(m.Segments, models.Segment{Kind: "tool", ToolCall: &tc})
+	m.Segments = append(m.Segments, models.Segment{Kind: "tool", ToolCall: &tc, At: time.Now()})
 }
 
 // applyToolCall records a tool call start or result on an assistant message.

@@ -285,7 +285,8 @@ func (cw *ChatWindow) processBlock(c *mgo.Context, open *bool, msg models.Messag
 					continue
 				}
 				reasonOpen := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:r%d:%d", msg.ID, roundIdx, j), func() bool { return true })
-				cw.reasoningBlock(c, reasonOpen, seg.Text, live && j == last)
+				cw.reasoningBlock(c, reasonOpen, seg.Text,
+					cw.reasoningDuration(msg, round, j, live), live && j == last)
 			case "tool":
 				if seg.ToolCall != nil {
 					cw.toolCalls(c, msg, []models.ToolCall{*seg.ToolCall})
@@ -299,12 +300,13 @@ func (cw *ChatWindow) processBlock(c *mgo.Context, open *bool, msg models.Messag
 	})
 }
 
-// messageLegacy renders a message that predates segments.
+// messageLegacy renders a message that predates segments. Its reasoning has
+// no start time to be measured against, so the fold shows a summary only.
 func (cw *ChatWindow) messageLegacy(c *mgo.Context, msg models.Message, streaming bool) {
 	if msg.Role == "assistant" && strings.TrimSpace(msg.Reasoning) != "" {
 		fold := mgo.Local(c.Root(), "reason:"+msg.ID, func() reasoningFold { return reasoningFold{} })
 		fold.follow(streaming)
-		cw.reasoningBlock(c, &fold.open, msg.Reasoning, streaming)
+		cw.reasoningBlock(c, &fold.open, msg.Reasoning, "", streaming)
 	}
 	if len(msg.ToolCalls) > 0 {
 		cw.toolCalls(c, msg, msg.ToolCalls)
@@ -343,10 +345,53 @@ func (f *reasoningFold) follow(live bool) {
 	f.live = live
 }
 
+// reasoningSummary picks the thinking's newest non-empty line as the fold's
+// one-line summary: while streaming it is the thought being written, and
+// once done it reads as where the thinking ended up.
+func reasoningSummary(text string) string {
+	summary := ""
+	for _, line := range strings.Split(text, "\n") {
+		if t := strings.TrimSpace(line); t != "" {
+			summary = t
+		}
+	}
+	return truncate(summary, 48)
+}
+
+// reasoningDuration times one thinking block: from its own start to the
+// next segment's, to the turn's end, or to now while the block still streams.
+// Empty when the segment predates start times, so old conversations show a
+// summary without a made-up number.
+func (cw *ChatWindow) reasoningDuration(msg models.Message, round segmentRound, j int, live bool) string {
+	if j >= len(round.segments) {
+		return ""
+	}
+	start := round.segments[j].At
+	if start.IsZero() {
+		return ""
+	}
+	var end time.Time
+	if j+1 < len(round.segments) {
+		// The next block's start is where this thinking stopped, whether
+		// what followed was a tool call or the answer itself.
+		end = round.segments[j+1].At
+	} else if t, ok := cw.turnFor(msg); ok && !t.EndedAt.IsZero() {
+		end = t.EndedAt
+	} else if live {
+		end = time.Now()
+	}
+	if end.IsZero() || end.Before(start) {
+		return ""
+	}
+	return kit.AgentDuration(end.Sub(start))
+}
+
 // reasoningBlock shows the model's thinking as a fold, with the same icon
 // behaviour as a tool row: a brain mark at rest, the fold arrow under the
 // pointer, and the arrow kept once open so the way back is always visible.
-func (cw *ChatWindow) reasoningBlock(c *mgo.Context, open *bool, reasoning string, live bool) {
+// The title carries the thinking's newest line as a summary and how long the
+// block ran, so the fold answers "what did it think" without opening it.
+func (cw *ChatWindow) reasoningBlock(c *mgo.Context, open *bool, reasoning string, duration string, live bool) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
@@ -367,6 +412,13 @@ func (cw *ChatWindow) reasoningBlock(c *mgo.Context, open *bool, reasoning strin
 			mgo.Icon(c, icons.Must("brain")).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
 		}
 		mgo.Text(c, "思考过程").FontSize(caption).TextColor(k.TextMuted)
+		if summary := reasoningSummary(reasoning); summary != "" {
+			mgo.Text(c, summary).FontSize(caption).TextColor(k.TextMuted).
+				Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		}
+		if duration != "" {
+			mgo.Text(c, duration).FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+		}
 		if live {
 			// The reasoning segment is still growing: the title marks it
 			// with a spinner so an all-thinking stream does not look stalled.

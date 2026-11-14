@@ -28,6 +28,10 @@ type Segment struct {
 	Kind     string    `json:"kind"` // "reasoning", "text" or "tool"
 	Text     string    `json:"text,omitempty"`
 	ToolCall *ToolCall `json:"tool_call,omitempty"`
+	// At is when this segment began, which dates a thinking block and times
+	// it against the segment that follows. Zero on segments written before
+	// the field existed.
+	At time.Time `json:"at,omitempty"`
 }
 
 // Author kinds. A message's AuthorKind says what produced it, which a group

@@ -1234,7 +1234,9 @@ func appendSegmentText(m *models.Message, kind, text string) {
 		m.Segments[n-1].Text += text
 		return
 	}
-	m.Segments = append(m.Segments, models.Segment{Kind: kind, Text: text})
+	// The new block's start time times the block before it: a thinking
+	// block runs from its own start to the next block's.
+	m.Segments = append(m.Segments, models.Segment{Kind: kind, Text: text, At: time.Now()})
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
