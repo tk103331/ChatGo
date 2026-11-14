@@ -76,7 +76,7 @@ func TestMarketTabListsInstallable(t *testing.T) {
 	if !tr.HasText("安装") {
 		t.Fatalf("the market rows lack an install button; texts: %v", tr.Texts())
 	}
-	if !tr.HasText("模型目录") {
+	if !tr.HasText("模型") {
 		t.Fatalf("the market rows lack the kind label; texts: %v", tr.Texts())
 	}
 }

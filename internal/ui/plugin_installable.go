@@ -255,8 +255,8 @@ func (cw *ChatWindow) pluginMarketTab(c *mgo.Context) {
 func (cw *ChatWindow) marketFilterControl(c *mgo.Context) {
 	opts := []kit.SelectOption[string]{
 		{Value: "", Label: "全部类型"},
-		{Value: "catalog-providers", Label: "模型目录"},
-		{Value: "catalog-acp", Label: "ACP 目录"},
+		{Value: "catalog-providers", Label: "模型"},
+		{Value: "catalog-acp", Label: "ACP"},
 		{Value: "importers", Label: "导入器"},
 	}
 	kit.Select(c, &cw.pluginUI.marketFilter, opts, kit.SelectOptions{
@@ -293,9 +293,9 @@ func (cw *ChatWindow) installCatalogEntry(e plugin.CatalogEntry) {
 func catalogKindLabel(kind string) string {
 	switch kind {
 	case "catalog-providers":
-		return "模型目录"
+		return "模型"
 	case "catalog-acp":
-		return "ACP 目录"
+		return "ACP"
 	case "importers":
 		return "导入器"
 	default:

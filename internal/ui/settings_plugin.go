@@ -105,8 +105,8 @@ type pluginFilter struct {
 func pluginFilterCategories() []pluginFilter {
 	return []pluginFilter{
 		{"", "全部", func(plugin.Info) bool { return true }},
-		{"catalog-providers", "模型目录", func(i plugin.Info) bool { return i.Counts.CatalogProviders > 0 }},
-		{"catalog-acp", "ACP 目录", func(i plugin.Info) bool { return i.Counts.CatalogACP > 0 }},
+		{"catalog-providers", "模型", func(i plugin.Info) bool { return i.Counts.CatalogProviders > 0 }},
+		{"catalog-acp", "ACP", func(i plugin.Info) bool { return i.Counts.CatalogACP > 0 }},
 		{"importers", "导入器", func(i plugin.Info) bool { return i.Counts.Importers > 0 }},
 		{"builtin", "内置", func(i plugin.Info) bool { return i.Builtin }},
 		{"installed", "已安装", func(i plugin.Info) bool { return !i.Builtin }},
