@@ -89,6 +89,70 @@ func TestReasoningDurationTimesTheBlock(t *testing.T) {
 	}
 }
 
+// A completed thinking block folds itself away — the fold shows its summary
+// and time without the body — while the block being written stays expanded.
+func TestReasoningBlockCollapsesWhenDone(t *testing.T) {
+	start := time.Now().Add(-5 * time.Second)
+	cw := reasoningDurationFixture(t,
+		models.Turn{ID: "t1", ReplyMsgID: "a1", StartedAt: start, EndedAt: start.Add(5 * time.Second)},
+		[]models.Segment{
+			{Kind: "reasoning", Text: "先分析问题\n决定直接回答", At: start},
+			{Kind: "text", Text: "这是答案", At: start.Add(5 * time.Second)},
+		})
+	cw.focusConvTab(cw.cur)
+
+	tr := mgo.NewTester(cw.view, 1100, 760)
+	for range 5 {
+		tr.Frame()
+	}
+	if err := tr.Click("执行过程"); err != nil {
+		t.Fatalf("open the process fold: %v", err)
+	}
+	for range 3 {
+		tr.Frame()
+	}
+	// Completed: the title with its summary shows, but the thinking's body
+	// does not.
+	for _, want := range []string{"思考过程", "决定直接回答", "5.0 s"} {
+		if !tr.HasText(want) {
+			t.Fatalf("the folded title should carry %q; texts: %v", want, tr.Texts())
+		}
+	}
+	if tr.HasText("先分析问题") {
+		t.Fatalf("a completed thinking block should be collapsed; texts: %v", tr.Texts())
+	}
+
+	// Streaming: the block being written stays open so the thinking can be
+	// followed live.
+	streaming := reasoningDurationFixture(t,
+		models.Turn{ID: "t1", ReplyMsgID: "a1", StartedAt: time.Now().Add(-2 * time.Second)},
+		[]models.Segment{{Kind: "reasoning", Text: "正在推理的第一行", At: time.Now().Add(-2 * time.Second)}})
+	streaming.beginStream("c1", "a1", nil)
+	streaming.focusConvTab(streaming.cur)
+	tr = mgo.NewTester(streaming.view, 1100, 760)
+	for range 5 {
+		tr.Frame()
+	}
+	if !tr.HasText("正在推理的第一行") {
+		t.Fatalf("the streaming thinking block should be open; texts: %v", tr.Texts())
+	}
+	// The stream ends and the block folds itself; the round's own fold
+	// closes with it, so only the outer title remains.
+	streaming.endStream("a1")
+	for range 3 {
+		tr.Frame()
+	}
+	if tr.HasText("正在推理的第一行") {
+		t.Fatalf("the finished thinking block should have folded; texts: %v", tr.Texts())
+	}
+	if tr.HasText("思考过程") {
+		t.Fatalf("the closed round should not render its inner fold; texts: %v", tr.Texts())
+	}
+	if !tr.HasText("执行过程") {
+		t.Fatalf("the round fold's title should remain; texts: %v", tr.Texts())
+	}
+}
+
 // The chat page shows a thinking block's summary and its time beside the
 // fold's title, so the fold answers "what did it think" without opening.
 func TestReasoningBlockShowsSummaryAndTime(t *testing.T) {

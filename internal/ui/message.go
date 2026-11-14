@@ -284,9 +284,15 @@ func (cw *ChatWindow) processBlock(c *mgo.Context, open *bool, msg models.Messag
 				if strings.TrimSpace(seg.Text) == "" {
 					continue
 				}
-				reasonOpen := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:r%d:%d", msg.ID, roundIdx, j), func() bool { return true })
-				cw.reasoningBlock(c, reasonOpen, seg.Text,
-					cw.reasoningDuration(msg, round, j, live), live && j == last)
+				// The thinking block expands while it is the block being
+				// written and folds itself away when the stream moves on,
+				// the way the round's own fold does — a completed reply
+				// reads as the answer, with every layer of process closed.
+				segLive := live && j == last
+				fold := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:r%d:%d", msg.ID, roundIdx, j), func() reasoningFold { return reasoningFold{} })
+				fold.follow(segLive)
+				cw.reasoningBlock(c, &fold.open, seg.Text,
+					cw.reasoningDuration(msg, round, j, segLive), segLive)
 			case "tool":
 				if seg.ToolCall != nil {
 					cw.toolCalls(c, msg, []models.ToolCall{*seg.ToolCall})
