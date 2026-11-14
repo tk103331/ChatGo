@@ -27,6 +27,9 @@ func (cw *ChatWindow) providersTab(c *mgo.Context) {
 				mgo.Text(c, "模型").
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+					if kit.Button(c, "目录", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
+						cw.presetCatalogOpen = true
+					}
 					if kit.Button(c, "导入", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("arrow-down")}).Clicked() {
 						cw.openImportDialog(importProviders)
 					}
@@ -64,6 +67,7 @@ func (cw *ChatWindow) providersTab(c *mgo.Context) {
 			}
 		})
 	})
+	cw.providerPresetCatalogDialog(c)
 }
 
 // providerEmptyState shows a centered placeholder when no providers exist.
