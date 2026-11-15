@@ -10,6 +10,7 @@ package plugin
 import (
 	"archive/zip"
 	"bytes"
+	"chatgo/internal/netx"
 	"context"
 	"crypto/sha256"
 	_ "embed"
@@ -118,7 +119,7 @@ func catalogFetch(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netx.Default().Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("下载插件包失败：%w", err)
 	}

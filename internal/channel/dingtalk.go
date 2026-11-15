@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"chatgo/internal/netx"
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/chatbot"
 	"github.com/open-dingtalk/dingtalk-stream-sdk-go/client"
 )
@@ -58,7 +59,7 @@ func (d *DingTalk) Start(ctx context.Context, cfg Config, onMessage func(Inbound
 		return fmt.Errorf("channel: dingtalk driver already started")
 	}
 	if d.http == nil {
-		d.http = &http.Client{Timeout: 20 * time.Second}
+		d.http = &http.Client{Timeout: 20 * time.Second, Transport: netx.Transport()}
 	}
 	d.setState(StateConnecting, "")
 
@@ -130,7 +131,7 @@ func (d *DingTalk) SendToWebhook(ctx context.Context, webhook, markdown string) 
 	// A driver used only for a reply has never started, so its client is nil;
 	// the webhook needs no credentials and can be posted to directly.
 	if d.http == nil {
-		d.http = &http.Client{Timeout: 20 * time.Second}
+		d.http = &http.Client{Timeout: 20 * time.Second, Transport: netx.Transport()}
 	}
 	body, err := json.Marshal(map[string]any{
 		"msgtype": "markdown",

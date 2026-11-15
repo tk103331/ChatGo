@@ -2,6 +2,7 @@ package channel
 
 import (
 	"bytes"
+	"chatgo/internal/netx"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -74,7 +75,7 @@ func (t *Telegram) Start(ctx context.Context, cfg Config, onMessage func(Inbound
 		t.baseURL = TelegramBaseURL
 	}
 	if t.http == nil {
-		t.http = &http.Client{Timeout: telegramPollWait*time.Second + 15*time.Second}
+		t.http = &http.Client{Timeout: telegramPollWait*time.Second + 15*time.Second, Transport: netx.Transport()}
 	}
 	if t.started.Swap(true) {
 		return fmt.Errorf("channel: telegram driver already started")
@@ -199,7 +200,7 @@ func (t *Telegram) call(ctx context.Context, method string, params map[string]an
 	// A driver used before Start — or a reaction sent from a fresh instance —
 	// has no client yet; building one here keeps every call self-sufficient.
 	if t.http == nil {
-		t.http = &http.Client{Timeout: telegramPollWait*time.Second + 15*time.Second}
+		t.http = &http.Client{Timeout: telegramPollWait*time.Second + 15*time.Second, Transport: netx.Transport()}
 	}
 	var body io.Reader
 	if params != nil {

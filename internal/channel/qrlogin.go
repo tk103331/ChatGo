@@ -1,6 +1,7 @@
 package channel
 
 import (
+	"chatgo/internal/netx"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -84,7 +85,7 @@ func wecomPlatformCode() int {
 // BeginQRLogin implements QRLoginer for WeCom: the user scans with the WeCom
 // app, taps "create a robot", and the platform hands back its BotID and secret.
 func (w *WeCom) BeginQRLogin(ctx context.Context) (*QRLogin, error) {
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: 15 * time.Second, Transport: netx.Transport()}
 	generate := fmt.Sprintf("%s?source=%s&plat=%d", wecomQRGenerateURL, wecomQRSource, wecomPlatformCode())
 	var gen struct {
 		ErrCode int    `json:"errcode"`
@@ -179,7 +180,7 @@ const dingtalkTimeout = 5 * time.Minute
 // The caller must show Notice so the user knows why another product's name
 // appears before they authorize.
 func (d *DingTalk) BeginQRLogin(ctx context.Context) (*QRLogin, error) {
-	client := &http.Client{Timeout: 15 * time.Second}
+	client := &http.Client{Timeout: 15 * time.Second, Transport: netx.Transport()}
 
 	var init struct {
 		ErrCode int    `json:"errcode"`

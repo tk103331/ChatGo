@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"chatgo/internal/netx"
+
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
@@ -68,7 +70,7 @@ func (s *Slack) Start(ctx context.Context, cfg Config, onMessage func(Inbound)) 
 		return fmt.Errorf("channel: slack driver already started")
 	}
 
-	s.api = slack.New(botToken, slack.OptionAppLevelToken(appToken))
+	s.api = slack.New(botToken, slack.OptionAppLevelToken(appToken), slack.OptionHTTPClient(netx.Client(0)))
 	auth, err := s.api.AuthTestContext(ctx)
 	if err != nil {
 		s.setState(StateError, DetailError(err))

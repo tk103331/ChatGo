@@ -17,6 +17,7 @@ import (
 
 	"chatgo/internal/config"
 	"chatgo/internal/jssandbox"
+	"chatgo/internal/netx"
 	"chatgo/pkg/models"
 
 	"github.com/cloudwego/eino/schema"
@@ -314,7 +315,7 @@ func httpRequest(ctx context.Context, method, url, headers, body string, timeout
 			}
 		}
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netx.Default().Do(req)
 	if err != nil {
 		return "", err
 	}

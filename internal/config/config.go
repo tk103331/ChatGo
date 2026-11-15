@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"chatgo/internal/netx"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -57,6 +59,29 @@ type Config struct {
 	// settings and install source. Plugin contributions themselves are rebuilt
 	// from the plugin directory on every start, never persisted here.
 	Plugins []PluginRef `yaml:"plugins,omitempty"`
+	// Proxy routes the app's outbound HTTP through a proxy server: model
+	// requests, model lists, plugin downloads, channels, remote MCP and the
+	// version checks. Off by default; when off, the environment's proxy
+	// variables keep their usual effect.
+	Proxy ProxyConfig `yaml:"proxy,omitempty"`
+}
+
+// ProxyConfig is the network proxy setting. URL carries the scheme:
+// http://, https://, socks5:// or socks5h://.
+type ProxyConfig struct {
+	// Enabled turns the proxy on. Off means direct connections.
+	Enabled bool `yaml:"enabled,omitempty"`
+	// URL is the proxy address, for example http://127.0.0.1:7890.
+	URL string `yaml:"url,omitempty"`
+}
+
+// EffectiveProxyURL returns the proxy address when the proxy is on, ""
+// otherwise — the form netx.SetProxy takes.
+func (p ProxyConfig) EffectiveProxyURL() string {
+	if !p.Enabled {
+		return ""
+	}
+	return strings.TrimSpace(p.URL)
 }
 
 // QuickPanelConfig configures the system-wide quick task panel.
@@ -981,10 +1006,18 @@ func LoadConfig() (*Config, error) {
 			return nil, err
 		}
 
+		applyProxy(defaultConfig)
 		return defaultConfig, nil
 	}
 
 	return loadFile(configPath)
+}
+
+// applyProxy publishes the config's proxy setting to the HTTP clients the
+// app builds, so loading or saving a config is enough for the setting to
+// take effect.
+func applyProxy(c *Config) {
+	netx.SetProxy(c.Proxy.EffectiveProxyURL())
 }
 
 // loadFile reads and normalizes a configuration file.
@@ -1035,6 +1068,8 @@ func loadFile(path string) (*Config, error) {
 	}
 
 	config.QuickPanel.Ensure()
+
+	applyProxy(&config)
 
 	return &config, nil
 }
@@ -1354,6 +1389,7 @@ func writeConfig(path string, config *Config) error {
 	clean.BuiltinTools = dropPluginEntries(config.BuiltinTools, func(t BuiltinTool) string { return t.Source })
 	clean.Agents = dropPluginEntries(config.Agents, func(a AgentDef) string { return a.Source })
 	clean.ACPAgents = dropPluginEntries(config.ACPAgents, func(a ACPConnection) string { return a.Source })
+	applyProxy(&clean)
 	data, err := yaml.Marshal(&clean)
 	if err != nil {
 		return err

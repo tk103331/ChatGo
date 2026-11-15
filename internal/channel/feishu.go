@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"chatgo/internal/netx"
+
 	lark "github.com/larksuite/oapi-sdk-go/v3"
 	"github.com/larksuite/oapi-sdk-go/v3/channel"
 	"github.com/larksuite/oapi-sdk-go/v3/channel/types"
@@ -56,7 +58,7 @@ func (f *Feishu) Start(ctx context.Context, cfg Config, onMessage func(Inbound))
 	if f.started.Swap(true) {
 		return fmt.Errorf("channel: feishu driver already started")
 	}
-	api := lark.NewClient(appID, appSecret)
+	api := lark.NewClient(appID, appSecret, lark.WithHttpClient(netx.Client(0)))
 	f.api = api
 	f.send = func(ctx context.Context, chatID, markdown string) error {
 		return feishuSend(ctx, api, chatID, markdown)

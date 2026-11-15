@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"chatgo/internal/config"
+	"chatgo/internal/netx"
 )
 
 // maxPackageBytes bounds an archive, and maxPackageFiles its entry count.
@@ -451,7 +452,7 @@ func httpGetJSON(ctx context.Context, url string) (map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netx.Default().Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -471,7 +472,7 @@ func httpGet(ctx context.Context, url string, limit int64) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netx.Default().Do(req)
 	if err != nil {
 		return nil, err
 	}

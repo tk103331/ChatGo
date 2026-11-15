@@ -32,6 +32,7 @@ type settingsState struct {
 	shortcut    shortcutForm
 	exclude     textForm
 	channel     channelForm
+	proxy       proxyForm
 	provList    mgo.ListState
 	builtinList mgo.ListState
 	channelList mgo.ListState

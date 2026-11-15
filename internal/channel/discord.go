@@ -6,7 +6,10 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"chatgo/internal/netx"
+
 	"github.com/bwmarrin/discordgo"
+	"github.com/gorilla/websocket"
 )
 
 // Discord connects to the Gateway over an outbound WebSocket. Reading message
@@ -57,6 +60,14 @@ func (d *Discord) Start(ctx context.Context, cfg Config, onMessage func(Inbound)
 		d.setState(StateError, DetailError(err))
 		return err
 	}
+	// REST calls go through the shared proxy-aware client, and the gateway
+	// websocket dials through the same proxy resolution. The dialer is a
+	// copy: discordgo hands out the package-global one, which must not be
+	// mutated.
+	sess.Client = netx.Client(0)
+	dialer := *websocket.DefaultDialer
+	dialer.Proxy = netx.ProxyFunc()
+	sess.Dialer = &dialer
 	d.sess = sess
 	// Guild messages need their own intent; direct messages do not, and both
 	// are asked for so the bot works in a server and in a DM.

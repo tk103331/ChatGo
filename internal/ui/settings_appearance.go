@@ -184,6 +184,7 @@ func (cw *ChatWindow) systemTab(c *mgo.Context) {
 			}).Changed() {
 				cw.saveSystemSettings()
 			}
+			cw.proxyCard(c)
 			mgo.Text(c, "更新").FontWeight(600)
 			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
 				if kit.Button(c, "检查更新", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {

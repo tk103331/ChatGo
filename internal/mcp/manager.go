@@ -3,12 +3,14 @@ package mcp
 
 import (
 	"chatgo/internal/config"
+	"chatgo/internal/netx"
 	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
 
 	"github.com/mark3labs/mcp-go/client"
+	mcptransport "github.com/mark3labs/mcp-go/client/transport"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -106,8 +108,8 @@ func (m *Manager) InitializeServer(cfg config.MCPServer) (*MCPServerStatus, erro
 			fmt.Printf("[MCP]   Headers: %v\n", cfg.Headers)
 		}
 
-		// Initialize SSE client
-		mcpClient, err = client.NewSSEMCPClient(cfg.URL)
+		// Initialize SSE client, through the shared proxy-aware transport.
+		mcpClient, err = client.NewSSEMCPClient(cfg.URL, client.WithHTTPClient(netx.Client(0)))
 		if err != nil {
 			fmt.Printf("[MCP] Failed to create SSE client: %v\n", err)
 			status.Status = "error"
@@ -127,8 +129,9 @@ func (m *Manager) InitializeServer(cfg config.MCPServer) (*MCPServerStatus, erro
 			fmt.Printf("[MCP]   Timeout: %d seconds\n", cfg.TimeoutSeconds)
 		}
 
-		// Initialize streamable HTTP client
-		mcpClient, err = client.NewStreamableHttpClient(cfg.URL)
+		// Initialize streamable HTTP client, through the shared proxy-aware
+		// transport.
+		mcpClient, err = client.NewStreamableHttpClient(cfg.URL, mcptransport.WithHTTPBasicClient(netx.Client(0)))
 		if err != nil {
 			fmt.Printf("[MCP] Failed to create HTTP stream client: %v\n", err)
 			status.Status = "error"

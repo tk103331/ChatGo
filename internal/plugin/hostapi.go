@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"chatgo/internal/netx"
 	"github.com/Calcium-Ion/moejs"
 )
 
@@ -272,6 +273,7 @@ func (in *InstanceState) doHTTP(method, rawURL string, headers map[string]string
 		req.Header.Set(k, v)
 	}
 	client := &http.Client{
+		Transport: netx.Transport(),
 		CheckRedirect: func(r *http.Request, via []*http.Request) error {
 			if len(via) >= 5 {
 				return fmt.Errorf("重定向次数过多")

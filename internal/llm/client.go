@@ -2,6 +2,7 @@ package llm
 
 import (
 	"chatgo/internal/config"
+	"chatgo/internal/netx"
 	"context"
 	"fmt"
 	"io"
@@ -46,6 +47,9 @@ func NewClient(provider config.Provider, mws ...Middleware) (*Client, error) {
 		cfg := &openai.Config{
 			APIKey: provider.APIKey,
 			Model:  provider.Model,
+			// The shared proxy-aware client, unbounded so streams are not
+			// cut off mid-answer.
+			HTTPClient: netx.Client(0),
 		}
 		if provider.BaseURL != "" {
 			cfg.BaseURL = provider.BaseURL
@@ -63,8 +67,9 @@ func NewClient(provider config.Provider, mws ...Middleware) (*Client, error) {
 	case config.ProviderTypeAnthropic, config.ProviderTypeClaude:
 		// Anthropic Claude
 		cfg := &claude.Config{
-			APIKey: provider.APIKey,
-			Model:  provider.Model,
+			APIKey:     provider.APIKey,
+			Model:      provider.Model,
+			HTTPClient: netx.Client(0),
 		}
 		if provider.BaseURL != "" {
 			cfg.BaseURL = &provider.BaseURL
@@ -78,6 +83,9 @@ func NewClient(provider config.Provider, mws ...Middleware) (*Client, error) {
 		// Ollama - no APIKey needed
 		cfg := &ollama.ChatModelConfig{
 			Model: provider.Model,
+			// The shared proxy-aware client; Ollama usually runs locally,
+			// where the proxy is bypassed automatically.
+			HTTPClient: netx.Client(0),
 		}
 		if provider.BaseURL != "" {
 			cfg.BaseURL = provider.BaseURL
@@ -90,8 +98,9 @@ func NewClient(provider config.Provider, mws ...Middleware) (*Client, error) {
 	case config.ProviderTypeQwen:
 		// Alibaba Qwen
 		cfg := &qwen.ChatModelConfig{
-			APIKey: provider.APIKey,
-			Model:  provider.Model,
+			APIKey:     provider.APIKey,
+			Model:      provider.Model,
+			HTTPClient: netx.Client(0),
 		}
 		if provider.BaseURL != "" {
 			cfg.BaseURL = provider.BaseURL
@@ -104,8 +113,9 @@ func NewClient(provider config.Provider, mws ...Middleware) (*Client, error) {
 	case config.ProviderTypeDeepSeek:
 		// DeepSeek
 		cfg := &deepseek.ChatModelConfig{
-			APIKey: provider.APIKey,
-			Model:  provider.Model,
+			APIKey:     provider.APIKey,
+			Model:      provider.Model,
+			HTTPClient: netx.Client(0),
 		}
 		if provider.BaseURL != "" {
 			cfg.BaseURL = provider.BaseURL
@@ -124,7 +134,7 @@ func NewClient(provider config.Provider, mws ...Middleware) (*Client, error) {
 
 	case config.ProviderTypeGemini:
 		// Google Gemini - need to create genai client first
-		genaiCfg := &genai.ClientConfig{APIKey: provider.APIKey}
+		genaiCfg := &genai.ClientConfig{APIKey: provider.APIKey, HTTPClient: netx.Client(0)}
 		if provider.BaseURL != "" {
 			genaiCfg.HTTPOptions.BaseURL = provider.BaseURL
 		}

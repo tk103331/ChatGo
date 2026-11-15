@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"chatgo/internal/config"
+	"chatgo/internal/netx"
 )
 
 // maxModelPages caps how many pages of a paginated model list are fetched, so
@@ -302,7 +303,7 @@ func getJSONCustom(ctx context.Context, p config.Provider, endpoint string, mode
 		}
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := netx.Default().Do(req)
 	if err != nil {
 		return fmt.Errorf("无法连接 %s：%s", endpoint, firstLine(err.Error()))
 	}

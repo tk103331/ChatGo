@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"chatgo/internal/config"
+	"chatgo/internal/netx"
 	"chatgo/internal/shellenv"
 
 	"chatgo/internal/ui/icons"
@@ -607,9 +608,9 @@ func acpAtoiPrefix(s string) int {
 	return n
 }
 
-// acpHTTPClient fetches release feeds. Like every HTTP call of the app it
-// honors the process proxy environment.
-var acpHTTPClient = &http.Client{Timeout: acpLatestTimeout}
+// acpHTTPClient fetches release feeds through the shared proxy-aware
+// transport, so a proxy configured in settings applies here too.
+var acpHTTPClient = &http.Client{Timeout: acpLatestTimeout, Transport: netx.Transport()}
 
 // latestVersion fetches the newest released version from the source's feed.
 func (s acpUpgradeSource) latestVersion() (string, error) {

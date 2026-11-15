@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"time"
 
+	"chatgo/internal/netx"
 	"chatgo/pkg/models"
 )
 
@@ -175,7 +176,7 @@ type contextResponse struct {
 	Items     []contextItem `json:"items"`
 }
 
-var webClient = &http.Client{Timeout: 30 * time.Second}
+var webClient = &http.Client{Timeout: 30 * time.Second, Transport: netx.Transport()}
 
 func apiGet(path string, out any) error {
 	req, err := http.NewRequest(http.MethodGet, path, nil)

@@ -2,6 +2,7 @@
 package channel
 
 import (
+	"chatgo/internal/netx"
 	"context"
 	"crypto/rand"
 	"encoding/binary"
@@ -38,7 +39,7 @@ func NewWeChatClient(baseURL, botToken, botID string) *WeChatClient {
 		botToken:  botToken,
 		botID:     botID,
 		wechatUIN: generateWechatUIN(),
-		http:      &http.Client{},
+		http:      netx.Client(0),
 	}
 }
 
@@ -129,7 +130,7 @@ type Credentials struct {
 // FetchQRCode requests a login QR code.
 func FetchQRCode(ctx context.Context) (*QRCodeResp, error) {
 	req, _ := http.NewRequestWithContext(ctx, "GET", qrCodeURL, nil)
-	client := &http.Client{Timeout: 40 * time.Second}
+	client := &http.Client{Timeout: 40 * time.Second, Transport: netx.Transport()}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -146,7 +147,7 @@ func FetchQRCode(ctx context.Context) (*QRCodeResp, error) {
 // reporting each status to onStatus.
 func PollQRStatus(ctx context.Context, qrcode string, onStatus func(string)) (*Credentials, error) {
 	url := qrStatusURL + qrcode
-	client := &http.Client{Timeout: 40 * time.Second}
+	client := &http.Client{Timeout: 40 * time.Second, Transport: netx.Transport()}
 	for {
 		select {
 		case <-ctx.Done():

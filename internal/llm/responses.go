@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"chatgo/internal/config"
+	"chatgo/internal/netx"
 
 	"github.com/cloudwego/eino/components/model"
 	"github.com/cloudwego/eino/schema"
@@ -30,7 +31,11 @@ type responsesChatModel struct {
 var _ model.ToolCallingChatModel = (*responsesChatModel)(nil)
 
 func newResponsesChatModel(p config.Provider) (*responsesChatModel, error) {
-	opts := []option.RequestOption{option.WithAPIKey(p.APIKey)}
+	opts := []option.RequestOption{
+		option.WithAPIKey(p.APIKey),
+		// The shared proxy-aware client, unbounded so streams finish.
+		option.WithHTTPClient(netx.Client(0)),
+	}
 	if p.BaseURL != "" {
 		opts = append(opts, option.WithBaseURL(p.BaseURL))
 	}
