@@ -210,6 +210,45 @@ func PlatformKey(goos, goarch string) string {
 	return ""
 }
 
+// PlatformLabel names a binary platform key the way the details view reads
+// it: the index's own key otherwise.
+func PlatformLabel(key string) string {
+	switch key {
+	case darwinArm64Key:
+		return "macOS · Apple Silicon"
+	case "darwin-x86_64":
+		return "macOS · Intel"
+	case "linux-aarch64":
+		return "Linux · ARM64"
+	case "linux-aarch64-musl":
+		return "Linux · ARM64 (musl)"
+	case "linux-x86_64":
+		return "Linux · x86_64"
+	case "linux-x86_64-musl":
+		return "Linux · x86_64 (musl)"
+	case "windows-aarch64":
+		return "Windows · ARM64"
+	case "windows-x86_64":
+		return "Windows · x86_64"
+	}
+	return key
+}
+
+// BinaryPlatforms lists the entry's binary archive targets, in the index's
+// own order, named for display.
+func (a Agent) BinaryPlatforms() []string {
+	keys := make([]string, 0, len(a.Distribution.Binary))
+	for k := range a.Distribution.Binary {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, PlatformLabel(k))
+	}
+	return out
+}
+
 func firstLine(s string) string {
 	if i := strings.IndexByte(s, '\n'); i >= 0 {
 		s = s[:i]

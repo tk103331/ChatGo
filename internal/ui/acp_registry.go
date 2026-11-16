@@ -3,13 +3,17 @@ package ui
 import (
 	"context"
 	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"chatgo/internal/acpregistry"
 	"chatgo/internal/config"
+	"chatgo/internal/netx"
 
 	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
@@ -181,7 +185,9 @@ func firstNonEmptyArg(args []string) string {
 }
 
 // addACPRegistryAgent appends the entry as a new connection, enabled, with
-// the registry's pinned package and environment, then saves.
+// the registry's pinned package and environment, then saves. The entry's
+// brand icon is fetched to disk in the background and attached to the
+// connection, so it shows in the ACP list and the agent picker afterwards.
 func (cw *ChatWindow) addACPRegistryAgent(a acpregistry.Agent) {
 	command, args, env, ok := a.Command()
 	if !ok {
@@ -195,6 +201,32 @@ func (cw *ChatWindow) addACPRegistryAgent(a acpregistry.Agent) {
 	})
 	_ = config.SaveConfig(cw.cfg)
 	cw.toast("已添加 "+a.Name+"（v"+a.Version+"）", mcore.SeveritySuccess)
+	if a.Icon == "" {
+		return
+	}
+	go func() {
+		cw.fetchACPRegistryIcon(a)
+		acpRegIconMu.Lock()
+		_, loaded := acpRegIconCache[a.Icon]
+		acpRegIconMu.Unlock()
+		if !loaded {
+			return // the download failed; the connection keeps the fallback mark
+		}
+		path := acpRegistryIconFile(a.ID)
+		if path == "" {
+			return
+		}
+		cw.postMain(func() {
+			for i := range cw.cfg.ACPAgents {
+				if cw.cfg.ACPAgents[i].Name == name {
+					cw.cfg.ACPAgents[i].Icon = path
+					break
+				}
+			}
+			_ = config.SaveConfig(cw.cfg)
+			cw.invalidate()
+		})
+	}()
 }
 
 // uniqueACPName appends a counter when the name is taken, so two entries of
@@ -211,6 +243,99 @@ func uniqueACPName(cw *ChatWindow, name string) string {
 	}
 }
 
+// The registry's brand icons, fetched from its CDN once per launch and
+// cached on disk so an offline launch still shows them.
+var (
+	acpRegIconMu    sync.Mutex
+	acpRegIconCache = map[string]*mgo.SVG{} // icon URL → parsed SVG
+	acpRegIconTried = map[string]bool{}     // URLs a fetch was started for
+)
+
+// acpRegIconTimeout bounds one icon download; icons are a few kilobytes.
+const acpRegIconTimeout = 15 * time.Second
+
+// acpRegIconMaxBytes bounds one icon file; the registry ships 16x16 SVGs.
+const acpRegIconMaxBytes = 1 << 20
+
+// acpRegistryIconFile is the disk cache path of one entry's icon, keyed by
+// its registry id.
+func acpRegistryIconFile(id string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".chatgo", "icons", "acp-registry", id+".svg")
+}
+
+// acpRegistryIcon draws the entry's brand icon at size, starting a fetch
+// when it has none yet. False reports that nothing was drawn, so the caller
+// falls back to the bundled marks.
+func (cw *ChatWindow) acpRegistryIcon(c *mgo.Context, a acpregistry.Agent, size float32) bool {
+	if a.Icon == "" {
+		return false
+	}
+	acpRegIconMu.Lock()
+	svg, loaded := acpRegIconCache[a.Icon]
+	tried := acpRegIconTried[a.Icon]
+	acpRegIconMu.Unlock()
+	if loaded {
+		mgo.Image(c, svg).Size(size, size).Shrink(0)
+		return true
+	}
+	if !tried {
+		acpRegIconMu.Lock()
+		acpRegIconTried[a.Icon] = true
+		acpRegIconMu.Unlock()
+		go cw.fetchACPRegistryIcon(a)
+	}
+	return false
+}
+
+// fetchACPRegistryIcon loads one icon: the disk cache first, then the CDN.
+// A failure is final for this launch; the rows fall back to the bundled
+// marks rather than retrying on every frame.
+func (cw *ChatWindow) fetchACPRegistryIcon(a acpregistry.Agent) {
+	store := func(data []byte) {
+		svg, err := mgo.ParseSVG(data)
+		if err != nil {
+			return
+		}
+		acpRegIconMu.Lock()
+		acpRegIconCache[a.Icon] = svg
+		acpRegIconMu.Unlock()
+		cw.invalidate()
+	}
+	if path := acpRegistryIconFile(a.ID); path != "" {
+		if data, err := os.ReadFile(path); err == nil {
+			store(data)
+			return
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), acpRegIconTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.Icon, nil)
+	if err != nil {
+		return
+	}
+	resp, err := netx.Default().Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, acpRegIconMaxBytes))
+	if err != nil || len(data) == 0 {
+		return
+	}
+	if path := acpRegistryIconFile(a.ID); path != "" {
+		_ = os.MkdirAll(filepath.Dir(path), 0o755)
+		_ = os.WriteFile(path, data, 0o644)
+	}
+	store(data)
+}
+
 // acpRegistryDialog lists the official registry's agents: search above,
 // entries under, each with its version, license and an 添加 action. A
 // binary-only entry is named but not installable; an entry already running
@@ -224,61 +349,68 @@ func (cw *ChatWindow) acpRegistryDialog(c *mgo.Context) {
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	kit.Dialog(c, &cw.acpReg.open, kit.DialogOptions{
 		Title: "从 ACP Registry 添加",
-		Description: "官方注册表收录的 ACP Agent（agentclientprotocol.com/registry），" +
-			"添加后以 npx/uvx 运行固定版本。",
-		Width:     680,
+		Width: 680,
+		// The description, the search field and the refresh action pin above
+		// the scrolling list, so a long list never buries them.
+		Header: func() {
+			mgo.Column(c).FillWidth().MinWidth(0).Shrink(0).Gap(u).Children(func() {
+				mgo.Text(c, "官方注册表收录的 ACP Agent（agentclientprotocol.com/registry），"+
+					"添加后以 npx/uvx 运行固定版本。").
+					FontSize(small).TextColor(k.TextMuted)
+				mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+					in := kit.SearchInput(c, &cw.acpReg.query, kit.SearchInputOptions{
+						Placeholder: "搜索 Agent", Label: "搜索 Agent",
+					})
+					in.Element.Grow(1).MinWidth(0)
+					if kit.Button(c, "刷新", kit.ButtonOptions{
+						Variant: kit.Secondary, Icon: icons.Must("refresh-cw"),
+						Disabled: cw.acpReg.loading, Loading: cw.acpReg.loading,
+					}).Clicked() {
+						cw.acpReg.loading = true
+						cw.acpReg.err = ""
+						go cw.fetchACPRegistry(true)
+					}
+				})
+				if cw.acpReg.err != "" {
+					mgo.Text(c, cw.acpReg.err).FontSize(small).TextColor(k.Danger).MaxLines(2)
+				}
+			})
+		},
 		MaxHeight: 560,
 		Actions: func() {
-			if kit.Button(c, "刷新", kit.ButtonOptions{
-				Variant: kit.Secondary, Icon: icons.Must("refresh-cw"), Disabled: cw.acpReg.loading,
-				Loading: cw.acpReg.loading,
-			}).Clicked() {
-				cw.acpReg.loading = true
-				cw.acpReg.err = ""
-				go cw.fetchACPRegistry(true)
-			}
 			if kit.Button(c, "关闭", kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
 				cw.acpReg.open = false
 			}
 		},
 	}, func() {
-		mgo.Column(c).FillWidth().MinWidth(0).Gap(u * 2).Children(func() {
-			in := kit.SearchInput(c, &cw.acpReg.query, kit.SearchInputOptions{
-				Placeholder: "搜索 Agent", Label: "搜索 Agent",
+		if cw.acpReg.loading && len(cw.acpReg.agents) == 0 {
+			mgo.Column(c).FillWidth().AlignItems(mgo.Center).Gap(u).Padding(u * 4).Children(func() {
+				mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+					mcore.Spinner(c, mcore.SpinnerOptions{Size: 14})
+					mgo.Text(c, "正在获取 ACP Registry…").FontSize(small).TextColor(k.TextMuted)
+				})
 			})
-			in.Element.FillWidth()
-			if cw.acpReg.err != "" {
-				mgo.Text(c, cw.acpReg.err).FontSize(small).TextColor(k.Danger).MaxLines(2)
-			}
-			if cw.acpReg.loading && len(cw.acpReg.agents) == 0 {
-				mgo.Column(c).FillWidth().AlignItems(mgo.Center).Gap(u).Padding(u * 4).Children(func() {
-					mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-						mcore.Spinner(c, mcore.SpinnerOptions{Size: 14})
-						mgo.Text(c, "正在获取 ACP Registry…").FontSize(small).TextColor(k.TextMuted)
-					})
-				})
-				return
-			}
-			entries := cw.acpRegistryMatches()
-			if len(entries) == 0 {
-				mgo.Column(c).FillWidth().AlignItems(mgo.Center).Gap(u).Padding(u * 3).Children(func() {
-					mgo.Icon(c, icons.Must("search")).Size(28, 28).TextColor(k.TextMuted)
-					if cw.acpReg.query != "" {
-						mgo.Text(c, "没有匹配的 Agent").FontSize(small).TextColor(k.Text)
-					} else {
-						mgo.Text(c, "没有可添加的 Agent").FontSize(small).TextColor(k.Text)
-						mgo.Text(c, "请检查网络（或在设置 → 系统配置置代理）后点击刷新。").
-							FontSize(small).TextColor(k.TextMuted)
-					}
-				})
-				return
-			}
-			mgo.Scroll(c).FillWidth().MinHeight(0).Children(func() {
-				mgo.Column(c).FillWidth().MinWidth(0).Shrink(0).Gap(u).Children(func() {
-					for _, a := range entries {
-						cw.acpRegistryRow(c, a)
-					}
-				})
+			return
+		}
+		entries := cw.acpRegistryMatches()
+		if len(entries) == 0 {
+			mgo.Column(c).FillWidth().AlignItems(mgo.Center).Gap(u).Padding(u * 3).Children(func() {
+				mgo.Icon(c, icons.Must("search")).Size(28, 28).TextColor(k.TextMuted)
+				if cw.acpReg.query != "" {
+					mgo.Text(c, "没有匹配的 Agent").FontSize(small).TextColor(k.Text)
+				} else {
+					mgo.Text(c, "没有可添加的 Agent").FontSize(small).TextColor(k.Text)
+					mgo.Text(c, "请检查网络（或在设置 → 系统配置置代理）后点击刷新。").
+						FontSize(small).TextColor(k.TextMuted)
+				}
+			})
+			return
+		}
+		mgo.Scroll(c).FillWidth().MinHeight(0).Children(func() {
+			mgo.Column(c).FillWidth().MinWidth(0).Shrink(0).Gap(u).Children(func() {
+				for _, a := range entries {
+					cw.acpRegistryRow(c, a)
+				}
 			})
 		})
 	})
@@ -300,40 +432,148 @@ func (cw *ChatWindow) acpRegistryMatches() []acpregistry.Agent {
 	return out
 }
 
-// acpRegistryRow is one entry: the letter mark, the name with its version
-// and license, a one-line description, and the action on the right —
-// installable, installed, or binary-only.
+// acpRegistryRow is one entry: a clickable header row — the chevron, the
+// brand icon, the name with its version and license, a one-line description
+// — with the action to its right, outside the header so the two clicks never
+// fight. Expanding shows the entry's details: the full description, the
+// authors, the links and the distribution it runs on.
 func (cw *ChatWindow) acpRegistryRow(c *mgo.Context, a acpregistry.Agent) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
-	mgo.Row(c).FillWidth().Gap(u * 2).AlignItems(mgo.Center).Children(func() {
-		cw.acpLeading(c, a.Name, 24)
-		mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
-			mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
-				mgo.Text(c, a.Name).FontWeight(600).SingleLine().Shrink(0)
-				mgo.Text(c, "v"+a.Version).FontSize(small).TextColor(k.TextMuted).SingleLine().Shrink(0)
-				if a.License != "" {
-					mgo.Text(c, a.License).FontSize(small).TextColor(k.TextMuted).SingleLine().Shrink(0)
+	open := mgo.Local(c.Root(), "acpReg:"+a.ID, func() bool { return false })
+	mgo.Column(c).FillWidth().MinWidth(0).Gap(u / 2).Children(func() {
+		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+			head := mgo.ButtonBase(c).Grow(1).MinWidth(0).Gap(u).AlignItems(mgo.Center).
+				Padding(u/2, u/2).Radius(mtheme.ControlRadius).
+				Role(mgo.RoleGroup).Label(a.Name + " 详情")
+			if head.Hovered() {
+				head.Background(k.SurfaceHover)
+			}
+			head.Children(func() {
+				name := "chevron-right"
+				if *open {
+					name = "chevron-down"
+				}
+				mgo.Icon(c, icons.Must(name)).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
+				if !cw.acpRegistryIcon(c, a, 24) {
+					cw.acpLeading(c, a.Name, 24)
+				}
+				mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
+					mgo.Row(c).Gap(u).AlignItems(mgo.Center).Children(func() {
+						mgo.Text(c, a.Name).FontWeight(600).SingleLine().Shrink(0)
+						mgo.Text(c, "v"+a.Version).FontSize(small).TextColor(k.TextMuted).SingleLine().Shrink(0)
+						if a.License != "" {
+							mgo.Text(c, a.License).FontSize(small).TextColor(k.TextMuted).SingleLine().Shrink(0)
+						}
+					})
+					if a.Description != "" {
+						mgo.Text(c, a.Description).FontSize(small).TextColor(k.TextMuted).
+							MaxLines(1).MinWidth(0)
+					}
+				})
+			})
+			if head.Clicked() {
+				*open = !*open
+			}
+			mgo.Row(c).Shrink(0).Children(func() {
+				switch {
+				case cw.acpRegistryAdded(a):
+					mgo.Text(c, "已添加").FontSize(small).TextColor(k.TextMuted)
+				case a.SupportsRuntime():
+					if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+						cw.addACPRegistryAgent(a)
+					}
+				default:
+					mgo.Text(c, "仅二进制发行").FontSize(small).TextColor(k.TextMuted).
+						Tooltip("该 Agent 未提供 npx/uvx 发行方式，暂不支持自动添加")
 				}
 			})
-			if a.Description != "" {
-				mgo.Text(c, a.Description).FontSize(small).TextColor(k.TextMuted).
-					MaxLines(1).MinWidth(0)
-			}
 		})
-		mgo.Row(c).Shrink(0).Children(func() {
-			switch {
-			case cw.acpRegistryAdded(a):
-				mgo.Text(c, "已添加").FontSize(small).TextColor(k.TextMuted)
-			case a.SupportsRuntime():
-				if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
-					cw.addACPRegistryAgent(a)
-				}
-			default:
-				mgo.Text(c, "仅二进制发行").FontSize(small).TextColor(k.TextMuted).
-					Tooltip("该 Agent 未提供 npx/uvx 发行方式，暂不支持自动添加")
-			}
-		})
+		if *open {
+			cw.acpRegistryDetail(c, a)
+		}
 	})
+}
+
+// acpRegistryDetail is the expanded body of one entry: the full
+// description, the authors, the links and the distributions it ships.
+func (cw *ChatWindow) acpRegistryDetail(c *mgo.Context, a acpregistry.Agent) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	mono := mtheme.MonoFont
+	mgo.Column(c).FillWidth().MinWidth(0).Shrink(0).Gap(u).
+		Padding(u, u*6, u, u*2).Children(func() {
+		if a.Description != "" {
+			mgo.Text(c, a.Description).FontSize(small).TextColor(k.Text)
+		}
+		if len(a.Authors) > 0 {
+			cw.acpRegistryField(c, "作者", strings.Join(a.Authors, " · "), "")
+		}
+		if a.License != "" {
+			cw.acpRegistryField(c, "许可证", a.License, a.LicenseURL)
+		}
+		if a.Repository != "" {
+			cw.acpRegistryField(c, "仓库", shortLink(a.Repository), a.Repository)
+		}
+		if a.Website != "" {
+			cw.acpRegistryField(c, "官网", shortLink(a.Website), a.Website)
+		}
+		if d := a.Distribution.Npx; d != nil && strings.TrimSpace(d.Package) != "" {
+			cw.acpRegistryCommand(c, "npx", d.Package, d.Args, mono, small)
+		}
+		if d := a.Distribution.Uvx; d != nil && strings.TrimSpace(d.Package) != "" {
+			cw.acpRegistryCommand(c, "uvx", d.Package, d.Args, mono, small)
+		}
+		if platforms := a.BinaryPlatforms(); len(platforms) > 0 {
+			cw.acpRegistryField(c, "二进制", strings.Join(platforms, " · "), "")
+		}
+		mgo.Text(c, "Registry ID："+a.ID).FontSize(small).TextColor(k.TextMuted)
+	})
+}
+
+// acpRegistryField is one label-and-value line of the details, with an
+// 打开 action when the value names a URL.
+func (cw *ChatWindow) acpRegistryField(c *mgo.Context, label, value, url string) {
+	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
+	small := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+		mgo.Text(c, label).FontSize(small).TextColor(k.TextMuted).Shrink(0)
+		mgo.Text(c, value).FontSize(small).TextColor(k.Text).
+			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+		if url != "" {
+			if kit.Button(c, "打开", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+				c.OpenURL(url)
+			}
+		}
+	})
+}
+
+// acpRegistryCommand shows the exact command a runtime runs: the package
+// with its pinned version and the entry's own arguments, in mono, with the
+// environment it sets below.
+func (cw *ChatWindow) acpRegistryCommand(c *mgo.Context, runtime, pkg string, args []string, mono string, small float32) {
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	cmd := runtime + " " + pkg
+	if runtime == "npx" {
+		cmd = runtime + " -y " + pkg
+	}
+	for _, arg := range args {
+		cmd += " " + arg
+	}
+	mgo.Column(c).FillWidth().MinWidth(0).Gap(u / 2).Children(func() {
+		mgo.Text(c, cmd).Font(mono).FontSize(small).TextColor(k.Text).
+			Grow(1).MinWidth(0).SingleLine().Ellipsis("…").Tooltip(cmd)
+	})
+}
+
+// shortLink trims a URL to how it reads in the details: no scheme, no
+// trailing slash.
+func shortLink(url string) string {
+	s := strings.TrimPrefix(url, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	return strings.TrimSuffix(s, "/")
 }

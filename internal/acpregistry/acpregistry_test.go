@@ -162,3 +162,24 @@ func TestPlatformKey(t *testing.T) {
 		}
 	}
 }
+
+// BinaryPlatforms names the archive targets of an entry in a stable order,
+// and PlatformLabel turns the index's keys — the Apple Silicon one with its
+// literal marker included — into readable names.
+func TestPlatformLabels(t *testing.T) {
+	a := Agent{Distribution: Distribution{Binary: map[string]BinaryDist{
+		"linux-x86_64": {}, darwinArm64Key: {}, "made-up": {},
+	}}}
+	got := strings.Join(a.BinaryPlatforms(), " | ")
+	want := "macOS · Apple Silicon | Linux · x86_64 | made-up"
+	if got != want {
+		t.Fatalf("BinaryPlatforms = %q, want %q", got, want)
+	}
+	if PlatformLabel("darwin-x86_64") != "macOS · Intel" ||
+		PlatformLabel("linux-aarch64-musl") != "Linux · ARM64 (musl)" ||
+		PlatformLabel("windows-aarch64") != "Windows · ARM64" {
+		t.Fatalf("a platform label reads wrong: %q %q %q",
+			PlatformLabel("darwin-x86_64"), PlatformLabel("linux-aarch64-musl"),
+			PlatformLabel("windows-aarch64"))
+	}
+}

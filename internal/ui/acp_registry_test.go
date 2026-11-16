@@ -19,6 +19,8 @@ func registryAgents() []acpregistry.Agent {
 	return []acpregistry.Agent{
 		{ID: "codex-acp", Name: "Codex", Version: "2.6.0", License: "Apache-2.0",
 			Description: "ACP adapter for OpenAI's coding assistant",
+			Authors:     []string{"OpenAI", "JetBrains s.r.o", "Zed Industries"},
+			Repository:  "https://github.com/agentclientprotocol/codex-acp",
 			Distribution: acpregistry.Distribution{Npx: &acpregistry.NpxDist{
 				Package: "@agentclientprotocol/codex-acp@2.6.0"}}},
 		{ID: "fast-agent", Name: "fast-agent", Version: "0.10.1",
@@ -170,4 +172,115 @@ func TestACPRegistryOpensFromCache(t *testing.T) {
 	if !tr.HasText("Codex") || !tr.HasText("Binary Only") {
 		t.Fatalf("the cached index should list; texts: %v", tr.Texts())
 	}
+}
+
+// A row expands on click into its details — the full description, the
+// authors, the links and the exact command it runs — and folds back on a
+// second click. The 添加 action sits outside the expandable header, so
+// adding never toggles the details.
+func TestACPRegistryRowExpands(t *testing.T) {
+	cw := acpRegistryWindow(t)
+	tr := mgo.NewTester(cw.view, 1100, 800)
+	for range 6 {
+		tr.Frame()
+	}
+	if tr.HasText("Registry ID：") {
+		t.Fatalf("the details should start folded; texts: %v", tr.Texts())
+	}
+	if err := tr.Click("Codex"); err != nil {
+		t.Fatalf("expand the Codex row: %v", err)
+	}
+	for range 3 {
+		tr.Frame()
+	}
+	for _, want := range []string{
+		"作者", "OpenAI · JetBrains s.r.o · Zed Industries",
+		"许可证", "仓库", "github.com/agentclientprotocol/codex-acp",
+		"npx -y @agentclientprotocol/codex-acp@2.6.0",
+		"Registry ID：codex-acp",
+	} {
+		if !tr.HasText(want) {
+			t.Fatalf("the expanded details lack %q; texts: %v", want, tr.Texts())
+		}
+	}
+	// A binary-only entry names its archive targets instead of a command.
+	if err := tr.Click("Binary Only"); err != nil {
+		t.Fatalf("expand the binary-only row: %v", err)
+	}
+	for range 3 {
+		tr.Frame()
+	}
+	if !tr.HasText("二进制") || !tr.HasText("macOS · Apple Silicon") {
+		t.Fatalf("the binary targets should be named; texts: %v", tr.Texts())
+	}
+	// The second click folds the details away.
+	if err := tr.Click("Codex"); err != nil {
+		t.Fatalf("fold the Codex row: %v", err)
+	}
+	for range 3 {
+		tr.Frame()
+	}
+	if tr.HasText("Registry ID：codex-acp") {
+		t.Fatalf("the details should have folded; texts: %v", tr.Texts())
+	}
+}
+
+// The entry's brand icon loads from the disk cache without the network: the
+// fetch reads the cached SVG into memory, and the row then draws it instead
+// of the bundled fallback. The registry icon overrides the local asset, so
+// every entry can carry its own mark even when ChatGo bundles none.
+func TestACPRegistryIconFromDiskCache(t *testing.T) {
+	isolateHome(t)
+	resetACPRegistryIcons()
+	agents := registryAgents()
+	agents[0].Icon = "https://cdn.example/codex-acp.svg"
+	// A previous launch cached the icon.
+	path := acpRegistryIconFile(agents[0].ID)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	svg := []byte(`<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="red"/></svg>`)
+	if err := os.WriteFile(path, svg, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cw := testWindow()
+	cw.section = sectionSettings
+	cw.settings.tab = settingsACPTab
+	cw.acpReg.open = true
+	cw.acpReg.checked = true
+	cw.acpReg.agents = agents
+
+	// The synchronous load fills the memory cache from disk, the way the
+	// background fetch does in the app.
+	cw.fetchACPRegistryIcon(agents[0])
+	acpRegIconMu.Lock()
+	_, loaded := acpRegIconCache[agents[0].Icon]
+	acpRegIconMu.Unlock()
+	if !loaded {
+		t.Fatal("the cached icon should have loaded from disk")
+	}
+
+	tr := mgo.NewTester(cw.view, 1100, 800)
+	for range 6 {
+		tr.Frame()
+	}
+	if !tr.HasText("Codex") {
+		t.Fatalf("the row should render; texts: %v", tr.Texts())
+	}
+	// The icon was served from cache: no fetch was started for it.
+	acpRegIconMu.Lock()
+	tried := acpRegIconTried[agents[0].Icon]
+	acpRegIconMu.Unlock()
+	if tried {
+		t.Fatal("a served icon should not start another fetch")
+	}
+}
+
+// resetACPRegistryIcons empties the icon caches between tests.
+func resetACPRegistryIcons() {
+	acpRegIconMu.Lock()
+	acpRegIconCache = map[string]*mgo.SVG{}
+	acpRegIconTried = map[string]bool{}
+	acpRegIconMu.Unlock()
 }
