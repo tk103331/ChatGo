@@ -166,6 +166,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 		res.Element.Grow(1).MinHeight(0)
 	})
 	cw.importDialog(c)
+	cw.acpRegistryDialog(c)
 	cw.modelRefreshDialog(c)
 }
 

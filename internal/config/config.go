@@ -444,6 +444,11 @@ type ACPConnection struct {
 	Icon       string            `yaml:"icon,omitempty"`
 	AvatarSeed string            `yaml:"avatar_seed,omitempty"`
 	Disabled   bool              `yaml:"disabled,omitempty"`
+	// RegistryID links a connection to the official ACP Registry entry it
+	// was added from, so the entry can be recognised as installed and its
+	// release feed resolved from the registry. Empty for a hand-added
+	// connection or one of the shipped presets.
+	RegistryID string `yaml:"registry_id,omitempty"`
 	// Source names the plugin that contributed this connection.
 	Source string `yaml:"-"`
 }

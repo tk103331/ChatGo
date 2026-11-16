@@ -236,6 +236,8 @@ type ChatWindow struct {
 
 	acpList mgo.ListState
 	acpForm acpForm
+	// acpReg is the Registry dialog's state, read on the main thread only.
+	acpReg acpRegState
 	// acpUpd holds each connection's version-check result under its name.
 	// Entries appear on the first check and are read on the main thread only.
 	acpUpd map[string]*acpUpdState

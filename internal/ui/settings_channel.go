@@ -255,6 +255,10 @@ func (cw *ChatWindow) acpTab(c *mgo.Context) {
 				mgo.Text(c, "ACP").
 					FontSize(mcore.FontSize(c, mtheme.H2Size)).FontWeight(600)
 				mgo.Row(c).Gap(u).Children(func() {
+					if kit.Button(c, "从 Registry 添加", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
+						cw.acpReg.open = true
+						cw.maybeRefreshACPRegistry()
+					}
 					if kit.Button(c, "从插件添加", kit.ButtonOptions{Variant: kit.Secondary, Icon: icons.Must("layout-grid")}).Clicked() {
 						// The catalog lives in the plugins page's market tab;
 						// hand the user over there instead of a dialog here.
