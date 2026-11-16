@@ -20,7 +20,7 @@ import (
 // works against the published release.
 func TestCatalogIndexAgainstLiveRelease(t *testing.T) {
 	entries := Catalog()
-	if len(entries) < 80 {
+	if len(entries) < 48 {
 		t.Fatalf("the embedded index should hold the catalog, got %d entries", len(entries))
 	}
 	// Every entry's id is URL- and filename-safe and its hash is a sha256.

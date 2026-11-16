@@ -139,7 +139,7 @@ func TestImportDialogJumpsToMarket(t *testing.T) {
 // carries: no duplicate ids, legal kinds, the key entries in place.
 func TestCatalogIndexMatchesShippedPlugins(t *testing.T) {
 	entries := plugin.Catalog()
-	if len(entries) < 80 {
+	if len(entries) < 48 {
 		t.Fatalf("the embedded index should hold the shipped catalog, got %d", len(entries))
 	}
 	seen := map[string]bool{}
@@ -154,9 +154,16 @@ func TestCatalogIndexMatchesShippedPlugins(t *testing.T) {
 			t.Fatalf("%q carries an unknown kind %q", e.ID, e.Kind)
 		}
 	}
-	for _, want := range []string{"provider-openai", "acp-claudecode", "importer-cursor-config"} {
+	// The registry covers the official ACP agents, so the shipped catalog
+	// keeps only the entries it does not list.
+	for _, want := range []string{"provider-openai", "acp-traecli", "importer-cursor-config"} {
 		if !seen[want] {
 			t.Fatalf("the index lacks %q", want)
+		}
+	}
+	for _, gone := range []string{"acp-claudecode", "acp-codexcli", "acp-geminicli"} {
+		if seen[gone] {
+			t.Fatalf("the index still ships %q; the ACP Registry covers it", gone)
 		}
 	}
 }
