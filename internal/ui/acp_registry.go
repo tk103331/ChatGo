@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -38,6 +39,9 @@ type acpRegState struct {
 	// until the network answers.
 	agents []acpregistry.Agent
 	query  string
+	// installing is the registry ID of the binary install in flight, so the
+	// row's 安装 button can spin and a second click cannot start another.
+	installing string
 }
 
 // acpRegistryIndexTimeout bounds one index fetch.
@@ -191,14 +195,71 @@ func firstNonEmptyArg(args []string) string {
 func (cw *ChatWindow) addACPRegistryAgent(a acpregistry.Agent) {
 	command, args, env, ok := a.Command()
 	if !ok {
-		cw.toast("「"+a.Name+"」仅提供二进制发行，暂不支持自动添加", mcore.SeverityWarning)
+		cw.toast("「"+a.Name+"」仅提供二进制发行，请使用安装按钮下载", mcore.SeverityWarning)
 		return
 	}
-	name := uniqueACPName(cw, a.Name)
-	cw.cfg.ACPAgents = append(cw.cfg.ACPAgents, config.ACPConnection{
-		Name: name, Command: command, Args: args, Env: env,
-		RegistryID: a.ID,
+	cw.appendRegistryConnection(a, config.ACPConnection{
+		Command: command, Args: args, Env: env,
 	})
+}
+
+// installACPRegistryBinary downloads the entry's binary archive for this
+// platform — verify its digest, extract, resolve the executable — and adds
+// the result as a connection. The download runs off the UI thread; the row
+// reports the run and the outcome.
+func (cw *ChatWindow) installACPRegistryBinary(a acpregistry.Agent) {
+	if cw.acpReg.installing != "" {
+		return
+	}
+	_, _, ok := a.BinaryTarget(runtime.GOOS, runtime.GOARCH)
+	if !ok {
+		cw.toast("「"+a.Name+"」没有当前平台（"+runtime.GOOS+"/"+runtime.GOARCH+"）的二进制发行", mcore.SeverityWarning)
+		return
+	}
+	cw.acpReg.installing = a.ID
+	cw.invalidate()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), acpBinaryInstallTimeout)
+		defer cancel()
+		dest := acpRegistryAgentDir(a.ID, a.Version)
+		bin, err := acpregistry.InstallBinary(ctx, a, runtime.GOOS, runtime.GOARCH, dest)
+		cw.postMain(func() {
+			cw.acpReg.installing = ""
+			if err != nil {
+				cw.toastErrorDetail("安装「"+a.Name+"」失败", err.Error())
+				cw.invalidate()
+				return
+			}
+			dist, _, _ := a.BinaryTarget(runtime.GOOS, runtime.GOARCH)
+			cw.appendRegistryConnection(a, config.ACPConnection{
+				Command: bin, Args: dist.Args, Env: dist.Env,
+			})
+		})
+	}()
+}
+
+// acpBinaryInstallTimeout bounds one binary install: the download of a large
+// CLI can take a while on a slow link.
+const acpBinaryInstallTimeout = 30 * time.Minute
+
+// acpRegistryAgentDir is where an entry's binary version installs, one
+// directory per registry id and version.
+func acpRegistryAgentDir(id, version string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".chatgo", "agents", id, version)
+}
+
+// appendRegistryConnection adds the entry as a named, enabled connection
+// with its registry ID recorded, then attaches its brand icon in the
+// background and saves.
+func (cw *ChatWindow) appendRegistryConnection(a acpregistry.Agent, conn config.ACPConnection) {
+	name := uniqueACPName(cw, a.Name)
+	conn.Name = name
+	conn.RegistryID = a.ID
+	cw.cfg.ACPAgents = append(cw.cfg.ACPAgents, conn)
 	_ = config.SaveConfig(cw.cfg)
 	cw.toast("已添加 "+a.Name+"（v"+a.Version+"）", mcore.SeveritySuccess)
 	if a.Icon == "" {
@@ -478,15 +539,24 @@ func (cw *ChatWindow) acpRegistryRow(c *mgo.Context, a acpregistry.Agent) {
 			}
 			mgo.Row(c).Shrink(0).Children(func() {
 				switch {
+				case cw.acpReg.installing == a.ID:
+					mgo.Row(c).Gap(u / 2).AlignItems(mgo.Center).Children(func() {
+						mcore.Spinner(c, mcore.SpinnerOptions{Size: 10})
+						mgo.Text(c, "安装中").FontSize(small).TextColor(k.TextMuted)
+					})
 				case cw.acpRegistryAdded(a):
 					mgo.Text(c, "已添加").FontSize(small).TextColor(k.TextMuted)
 				case a.SupportsRuntime():
 					if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
 						cw.addACPRegistryAgent(a)
 					}
+				case a.SupportsBinary(runtime.GOOS, runtime.GOARCH):
+					if kit.Button(c, "安装", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+						cw.installACPRegistryBinary(a)
+					}
 				default:
 					mgo.Text(c, "仅二进制发行").FontSize(small).TextColor(k.TextMuted).
-						Tooltip("该 Agent 未提供 npx/uvx 发行方式，暂不支持自动添加")
+						Tooltip("该 Agent 未提供 npx/uvx 发行方式，也没有当前平台的二进制包")
 				}
 			})
 		})
@@ -496,40 +566,55 @@ func (cw *ChatWindow) acpRegistryRow(c *mgo.Context, a acpregistry.Agent) {
 	})
 }
 
-// acpRegistryDetail is the expanded body of one entry: the full
-// description, the authors, the links and the distributions it ships.
+// acpRegistryDetail is the expanded body of one entry: the description
+// rendered as rich text, the authors, the links and the distributions it
+// ships, on a framed surface so the details read as a panel of their own.
 func (cw *ChatWindow) acpRegistryDetail(c *mgo.Context, a acpregistry.Agent) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	small := mcore.FontSize(c, mtheme.CaptionSize)
 	mono := mtheme.MonoFont
-	mgo.Column(c).FillWidth().MinWidth(0).Shrink(0).Gap(u).
-		Padding(u, u*6, u, u*2).Children(func() {
-		if a.Description != "" {
-			mgo.Text(c, a.Description).FontSize(small).TextColor(k.Text)
-		}
-		if len(a.Authors) > 0 {
-			cw.acpRegistryField(c, "作者", strings.Join(a.Authors, " · "), "")
-		}
-		if a.License != "" {
-			cw.acpRegistryField(c, "许可证", a.License, a.LicenseURL)
-		}
-		if a.Repository != "" {
-			cw.acpRegistryField(c, "仓库", shortLink(a.Repository), a.Repository)
-		}
-		if a.Website != "" {
-			cw.acpRegistryField(c, "官网", shortLink(a.Website), a.Website)
-		}
-		if d := a.Distribution.Npx; d != nil && strings.TrimSpace(d.Package) != "" {
-			cw.acpRegistryCommand(c, "npx", d.Package, d.Args, mono, small)
-		}
-		if d := a.Distribution.Uvx; d != nil && strings.TrimSpace(d.Package) != "" {
-			cw.acpRegistryCommand(c, "uvx", d.Package, d.Args, mono, small)
-		}
-		if platforms := a.BinaryPlatforms(); len(platforms) > 0 {
-			cw.acpRegistryField(c, "二进制", strings.Join(platforms, " · "), "")
-		}
-		mgo.Text(c, "Registry ID："+a.ID).FontSize(small).TextColor(k.TextMuted)
+	mgo.Box(c).FillWidth().MinWidth(0).Shrink(0).
+		Radius(mtheme.ControlRadius).Background(k.Surface).
+		Border(mtheme.BorderWidth, k.Border).
+		Padding(u * 2).Children(func() {
+		mgo.Column(c).FillWidth().MinWidth(0).Shrink(0).Gap(u).Children(func() {
+			if a.Description != "" {
+				kit.MarkdownView(c, a.Description)
+			}
+			if len(a.Authors) > 0 {
+				cw.acpRegistryField(c, "作者", strings.Join(a.Authors, " · "), "")
+			}
+			if a.License != "" {
+				cw.acpRegistryField(c, "许可证", a.License, a.LicenseURL)
+			}
+			if a.Repository != "" {
+				cw.acpRegistryField(c, "仓库", shortLink(a.Repository), a.Repository)
+			}
+			if a.Website != "" {
+				cw.acpRegistryField(c, "官网", shortLink(a.Website), a.Website)
+			}
+			if d := a.Distribution.Npx; d != nil && strings.TrimSpace(d.Package) != "" {
+				cw.acpRegistryCommand(c, "npx", d.Package, d.Args, mono, small)
+			}
+			if d := a.Distribution.Uvx; d != nil && strings.TrimSpace(d.Package) != "" {
+				cw.acpRegistryCommand(c, "uvx", d.Package, d.Args, mono, small)
+			}
+			if platforms := a.BinaryPlatforms(); len(platforms) > 0 {
+				mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
+					mgo.Text(c, "二进制").FontSize(small).TextColor(k.TextMuted).Shrink(0)
+					mgo.Text(c, strings.Join(platforms, " · ")).FontSize(small).TextColor(k.Text).
+						Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					if !cw.acpRegistryAdded(a) && cw.acpReg.installing == "" &&
+						a.SupportsBinary(runtime.GOOS, runtime.GOARCH) {
+						if kit.Button(c, "安装二进制", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+							cw.installACPRegistryBinary(a)
+						}
+					}
+				})
+			}
+			mgo.Text(c, "Registry ID："+a.ID).FontSize(small).TextColor(k.TextMuted)
+		})
 	})
 }
 

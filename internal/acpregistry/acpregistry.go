@@ -138,6 +138,12 @@ func (a Agent) SupportsRuntime() bool {
 	return a.Distribution.Npx != nil || a.Distribution.Uvx != nil
 }
 
+// SupportsBinary reports whether the entry ships an archive for the platform.
+func (a Agent) SupportsBinary(goos, goarch string) bool {
+	_, _, ok := a.BinaryTarget(goos, goarch)
+	return ok
+}
+
 // BinaryOnly reports whether the entry offers nothing but binary archives.
 func (a Agent) BinaryOnly() bool {
 	return !a.SupportsRuntime() && len(a.Distribution.Binary) > 0

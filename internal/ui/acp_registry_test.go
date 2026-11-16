@@ -1,11 +1,17 @@
 package ui
 
 import (
+	"archive/zip"
+	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	mgo "github.com/egoist/mygo/ui"
 
@@ -14,8 +20,13 @@ import (
 )
 
 // registryAgents is a fixture slice of the index: an npx entry, a uvx entry
-// and a binary-only one.
+// and a binary-only one that ships an archive for the test's own platform.
 func registryAgents() []acpregistry.Agent {
+	binaries := map[string]acpregistry.BinaryDist{
+		acpregistry.PlatformKey("darwin", "arm64"): {Archive: "https://example.com/b.tar.gz", Cmd: "./b"},
+	}
+	cur := acpregistry.PlatformKey(runtime.GOOS, runtime.GOARCH)
+	binaries[cur] = acpregistry.BinaryDist{Archive: "https://example.com/b.tar.gz", Cmd: "./b"}
 	return []acpregistry.Agent{
 		{ID: "codex-acp", Name: "Codex", Version: "2.6.0", License: "Apache-2.0",
 			Description: "ACP adapter for OpenAI's coding assistant",
@@ -28,8 +39,7 @@ func registryAgents() []acpregistry.Agent {
 				Package: "fast-agent-acp==0.10.1", Args: []string{"-x"},
 				Env: map[string]string{"FAST_AGENT_MODEL": "codexplan"}}}},
 		{ID: "binary-only", Name: "Binary Only", Version: "1.0.0",
-			Distribution: acpregistry.Distribution{Binary: map[string]acpregistry.BinaryDist{
-				acpregistry.PlatformKey("darwin", "arm64"): {Archive: "https://example.com/b.tar.gz", Cmd: "./b"}}}},
+			Distribution: acpregistry.Distribution{Binary: binaries}},
 	}
 }
 
@@ -62,7 +72,7 @@ func TestACPRegistryDialogListsAndMarks(t *testing.T) {
 		tr.Frame()
 	}
 	for _, want := range []string{"从 ACP Registry 添加", "Codex", "v2.6.0", "Apache-2.0",
-		"fast-agent", "Binary Only", "仅二进制发行", "已添加"} {
+		"fast-agent", "Binary Only", "安装", "已添加"} {
 		if !tr.HasText(want) {
 			t.Fatalf("the dialog should show %q; texts: %v", want, tr.Texts())
 		}
@@ -283,4 +293,111 @@ func resetACPRegistryIcons() {
 	acpRegIconCache = map[string]*mgo.SVG{}
 	acpRegIconTried = map[string]bool{}
 	acpRegIconMu.Unlock()
+}
+
+// binaryZip serves a small valid zip holding the executable an entry names.
+func binaryZip(t *testing.T) []byte {
+	t.Helper()
+	var buf bytes.Buffer
+	w := zip.NewWriter(&buf)
+	f, err := w.Create("bin/agent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.Write([]byte("#!/bin/sh\nrun\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+// The 安装 action of a binary-only entry walks the whole chain against a
+// local HTTP server: the archive downloads, extracts, and the connection
+// appears pointing at the executable, with its registry ID recorded. The
+// details' 安装二进制 action runs the same path.
+func TestACPRegistryInstallBinaryFlow(t *testing.T) {
+	cw := acpRegistryWindow(t)
+	q := installQueue(t, cw)
+
+	// The entry's archive lives on a local server, with a name whose
+	// extension names the format.
+	archive := binaryZip(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(archive)
+	}))
+	defer srv.Close()
+	key := acpregistry.PlatformKey(runtime.GOOS, runtime.GOARCH)
+	cw.acpReg.agents[2].Distribution.Binary[key] = acpregistry.BinaryDist{
+		Archive: srv.URL + "/agent.zip", Cmd: "./bin/agent", Args: []string{"--acp"},
+	}
+
+	tr := mgo.NewTester(cw.view, 1100, 800)
+	for range 6 {
+		tr.Frame()
+	}
+	if err := tr.Click("安装"); err != nil {
+		t.Fatalf("the binary-only row should offer 安装: %v", err)
+	}
+	// The install runs off the UI thread; drain the main queue until the
+	// connection lands.
+	for range 500 {
+		tr.Frame()
+		q.drain()
+		if len(cw.cfg.ACPAgents) > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	tr.Frame()
+	if len(cw.cfg.ACPAgents) != 1 {
+		t.Fatalf("the install should have added the connection, got %+v", cw.cfg.ACPAgents)
+	}
+	conn := cw.cfg.ACPAgents[0]
+	if conn.Name != "Binary Only" || conn.RegistryID != "binary-only" {
+		t.Fatalf("the connection should carry the entry's name and id: %+v", conn)
+	}
+	if !strings.HasSuffix(conn.Command, filepath.Join("binary-only", "1.0.0", "bin", "agent")) {
+		t.Fatalf("the command should point at the installed binary, got %q", conn.Command)
+	}
+	if _, err := os.Stat(conn.Command); err != nil {
+		t.Fatalf("the installed executable should exist: %v", err)
+	}
+	if info, err := os.Stat(conn.Command); err != nil || info.Mode()&0o111 == 0 {
+		t.Fatalf("the installed executable should be runnable, got %v", info.Mode())
+	}
+	if len(conn.Args) != 1 || conn.Args[0] != "--acp" {
+		t.Fatalf("the manifest's args should carry over, got %v", conn.Args)
+	}
+	if cw.acpReg.installing != "" {
+		t.Fatal("the installing state should have cleared")
+	}
+	// The row now reads as added.
+	if !tr.HasText("已添加") {
+		t.Fatalf("an installed entry should read as added; texts: %v", tr.Texts())
+	}
+}
+
+// While an install runs, its row reports 安装中 instead of the button, and
+// a second install cannot start.
+func TestACPRegistryInstallBinaryRunningState(t *testing.T) {
+	cw := acpRegistryWindow(t)
+	cw.acpReg.installing = "binary-only"
+	// A second entry's install is refused while one runs.
+	before := len(cw.cfg.ACPAgents)
+	cw.installACPRegistryBinary(cw.acpReg.agents[0])
+	if len(cw.cfg.ACPAgents) != before && cw.acpReg.installing != "binary-only" {
+		t.Fatalf("a running install should refuse a second one, got %q", cw.acpReg.installing)
+	}
+	tr := mgo.NewTester(cw.view, 1100, 800)
+	for range 6 {
+		tr.Frame()
+	}
+	if !tr.HasText("安装中") {
+		t.Fatalf("the running install should be named; texts: %v", tr.Texts())
+	}
+	if tr.HasText("安装\n") && !tr.HasText("安装中") {
+		t.Fatalf("the 安装 button should be replaced by the running state; texts: %v", tr.Texts())
+	}
 }
