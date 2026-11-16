@@ -720,13 +720,16 @@ func (cw *ChatWindow) webRunACP(ctx context.Context, conv *models.Conversation, 
 	}
 	cw.acp.mu.Unlock()
 
+	// The greeting window closes as the prompt is sent: the reply streams
+	// back while Prompt blocks, so clearing the mark only after it returns
+	// dropped the whole first reply of a session as a greeting.
+	cw.acp.mu.Lock()
+	delete(cw.acp.greeting, rt.sessionID)
+	cw.acp.mu.Unlock()
 	resp, perr := rt.conn.Prompt(ctx, acp.PromptRequest{
 		SessionId: rt.sessionID,
 		Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 	})
-	cw.acp.mu.Lock()
-	delete(cw.acp.greeting, rt.sessionID)
-	cw.acp.mu.Unlock()
 
 	// ACP updates reach the conversation through postMain; wait for the
 	// callbacks already queued so the turn is finalized after them.

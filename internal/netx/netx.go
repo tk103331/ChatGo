@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -116,6 +117,26 @@ func Transport() http.RoundTripper { return transport }
 // dialers that ask for a function instead of a transport, such as a
 // websocket gateway.
 func ProxyFunc() func(*http.Request) (*url.URL, error) { return proxyFor }
+
+// ProxyEnv returns the proxy environment variables a configured proxy implies
+// for child processes — HTTP_PROXY, HTTPS_PROXY and NO_PROXY — or nil when
+// the proxy is off, so a spawned CLI dials the way the app itself does.
+// Loopback is always kept out of the proxy, matching the app's own
+// transport; the variables are returned only when a proxy is configured,
+// never overriding an environment the user set by hand otherwise.
+func ProxyEnv() []string {
+	u := configured.Load()
+	if u == nil {
+		return nil
+	}
+	// The user's own NO_PROXY wins: it is appended after ours, and most
+	// tools read the last occurrence.
+	return []string{
+		"HTTP_PROXY=" + u.String(),
+		"HTTPS_PROXY=" + u.String(),
+		"NO_PROXY=localhost,127.0.0.1,::1," + os.Getenv("NO_PROXY"),
+	}
+}
 
 // Default is the proxy-aware replacement for http.DefaultClient: no
 // timeout of its own, so callers bound their requests with a context.

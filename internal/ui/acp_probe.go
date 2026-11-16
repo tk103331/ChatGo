@@ -16,6 +16,7 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/config"
+	"chatgo/internal/netx"
 	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
@@ -48,6 +49,10 @@ func acpProbeModels(cw *ChatWindow, conn config.ACPConnection) ([]acpModelOption
 	for k, v := range conn.Env {
 		env = append(env, k+"="+v)
 	}
+	// The probe runs the same CLI as a session does, so it inherits the
+	// configured proxy the same way; otherwise the probe reports a CLI as
+	// broken that only fails to reach its catalog.
+	env = append(env, netx.ProxyEnv()...)
 	cmd.Env = env
 	cmd.SysProcAttr = acpSysProcAttr()
 	var errBuf acpTailBuffer

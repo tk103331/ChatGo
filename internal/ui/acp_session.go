@@ -13,6 +13,7 @@ import (
 	acp "github.com/coder/acp-go-sdk"
 
 	"chatgo/internal/config"
+	"chatgo/internal/netx"
 	mcore "chatgo/internal/ui/uikit"
 	"chatgo/pkg/models"
 )
@@ -362,15 +363,17 @@ func (cw *ChatWindow) acpChatStart(conv *models.Conversation, connName string, i
 			})
 			return
 		}
+		// The greeting window closes as the first prompt is sent, not when it
+		// returns: the reply streams in while Prompt blocks, and clearing the
+		// mark afterwards would drop every text update of the whole first
+		// turn as a greeting.
+		cw.acp.mu.Lock()
+		delete(cw.acp.greeting, rt.sessionID)
+		cw.acp.mu.Unlock()
 		resp, perr := rt.conn.Prompt(context.Background(), acp.PromptRequest{
 			SessionId: rt.sessionID,
 			Prompt:    []acp.ContentBlock{acp.TextBlock(text)},
 		})
-		// The greeting window closes with the first prompt, so anything the
-		// CLI sends from here on belongs to the reply.
-		cw.acp.mu.Lock()
-		delete(cw.acp.greeting, rt.sessionID)
-		cw.acp.mu.Unlock()
 		cw.postMain(func() {
 			if perr != nil && conv.Messages[idx].Content == "" {
 				conv.Messages[idx].Content = "⚠️ " + perr.Error()
@@ -488,6 +491,10 @@ func (cw *ChatWindow) acpEnsureSessionAt(conv *models.Conversation, conn config.
 	for k, v := range conn.Env {
 		env = append(env, k+"="+v)
 	}
+	// A proxy configured in settings is handed to the CLI too: an agent that
+	// dials its own APIs (a model catalog, a gateway) then routes through
+	// the same server as the app's own requests.
+	env = append(env, netx.ProxyEnv()...)
 	cmd.Env = env
 	// Own process group so the whole tree (npx → node) dies together.
 	cmd.SysProcAttr = acpSysProcAttr()
