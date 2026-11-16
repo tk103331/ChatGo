@@ -98,98 +98,56 @@ func (cw *ChatWindow) messageNameLabel(msg models.Message, role kit.MessageRole)
 	return msg.Role
 }
 
-// messageSegments renders an assistant reply as completed execution rounds
-// plus the final answer. A round ends at each non-empty text block; completed
-// rounds fold away with their thinking and tool counts, while the last text
-// block stays visible as the reply.
+// messageSegments renders an assistant reply as one foldable execution
+// process plus the final answer. While the turn runs the process timeline is
+// open, listing every thinking block, tool call and intermediate message —
+// each thinking and tool row folded to its one-line summary. When the turn
+// ends the process collapses to its counts — thought N times, called M tools
+// — leaving the last text as the only message body.
 func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, streaming bool) {
-	rounds := segmentRounds(msg.Segments)
+	segs := msg.Segments
 	final := -1
-	for i := len(rounds) - 1; i >= 0; i-- {
-		if rounds[i].hasText() {
+	for i := len(segs) - 1; i >= 0; i-- {
+		if segs[i].Kind == "text" && strings.TrimSpace(segs[i].Text) != "" {
 			final = i
 			break
 		}
 	}
+	// The process holds every segment except the final text: the thinking,
+	// the tool calls and the intermediate messages, in the order they ran.
+	procSegs := segs
+	if final >= 0 {
+		procSegs = append(append([]models.Segment(nil), segs[:final]...), segs[final+1:]...)
+	}
+	proc := segmentRound{segments: procSegs}
+	thinking, tools := proc.counts()
 	duration := cw.turnDuration(msg, streaming)
-	for i, round := range rounds {
-		if !round.hasProcess() && !round.hasText() {
-			continue
-		}
-		live := streaming && i == len(rounds)-1 && !round.hasText()
-		showProcess := round.hasProcess() || (round.hasText() && i != final)
-		if showProcess {
-			fold := mgo.Local(c.Root(), fmt.Sprintf("round:%s:%d", msg.ID, i), func() reasoningFold { return reasoningFold{} })
-			fold.follow(live)
-			roundDuration := ""
-			if i == len(rounds)-1 {
-				roundDuration = duration
-			}
-			cw.processBlock(c, &fold.open, msg, round, i, live, i != final, roundDuration)
-		}
-		if i == final {
-			if !showProcess && duration != "" {
-				mgo.Text(c, "用时 "+duration).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
-					TextColor(mcore.Tokens(c).TextMuted)
-			}
-			if text, ok := round.text(); ok {
-				kit.MarkdownView(c, text)
-			}
-		}
+	if thinking > 0 || tools > 0 {
+		// The fold follows the whole stream: it stays open while the answer
+		// is still being written and folds itself away when the turn ends,
+		// so a finished reply reads as the answer with every layer of
+		// process closed.
+		fold := mgo.Local(c.Root(), "process:"+msg.ID, func() reasoningFold { return reasoningFold{} })
+		fold.follow(streaming)
+		live := streaming && (final < 0 || final < len(segs)-1)
+		cw.processTimeline(c, &fold.open, msg, proc, live, thinking, tools, duration)
+	} else if duration != "" {
+		mgo.Text(c, "用时 "+duration).FontSize(mcore.FontSize(c, mtheme.CaptionSize)).
+			TextColor(mcore.Tokens(c).TextMuted)
+	}
+	if final >= 0 {
+		kit.MarkdownView(c, segs[final].Text)
 	}
 	if cw.emptySegments(msg) && streaming {
 		kit.TypingIndicator(c, "Assistant")
 	}
 }
 
-// segmentRound is one completed or in-progress ReAct round: the thinking and
-// tool calls leading to a text block, or a trailing round still running.
+// segmentRound is the ordered run of segments an execution process holds:
+// thinking blocks, tool calls and intermediate messages, everything except
+// the reply's final text.
 type segmentRound struct {
 	segments []models.Segment
-}
-
-// segmentRounds splits ordered segments at non-empty text blocks. A trailing
-// run without text is the round currently being generated.
-func segmentRounds(segs []models.Segment) []segmentRound {
-	var rounds []segmentRound
-	start := 0
-	for i, seg := range segs {
-		if seg.Kind == "text" && strings.TrimSpace(seg.Text) != "" {
-			rounds = append(rounds, segmentRound{segments: segs[start : i+1]})
-			start = i + 1
-		}
-	}
-	if start < len(segs) {
-		rounds = append(rounds, segmentRound{segments: segs[start:]})
-	}
-	return rounds
-}
-
-func (r segmentRound) hasText() bool {
-	_, ok := r.text()
-	return ok
-}
-
-func (r segmentRound) text() (string, bool) {
-	for i := len(r.segments) - 1; i >= 0; i-- {
-		s := r.segments[i]
-		if s.Kind == "text" && strings.TrimSpace(s.Text) != "" {
-			return s.Text, true
-		}
-	}
-	return "", false
-}
-
-func (r segmentRound) hasProcess() bool {
-	for _, s := range r.segments {
-		if s.Kind == "reasoning" && strings.TrimSpace(s.Text) != "" {
-			return true
-		}
-		if s.Kind == "tool" && s.ToolCall != nil {
-			return true
-		}
-	}
-	return false
 }
 
 func (r segmentRound) counts() (thinking, tools int) {
@@ -237,13 +195,16 @@ func (cw *ChatWindow) turnDuration(msg models.Message, streaming bool) string {
 	return kit.AgentDuration(end.Sub(t.StartedAt))
 }
 
-// processBlock folds one round's thinking and tool calls, with a summary of
-// how many times the model thought and how many tools it ran.
-func (cw *ChatWindow) processBlock(c *mgo.Context, open *bool, msg models.Message, round segmentRound, roundIdx int, live, includeText bool, duration string) {
+// processTimeline is the message's whole execution process behind one fold.
+// The header counts the thinking blocks and tool calls and how long the turn
+// ran, spinning while the process is still going; the body is a timeline of
+// rows — every thinking block and tool call as a collapsed row carrying its
+// one-line summary, the intermediate messages in place — so a long ReAct turn
+// can be followed live and reads as a single summary line once it is done.
+func (cw *ChatWindow) processTimeline(c *mgo.Context, open *bool, msg models.Message, proc segmentRound, live bool, thinking, tools int, duration string) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	thinking, tools := round.counts()
 	b := mgo.ButtonBase(c).FillWidth().Justify(mgo.Start).Gap(u*2).AlignItems(mgo.Center).
 		Padding(u/2, u/2).Radius(mtheme.ControlRadius).
 		Role(mgo.RoleGroup).Label("执行过程")
@@ -251,17 +212,14 @@ func (cw *ChatWindow) processBlock(c *mgo.Context, open *bool, msg models.Messag
 		b.Background(k.SurfaceHover)
 	}
 	b.Children(func() {
-		if b.Hovered() || *open {
-			name := "chevron-right"
-			if *open {
-				name = "chevron-down"
-			}
-			mgo.Icon(c, icons.Must(name)).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
-		} else {
-			mgo.Icon(c, icons.Must("brain")).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
+		// The master fold shows its chevron at rest: it is the one control
+		// that opens the whole trace.
+		name := "chevron-right"
+		if *open {
+			name = "chevron-down"
 		}
-		mgo.Text(c, "执行过程").FontSize(caption).TextColor(k.TextMuted)
-		mgo.Text(c, fmt.Sprintf("思考 %d 次 · 工具 %d 次", thinking, tools)).
+		mgo.Icon(c, icons.Must(name)).Size(14, 14).Shrink(0).TextColor(k.TextMuted)
+		mgo.Text(c, fmt.Sprintf("思考 %d 次 · 工具调用 %d 次", thinking, tools)).
 			FontSize(caption).TextColor(k.TextMuted)
 		if duration != "" {
 			mgo.Text(c, "用时 "+duration).FontSize(caption).TextColor(k.TextMuted)
@@ -276,32 +234,40 @@ func (cw *ChatWindow) processBlock(c *mgo.Context, open *bool, msg models.Messag
 	if !*open {
 		return
 	}
-	mgo.Column(c).FillWidth().Gap(u).Padding(u).Children(func() {
-		last := round.lastProcessIndex()
-		for j, seg := range round.segments {
-			switch seg.Kind {
-			case "reasoning":
-				if strings.TrimSpace(seg.Text) == "" {
-					continue
-				}
-				// The thinking block expands while it is the block being
-				// written and folds itself away when the stream moves on,
-				// the way the round's own fold does — a completed reply
-				// reads as the answer, with every layer of process closed.
-				segLive := live && j == last
-				fold := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:r%d:%d", msg.ID, roundIdx, j), func() reasoningFold { return reasoningFold{} })
-				fold.follow(segLive)
-				cw.reasoningBlock(c, &fold.open, seg.Text,
-					cw.reasoningDuration(msg, round, j, segLive), segLive)
-			case "tool":
-				if seg.ToolCall != nil {
-					cw.toolCalls(c, msg, []models.ToolCall{*seg.ToolCall})
-				}
-			case "text":
-				if includeText && strings.TrimSpace(seg.Text) != "" {
-					kit.MarkdownView(c, seg.Text)
-				}
-			}
+	mgo.Column(c).FillWidth().Children(func() {
+		last := proc.lastProcessIndex()
+		for j, seg := range proc.segments {
+			// One timeline entry: a rail holding this entry's stretch of
+			// the vertical thread, and the row itself beside it. Entries
+			// stack without gaps, so the thread reads as one line running
+			// through the whole trace.
+			mgo.Row(c).FillWidth().Children(func() {
+				rail := mgo.Box(c).Width(u * 2).FillHeight().Shrink(0)
+				rail.Draw(func(p *mgo.Painter, r mgo.Rect) {
+					p.Line(r.X+r.W/2, r.Y, r.X+r.W/2, r.Y+r.H, 1, k.Border)
+				})
+				mgo.Column(c).Grow(1).MinWidth(0).Children(func() {
+					switch {
+					case seg.Kind == "reasoning" && strings.TrimSpace(seg.Text) != "":
+						segLive := live && j == last
+						// A thinking row starts folded — even the one being
+						// written: its summary carries the newest thought,
+						// and opening the body is a deliberate act.
+						fold := mgo.Local(c.Root(), fmt.Sprintf("reason:%s:%d", msg.ID, j),
+							func() reasoningFold { return reasoningFold{} })
+						cw.reasoningBlock(c, &fold.open, seg.Text,
+							cw.reasoningDuration(msg, proc, j, segLive), segLive)
+					case seg.Kind == "tool" && seg.ToolCall != nil:
+						cw.toolCalls(c, msg, []models.ToolCall{*seg.ToolCall})
+					case seg.Kind == "text" && strings.TrimSpace(seg.Text) != "":
+						// An intermediate message: shown in place while the
+						// turn runs, and kept inside the fold once it ends.
+						mgo.Box(c).FillWidth().Padding(u/2, 0).Children(func() {
+							kit.MarkdownView(c, seg.Text)
+						})
+					}
+				})
+			})
 		}
 	})
 }
