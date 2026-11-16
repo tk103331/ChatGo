@@ -619,7 +619,8 @@ func (cw *ChatWindow) acpRegistryDetail(c *mgo.Context, a acpregistry.Agent) {
 }
 
 // acpRegistryField is one label-and-value line of the details, with an
-// 打开 action when the value names a URL.
+// 打开 link action when the value names a URL — a ghost button with the
+// external-link mark, so it reads as a link rather than a boxed button.
 func (cw *ChatWindow) acpRegistryField(c *mgo.Context, label, value, url string) {
 	u := mcore.Density(c).Unit()
 	k := mcore.Tokens(c)
@@ -629,7 +630,9 @@ func (cw *ChatWindow) acpRegistryField(c *mgo.Context, label, value, url string)
 		mgo.Text(c, value).FontSize(small).TextColor(k.Text).
 			Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		if url != "" {
-			if kit.Button(c, "打开", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
+			if kit.Button(c, "打开", kit.ButtonOptions{
+				Variant: kit.Ghost, Icon: icons.Must("external-link"),
+			}).Clicked() {
 				c.OpenURL(url)
 			}
 		}
