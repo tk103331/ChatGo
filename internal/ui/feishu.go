@@ -10,6 +10,9 @@ import (
 	"strings"
 	"time"
 
+	sdk "github.com/a2aproject/a2a-go/v2/a2a"
+
+	"chatgo/internal/a2a"
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
 	"chatgo/pkg/models"
@@ -42,6 +45,10 @@ func (cw *ChatWindow) runChannelAgent(channelID, text string, msgCtx *channelMsg
 	}
 	if connName, ok := strings.CutPrefix(spec.agent, "acp:"); ok {
 		cw.runChannelACPAgent(conv, connName, spec.workspace, text, done)
+		return false
+	}
+	if connName, ok := strings.CutPrefix(spec.agent, "a2a:"); ok {
+		cw.runChannelA2AAgent(conv, connName, spec.workspace, text, done)
 		return false
 	}
 	cw.runChannelLLMAgent(conv, spec.agent, spec.workspace, spec.channel, msgCtx, text, done)
@@ -171,6 +178,56 @@ func (cw *ChatWindow) runChannelACPAgent(conv *models.Conversation, connName, wo
 		if reply == "" {
 			reply = "（Agent 没有文本输出）"
 		}
+		done(reply)
+	}()
+}
+
+// runChannelA2AAgent answers an IM message with a remote A2A agent. Channels
+// expect one final reply, so the turn is non-streaming from their point of
+// view even when the agent itself streams internally.
+func (cw *ChatWindow) runChannelA2AAgent(conv *models.Conversation, connName, workspace, text string, done func(string)) {
+	conn, ok := cw.findA2AConn(connName)
+	if !ok {
+		done("⚠️ 未找到 A2A 连接：" + connName)
+		return
+	}
+	go func() {
+		setA2AConversationAgent(conv, "a2a:"+connName)
+		if workspace != "" {
+			conv.Workspace = workspace
+		}
+		conv.Messages = append(conv.Messages, conv.NewHumanMessage(cw.newID(), text, time.Now()))
+		cli, err := a2a.New(context.Background(), conn)
+		if err != nil {
+			done("⚠️ " + err.Error())
+			return
+		}
+		res, err := cli.Chat(context.Background(), a2a.ChatRequest{
+			Text:      text,
+			TaskID:    sdk.TaskID(conv.A2ATaskID),
+			ContextID: conv.A2AContextID,
+		}, nil)
+		reply := strings.TrimSpace(res.Text)
+		if reply == "" && err == nil {
+			reply = "（Agent 没有文本输出）"
+		}
+		if err != nil {
+			if reply == "" {
+				reply = "⚠️ " + err.Error()
+			} else {
+				reply += "\n\n⚠️ " + err.Error()
+			}
+		}
+		cw.postMain(func() {
+			applyA2AResult(conv, &res)
+			m := conv.NewAgentMessage(cw.newID(), conv.Agent, authorNameOf(conv.Agent), time.Now())
+			m.Content = reply
+			conv.Messages = append(conv.Messages, m)
+			_ = cw.convManager.SaveConversation(conv)
+			cw.reloadConvs()
+			cw.invalidate()
+			cw.notifySessionComplete(conv, reply)
+		})
 		done(reply)
 	}()
 }
@@ -361,13 +418,22 @@ func (cw *ChatWindow) resolveChannelAgent(arg string) (string, string) {
 		}
 		return "", "⚠️ 未找到 ACP 连接：" + name
 	}
+	if name, ok := strings.CutPrefix(a, "a2a:"); ok {
+		if _, ok := cw.findA2AConn(name); ok {
+			return a, ""
+		}
+		return "", "⚠️ 未找到 A2A 连接：" + name
+	}
 	if cw.agentExists(a) {
 		return "agent:" + a, ""
 	}
 	if _, ok := cw.findACPConn(a); ok {
 		return "acp:" + a, ""
 	}
-	return "", "⚠️ 未找到 Agent 或 ACP 连接：" + a
+	if _, ok := cw.findA2AConn(a); ok {
+		return "a2a:" + a, ""
+	}
+	return "", "⚠️ 未找到 Agent / ACP / A2A 连接：" + a
 }
 
 func (cw *ChatWindow) agentExists(name string) bool {
@@ -386,6 +452,9 @@ func channelAgentLabel(agent string) string {
 	if name, ok := strings.CutPrefix(agent, "acp:"); ok {
 		return "ACP · " + name
 	}
+	if name, ok := strings.CutPrefix(agent, "a2a:"); ok {
+		return "A2A · " + name
+	}
 	return chatAgentName
 }
 
@@ -402,6 +471,12 @@ func (cw *ChatWindow) channelAgentOptions(ch *config.Channel) string {
 			continue
 		}
 		fmt.Fprintf(&b, "  %s — ACP（也可写 acp:%s）\n", a.Name, a.Name)
+	}
+	for _, a := range cw.cfg.A2AAgents {
+		if a.Disabled {
+			continue
+		}
+		fmt.Fprintf(&b, "  %s — A2A（也可写 a2a:%s）\n", a.Name, a.Name)
 	}
 	return strings.TrimRight(b.String(), "\n")
 }

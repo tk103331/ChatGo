@@ -257,7 +257,7 @@ func (a *app) toolPanes() []webToolPane {
 				on:    a.toolEnabled, set: a.toggleTool,
 			})
 	}
-	if a.cap(capSkills) && !strings.HasPrefix(a.agentRef, "acp:") {
+	if a.cap(capSkills) && !strings.HasPrefix(a.agentRef, "acp:") && !strings.HasPrefix(a.agentRef, "a2a:") {
 		items := make([]pickerItem, 0, len(a.skills))
 		for _, s := range a.skills {
 			items = append(items, pickerItem{id: s.ID, title: s.Name, desc: s.Description})
@@ -274,8 +274,10 @@ func (a *app) toolPanes() []webToolPane {
 // toolsButton opens the composer's 工具与技能 popover: tools, MCP servers and
 // skills on tabs with per-row switches, matching the desktop's menu.
 func (a *app) toolsButton(c *ui.Context, t *ui.Theme) {
-	// An ACP session speaks its own commands; the picker would be noise.
-	if strings.HasPrefix(a.agentRef, "acp:") || (!a.cap(capTools) && !a.cap(capSkills)) {
+	// An ACP session and a remote A2A agent bring their own tools; the picker
+	// would be noise.
+	if strings.HasPrefix(a.agentRef, "acp:") || strings.HasPrefix(a.agentRef, "a2a:") ||
+		(!a.cap(capTools) && !a.cap(capSkills)) {
 		return
 	}
 	panes := a.toolPanes()
@@ -394,6 +396,12 @@ func (a *app) acpAgent() (agentInfo, bool) {
 	return agentInfo{}, false
 }
 
+// isA2ANewAgent reports whether the new-session form's agent is a remote A2A
+// agent, which brings its own model and tools.
+func (a *app) isA2ANewAgent() bool {
+	return strings.HasPrefix(a.newAgent, "a2a:")
+}
+
 // newSessionDialog collects the 新会话 choices the desktop's create page
 // asks for: agent, project, worktree or branch, model and the first message.
 func (a *app) newSessionDialog(c *ui.Context, t *ui.Theme) {
@@ -425,7 +433,7 @@ func (a *app) newSessionDialog(c *ui.Context, t *ui.Theme) {
 		// 项目 + 工作树 + 分支
 		a.newSessionProject(c, t)
 		// 模型：所选 Agent 自己的模型列表
-		if _, acp := a.acpAgent(); !acp {
+		if _, acp := a.acpAgent(); !acp && !a.isA2ANewAgent() {
 			st := a.ensureModelsFor(a.newAgent)
 			// 默认模型 rides the list as a row, so the choice can go back.
 			models := append([]modelInfo{{Label: "默认模型"}}, st.models...)

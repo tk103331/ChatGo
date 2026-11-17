@@ -17,12 +17,15 @@ import (
 )
 
 func (cw *ChatWindow) chatMenus(c *mgo.Context, in kit.InputResult) {
-	if cw.isACP() {
+	switch {
+	case cw.isACP():
 		if _, ok := kit.SlashCommandMenu(c, in, &cw.draft, cw.acpCommands()).Chosen(); ok {
 			in.Input.Focus()
 			cw.invalidate()
 		}
-	} else {
+	case cw.isA2A():
+		// A remote agent brings its own commands and tools.
+	default:
 		cmds, tokens := cw.slashSkills()
 		cmds = append(cmds, cw.pluginSlashCommands()...)
 		if cmd, ok := kit.SlashCommandMenu(c, in, &cw.draft, cmds).Chosen(); ok {

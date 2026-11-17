@@ -35,12 +35,26 @@ type Server struct {
 	targetErr error
 	// runner is the desktop agent runtime, nil in the standalone webd server.
 	runner Runner
+	// token is the configured long-lived token, or a random token generated
+	// for this server when the config leaves it empty.
+	token          string
+	tokenEphemeral bool
 
 	httpServer *http.Server
 	listener   net.Listener
 
 	mu   sync.Mutex
 	runs map[string]*runState
+
+	// external runs conversations started by the MCP, AG-UI and A2A
+	// endpoints, and maps their protocol thread or context IDs back to a
+	// ChatGo conversation.
+	externalMu      sync.Mutex
+	externalThreads map[string]string
+
+	mcpHandler http.Handler
+	a2aHandler http.Handler
+	a2aREST    http.Handler
 }
 
 // runState is the live copy of a conversation while a reply streams. GET
@@ -81,9 +95,26 @@ func NewServerWithRunner(cfg *config.Config, cm *models.ConversationManager, web
 		runner:    runner,
 		runs:      map[string]*runState{},
 	}
+	if cfg != nil {
+		s.token = strings.TrimSpace(cfg.WebToken)
+	}
+	if s.token == "" {
+		s.token = NewToken()
+		s.tokenEphemeral = true
+	}
+	s.externalThreads = map[string]string{}
+	s.mcpHandler = s.newMCPHandler()
+	s.a2aHandler, s.a2aREST = s.newA2AHandlers()
 	s.httpServer = &http.Server{Handler: s.Handler()}
 	return s, nil
 }
+
+// Token returns the token this server requires.
+func (s *Server) Token() string { return s.token }
+
+// TokenIsEphemeral reports that the token was generated for this server and
+// will change on the next start.
+func (s *Server) TokenIsEphemeral() bool { return s.tokenEphemeral }
 
 // Ready reports whether a model is configured for the web UI.
 func (s *Server) Ready() bool { return s.targetErr == nil }
@@ -227,8 +258,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/sessions/{id}/attachments", s.handleAttachment)
 	mux.HandleFunc("POST /api/sessions/{id}/interaction", s.handleInteraction)
 	mux.HandleFunc("POST /api/sessions/{id}/cancel", s.handleCancel)
+	mux.Handle("/mcp", s.mcpHandler)
+	mux.HandleFunc("POST /agui", s.handleAGUIRun)
+	mux.HandleFunc("OPTIONS /agui", s.handleAGUIOptions)
+	mux.Handle(agentCardPath, withProtocolCORS(http.HandlerFunc(s.handleAgentCard)))
+	mux.Handle("/a2a/invoke", withProtocolCORS(s.a2aHandler))
+	mux.Handle("/a2a/", withProtocolCORS(http.StripPrefix("/a2a", s.a2aREST)))
+	mux.HandleFunc("OPTIONS /a2a/invoke", s.handleA2AOptions)
+	mux.HandleFunc("GET /login", s.handleLoginPage)
+	mux.HandleFunc("POST /login", s.handleLoginSubmit)
 	mux.Handle("/", s.static())
-	return mux
+	return s.authenticate(mux)
 }
 
 func (s *Server) static() http.Handler {
@@ -251,6 +291,9 @@ func (s *Server) getRun(id string) *runState {
 }
 func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	caps := s.capabilities()
+	if caps == nil {
+		caps = map[string]bool{}
+	}
 	// Uploads are handled by the server itself, with or without the desktop
 	// runtime, so the composer always offers them.
 	caps[CapAttachments] = true
@@ -260,7 +303,13 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		"ready":        s.Ready(),
 		"models":       s.modelChoices(),
 		"capabilities": caps,
-		"note":         "本地 Web：桌面运行时提供工具 / Agent / ACP，独立 webd 为纯对话。",
+		"endpoints": map[string]string{
+			"mcp":        "/mcp",
+			"agui":       "/agui",
+			"a2a":        "/a2a/invoke",
+			"agent_card": agentCardPath,
+		},
+		"note": "本地 Web：桌面运行时提供工具 / Agent / ACP，独立 webd 为纯对话。",
 	}
 	if s.targetErr != nil {
 		resp["error"] = s.targetErr.Error()
@@ -1296,6 +1345,8 @@ func authorName(agent string) string {
 	switch {
 	case strings.HasPrefix(agent, "acp:"):
 		return strings.TrimPrefix(agent, "acp:")
+	case strings.HasPrefix(agent, "a2a:"):
+		return strings.TrimPrefix(agent, "a2a:")
 	case strings.HasPrefix(agent, "agent:"):
 		return strings.TrimPrefix(agent, "agent:")
 	case agent != "":

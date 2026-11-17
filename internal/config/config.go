@@ -31,9 +31,14 @@ type Config struct {
 	RunInBackground   bool            `yaml:"run_in_background"`
 	// WebEnabled starts the local browser UI with the app. Off by default:
 	// enabling it is an explicit opt-in.
-	WebEnabled bool            `yaml:"web_enabled,omitempty"`
-	Agents     []AgentDef      `yaml:"agents,omitempty"`
-	ACPAgents  []ACPConnection `yaml:"acp_agents,omitempty"`
+	WebEnabled bool `yaml:"web_enabled,omitempty"`
+	// WebToken protects the Web UI and the MCP / AG-UI / A2A endpoints. The
+	// server always requires a token: an empty value generates a fresh random
+	// token on every start, while a saved value stays valid across restarts.
+	WebToken  string          `yaml:"web_token,omitempty"`
+	Agents    []AgentDef      `yaml:"agents,omitempty"`
+	ACPAgents []ACPConnection `yaml:"acp_agents,omitempty"`
+	A2AAgents []A2AConnection `yaml:"a2a_agents,omitempty"`
 	// AgentCheckpoint auto-commits an agent's file changes as checkpoints:
 	// "off" (default) disables it, "turn" commits once per completed reply,
 	// "batch" once per finished tool-call batch. Experimental.
@@ -449,6 +454,24 @@ type ACPConnection struct {
 	// release feed resolved from the registry. Empty for a hand-added
 	// connection or one of the shipped presets.
 	RegistryID string `yaml:"registry_id,omitempty"`
+	// Source names the plugin that contributed this connection.
+	Source string `yaml:"-"`
+}
+
+// A2AConnection is a remote agent spoken to over the Agent2Agent protocol.
+// URL is either the agent's base URL (the card is fetched from
+// /.well-known/agent-card.json) or the full agent-card URL.
+type A2AConnection struct {
+	Name        string `yaml:"name"`
+	URL         string `yaml:"url"`
+	Description string `yaml:"description,omitempty"`
+	// APIKey is sent as "Authorization: Bearer <key>" when Headers does not
+	// already set Authorization.
+	APIKey     string            `yaml:"api_key,omitempty"`
+	Headers    map[string]string `yaml:"headers,omitempty"`
+	Icon       string            `yaml:"icon,omitempty"`
+	AvatarSeed string            `yaml:"avatar_seed,omitempty"`
+	Disabled   bool              `yaml:"disabled,omitempty"`
 	// Source names the plugin that contributed this connection.
 	Source string `yaml:"-"`
 }
@@ -1044,6 +1067,7 @@ func loadFile(path string) (*Config, error) {
 		config.BuiltinTools = ensureAllBuiltinTools(config.BuiltinTools)
 	}
 	config.ACPAgents = ensureDefaultACPAgents(config.ACPAgents)
+	config.A2AAgents = ensureA2AAgents(config.A2AAgents)
 	config.Providers = ensureProviderPresets(config.Providers)
 	config.Channels = ensureDefaultChannels(config.Channels)
 
@@ -1126,6 +1150,24 @@ func ensureDefaultACPAgents(existing []ACPConnection) []ACPConnection {
 			have[d.Name] = true
 			out = append(out, d)
 		}
+	}
+	return out
+}
+
+// ensureA2AAgents drops entries that cannot address an agent and keeps the
+// first connection for each name, so a hand-edited config cannot produce two
+// rows that resolve to the same "a2a:Name" reference.
+func ensureA2AAgents(existing []A2AConnection) []A2AConnection {
+	have := make(map[string]bool, len(existing))
+	out := make([]A2AConnection, 0, len(existing))
+	for _, a := range existing {
+		a.Name = strings.TrimSpace(a.Name)
+		a.URL = strings.TrimSpace(a.URL)
+		if a.Name == "" || a.URL == "" || have[a.Name] {
+			continue
+		}
+		have[a.Name] = true
+		out = append(out, a)
 	}
 	return out
 }
@@ -1394,6 +1436,7 @@ func writeConfig(path string, config *Config) error {
 	clean.BuiltinTools = dropPluginEntries(config.BuiltinTools, func(t BuiltinTool) string { return t.Source })
 	clean.Agents = dropPluginEntries(config.Agents, func(a AgentDef) string { return a.Source })
 	clean.ACPAgents = dropPluginEntries(config.ACPAgents, func(a ACPConnection) string { return a.Source })
+	clean.A2AAgents = dropPluginEntries(config.A2AAgents, func(a A2AConnection) string { return a.Source })
 	applyProxy(&clean)
 	data, err := yaml.Marshal(&clean)
 	if err != nil {

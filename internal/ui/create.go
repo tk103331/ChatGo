@@ -83,6 +83,12 @@ func (cw *ChatWindow) createIsACP() bool {
 	return strings.HasPrefix(cw.create.agent, "acp:")
 }
 
+// createIsA2A reports whether the chosen agent is a remote A2A agent, whose
+// own runtime owns the model and tools.
+func (cw *ChatWindow) createIsA2A() bool {
+	return strings.HasPrefix(cw.create.agent, "a2a:")
+}
+
 // viewportCenter is a Scroll that centers its content when the viewport is
 // taller than it and scrolls when it is shorter. A scroll hands its content
 // the content's own height, so the column's minimum height follows the
@@ -396,6 +402,9 @@ func (cw *ChatWindow) startComposer(c *mgo.Context, placeholder string, start fu
 			if cw.createIsACP() {
 				cw.contextButton(c, false)
 				cw.createACPControls(c)
+				return
+			}
+			if cw.createIsA2A() {
 				return
 			}
 			cw.contextButton(c, true)

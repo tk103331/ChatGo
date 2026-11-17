@@ -473,7 +473,8 @@ func (a *app) composer(c *ui.Context, t *ui.Theme) {
 		if frame.FileDragOver() {
 			frame.Border(mtheme.FocusWidth, t.Focus).Background(t.Selection)
 		}
-		if a.cap(capSkills) && len(a.skills) > 0 && !strings.HasPrefix(a.agentRef, "acp:") {
+		if a.cap(capSkills) && len(a.skills) > 0 &&
+			!strings.HasPrefix(a.agentRef, "acp:") && !strings.HasPrefix(a.agentRef, "a2a:") {
 			cmds := make([]kit.SlashCommand, 0, len(a.skills))
 			for _, s := range a.skills {
 				cmds = append(cmds, kit.SlashCommand{Name: s.Token, Description: s.Description})
@@ -523,6 +524,10 @@ func (a *app) composerTools(c *ui.Context, t *ui.Theme) {
 		// model and tool pickers.
 		if a.cap(capACP) && strings.HasPrefix(a.agentRef, "acp:") && a.current() != nil {
 			a.sessionACPControls(c, t)
+			return
+		}
+		if strings.HasPrefix(a.agentRef, "a2a:") {
+			a.agentSelector(c, t)
 			return
 		}
 		a.modelSelector(c, t)
@@ -612,7 +617,7 @@ func contextKindLabel(kind string) string {
 func (a *app) modelSelector(c *ui.Context, t *ui.Theme) {
 	caption := uikit.FontSize(c, mtheme.CaptionSize)
 	// An ACP session runs its own CLI; it has no model to pick.
-	if strings.HasPrefix(a.agentRef, "acp:") {
+	if strings.HasPrefix(a.agentRef, "acp:") || strings.HasPrefix(a.agentRef, "a2a:") {
 		return
 	}
 	// The enriched list offers search and provider marks.
@@ -698,6 +703,8 @@ func agentLabel(agent string) string {
 	switch {
 	case strings.HasPrefix(agent, "acp:"):
 		return strings.TrimPrefix(agent, "acp:")
+	case strings.HasPrefix(agent, "a2a:"):
+		return strings.TrimPrefix(agent, "a2a:")
 	case strings.HasPrefix(agent, "agent:"):
 		return strings.TrimPrefix(agent, "agent:")
 	case strings.HasPrefix(agent, "app:"):

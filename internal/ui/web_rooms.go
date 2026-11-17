@@ -349,6 +349,9 @@ func (cw *ChatWindow) webRunRoomMember(ctx context.Context, room config.Room, co
 	if strings.HasPrefix(m.Agent, "acp:") {
 		return cw.webRunRoomACPMember(ctx, room, conv, m, live)
 	}
+	if strings.HasPrefix(m.Agent, "a2a:") {
+		return cw.webRunRoomA2AMember(ctx, room, conv, m, live)
+	}
 	name := roomMemberName(m)
 	var (
 		handoffMu   sync.Mutex

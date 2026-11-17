@@ -30,7 +30,9 @@ func agentPickLabel(agents []agentInfo, ref string) string {
 			return ag.Name
 		}
 	}
-	return strings.TrimPrefix(strings.TrimPrefix(ref, "agent:"), "acp:")
+	ref = strings.TrimPrefix(ref, "agent:")
+	ref = strings.TrimPrefix(ref, "acp:")
+	return strings.TrimPrefix(ref, "a2a:")
 }
 
 // agentPickMark draws an assistant's mark: the chat icon, a bot icon for the
@@ -51,6 +53,8 @@ func agentPickMark(c *ui.Context, ag agentInfo, size float32) {
 		} else {
 			ui.Icon(c, svg).Size(size, size).Shrink(0).TextColor(t.Text)
 		}
+	case ag.Kind == "a2a":
+		ui.Icon(c, icons.Must("globe")).Size(size, size).Shrink(0).TextColor(t.Accent)
 	default:
 		ui.Icon(c, icons.Must("bot")).Size(size, size).Shrink(0).TextColor(t.TextMuted)
 	}
@@ -69,7 +73,7 @@ func agentRowDetail(ag agentInfo) string {
 	if ag.Description != "" {
 		return ag.Description
 	}
-	if ag.Kind == "acp" {
+	if ag.Kind == "acp" || ag.Kind == "a2a" {
 		return ""
 	}
 	if len(ag.Models) == 0 {

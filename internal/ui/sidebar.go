@@ -664,6 +664,11 @@ func (cw *ChatWindow) convLeading(c *mgo.Context, conv models.Conversation, size
 	case strings.HasPrefix(conv.Agent, "acp:"):
 		name := strings.TrimPrefix(conv.Agent, "acp:")
 		mgo.Row(c).Margin(0, 0, 0, u).Children(func() { cw.acpLeading(c, name, size) })
+	case strings.HasPrefix(conv.Agent, "a2a:"):
+		mgo.Row(c).Margin(0, 0, 0, u).Children(func() {
+			mgo.Icon(c, icons.Must("globe")).Size(size, size).
+				TextColor(mcore.Tokens(c).Accent)
+		})
 	case strings.HasPrefix(conv.Agent, "agent:"):
 		name := strings.TrimPrefix(conv.Agent, "agent:")
 		mgo.Row(c).Margin(0, 0, 0, u).Children(func() { cw.agentMarkByName(c, name, size) })

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,11 +29,13 @@ type webServiceState struct {
 }
 
 type webStatusInfo struct {
-	Label    string
-	Address  string
-	Err      string
-	Running  bool
-	Disabled bool
+	Label          string
+	Address        string
+	Err            string
+	Token          string
+	TokenEphemeral bool
+	Running        bool
+	Disabled       bool
 }
 
 // startWebService serves the browser UI from the same process as the desktop
@@ -116,6 +119,22 @@ func (cw *ChatWindow) setWebEnabled(enabled bool) {
 	cw.invalidate()
 }
 
+// setWebToken saves the access token and restarts the listener so the new
+// value takes effect immediately.
+func (cw *ChatWindow) setWebToken(token string) {
+	token = strings.TrimSpace(token)
+	changed := cw.cfg.WebToken != token
+	cw.cfg.WebToken = token
+	_ = config.SaveConfig(cw.cfg)
+	if changed && cw.cfg.WebEnabled {
+		cw.restartWebService()
+	}
+}
+
+func newWebToken() string {
+	return webui.NewToken()
+}
+
 func (cw *ChatWindow) setWebServiceError(err error) {
 	cw.web.mu.Lock()
 	cw.web.err = err.Error()
@@ -130,7 +149,11 @@ func (cw *ChatWindow) webInfo() webStatusInfo {
 	}
 	cw.web.mu.Lock()
 	defer cw.web.mu.Unlock()
-	info := webStatusInfo{Address: cw.web.url, Err: cw.web.err}
+	info := webStatusInfo{Address: cw.web.url, Err: cw.web.err, Token: cw.cfg.WebToken}
+	if cw.web.srv != nil {
+		info.Token = cw.web.srv.Token()
+		info.TokenEphemeral = cw.web.srv.TokenIsEphemeral()
+	}
 	switch {
 	case cw.web.err != "":
 		info.Label = "Web 启动失败"
@@ -189,7 +212,11 @@ func (cw *ChatWindow) openWebService() {
 		}
 		return
 	}
-	if err := mygo.Shell.OpenExternal(info.Address); err != nil {
+	target := info.Address
+	if info.Token != "" {
+		target += "/?token=" + url.QueryEscape(info.Token)
+	}
+	if err := mygo.Shell.OpenExternal(target); err != nil {
 		cw.toastErrorDetail("打开 Web 界面失败", err.Error())
 	}
 }

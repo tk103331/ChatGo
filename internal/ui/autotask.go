@@ -8,10 +8,12 @@ import (
 	"strings"
 	"time"
 
+	"chatgo/internal/a2a"
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
 	"chatgo/internal/plugin"
 	"chatgo/pkg/models"
+	sdk "github.com/a2aproject/a2a-go/v2/a2a"
 
 	"github.com/cloudwego/eino/components/tool"
 	mgo "github.com/egoist/mygo/ui"
@@ -314,6 +316,12 @@ func (cw *ChatWindow) autoTaskEditor(c *mgo.Context) {
 							for _, a := range cw.cfg.Agents {
 								agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "agent:" + a.Name, Label: a.Name})
 							}
+							for _, a := range cw.cfg.A2AAgents {
+								if a.Disabled {
+									continue
+								}
+								agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "a2a:" + a.Name, Label: "A2A · " + a.Name})
+							}
 							kit.Select(c, &f.agent, agentOpts, kit.SelectOptions{Label: "Agent"})
 						})
 						formField(c, "提示词", func() {
@@ -551,6 +559,12 @@ func agentLabel(agent string) string {
 	if name, ok := strings.CutPrefix(agent, "agent:"); ok {
 		return name
 	}
+	if name, ok := strings.CutPrefix(agent, "acp:"); ok {
+		return "ACP · " + name
+	}
+	if name, ok := strings.CutPrefix(agent, "a2a:"); ok {
+		return "A2A · " + name
+	}
 	return chatAgentName
 }
 
@@ -634,6 +648,10 @@ func (cw *ChatWindow) startAutoTask(i int) {
 	if cw.autoRunning[t.ID] {
 		return
 	}
+	if strings.HasPrefix(t.Agent, "a2a:") {
+		cw.startAutoA2ATask(i)
+		return
+	}
 	client, react, groupClient, groupReact, err := cw.taskClient(t.Agent, t.Workspace)
 	if err != nil {
 		cw.cfg.AutoTasks[i].LastRun = time.Now()
@@ -702,6 +720,84 @@ func (cw *ChatWindow) startAutoTask(i int) {
 			}
 			m := conv.NewAgentMessage(cw.newID(), t.Agent, authorNameOf(t.Agent), time.Now())
 			m.Content, m.Reasoning = reply, reasoning
+			conv.Messages = append(conv.Messages, m)
+			_ = cw.convManager.SaveConversation(conv)
+			cw.cfg.AutoTasks[i].LastRun = time.Now()
+			cw.autoRunning[t.ID] = false
+			_ = config.SaveConfig(cw.cfg)
+			cw.reloadConvs()
+			cw.invalidate()
+			cw.notifySessionComplete(conv, reply)
+			payload := map[string]any{"taskId": t.ID, "name": t.Name, "ok": runErr == nil, "note": cw.cfg.AutoTasks[i].LastNote}
+			if runErr != nil {
+				payload["error"] = runErr.Error()
+			}
+			cw.emit("task.finished", payload)
+		})
+	}()
+}
+
+// startAutoA2ATask runs a scheduled task against a remote A2A agent.
+func (cw *ChatWindow) startAutoA2ATask(i int) {
+	t := cw.cfg.AutoTasks[i]
+	conn, ok := cw.findA2AConn(strings.TrimPrefix(t.Agent, "a2a:"))
+	if !ok {
+		cw.cfg.AutoTasks[i].LastRun = time.Now()
+		cw.cfg.AutoTasks[i].LastNote = "失败: 未找到 A2A 连接"
+		_ = config.SaveConfig(cw.cfg)
+		cw.toast("任务失败: 未找到 A2A 连接", mcore.SeverityError)
+		return
+	}
+	conv, err := cw.ensureTaskConv(&cw.cfg.AutoTasks[i])
+	if err != nil {
+		cw.cfg.AutoTasks[i].LastRun = time.Now()
+		cw.cfg.AutoTasks[i].LastNote = "失败: " + err.Error()
+		_ = config.SaveConfig(cw.cfg)
+		return
+	}
+	conv.Messages = append(conv.Messages, conv.NewHumanMessage(cw.newID(), t.Prompt, time.Now()))
+	setA2AConversationAgent(conv, t.Agent)
+	cw.autoRunning[t.ID] = true
+	cw.emit("task.started", map[string]any{"taskId": t.ID, "name": t.Name, "agent": t.Agent})
+	go func() {
+		var (
+			res    *a2a.Result
+			runErr error
+		)
+		cli, err := a2a.New(context.Background(), conn)
+		if err != nil {
+			runErr = err
+		} else {
+			r, err := cli.Chat(context.Background(), a2a.ChatRequest{
+				Text:      t.Prompt,
+				TaskID:    sdk.TaskID(conv.A2ATaskID),
+				ContextID: conv.A2AContextID,
+			}, nil)
+			res, runErr = &r, err
+		}
+		cw.postMain(func() {
+			reply := ""
+			if res != nil {
+				reply = res.Text
+				applyA2AResult(conv, res)
+			}
+			if runErr != nil {
+				if strings.TrimSpace(reply) == "" {
+					reply = "⚠️ " + runErr.Error()
+				} else {
+					reply += "\n\n⚠️ " + runErr.Error()
+				}
+				cw.cfg.AutoTasks[i].LastNote = "失败: " + runErr.Error()
+				conv.TaskStatus = "failed"
+			} else {
+				if strings.TrimSpace(reply) == "" {
+					reply = "（Agent 没有文本输出）"
+				}
+				cw.cfg.AutoTasks[i].LastNote = "成功"
+				conv.TaskStatus = "success"
+			}
+			m := conv.NewAgentMessage(cw.newID(), t.Agent, authorNameOf(t.Agent), time.Now())
+			m.Content = reply
 			conv.Messages = append(conv.Messages, m)
 			_ = cw.convManager.SaveConversation(conv)
 			cw.cfg.AutoTasks[i].LastRun = time.Now()
@@ -874,6 +970,9 @@ func (cw *ChatWindow) taskSystemPrompt(agent string) string {
 
 // taskAgentSpec resolves an agent's provider, model, prompt, workspace and tools.
 func (cw *ChatWindow) taskAgentSpec(agent string) (provider, model, systemPrompt, workspace string, toolIDs []string) {
+	if strings.HasPrefix(agent, "a2a:") {
+		return
+	}
 	if name, ok := strings.CutPrefix(agent, "agent:"); ok {
 		for _, a := range cw.cfg.Agents {
 			if a.Name != name {

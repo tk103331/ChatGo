@@ -44,7 +44,7 @@ func (r webRuntime) Capabilities() map[string]bool {
 func (r webRuntime) Agents() []webui.AgentInfo {
 	cw := r.cw
 	return onMain(cw, func() []webui.AgentInfo {
-		out := make([]webui.AgentInfo, 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents))
+		out := make([]webui.AgentInfo, 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+len(cw.cfg.A2AAgents))
 		for _, a := range cw.cfg.Agents {
 			info := webui.AgentInfo{
 				Ref: "agent:" + a.Name, Name: a.Name, Kind: "agent",
@@ -72,11 +72,27 @@ func (r webRuntime) Agents() []webui.AgentInfo {
 				Description: cmd, Icon: a.Icon, Workspace: a.Cwd,
 			})
 		}
+		for _, a := range cw.cfg.A2AAgents {
+			if a.Disabled {
+				continue
+			}
+			desc := a.Description
+			if desc == "" {
+				desc = a.URL
+			}
+			out = append(out, webui.AgentInfo{
+				Ref: "a2a:" + a.Name, Name: a.Name, Kind: "a2a",
+				Description: desc, Icon: a.Icon,
+			})
+		}
 		return out
 	})
 }
 
 func (r webRuntime) Tools(agent string) []webui.ToolInfo {
+	if strings.HasPrefix(agent, "a2a:") {
+		return nil
+	}
 	cw := r.cw
 	return onMain(cw, func() []webui.ToolInfo {
 		_, _, _, _, defaults := cw.taskAgentSpec(agent)
@@ -150,7 +166,7 @@ func (r webRuntime) Projects() []webui.ProjectInfo {
 func (r webRuntime) Models(agent string) []webui.ModelInfo {
 	cw := r.cw
 	return onMain(cw, func() []webui.ModelInfo {
-		if strings.HasPrefix(agent, "acp:") {
+		if strings.HasPrefix(agent, "acp:") || strings.HasPrefix(agent, "a2a:") {
 			return nil
 		}
 		refs := cw.modelRefsFor(agent)
@@ -432,6 +448,9 @@ func createWorktreeIn(cw *ChatWindow, project, branch string, newBranch bool) (s
 }
 
 func (r webRuntime) Skills(agent string) []webui.SkillInfo {
+	if strings.HasPrefix(agent, "a2a:") {
+		return nil
+	}
 	cw := r.cw
 	return onMain(cw, func() []webui.SkillInfo {
 		if !cw.skills.loaded {
@@ -488,6 +507,9 @@ func (r webRuntime) Revert(ctx context.Context, conv *models.Conversation, messa
 func (r webRuntime) Run(ctx context.Context, conv *models.Conversation, replyIdx int, req webui.RunRequest, live webui.Live) error {
 	if strings.HasPrefix(req.Agent, "acp:") {
 		return r.cw.webRunACP(ctx, conv, replyIdx, req, live)
+	}
+	if strings.HasPrefix(req.Agent, "a2a:") {
+		return r.cw.webRunA2A(ctx, conv, replyIdx, req, live)
 	}
 	return r.cw.webRunLLM(ctx, conv, replyIdx, req, live)
 }

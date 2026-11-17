@@ -14,6 +14,7 @@ const (
 	settingsModelsTab = iota
 	settingsToolsTab
 	settingsACPTab
+	settingsA2ATab
 	settingsChannelsTab
 	settingsShortcutsTab
 	settingsQuickTab
@@ -21,6 +22,7 @@ const (
 	settingsExperimentalTab
 	settingsSystemTab
 	settingsWebTab
+	settingsPluginsTab
 )
 
 type settingsState struct {
@@ -32,7 +34,9 @@ type settingsState struct {
 	shortcut    shortcutForm
 	exclude     textForm
 	channel     channelForm
+	a2a         a2aForm
 	proxy       proxyForm
+	webToken    textForm
 	provList    mgo.ListState
 	builtinList mgo.ListState
 	channelList mgo.ListState
@@ -154,6 +158,7 @@ func (cw *ChatWindow) settingsPage(c *mgo.Context) {
 			{Label: "模型", Panel: func() { cw.providersTab(c) }},
 			{Label: "工具", Panel: func() { cw.builtinTab(c) }},
 			{Label: "ACP", Panel: func() { cw.acpTab(c) }},
+			{Label: "A2A", Panel: func() { cw.a2aTab(c) }},
 			{Label: "渠道", Panel: func() { cw.channelTab(c) }},
 			{Label: "快捷键", Panel: func() { cw.shortcutTab(c) }},
 			{Label: "快捷任务", Panel: func() { cw.quickPanelTab(c) }},

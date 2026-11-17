@@ -357,6 +357,10 @@ func (cw *ChatWindow) runRoomMember(ctx context.Context, r config.Room, conv *mo
 		cw.runRoomACPMember(ctx, r, conv, m)
 		return
 	}
+	if strings.HasPrefix(m.Agent, "a2a:") {
+		cw.runRoomA2AMember(ctx, r, conv, m)
+		return
+	}
 	name := roomMemberName(m)
 	client, react, groupClient, groupReact, err := cw.roomMemberClient(r, m, conv)
 	if err != nil {

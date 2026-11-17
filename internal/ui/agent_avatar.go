@@ -18,6 +18,11 @@ func (cw *ChatWindow) agentAvatar(c *mgo.Context) func() {
 	case strings.HasPrefix(cw.cur.Agent, "acp:"):
 		name := strings.TrimPrefix(cw.cur.Agent, "acp:")
 		return func() { cw.acpLeading(c, name, 28) }
+	case strings.HasPrefix(cw.cur.Agent, "a2a:"):
+		return func() {
+			mgo.Icon(c, icons.Must("globe")).Size(24, 24).
+				TextColor(mcore.Tokens(c).Accent)
+		}
 	case strings.HasPrefix(cw.cur.Agent, "agent:"):
 		name := strings.TrimPrefix(cw.cur.Agent, "agent:")
 		return func() { cw.agentMarkByName(c, name, 24) }

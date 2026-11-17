@@ -86,6 +86,9 @@ func isGroupModelRef(ref string) bool {
 // agentModelRefs is the models the active agent may switch between: the built-in
 // Chat uses every configured model, a custom agent its whitelist.
 func (cw *ChatWindow) agentModelRefs() []string {
+	if cw.isA2A() {
+		return nil
+	}
 	all := cw.allModelRefs()
 	a, ok := cw.currentAgentDef()
 	if !ok || len(a.Models) == 0 {
@@ -98,6 +101,9 @@ func (cw *ChatWindow) agentModelRefs() []string {
 // runtime can ask without touching the app's own selection: the built-in
 // Chat ("") lists every configured model, "agent:Name" its whitelist.
 func (cw *ChatWindow) modelRefsFor(agent string) []string {
+	if strings.HasPrefix(agent, "a2a:") {
+		return nil
+	}
 	name, ok := strings.CutPrefix(agent, "agent:")
 	if !ok {
 		return cw.allModelRefs()

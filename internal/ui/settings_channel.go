@@ -128,6 +128,12 @@ func (cw *ChatWindow) channelFormFields(c *mgo.Context) {
 			}
 			agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "acp:" + a.Name, Label: "ACP · " + a.Name})
 		}
+		for _, a := range cw.cfg.A2AAgents {
+			if a.Disabled {
+				continue
+			}
+			agentOpts = append(agentOpts, kit.SelectOption[string]{Value: "a2a:" + a.Name, Label: "A2A · " + a.Name})
+		}
 		kit.Select(c, &f.agent, agentOpts, kit.SelectOptions{Label: "触发 Agent"})
 		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
 			in := kit.TextInput(c, &f.workspace, kit.TextInputOptions{Label: "默认工作区", Placeholder: "留空使用 Agent 工作目录 / 当前目录"})

@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"chatgo/internal/config"
 	"chatgo/internal/webui"
@@ -20,11 +21,15 @@ import (
 func main() {
 	addr := flag.String("addr", "127.0.0.1:8422", "listen address")
 	webDir := flag.String("web", "web", "directory with index.html, app.wasm and wasm_exec.js")
+	token := flag.String("token", "", "bearer token for this run, overriding the stored web_token")
 	flag.Parse()
 
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+	if strings.TrimSpace(*token) != "" {
+		cfg.WebToken = strings.TrimSpace(*token)
 	}
 	cm, err := models.NewConversationManager()
 	if err != nil {
@@ -40,6 +45,10 @@ func main() {
 	}
 
 	log.Printf("ChatGo web on http://%s", *addr)
+	if s.TokenIsEphemeral() {
+		log.Printf("access token (generated for this run): %s", s.Token())
+		log.Printf("set web_token in the config to keep a long-lived token")
+	}
 	if provider, model, ok := s.Target(); ok {
 		log.Printf("model: %s / %s", provider, model)
 	} else {

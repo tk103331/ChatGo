@@ -6,6 +6,12 @@ import (
 	"chatgo/internal/config"
 )
 
+// isRemoteAgentRef reports an agent whose runtime is not the local Eino
+// model: an ACP CLI or a remote A2A agent.
+func isRemoteAgentRef(agent string) bool {
+	return strings.HasPrefix(agent, "acp:") || strings.HasPrefix(agent, "a2a:")
+}
+
 // agentWorkspace is the directory an agent runs in, or empty for the caller's.
 func (cw *ChatWindow) agentWorkspace(agent string) string {
 	switch {

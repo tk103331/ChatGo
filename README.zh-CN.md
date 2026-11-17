@@ -13,7 +13,7 @@
 - 🎨 **原生界面** - MyGo GPU 自绘，沿用其原生浅色/深色主题，自绘标题栏
 - 🏠 **首页快速开始** - 居中输入框 + 能力卡片，并可选项目（工作区）与 Agent
 - 🤖 **多 Provider、多模型** - 支持 OpenAI、Anthropic、Claude、Ollama、Qwen、DeepSeek、Gemini、本机 magpie 网关及任意 OpenAI 兼容接口；每个 Provider 可配置多个模型，每种类型自带一条默认不启用的示例配置与品牌 logo
-- 🧩 **Agent** - 内置 Chat、自定义 Agent（模型/内置工具/MCP/Skill 白名单）、ACP Agent（本地编码 CLI，支持检查版本与一键升级）
+- 🧩 **Agent** - 内置 Chat、自定义 Agent（模型/内置工具/MCP/Skill 白名单）、ACP Agent（本地编码 CLI，支持检查版本与一键升级）与远程 A2A Agent（设置页、群聊、自动任务和渠道均可使用）
 - 🔧 **工具与 MCP** - 按会话/Agent 勾选内置工具与整个 MCP 服务器，支持检索；内置 MCP 市场
 - 📚 **Skill** - 扫描本地 SKILL 目录，按 Agent 选择并支持检索
 - 🗂️ **工作区与面板** - 会话按工作区分组、可折叠；聊天/预览/文件面板可拖拽；多 Tab 文件预览与 Git 差异面板
@@ -134,8 +134,22 @@ provider_groups:
       - provider: "MyClaudeProxy"
         models: ["claude-sonnet-4-5"]
 
+# 通过 Agent2Agent 协议访问的远程 Agent。Agent Card 从
+# <url>/.well-known/agent-card.json 获取；url 直接指向卡片时则直接读取。
+# v1.0 与 v0.3 的 Agent 都可以接入。
+a2a_agents:
+  - name: "Research Agent"
+    url: "https://agent.example.com"
+    api_key: "sk-..."          # 以 Authorization: Bearer <key> 发送
+    headers:                   # 可选的自定义 HTTP 请求头
+      X-Tenant: "team-a"
+
 mcp_servers: []
 current_provider: "OpenAI"
+
+# 保护浏览器界面与 MCP / AG-UI / A2A 端点
+web_enabled: true
+web_token: ""                  # 留空：每次启动随机生成
 ```
 
 ### 在界面中配置
@@ -144,10 +158,44 @@ current_provider: "OpenAI"
 - **设置 → 模型 → 新增组**：把多个 Provider 的模型聚合成一个带路由策略的模型名
 - **设置 → 内置工具**：启用内置工具并填写配置
 - **设置 → ACP**：管理本地 ACP 连接（Claude Code、OpenCode 等）
+- **设置 → A2A**：管理远程 Agent2Agent 连接并测试 Agent Card
 - **设置 → 外观**：主题模式与语言
 - **Agent** 页：创建自定义 Agent（模型、内置工具、MCP 服务器、Skill）
 - **知识库** 页：新建知识库、导入文档、重建索引与检索测试
 - **MCP** 页：我的服务与内置市场
+
+### 本地 Web 与 Agent 端点
+
+打开 **设置 → Web** 后，桌面进程会在 `http://127.0.0.1:8422` 提供浏览器界面，
+同一个端口还暴露三种 Agent 协议：
+
+- **MCP**：`POST /mcp`（Streamable HTTP）。工具为 `chat`（运行一轮并返回
+  `conversation_id` 与文本）和 `list_agents`。
+- **AG-UI**：`POST /agui`，接收标准 `RunAgentInput`，以 SSE 返回
+  `RUN_STARTED`、文本/工具事件与 `RUN_FINISHED`。
+- **A2A**：Agent Card 位于 `GET /.well-known/agent-card.json`，JSON-RPC 位于
+  `POST /a2a/invoke`，HTTP+JSON 位于 `/a2a/message:send` 与
+  `/a2a/message:stream`。在 ChatGo 的 A2A 设置里填入 Card 地址，即可把桌面
+  Agent 当作远程 Agent 使用。
+
+AG-UI 的 `forwardedProps` 与 A2A 请求的 metadata 支持 `agent`、`workspace`、
+`provider`、`model`、`tools`、`skills`；MCP 的 `chat` 工具以参数传入同样的值。
+`agent` 与界面中的引用一致：留空为普通 Chat，或 `agent:Name`、`acp:Name`、
+`a2a:Name`。
+
+桌面版中这些端点会运行完整的本地 Agent（文件、Shell、MCP 与 ACP）；
+独立 `webd` 中则与 Web 界面一样只运行普通对话，没有桌面工具。两者都继承
+Web 监听地址的信任边界。桌面版只监听回环地址；若使用
+`webd -addr 0.0.0.0:8422` 对外监听，任何能访问该端口的人都能驱动它并读取
+本地会话，请只在可信网络或反向代理后使用。
+
+令牌认证始终启用。`web_token` 留空时，每次启动都会随机生成一个令牌，
+`webd` 会在启动日志中打印它。在 **设置 → Web**（或 `web_token`）保存
+长期令牌后，重启会继续使用同一个值。浏览器首次访问需要输入一次令牌，
+之后使用 HttpOnly Cookie；MCP、AG-UI、A2A 客户端发送
+`Authorization: Bearer <token>`（或 `X-ChatGo-Token`）。设置页会显示
+当前有效令牌，并支持生成、复制和清除长期令牌。`webd` 也支持 `-token`
+覆盖本次运行的令牌。清除长期令牌不会关闭认证，下次启动会重新随机生成。
 
 ## 💡 使用
 

@@ -160,6 +160,15 @@ type Conversation struct {
 	Agent     string            `json:"agent,omitempty"`
 	ACPMode   string            `json:"acp_mode,omitempty"`
 	ACPConfig map[string]string `json:"acp_config,omitempty"`
+	// A2ATaskID and A2AContextID continue a remote Agent2Agent task across
+	// turns. The task is cleared when it reaches a terminal state; the
+	// context stays so a new task still shares the agent's conversation.
+	A2ATaskID    string `json:"a2a_task_id,omitempty"`
+	A2AContextID string `json:"a2a_context_id,omitempty"`
+	// A2ASessions keeps one continuation per remote agent, for conversations
+	// where several A2A agents speak in turn, such as a room. A one-to-one
+	// conversation uses A2ATaskID/A2AContextID above.
+	A2ASessions map[string]A2ASession `json:"a2a_sessions,omitempty"`
 	// Plan is the agent's current execution plan. An ACP agent replaces it
 	// whole on every update; a conversation that never planned leaves it nil.
 	Plan   []PlanEntry `json:"plan,omitempty"`
@@ -185,6 +194,40 @@ type Conversation struct {
 	// own page, never in the chat session list, the same way a scheduled
 	// task's conversation is kept out of it by TaskID.
 	RoomID string `json:"room_id,omitempty"`
+}
+
+// A2ASession is one remote agent's continuation state in a shared
+// conversation.
+type A2ASession struct {
+	TaskID    string `json:"task_id,omitempty"`
+	ContextID string `json:"context_id,omitempty"`
+}
+
+// A2ASessionFor returns an agent's stored continuation, if any.
+func (c *Conversation) A2ASessionFor(agent string) A2ASession {
+	if c == nil || c.A2ASessions == nil {
+		return A2ASession{}
+	}
+	return c.A2ASessions[agent]
+}
+
+// SetA2ASession stores or clears an agent's continuation. An empty session is
+// removed so the map only holds agents with a task or context.
+func (c *Conversation) SetA2ASession(agent string, s A2ASession) {
+	if c == nil {
+		return
+	}
+	if s.TaskID == "" && s.ContextID == "" {
+		delete(c.A2ASessions, agent)
+		if len(c.A2ASessions) == 0 {
+			c.A2ASessions = nil
+		}
+		return
+	}
+	if c.A2ASessions == nil {
+		c.A2ASessions = map[string]A2ASession{}
+	}
+	c.A2ASessions[agent] = s
 }
 
 // IsRoom reports a conversation that belongs to a group room.

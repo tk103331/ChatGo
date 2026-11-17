@@ -468,6 +468,8 @@ func (a *app) taskEditor(c *ui.Context) {
 			label := ag.Name
 			if ag.Kind == "acp" {
 				label += " · ACP"
+			} else if ag.Kind == "a2a" {
+				label += " · A2A"
 			}
 			agentOpts = append(agentOpts, kit.SelectOption[string]{Value: ag.Ref, Label: label})
 		}

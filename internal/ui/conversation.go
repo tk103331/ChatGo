@@ -118,7 +118,7 @@ func (cw *ChatWindow) openConversation(conv *models.Conversation) {
 // applyConversationModel restores the model the conversation last used, so
 // continuing it keeps that model instead of the global default.
 func (cw *ChatWindow) applyConversationModel(conv *models.Conversation) {
-	if strings.HasPrefix(conv.Agent, "acp:") {
+	if isRemoteAgentRef(conv.Agent) {
 		return
 	}
 	for i := len(conv.Turns) - 1; i >= 0; i-- {
@@ -188,6 +188,8 @@ func (cw *ChatWindow) sendDraft() {
 	}
 	if strings.HasPrefix(conv.Agent, "acp:") {
 		turn.Provider = strings.TrimPrefix(conv.Agent, "acp:")
+	} else if strings.HasPrefix(conv.Agent, "a2a:") {
+		turn.Provider = "a2a"
 	} else {
 		turn.Provider = cw.provider
 		turn.Model = cw.model
@@ -200,7 +202,7 @@ func (cw *ChatWindow) sendDraft() {
 	cw.emit("turn.started", map[string]any{
 		"conversationId": conv.ID, "turnId": turn.ID, "provider": turn.Provider, "model": turn.Model,
 	})
-	if strings.HasPrefix(conv.Agent, "acp:") && conv.Title == defaultTitle {
+	if isRemoteAgentRef(conv.Agent) && conv.Title == defaultTitle {
 		conv.Title = titleFromText(text)
 	}
 	_ = cw.convManager.SaveConversation(conv)
@@ -210,6 +212,14 @@ func (cw *ChatWindow) sendDraft() {
 		cw.invalidate()
 		cw.reloadConvs()
 		cw.acpChatStart(conv, strings.TrimPrefix(conv.Agent, "acp:"), idx, text)
+		return
+	}
+	if strings.HasPrefix(conv.Agent, "a2a:") {
+		ctx, cancel := context.WithCancel(context.Background())
+		cw.beginStream(conv.ID, reply.ID, cancel)
+		cw.invalidate()
+		cw.reloadConvs()
+		go cw.runA2AChat(ctx, conv, strings.TrimPrefix(conv.Agent, "a2a:"), idx, text)
 		return
 	}
 	msgs := cw.chatMessages(conv, idx)
@@ -236,6 +246,8 @@ func (cw *ChatWindow) applyConversationAgent(conv *models.Conversation) {
 	case strings.HasPrefix(conv.Agent, "acp:"):
 		cw.llmClient, cw.reactClient = nil, nil
 		cw.acpWarmup(conv)
+	case strings.HasPrefix(conv.Agent, "a2a:"):
+		cw.llmClient, cw.reactClient = nil, nil
 	default:
 		cw.restoreAgent("")
 	}

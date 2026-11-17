@@ -208,16 +208,14 @@ func TestCheckpointFindAndReset(t *testing.T) {
 	}
 }
 
-// The chat page shows the rewind control on an assistant reply once the
-// experimental checkpoint level is on, and hides it when off. Copy stays
-// visible without hovering — it is the action a reader reaches for — while
-// the destructive rewind waits for the hover, so it is never the only thing
-// on screen.
+// The chat page reveals its actions only while the pointer rests on a reply.
+// With the experimental checkpoint level on, the rewind appears alongside
+// copy; with it off, only copy appears.
 func TestChatShowsRewindButtonPerCheckpointLevel(t *testing.T) {
 	for _, level := range []string{"turn", "batch"} {
 		tr := checkpointChatTester(t, checkpointWindow(t, level))
-		if _, ok := tr.Find("复制"); !ok {
-			t.Fatalf("level %q: copy should show without hovering; texts: %v", level, tr.Texts())
+		if _, ok := tr.Find("复制"); ok {
+			t.Fatalf("level %q: copy should wait for a hover; texts: %v", level, tr.Texts())
 		}
 		if _, ok := tr.Find("回退到此点"); ok {
 			t.Fatalf("level %q: the rewind should wait for a hover; texts: %v", level, tr.Texts())
@@ -229,6 +227,9 @@ func TestChatShowsRewindButtonPerCheckpointLevel(t *testing.T) {
 		tr.Move(at.X+at.W/2, at.Y+at.H/2)
 		tr.Advance(700 * time.Millisecond)
 		tr.Frame()
+		if _, ok := tr.Find("复制"); !ok {
+			t.Fatalf("level %q: hovering the reply should reveal copy; texts: %v", level, tr.Texts())
+		}
 		if _, ok := tr.Find("回退到此点"); !ok {
 			t.Fatalf("level %q: hovering the reply should reveal the rewind; texts: %v", level, tr.Texts())
 		}
@@ -242,6 +243,9 @@ func TestChatShowsRewindButtonPerCheckpointLevel(t *testing.T) {
 	tr.Move(at.X+at.W/2, at.Y+at.H/2)
 	tr.Advance(700 * time.Millisecond)
 	tr.Frame()
+	if _, ok := tr.Find("复制"); !ok {
+		t.Fatalf("off: hovering the reply should reveal copy; texts: %v", tr.Texts())
+	}
 	if _, ok := tr.Find("回退到此点"); ok {
 		t.Fatalf("off level still shows the rewind control; texts: %v", tr.Texts())
 	}

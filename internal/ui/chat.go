@@ -104,6 +104,10 @@ func (cw *ChatWindow) isACP() bool {
 	return cw.cur != nil && strings.HasPrefix(cw.cur.Agent, "acp:")
 }
 
+func (cw *ChatWindow) isA2A() bool {
+	return cw.cur != nil && strings.HasPrefix(cw.cur.Agent, "a2a:")
+}
+
 func (cw *ChatWindow) messages() []models.Message {
 	if cw.cur == nil {
 		return nil
@@ -122,6 +126,9 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 			if cw.isACP() {
 				cw.contextButton(c, false)
 				cw.acpControls(c)
+				return
+			}
+			if cw.isA2A() {
 				return
 			}
 			cw.contextButton(c, true)
@@ -168,6 +175,9 @@ func (cw *ChatWindow) composer(c *mgo.Context) {
 // modelSetupNotice explains a model configuration problem under the composer
 // and offers the one action that fixes it.
 func (cw *ChatWindow) modelSetupNotice(c *mgo.Context) {
+	if cw.isA2A() {
+		return
+	}
 	msg := cw.modelSetupError()
 	if msg == "" {
 		return

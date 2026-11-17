@@ -160,7 +160,7 @@ func TestSettingsTabIndexesAreStable(t *testing.T) {
 	cw.section = sectionSettings
 	for idx, want := range map[int]string{
 		settingsModelsTab: "模型", settingsToolsTab: "工具", settingsACPTab: "ACP",
-		settingsShortcutsTab: "快捷键", settingsAppearanceTab: "外观",
+		settingsA2ATab: "A2A", settingsShortcutsTab: "快捷键", settingsAppearanceTab: "外观",
 	} {
 		cw.settings.tab = idx
 		tr := mgo.NewTester(cw.view, 1000, 700)

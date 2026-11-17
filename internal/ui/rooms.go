@@ -206,6 +206,8 @@ func (cw *ChatWindow) roomMemberAvatar(c *mgo.Context, agent string, size float3
 		mgo.Icon(c, icons.Must("bot")).Size(size, size).TextColor(mcore.Tokens(c).TextMuted)
 	case strings.HasPrefix(agent, "acp:"):
 		cw.acpLeading(c, strings.TrimPrefix(agent, "acp:"), size)
+	case strings.HasPrefix(agent, "a2a:"):
+		mgo.Icon(c, icons.Must("globe")).Size(size, size).TextColor(mcore.Tokens(c).Accent)
 	case strings.HasPrefix(agent, "agent:"):
 		cw.agentMarkByName(c, strings.TrimPrefix(agent, "agent:"), size)
 	default:
@@ -383,10 +385,10 @@ func (cw *ChatWindow) roomCandidates(f *roomForm) []string {
 	for _, m := range f.members {
 		taken[m.Agent] = true
 	}
-	// Both kinds join: a custom agent answers through its own client, and
-	// an ACP agent answers through its coding CLI, each in its own session
-	// slot so several CLIs can share one room.
-	out := make([]string, 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents))
+	// Every kind joins: a custom agent answers through its own client, an
+	// ACP agent through its coding CLI, and a remote A2A agent through its
+	// own task slot, so runtimes can share one room.
+	out := make([]string, 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+len(cw.cfg.A2AAgents))
 	for _, a := range cw.cfg.Agents {
 		if ref := "agent:" + a.Name; !taken[ref] {
 			out = append(out, ref)
@@ -397,6 +399,14 @@ func (cw *ChatWindow) roomCandidates(f *roomForm) []string {
 			continue
 		}
 		if ref := "acp:" + a.Name; !taken[ref] {
+			out = append(out, ref)
+		}
+	}
+	for _, a := range cw.cfg.A2AAgents {
+		if a.Disabled {
+			continue
+		}
+		if ref := "a2a:" + a.Name; !taken[ref] {
 			out = append(out, ref)
 		}
 	}

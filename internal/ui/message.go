@@ -432,15 +432,14 @@ func (cw *ChatWindow) messageActions(c *mgo.Context, i int, msg models.Message, 
 	}
 	u := mcore.Density(c).Unit()
 	mgo.Row(c).Gap(u).MinHeight(mcore.Density(c).ControlHeight()).AlignItems(mgo.Center).Children(func() {
-		// Copy is the action a reader reaches for on any message, so it
-		// stays visible without hovering; the rest appear on hover, and the
-		// destructive rewind is never the only thing on screen.
+		// All actions wait for the hover, so a finished reply reads as just
+		// its text until the pointer enters the row.
+		if !reveal {
+			return
+		}
 		if mcore.IconAction(c, icons.Must("copy"), "复制").Tooltip("复制").Clicked() {
 			c.WriteClipboard(msg.Content)
 			cw.toast("已复制到剪贴板", mcore.SeveritySuccess)
-		}
-		if !reveal {
-			return
 		}
 		if msg.Role == "user" {
 			if mcore.IconAction(c, icons.Must("pencil"), "编辑").Tooltip("编辑").Clicked() {
@@ -621,7 +620,7 @@ func (cw *ChatWindow) resendFrom(i int) {
 
 // appendTurn records a turn for an edited message's new reply.
 func (cw *ChatWindow) appendTurn(conv *models.Conversation, userMsg, reply models.Message) {
-	conv.Turns = append(conv.Turns, models.Turn{
+	turn := models.Turn{
 		ID:         cw.newID(),
 		UserMsgID:  userMsg.ID,
 		ReplyMsgID: reply.ID,
@@ -629,7 +628,13 @@ func (cw *ChatWindow) appendTurn(conv *models.Conversation, userMsg, reply model
 		Provider:   cw.provider,
 		Model:      cw.model,
 		StartedAt:  time.Now(),
-	})
+	}
+	if strings.HasPrefix(conv.Agent, "acp:") {
+		turn.Provider, turn.Model = strings.TrimPrefix(conv.Agent, "acp:"), ""
+	} else if strings.HasPrefix(conv.Agent, "a2a:") {
+		turn.Provider, turn.Model = "a2a", ""
+	}
+	conv.Turns = append(conv.Turns, turn)
 }
 
 func (cw *ChatWindow) streamFrom(conv *models.Conversation, i int) {
@@ -640,6 +645,14 @@ func (cw *ChatWindow) streamFrom(conv *models.Conversation, i int) {
 		cw.invalidate()
 		_ = cw.convManager.SaveConversation(conv)
 		cw.acpChatStart(conv, strings.TrimPrefix(conv.Agent, "acp:"), i, lastUserText(conv, i))
+		return
+	}
+	if strings.HasPrefix(conv.Agent, "a2a:") {
+		ctx, cancel := context.WithCancel(context.Background())
+		cw.beginStream(conv.ID, replyID, cancel)
+		cw.invalidate()
+		_ = cw.convManager.SaveConversation(conv)
+		go cw.runA2AChat(ctx, conv, strings.TrimPrefix(conv.Agent, "a2a:"), i, lastUserText(conv, i))
 		return
 	}
 	cw.applyTurnModelFor(conv, replyID)

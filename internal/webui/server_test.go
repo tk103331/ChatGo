@@ -12,6 +12,8 @@ import (
 	"chatgo/pkg/models"
 )
 
+const testWebToken = "test-token"
+
 func testServer(t *testing.T) (*Server, *models.ConversationManager) {
 	t.Helper()
 	dir := t.TempDir()
@@ -28,6 +30,7 @@ func testServer(t *testing.T) (*Server, *models.ConversationManager) {
 			BaseURL: "http://127.0.0.1:1",
 		}},
 		CurrentProvider: "Local",
+		WebToken:        testWebToken,
 	}
 	s, err := NewServer(cfg, cm, dir)
 	if err != nil {
@@ -45,6 +48,7 @@ func serve(t *testing.T, s *Server, method, path, body string) *httptest.Respons
 		r = httptest.NewRequest(method, path, strings.NewReader(body))
 		r.Header.Set("Content-Type", "application/json")
 	}
+	r.Header.Set("Authorization", "Bearer "+testWebToken)
 	w := httptest.NewRecorder()
 	s.Handler().ServeHTTP(w, r)
 	return w

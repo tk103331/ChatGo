@@ -16,7 +16,7 @@ A simple cross-platform AI chat client built with Go and [MyGo](https://github.c
 - 🏠 **Quick Start Home** - Centered composer with capability cards and project (workspace) / Agent selectors
 - 🤖 **Multi-Provider, Multi-Model** - OpenAI, Anthropic, Claude, Ollama, Qwen, DeepSeek, Gemini, the local magpie gateway and any OpenAI-compatible API. Each provider holds a list of models; every type ships a disabled example config with its brand logo
 - 🧵 **Provider Groups** - Bundle the models of several providers into one logical model name and route across them with fallback, round-robin or random selection
-- 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills) and ACP Agents (local coding CLIs, with version check and one-click upgrade)
+- 🧩 **Agents** - Built-in Chat, custom Agents (whitelist of models, built-in tools, MCP servers and Skills), ACP Agents (local coding CLIs, with version check and one-click upgrade) and remote A2A Agents (settings page, rooms, scheduled tasks and IM channels)
 - 🔧 **Tools & MCP** - Built-in tools and whole MCP servers toggle per chat/agent, with search; an MCP marketplace is bundled
 - 📚 **Skills** - Scans local SKILL directories, with per-agent selection and search
 - 📖 **Knowledge Bases** - Index local text documents into a pure-Go SQLite FTS5 store and retrieve them offline; agents search them with the `knowledge_search` tool
@@ -143,8 +143,22 @@ provider_groups:
       - provider: "MyClaudeProxy"
         models: ["claude-sonnet-4-5"]
 
+# Remote agents spoken to over the Agent2Agent protocol. The agent card is
+# fetched from <url>/.well-known/agent-card.json, or from <url> when it points
+# at the card itself. Both v1.0 and v0.3 agents are accepted.
+a2a_agents:
+  - name: "Research Agent"
+    url: "https://agent.example.com"
+    api_key: "sk-..."          # sent as Authorization: Bearer <key>
+    headers:                   # optional extra HTTP headers
+      X-Tenant: "team-a"
+
 mcp_servers: []
 current_provider: "OpenAI"
+
+# Protect the browser UI and the MCP / AG-UI / A2A endpoints.
+web_enabled: true
+web_token: ""                  # empty: a new random token every start
 ```
 
 ### Configure in UI
@@ -153,10 +167,49 @@ current_provider: "OpenAI"
 - **Settings → Models → 新增组**: bundle the models of several providers into one routed model name
 - **Settings → Built-in tools**: enable built-in tools and fill their config
 - **Settings → ACP**: manage local ACP connections (Claude Code, OpenCode, …)
+- **Settings → A2A**: manage remote Agent2Agent connections and test their agent cards
 - **Settings → Appearance**: theme mode and language
 - **Agent** page: create custom Agents (models, built-in tools, MCP servers, Skills)
 - **知识库** page: create knowledge bases, import documents, rebuild the index and test retrieval
 - **MCP** page: your servers plus an embedded marketplace
+
+### Local Web & agent endpoints
+
+Turn on **Settings → Web** to serve the browser UI from the desktop process
+(`http://127.0.0.1:8422`). The same listener exposes three agent protocols:
+
+- **MCP** — Streamable HTTP at `POST /mcp`. Tools: `chat` (runs one turn and
+  returns `conversation_id` + text) and `list_agents`.
+- **AG-UI** — `POST /agui` with a standard `RunAgentInput`; the response is an
+  SSE stream of `RUN_STARTED`, text/tool events and `RUN_FINISHED`.
+- **A2A** — agent card at `GET /.well-known/agent-card.json`, JSON-RPC at
+  `POST /a2a/invoke`, and HTTP+JSON at `/a2a/message:send` /
+  `/a2a/message:stream`. Point a ChatGo A2A connection at the card URL to use
+  the desktop agent as a remote agent.
+
+AG-UI `forwardedProps` and A2A request metadata accept `agent`, `workspace`,
+`provider`, `model`, `tools` and `skills`. MCP `chat` takes the same values as
+arguments. `agent` uses the same references as the UI: empty for plain Chat,
+or `agent:Name`, `acp:Name`, `a2a:Name`.
+
+In the desktop app these endpoints run the full local agent (files, shell,
+MCP and ACP). In standalone `webd` they run the same plain chat client as
+the web UI, without desktop tools. Both inherit the Web listener's trust
+boundary. The desktop app binds loopback only. If you start
+`webd -addr 0.0.0.0:8422`, anyone who can reach the port can drive it and
+read the stored conversations; put it behind a trusted network or reverse
+proxy.
+
+Token authentication is always on. With an empty `web_token`, the server
+generates a fresh random token on every start, and `webd` prints it in the
+startup log. Save a long-lived token in **Settings → Web** (or `web_token`)
+to keep the same value across restarts. The browser asks for it once and
+keeps an HttpOnly cookie; MCP, AG-UI and A2A clients send
+`Authorization: Bearer <token>` (or `X-ChatGo-Token`). The settings page
+shows the active token and can generate, copy or clear the saved one.
+`webd` also accepts `-token` to override the stored token for that run.
+Clearing the saved token does not disable authentication: the next start
+generates a random token again.
 
 ## 💡 Usage
 

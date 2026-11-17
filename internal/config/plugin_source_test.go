@@ -32,6 +32,10 @@ func TestWriteConfigDropsPluginContributions(t *testing.T) {
 			{Name: "User CLI", Command: "x"},
 			{Name: "Plugin CLI", Command: "x", Source: "plugin:x"},
 		},
+		A2AAgents: []A2AConnection{
+			{Name: "User Remote", URL: "https://user.example.com"},
+			{Name: "Plugin Remote", URL: "https://plugin.example.com", Source: "plugin:x"},
+		},
 		Plugins: []PluginRef{{ID: "x", Enabled: true}},
 	}
 	if err := writeConfig(path, cfg); err != nil {
@@ -41,7 +45,7 @@ func TestWriteConfigDropsPluginContributions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, leaked := range []string{"name: plug", "name: plug-mcp", "name: plug__tool", "name: Plugin Agent", "name: Plugin CLI"} {
+	for _, leaked := range []string{"name: plug", "name: plug-mcp", "name: plug__tool", "name: Plugin Agent", "name: Plugin CLI", "name: Plugin Remote"} {
 		if strings.Contains(string(data), leaked) {
 			t.Fatalf("plugin contribution %q was persisted:\n%s", leaked, data)
 		}
@@ -55,6 +59,9 @@ func TestWriteConfigDropsPluginContributions(t *testing.T) {
 	}
 	if len(back.BuiltinTools) != 1 || back.BuiltinTools[0].Name != "httprequest" {
 		t.Fatalf("builtin tools = %+v", back.BuiltinTools)
+	}
+	if len(back.A2AAgents) != 1 || back.A2AAgents[0].Name != "User Remote" {
+		t.Fatalf("a2a agents = %+v", back.A2AAgents)
 	}
 	if len(back.Plugins) != 1 || back.Plugins[0].ID != "x" {
 		t.Fatalf("plugin refs = %+v", back.Plugins)

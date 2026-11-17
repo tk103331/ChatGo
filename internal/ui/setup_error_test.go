@@ -39,7 +39,7 @@ func TestModelSetupErrorStaysOutOfUnrelatedTabs(t *testing.T) {
 
 	// The shortcut tab renders only its own failures.
 	cw.section = sectionSettings
-	cw.settings.tab = 4
+	cw.settings.tab = settingsShortcutsTab
 	if img := mgo.Render(cw.view, 1000, 700, 1); img == nil {
 		t.Fatal("shortcut tab render failed")
 	}

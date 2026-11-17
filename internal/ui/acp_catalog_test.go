@@ -41,7 +41,7 @@ func TestPluginsPageTwoTabs(t *testing.T) {
 	isolateHome(t)
 	cw := catalogTestWindow(t)
 	cw.section = sectionSettings
-	cw.settings.tab = 10
+	cw.settings.tab = settingsPluginsTab
 	tr := mgo.NewTester(cw.view, 1200, 800)
 	tr.Frame()
 	for _, want := range []string{"我的插件", "插件市场", "模型", "安装插件"} {
@@ -69,7 +69,7 @@ func TestMarketTabListsInstallable(t *testing.T) {
 	m.LoadAll()
 	cw.plugins = m
 	cw.section = sectionSettings
-	cw.settings.tab = 10
+	cw.settings.tab = settingsPluginsTab
 	cw.pluginUI.marketTab = 1
 	tr := mgo.NewTester(cw.view, 1200, 800)
 	tr.Frame()

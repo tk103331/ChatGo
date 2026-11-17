@@ -6,16 +6,18 @@ import (
 )
 
 // authorNameOf is the display name of a conversation-agent reference
-// ("agent:Name", "acp:Name", "app:Name", or "" for the built-in chat). It is
-// stamped onto a reply so the bubble and a group prompt can name the author
-// without resolving the reference again later, by which time the agent may
-// have been renamed or deleted.
+// ("agent:Name", "acp:Name", "a2a:Name", "app:Name", or "" for the built-in
+// chat). It is stamped onto a reply so the bubble and a group prompt can name
+// the author without resolving the reference again later, by which time the
+// agent may have been renamed or deleted.
 func authorNameOf(agent string) string {
 	switch {
 	case strings.HasPrefix(agent, "agent:"):
 		return strings.TrimPrefix(agent, "agent:")
 	case strings.HasPrefix(agent, "acp:"):
 		return strings.TrimPrefix(agent, "acp:")
+	case strings.HasPrefix(agent, "a2a:"):
+		return strings.TrimPrefix(agent, "a2a:")
 	case strings.HasPrefix(agent, "app:"):
 		if a, ok := appByID(strings.TrimPrefix(agent, "app:")); ok {
 			return a.Title

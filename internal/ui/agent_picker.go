@@ -17,14 +17,15 @@ import (
 
 // agentPickItem is one row of the agent picker.
 type agentPickItem struct {
-	ref      string // "", "agent:Name" or "acp:Name"
+	ref      string // "", "agent:Name", "acp:Name" or "a2a:Name"
 	label    string
 	detail   string
 	disabled bool
 }
 
 // agentPickItems lists every assistant in the picker's order: the built-in
-// Chat, the custom agents, then the enabled ACP connections.
+// Chat, the custom agents, the enabled ACP connections, then remote A2A
+// agents.
 func (cw *ChatWindow) agentPickItems() []agentPickItem {
 	out := []agentPickItem{{
 		ref: "", label: chatAgentName, detail: "内置助手，可用全部模型与工具",
@@ -50,6 +51,18 @@ func (cw *ChatWindow) agentPickItems() []agentPickItem {
 			ref: "acp:" + conn.Name, label: conn.Name, detail: detail, disabled: disabled,
 		})
 	}
+	for _, conn := range cw.cfg.A2AAgents {
+		if conn.Disabled {
+			continue
+		}
+		detail := conn.Description
+		if detail == "" {
+			detail = conn.URL
+		}
+		out = append(out, agentPickItem{
+			ref: "a2a:" + conn.Name, label: conn.Name, detail: detail,
+		})
+	}
 	return out
 }
 
@@ -69,7 +82,9 @@ func agentPickLabel(ref string) string {
 	if ref == "" {
 		return chatAgentName
 	}
-	return strings.TrimPrefix(strings.TrimPrefix(ref, "agent:"), "acp:")
+	ref = strings.TrimPrefix(ref, "agent:")
+	ref = strings.TrimPrefix(ref, "acp:")
+	return strings.TrimPrefix(ref, "a2a:")
 }
 
 // agentPickMark draws an assistant's mark: the chat icon, the agent's own
@@ -81,6 +96,9 @@ func (cw *ChatWindow) agentPickMark(c *mgo.Context, ref string, size float32) {
 			TextColor(mcore.Tokens(c).Accent)
 	case strings.HasPrefix(ref, "acp:"):
 		cw.acpLeading(c, strings.TrimPrefix(ref, "acp:"), size)
+	case strings.HasPrefix(ref, "a2a:"):
+		mgo.Icon(c, icons.Must("globe")).Size(size, size).Shrink(0).
+			TextColor(mcore.Tokens(c).Accent)
 	default:
 		cw.agentMarkByName(c, strings.TrimPrefix(ref, "agent:"), size)
 	}
