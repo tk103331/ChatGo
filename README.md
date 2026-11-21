@@ -22,6 +22,7 @@ A simple cross-platform AI chat client built with Go and [MyGo](https://github.c
 - 📖 **Knowledge Bases** - Index local text documents into a pure-Go SQLite FTS5 store and retrieve them offline; agents search them with the `knowledge_search` tool
 - 🗂️ **Workspaces & Panels** - Sessions grouped by workspace and collapsible; resizable chat / preview / file panels with a multi-tab file preview and a Git diff panel
 - 🌲 **Git Worktrees** - Manage every working tree of a repository: create one (checking out an existing branch or creating a new one), lock and unlock, remove, prune stale records, and make any tree the current workspace so each agent works in its own tree without stepping on the others
+- 📱 **Native Mobile App** - MyGo-native iOS/Android app connects through a self-hosted relay: Chat, Rooms, scheduled tasks, live tool calls, approvals, attachments, push notifications and end-to-end encrypted API/event traffic, without opening an inbound port on the desktop
 - 🪄 **Quick Task Panel** - Select text or a folder in any app and hand it to an agent from a floating panel, running in the background, with clipboard fallback and command-line / URL launch
 - ⌨️ **Terminal** - Multi-tab bottom terminal (Ghostty VT)
 - 💬 **Streaming Output** - Real-time streaming responses with Markdown rendering
@@ -210,6 +211,26 @@ shows the active token and can generate, copy or clear the saved one.
 `webd` also accepts `-token` to override the stored token for that run.
 Clearing the saved token does not disable authentication: the next start
 generates a random token again.
+
+### Self-hosted relay & native mobile app
+
+**Settings → Mobile** turns on a relay link. The desktop dials out over WSS,
+so it needs no public IP and no inbound port; the relay only forwards `/api`
+and never stores conversation content. Phones pair with a one-time code and
+receive a revocable device token. The native app lives in `cmd/mobile` and
+supports Chat, Rooms and scheduled tasks.
+
+```sh
+# relay (put TLS in front for production)
+go build -o relayd ./cmd/relayd
+./relayd -addr 127.0.0.1:8787 -data relay.db
+
+# iOS simulator app
+mygo build -platform ios/simulator ./cmd/mobile
+```
+
+See [docs/RELAY.md](docs/RELAY.md) for deployment, pairing, APNs/FCM and
+mobile signing.
 
 ## 💡 Usage
 

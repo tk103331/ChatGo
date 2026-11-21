@@ -1,0 +1,18 @@
+{
+  "mobile": {
+    "id": "qrscanner",
+    "android": {
+      "sources": ["android/*.kt"],
+      "class": "QRScannerPlugin",
+      "permissions": ["CAMERA"],
+      "dependencies": ["com.journeyapps:zxing-android-embedded:4.3.0"],
+      "application": ["<activity android:name=\"dev.mygo.ChatGoScanActivity\" android:screenOrientation=\"fullSensor\" android:exported=\"false\" android:theme=\"@style/zxing_CaptureTheme\" />"]
+    },
+    "ios": {
+      "sources": ["ios/*.swift"],
+      "class": "QRScannerPlugin",
+      "frameworks": ["AVFoundation"],
+      "infoPlist": {"NSCameraUsageDescription": "扫描桌面 ChatGo 的配对二维码，连接你的桌面。"}
+    }
+  }
+}

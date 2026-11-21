@@ -35,7 +35,10 @@ type Config struct {
 	// WebToken protects the Web UI and the MCP / AG-UI / A2A endpoints. The
 	// server always requires a token: an empty value generates a fresh random
 	// token on every start, while a saved value stays valid across restarts.
-	WebToken  string          `yaml:"web_token,omitempty"`
+	WebToken string `yaml:"web_token,omitempty"`
+	// Relay connects this desktop to a self-hosted ChatGo relay so paired
+	// phones can use the same /api. Off by default.
+	Relay     RelayConfig     `yaml:"relay,omitempty"`
 	Agents    []AgentDef      `yaml:"agents,omitempty"`
 	ACPAgents []ACPConnection `yaml:"acp_agents,omitempty"`
 	A2AAgents []A2AConnection `yaml:"a2a_agents,omitempty"`
@@ -69,6 +72,32 @@ type Config struct {
 	// version checks. Off by default; when off, the environment's proxy
 	// variables keep their usual effect.
 	Proxy ProxyConfig `yaml:"proxy,omitempty"`
+}
+
+// RelayConfig connects this desktop to a self-hosted ChatGo relay. The relay
+// is a transport: it knows the desktop id, the desktop secret and the paired
+// devices, but never the conversation contents.
+type RelayConfig struct {
+	Enabled bool   `yaml:"enabled,omitempty"`
+	URL     string `yaml:"url,omitempty"`
+	// DesktopID is a 128-bit random identifier, not a secret.
+	DesktopID string `yaml:"desktop_id,omitempty"`
+	// DesktopSecret authenticates the outbound tunnel. It should move to the
+	// system keychain; the field remains for configs created before that.
+	DesktopSecret string        `yaml:"desktop_secret,omitempty"`
+	AllowPairing  bool          `yaml:"allow_pairing,omitempty"`
+	Devices       []RelayDevice `yaml:"devices,omitempty"`
+}
+
+// RelayDevice is one phone paired with this desktop.
+type RelayDevice struct {
+	ID        string    `yaml:"id"`
+	Name      string    `yaml:"name"`
+	Platform  string    `yaml:"platform,omitempty"`
+	CreatedAt time.Time `yaml:"created_at,omitempty"`
+	// E2EKey is the base64 per-device ChaCha20-Poly1305. It should move
+	// to the system keychain with the desktop secret.
+	E2EKey string `yaml:"e2e_key,omitempty"`
 }
 
 // ProxyConfig is the network proxy setting. URL carries the scheme:

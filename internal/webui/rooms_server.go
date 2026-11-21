@@ -67,6 +67,7 @@ func (s *Server) handleCreateRoom(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.Publish("room.updated", "", "", map[string]any{"room_id": room.ID})
 	writeJSON(w, http.StatusCreated, map[string]any{"room": room})
 }
 
@@ -94,6 +95,7 @@ func (s *Server) handleUpdateRoom(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.Publish("room.updated", "", "", map[string]any{"room_id": room.ID})
 	writeJSON(w, http.StatusOK, map[string]any{"room": room})
 }
 
@@ -111,6 +113,7 @@ func (s *Server) handleDeleteRoom(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.Publish("room.deleted", "", "", map[string]any{"room_id": id})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -208,7 +211,7 @@ func (s *Server) beginRoomRun(w http.ResponseWriter, rr RoomRunner, conv *models
 	ctx, cancel := context.WithCancel(context.Background())
 	rs := &runState{
 		conv: conv, cancel: cancel, done: make(chan struct{}),
-		kind: "room", roomID: roomID,
+		kind: "room", roomID: roomID, server: s,
 	}
 	s.mu.Lock()
 	if s.runs[conv.ID] != nil {
@@ -227,12 +230,14 @@ func (s *Server) beginRoomRun(w http.ResponseWriter, rr RoomRunner, conv *models
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.Publish("turn.started", conv.ID, "", map[string]any{"kind": "room", "room_id": roomID})
 	writeJSON(w, http.StatusAccepted, map[string]any{"ok": true, "session_id": conv.ID})
 	go s.runRoom(ctx, rs, rr, roomID, text)
 }
 
 func (s *Server) runRoom(ctx context.Context, rs *runState, rr RoomRunner, roomID, text string) {
 	defer func() {
+		s.Publish("turn.finished", rs.conv.ID, "", map[string]any{"kind": "room", "running": false})
 		close(rs.done)
 		s.mu.Lock()
 		if s.runs[rs.conv.ID] == rs {

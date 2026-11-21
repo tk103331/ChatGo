@@ -3,6 +3,7 @@ package webui
 import (
 	"context"
 	"errors"
+	"time"
 
 	"chatgo/pkg/models"
 )
@@ -17,7 +18,17 @@ type liveTurn struct {
 func (l *liveTurn) Update(fn func(*models.Conversation)) {
 	l.rs.mu.Lock()
 	fn(l.rs.conv)
+	convID := l.rs.conv.ID
+	now := time.Now()
+	publish := now.Sub(l.rs.lastPublish) >= 200*time.Millisecond
+	if publish {
+		l.rs.lastPublish = now
+	}
+	server := l.rs.server
 	l.rs.mu.Unlock()
+	if publish && server != nil {
+		server.Publish("session.updated", convID, "", map[string]any{"running": true})
+	}
 }
 
 // Ask publishes the questions and waits for an answer from any client.

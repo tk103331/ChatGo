@@ -332,6 +332,14 @@ type BranchSelectorOptions struct {
 	// MinHeight lifts the trigger above a plain button, so it matches taller
 	// pickers beside it; zero keeps the control height.
 	MinHeight float32
+	// Ghost draws the trigger as a borderless inline chip, for the immersive
+	// picker row on the new-session page.
+	Ghost bool
+	// Foreground overrides the trigger's text color, for a ghost control that
+	// should read as body text rather than a link.
+	Foreground mgo.Color
+	// Chevron marks the trigger with a trailing down arrow.
+	Chevron bool
 }
 
 // branchStateKeys names the local state a BranchSelector keeps. The key makes
@@ -373,8 +381,13 @@ func BranchSelector(c *mgo.Context, current *string, branches []Branch, opts Bra
 	if label == "" {
 		label = "选择分支"
 	}
+	variant := Secondary
+	if opts.Ghost {
+		variant = Ghost
+	}
 	trigger := Button(c, label, ButtonOptions{
-		Variant: Secondary, Icon: icons.Must("git-branch"), Disabled: opts.Disabled,
+		Variant: variant, Icon: icons.Must("git-branch"), Disabled: opts.Disabled,
+		Foreground: opts.Foreground, Chevron: opts.Chevron,
 	})
 	if opts.MinHeight > 0 {
 		trigger.MinHeight(opts.MinHeight)

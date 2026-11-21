@@ -125,3 +125,26 @@ func ACPLogo(name string) *mgo.Bitmap {
 	}
 	return nil
 }
+
+// ACPLogoBytes returns a bundled brand logo as file bytes and media type, for
+// callers that hand it to another device to draw.
+func ACPLogoBytes(name string) ([]byte, string) {
+	low := strings.ToLower(name)
+	switch {
+	case strings.Contains(low, "claude"):
+		return claudeLogoPNG, "image/png"
+	case strings.Contains(low, "opencode"):
+		return opencodeLogoPNG, "image/png"
+	case low == "pig" || strings.HasPrefix(low, "pig-"):
+		return pigLogoPNG, "image/png"
+	}
+	key := ACPIconKey(name)
+	if key == "" {
+		return nil, ""
+	}
+	data, err := agentIconFS.ReadFile("agent_" + key + ".svg")
+	if err != nil {
+		return nil, ""
+	}
+	return data, "image/svg+xml"
+}

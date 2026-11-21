@@ -409,8 +409,7 @@ func (cw *ChatWindow) addPluginChannel(c plugin.ChannelContribution) {
 	config.EnsureChannelTools(&ch)
 	cw.cfg.Channels = append(cw.cfg.Channels, ch)
 	_ = config.SaveConfig(cw.cfg)
-	cw.settings.tab = 3
-	cw.section = sectionSettings
+	cw.openSettingsTab("channels")
 	cw.toast("已添加渠道 "+c.Spec.Name+"，请填写凭证并启用", mcore.SeveritySuccess)
 	cw.invalidate()
 }

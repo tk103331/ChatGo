@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,28 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 		agents = append(agents, s.runner.Agents()...)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"agents": agents})
+}
+
+// handleAgentIcon serves the icon an agent was configured with, so a phone
+// can draw it beside the agent's name. It answers 404 when the agent has
+// none, which the phone draws as its own mark.
+func (s *Server) handleAgentIcon(w http.ResponseWriter, r *http.Request) {
+	if s.runner == nil {
+		http.NotFound(w, r)
+		return
+	}
+	data, mediaType := s.runner.AgentIcon(r.URL.Query().Get("ref"))
+	if len(data) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if mediaType == "" {
+		mediaType = http.DetectContentType(data)
+	}
+	w.Header().Set("Content-Type", mediaType)
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Write(data)
 }
 
 // handleTools lists built-in tools and MCP servers, with the defaults the
@@ -134,6 +157,7 @@ func (s *Server) handleSetSessionConfig(w http.ResponseWriter, r *http.Request) 
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.Publish("session.updated", id, "", nil)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -253,6 +277,7 @@ func (s *Server) handleRevert(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.Publish("session.updated", id, "", nil)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

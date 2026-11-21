@@ -22,9 +22,10 @@ require (
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.17
 	github.com/coder/acp-go-sdk v0.13.5
 	github.com/ebitengine/purego v0.11.1
-	github.com/egoist/mygo v0.9.0
+	github.com/egoist/mygo v0.10.0
 	github.com/eino-contrib/jsonschema v1.0.3
 	github.com/gorilla/websocket v1.5.3
+	github.com/hashicorp/yamux v0.1.2
 	github.com/issue9/identicon v1.2.1
 	github.com/larksuite/oapi-sdk-go/v3 v3.12.0
 	github.com/mark3labs/mcp-go v1.2.1
@@ -33,6 +34,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.2.2
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/slack-go/slack v0.31.0
+	golang.org/x/crypto v0.57.0
 	golang.org/x/sys v0.49.0
 	google.golang.org/genai v1.70.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -135,7 +137,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.2 // indirect
 	golang.org/x/arch v0.12.0 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/exp v0.0.0-20250218142911-aa4b98e5adaa // indirect
 	golang.org/x/image v0.46.0 // indirect
 	golang.org/x/mod v0.42.0 // indirect

@@ -46,3 +46,7 @@ mygo-update.pub
 # oh-my-opencode state
 .omo/
 
+
+/mobile
+
+.mygo/

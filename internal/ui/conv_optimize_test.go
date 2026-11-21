@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -138,9 +139,13 @@ func TestCreatePlainDirectoryShowsWorkspace(t *testing.T) {
 	cw.create.agent = ""
 	cw.create.ws = dir
 	cw.openCreateTab()
-	tr := cw.tester(1000, 700, "工作区")
+	cw.waitFor("the directory probe to settle", func() bool { return cw.convGitLoaded(dir) })
+	tr := cw.tester(1000, 700, "新增项目")
 	if tr.HasText("正在读取项目工作树") {
 		t.Fatalf("a plain directory should not show an endless load: %v", tr.Texts())
+	}
+	if _, ok := tr.AccessByRole(mgo.RoleButton, filepath.Base(dir)); !ok {
+		t.Fatalf("the plain directory is not offered as the workspace: %v", tr.Texts())
 	}
 	if !cw.convGitLoaded(dir) {
 		t.Fatal("the non-repository result should be cached, not re-probed")

@@ -12,6 +12,7 @@ import (
 	mgo "github.com/egoist/mygo/ui"
 
 	"chatgo/internal/config"
+	"chatgo/internal/plugin"
 	"chatgo/internal/shellenv"
 
 	"chatgo/internal/ui/icons"
@@ -288,4 +289,81 @@ func (cw *ChatWindow) deleteACP() {
 		cw.clearACPForm()
 		cw.toast("连接已删除", mcore.SeveritySuccess)
 	})
+}
+
+// acpNameTaken reports whether a connection of that name exists.
+func (cw *ChatWindow) acpNameTaken(name string) bool {
+	for _, a := range cw.cfg.ACPAgents {
+		if a.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// acpPluginSuggestions lists the ACP connections offered by installed and
+// enabled catalog plugins. A catalog plugin is data-only: before this list
+// existed, installing one left the ACP page unchanged.
+func (cw *ChatWindow) acpPluginSuggestions(c *mgo.Context) {
+	if cw.plugins == nil {
+		return
+	}
+	entries := cw.plugins.ACPCatalog()
+	if len(entries) == 0 {
+		return
+	}
+	k := mcore.Tokens(c)
+	u := mcore.Density(c).Unit()
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	shown := false
+	for _, entry := range entries {
+		if cw.acpNameTaken(entry.Name) {
+			continue
+		}
+		if !shown {
+			mgo.Text(c, "插件提供的 ACP").FontWeight(600)
+			shown = true
+		}
+		mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Padding(u*2).
+			Radius(mtheme.ControlRadius).Background(k.Surface).Border(mtheme.BorderWidth, k.Border).Children(func() {
+			mgo.Column(c).Grow(1).MinWidth(0).Gap(u / 2).Children(func() {
+				mgo.Text(c, entry.Name).FontWeight(600)
+				mgo.Text(c, entry.Plugin+" · "+entry.Command).FontSize(caption).TextColor(k.TextMuted).
+					SingleLine().Ellipsis("…")
+			})
+			if kit.Button(c, "添加", kit.ButtonOptions{Variant: kit.Secondary}).Clicked() {
+				if cw.addACPPreset(entry) {
+					cw.toast("已添加 ACP："+entry.Name, mcore.SeveritySuccess)
+					cw.invalidate()
+				}
+			}
+		})
+	}
+}
+
+// addACPPreset adds one catalog suggestion as a disabled connection, ready
+// for its command and credentials to be reviewed.
+func (cw *ChatWindow) addACPPreset(entry plugin.ACPPresetEntry) bool {
+	if cw.acpNameTaken(entry.Name) {
+		return false
+	}
+	cw.cfg.ACPAgents = append(cw.cfg.ACPAgents, config.ACPConnection{
+		Name: entry.Name, Command: entry.Command, Args: entry.Args,
+		Env: entry.Env, Disabled: true,
+	})
+	_ = config.SaveConfig(cw.cfg)
+	return true
+}
+
+// addACPCatalogForPlugin adds every ACP suggestion a just-installed catalog
+// plugin offers, so installing it has an immediate effect on the ACP page.
+func (cw *ChatWindow) addACPCatalogForPlugin(pluginName string) {
+	if cw.plugins == nil {
+		return
+	}
+	for _, entry := range cw.plugins.ACPCatalog() {
+		if entry.Plugin == pluginName {
+			cw.addACPPreset(entry)
+		}
+	}
 }

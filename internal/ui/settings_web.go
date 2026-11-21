@@ -177,10 +177,21 @@ func (cw *ChatWindow) webTab(c *mgo.Context) {
 				{"A2A JSON-RPC", "/a2a/invoke"},
 				{"A2A REST", "/a2a"},
 			} {
+				ep := ep
+				endpoint := ""
+				if info.Address != "" {
+					endpoint = baseURL + ep.path
+				}
 				mgo.Row(c).FillWidth().Gap(u).AlignItems(mgo.Center).Children(func() {
 					mgo.Text(c, ep.label).FontSize(small).TextColor(k.TextMuted).Width(150).Shrink(0)
 					mgo.Text(c, baseURL+ep.path).Font(mtheme.MonoFont).TextColor(k.Text).
 						Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+					if kit.Button(c, "复制", kit.ButtonOptions{
+						Variant: kit.Ghost, Icon: icons.Must("copy"), Disabled: endpoint == "",
+					}).Clicked() && endpoint != "" {
+						c.WriteClipboard(endpoint)
+						cw.toast(ep.label+" 地址已复制", mcore.SeveritySuccess)
+					}
 				})
 			}
 

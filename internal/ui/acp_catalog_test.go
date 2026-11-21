@@ -181,3 +181,17 @@ func TestMarketKindFilterOptions(t *testing.T) {
 	}
 	_ = strings.TrimSpace
 }
+
+func TestAddACPCatalogPreset(t *testing.T) {
+	cw := testWindow()
+	entry := plugin.ACPPresetEntry{Plugin: "OhMyPi", Name: "OhMyPi", Command: "omp", Args: []string{"acp"}}
+	if !cw.addACPPreset(entry) {
+		t.Fatal("the first add should succeed")
+	}
+	if len(cw.cfg.ACPAgents) != 1 || cw.cfg.ACPAgents[0].Command != "omp" {
+		t.Fatalf("connections = %+v", cw.cfg.ACPAgents)
+	}
+	if cw.addACPPreset(entry) {
+		t.Fatal("a duplicate name must not be added")
+	}
+}

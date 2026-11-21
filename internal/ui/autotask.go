@@ -12,6 +12,7 @@ import (
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
 	"chatgo/internal/plugin"
+	"chatgo/internal/relay"
 	"chatgo/pkg/models"
 	sdk "github.com/a2aproject/a2a-go/v2/a2a"
 
@@ -728,6 +729,7 @@ func (cw *ChatWindow) startAutoTask(i int) {
 			cw.reloadConvs()
 			cw.invalidate()
 			cw.notifySessionComplete(conv, reply)
+			cw.relayNotify(relay.Notification{Kind: "task_done", SessionID: conv.ID, Title: t.Name})
 			payload := map[string]any{"taskId": t.ID, "name": t.Name, "ok": runErr == nil, "note": cw.cfg.AutoTasks[i].LastNote}
 			if runErr != nil {
 				payload["error"] = runErr.Error()
@@ -806,6 +808,7 @@ func (cw *ChatWindow) startAutoA2ATask(i int) {
 			cw.reloadConvs()
 			cw.invalidate()
 			cw.notifySessionComplete(conv, reply)
+			cw.relayNotify(relay.Notification{Kind: "task_done", SessionID: conv.ID, Title: t.Name})
 			payload := map[string]any{"taskId": t.ID, "name": t.Name, "ok": runErr == nil, "note": cw.cfg.AutoTasks[i].LastNote}
 			if runErr != nil {
 				payload["error"] = runErr.Error()

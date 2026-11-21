@@ -15,6 +15,7 @@ import (
 
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
+	"chatgo/internal/relay"
 	"chatgo/internal/webui"
 	"chatgo/pkg/models"
 )
@@ -222,6 +223,7 @@ func (r webRuntime) CreateRoomSession(id string) (webui.RoomSessionInfo, error) 
 // RunRoom runs one room turn: the selected members answer in order, each
 // seeing the replies already posted.
 func (r webRuntime) RunRoom(ctx context.Context, roomID string, conv *models.Conversation, text string, live webui.Live) error {
+	defer r.cw.relayNotify(relay.Notification{Kind: "room_done", SessionID: conv.ID})
 	cw := r.cw
 	type setup struct {
 		room   config.Room

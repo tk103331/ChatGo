@@ -30,7 +30,8 @@ func (r *protocolRunner) Run(ctx context.Context, conv *models.Conversation, rep
 	}
 	return r.err
 }
-func (r *protocolRunner) Agents() []AgentInfo { return nil }
+func (r *protocolRunner) Agents() []AgentInfo               { return nil }
+func (r *protocolRunner) AgentIcon(string) ([]byte, string) { return nil, "" }
 func (r *protocolRunner) Tools(string) []ToolInfo {
 	return nil
 }

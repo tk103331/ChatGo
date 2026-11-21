@@ -35,6 +35,8 @@ type Server struct {
 	targetErr error
 	// runner is the desktop agent runtime, nil in the standalone webd server.
 	runner Runner
+	// events fans out change notifications to /api/events subscribers.
+	events *EventHub
 	// token is the configured long-lived token, or a random token generated
 	// for this server when the config leaves it empty.
 	token          string
@@ -73,6 +75,11 @@ type runState struct {
 	kind   string
 	roomID string
 	taskID string
+
+	// server publishes change events; lastPublish throttles the update storm
+	// a streaming model produces.
+	server      *Server
+	lastPublish time.Time
 }
 
 func NewServer(cfg *config.Config, cm *models.ConversationManager, webDir string) (*Server, error) {
@@ -94,6 +101,7 @@ func NewServerWithRunner(cfg *config.Config, cm *models.ConversationManager, web
 		targetErr: err,
 		runner:    runner,
 		runs:      map[string]*runState{},
+		events:    newEventHub(),
 	}
 	if cfg != nil {
 		s.token = strings.TrimSpace(cfg.WebToken)
@@ -221,7 +229,9 @@ func contains(list []string, v string) bool {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/meta", s.handleMeta)
+	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.HandleFunc("GET /api/agents", s.handleAgents)
+	mux.HandleFunc("GET /api/agents/icon", s.handleAgentIcon)
 	mux.HandleFunc("GET /api/tools", s.handleTools)
 	mux.HandleFunc("GET /api/workspaces", s.handleWorkspaces)
 	mux.HandleFunc("GET /api/projects", s.handleProjects)
@@ -303,6 +313,12 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		"ready":        s.Ready(),
 		"models":       s.modelChoices(),
 		"capabilities": caps,
+		"theme": func() map[string]string {
+			if s.cfg == nil {
+				return map[string]string{"mode": "system"}
+			}
+			return map[string]string{"mode": s.cfg.ThemeMode, "color": s.cfg.ColorTheme}
+		}(),
 		"endpoints": map[string]string{
 			"mcp":        "/mcp",
 			"agui":       "/agui",
@@ -494,6 +510,7 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.Publish("session.created", conv.ID, "", nil)
 	writeJSON(w, http.StatusCreated, map[string]any{"session": conv})
 }
 
@@ -646,6 +663,7 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	s.Publish("session.deleted", id, "", nil)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -720,7 +738,7 @@ func (s *Server) handleSendMessage(w http.ResponseWriter, r *http.Request) {
 // runs, so a browser learns the reply IDs and polls the conversation.
 func (s *Server) beginRun(w http.ResponseWriter, conv *models.Conversation, replyIdx, turnIdx int, target config.Provider, req RunRequest) {
 	ctx, cancel := context.WithCancel(context.Background())
-	rs := &runState{conv: conv, target: target, req: req, cancel: cancel, done: make(chan struct{})}
+	rs := &runState{conv: conv, target: target, req: req, cancel: cancel, done: make(chan struct{}), server: s}
 	s.mu.Lock()
 	if s.runs[conv.ID] != nil {
 		s.mu.Unlock()
@@ -740,6 +758,9 @@ func (s *Server) beginRun(w http.ResponseWriter, conv *models.Conversation, repl
 		return
 	}
 	turn := conv.Turns[turnIdx]
+	s.Publish("turn.started", conv.ID, turn.ID, map[string]any{
+		"user_message_id": turn.UserMsgID, "reply_message_id": turn.ReplyMsgID,
+	})
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"ok":               true,
 		"user_message_id":  turn.UserMsgID,
@@ -793,6 +814,7 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
+		s.Publish("session.updated", id, "", nil)
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "title": title})
 		return
 	}
@@ -829,6 +851,7 @@ func (s *Server) handleUpdateSession(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.Publish("session.updated", id, "", nil)
 	resp := map[string]any{"ok": true}
 	if body.Title != nil {
 		resp["title"] = conv.Title
@@ -1117,6 +1140,7 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 func (s *Server) run(ctx context.Context, rs *runState, replyIdx, turnIdx int) {
 	convID := rs.conv.ID
 	defer func() {
+		s.Publish("turn.finished", convID, "", map[string]any{"running": false})
 		close(rs.done)
 		s.mu.Lock()
 		if s.runs[convID] == rs {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
+	"chatgo/internal/ui/assets"
 	"chatgo/internal/webui"
 	"chatgo/pkg/models"
 )
@@ -87,6 +89,81 @@ func (r webRuntime) Agents() []webui.AgentInfo {
 		}
 		return out
 	})
+}
+
+// AgentIcon reads the icon file an agent reference was configured with.
+func (r webRuntime) AgentIcon(ref string) ([]byte, string) {
+	cw := r.cw
+	ic := onMain(cw, func() agentIcon {
+		path := cw.agentIconPath(ref)
+		if strings.TrimSpace(path) != "" {
+			data, err := os.ReadFile(path)
+			if err == nil && len(data) > 0 && len(data) <= 1<<20 {
+				return agentIcon{data: data, typ: iconMediaType(path, data)}
+			}
+		}
+		// A known coding CLI keeps its brand logo, as the desktop draws it
+		// when no icon file was configured.
+		if name, ok := strings.CutPrefix(ref, "acp:"); ok {
+			if data, typ := assets.ACPLogoBytes(name); len(data) > 0 {
+				return agentIcon{data: data, typ: typ}
+			}
+		}
+		return agentIcon{}
+	})
+	return ic.data, ic.typ
+}
+
+// agentIcon is an icon file's bytes and media type.
+type agentIcon struct {
+	data []byte
+	typ  string
+}
+
+// agentIconPath is the icon file an agent reference was configured with.
+func (cw *ChatWindow) agentIconPath(ref string) string {
+	switch {
+	case strings.HasPrefix(ref, "agent:"):
+		name := strings.TrimPrefix(ref, "agent:")
+		for _, a := range cw.cfg.Agents {
+			if a.Name == name {
+				return a.Icon
+			}
+		}
+	case strings.HasPrefix(ref, "acp:"):
+		name := strings.TrimPrefix(ref, "acp:")
+		for _, a := range cw.cfg.ACPAgents {
+			if a.Name == name {
+				return a.Icon
+			}
+		}
+	case strings.HasPrefix(ref, "a2a:"):
+		name := strings.TrimPrefix(ref, "a2a:")
+		for _, a := range cw.cfg.A2AAgents {
+			if a.Name == name {
+				return a.Icon
+			}
+		}
+	}
+	return ""
+}
+
+// iconMediaType names an icon file's type, from its extension where it has
+// one and from its bytes otherwise.
+func iconMediaType(path string, data []byte) string {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".svg":
+		return "image/svg+xml"
+	case ".png":
+		return "image/png"
+	case ".jpg", ".jpeg":
+		return "image/jpeg"
+	case ".webp":
+		return "image/webp"
+	case ".gif":
+		return "image/gif"
+	}
+	return http.DetectContentType(data)
 }
 
 func (r webRuntime) Tools(agent string) []webui.ToolInfo {

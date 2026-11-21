@@ -25,6 +25,10 @@ type fakeRunner struct {
 	ask        bool
 	permission bool
 	agents     []AgentInfo
+	icon       map[string]struct {
+		data []byte
+		typ  string
+	}
 	tools      []ToolInfo
 	workspaces []string
 	skills     []SkillInfo
@@ -92,7 +96,14 @@ func (f *fakeRunner) Run(ctx context.Context, conv *models.Conversation, replyId
 	return nil
 }
 
-func (f *fakeRunner) Agents() []AgentInfo             { return f.agents }
+func (f *fakeRunner) Agents() []AgentInfo { return f.agents }
+func (f *fakeRunner) AgentIcon(ref string) ([]byte, string) {
+	if f.icon == nil {
+		return nil, ""
+	}
+	ic := f.icon[ref]
+	return ic.data, ic.typ
+}
 func (f *fakeRunner) Tools(agent string) []ToolInfo   { return f.tools }
 func (f *fakeRunner) Workspaces() []string            { return f.workspaces }
 func (f *fakeRunner) Skills(agent string) []SkillInfo { return f.skills }
@@ -641,5 +652,27 @@ func TestTasksAPIAndRun(t *testing.T) {
 	}
 	if len(loaded.Messages) != 2 || loaded.Messages[0].Content != "写日报" || loaded.Messages[1].Content != "task reply" {
 		t.Fatalf("messages = %#v", loaded.Messages)
+	}
+}
+
+// An agent's configured icon is served to the phone, and an agent without
+// one answers 404 so the phone draws its own mark.
+func TestAgentIconServesTheConfiguredFile(t *testing.T) {
+	f := &fakeRunner{icon: map[string]struct {
+		data []byte
+		typ  string
+	}{
+		"acp:OpenCode": {data: []byte("<svg/>"), typ: "image/svg+xml"},
+	}}
+	s, _ := runnerServer(t, f)
+	w := serve(t, s, http.MethodGet, "/api/agents/icon?ref=acp:OpenCode", "")
+	if w.Code != http.StatusOK || w.Body.String() != "<svg/>" {
+		t.Fatalf("icon: %d %q", w.Code, w.Body.String())
+	}
+	if got := w.Header().Get("Content-Type"); got != "image/svg+xml" {
+		t.Fatalf("content type = %q", got)
+	}
+	if w := serve(t, s, http.MethodGet, "/api/agents/icon?ref=agent:None", ""); w.Code != http.StatusNotFound {
+		t.Fatalf("missing icon: %d", w.Code)
 	}
 }

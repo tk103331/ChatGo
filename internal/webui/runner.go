@@ -35,6 +35,10 @@ type Runner interface {
 	Run(ctx context.Context, conv *models.Conversation, replyIdx int, req RunRequest, live Live) error
 	// Agents lists the assistants a web session may use.
 	Agents() []AgentInfo
+	// AgentIcon returns the icon an agent reference was configured with, as
+	// its file bytes and media type, or nil when it has none. The phone
+	// draws it beside the agent's name.
+	AgentIcon(ref string) (data []byte, mediaType string)
 	// Tools lists the built-in tools and MCP servers a session may enable,
 	// with the defaults an agent reference starts from.
 	Tools(agent string) []ToolInfo

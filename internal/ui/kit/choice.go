@@ -169,6 +169,16 @@ type SearchSelectOptions[T comparable] struct {
 	Key string
 	// NoSearch keeps the same picker appearance for short lists.
 	NoSearch bool
+	// Ghost draws the trigger as a borderless inline chip, for the immersive
+	// picker row on the new-session page.
+	Ghost bool
+	// Icon is the trigger's leading mark when no option supplies its own.
+	Icon *mgo.SVG
+	// Foreground overrides the trigger's text color, for a ghost control that
+	// should read as body text rather than a link.
+	Foreground mgo.Color
+	// Chevron marks the trigger with a trailing down arrow.
+	Chevron bool
 }
 
 // SearchSelectResult is a built SearchSelect and its events.
@@ -205,8 +215,17 @@ func SearchSelect[T comparable](c *mgo.Context, value *T, opts []SearchSelectOpt
 			break
 		}
 	}
+	if leading == nil && o.Icon != nil {
+		icon := o.Icon
+		leading = func() { mgo.Icon(c, icon).Size(buttonIconSize, buttonIconSize) }
+	}
+	variant := Secondary
+	if o.Ghost {
+		variant = Ghost
+	}
 	trigger := Button(c, label, ButtonOptions{
-		Variant: Secondary, Disabled: o.Disabled, Leading: leading,
+		Variant: variant, Disabled: o.Disabled, Leading: leading,
+		Foreground: o.Foreground, Chevron: o.Chevron,
 	})
 	openKey, queryKey := searchSelectKeys(o.Key + ":" + o.Label)
 	open := mgo.Local(trigger, openKey, func() bool { return false })

@@ -202,7 +202,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 				})
 				on := countSelected(f.models, models)
 				cw.agentGroup(c, &cw.agentSecModels, fmt.Sprintf("可用模型  %d/%d", on, len(models)), func() {
-					agentConfigureLink(c, func() { cw.settings.tab = 0; cw.goConfigure(sectionSettings) })
+					agentConfigureLink(c, func() { cw.openSettingsTab("models") })
 					modelItems := make([]selectItem, 0, len(models))
 					for _, ref := range models {
 						desc, tags := cw.refDetail(ref)
@@ -222,7 +222,7 @@ func (cw *ChatWindow) agentEditor(c *mgo.Context) {
 							ID: t, Title: t, Desc: config.GetBuiltinToolDescription(t),
 						})
 					}
-					agentConfigureLink(c, func() { cw.settings.tab = 1; cw.goConfigure(sectionSettings) })
+					agentConfigureLink(c, func() { cw.openSettingsTab("tools") })
 					selectList(c, &f.toolQuery, "搜索工具", toolItems,
 						func(id string) bool { return containsStr(f.builtinTools, id) },
 						func(id string, on bool) { f.builtinTools = setTool(f.builtinTools, id, on) })

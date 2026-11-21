@@ -7,6 +7,7 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/relay"
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
 	mcore "chatgo/internal/ui/uikit"
@@ -97,6 +98,7 @@ func (cw *ChatWindow) notifyUser(title, body string) {
 // conversation. The current conversation with a focused window already shows
 // its dialog, so nothing is sent then; otherwise the notice leads back to it.
 func (cw *ChatWindow) notifyAttention(convID, label, detail string) {
+	cw.relayNotify(relay.Notification{Kind: "attention", SessionID: convID, Title: label, Body: detail})
 	if cw.window == nil {
 		// Without a window there is no UI thread to notify from, and mygo's
 		// notification APIs wait on the main loop: calling them from a

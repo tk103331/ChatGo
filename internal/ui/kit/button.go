@@ -3,6 +3,7 @@ package kit
 import (
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/theme"
 	"chatgo/internal/ui/uikit"
 )
@@ -31,6 +32,13 @@ type ButtonOptions struct {
 	// Label names an icon-only button for assistive technology; required
 	// without a label.
 	Label string
+	// Foreground overrides the variant's text color, for a ghost control that
+	// should read as body text rather than a link. The zero color keeps the
+	// variant's own.
+	Foreground mgo.Color
+	// Chevron adds a trailing down arrow, marking the button as a dropdown
+	// trigger.
+	Chevron bool
 }
 
 // buttonIconSize is the leading icon slot, which the spinner takes while
@@ -56,6 +64,10 @@ func Button(c *mgo.Context, label string, opts ButtonOptions) mgo.Element {
 		b.Label(opts.Label)
 	}
 	fg := variantLook(b, k, opts.Variant, opts.Disabled)
+	if opts.Foreground.A != 0 {
+		fg = opts.Foreground
+		b.TextColor(fg)
+	}
 	b.Children(func() {
 		switch {
 		case opts.Loading:
@@ -63,10 +75,20 @@ func Button(c *mgo.Context, label string, opts ButtonOptions) mgo.Element {
 		case opts.Leading != nil:
 			opts.Leading()
 		case opts.Icon != nil:
-			mgo.Icon(c, opts.Icon).Size(buttonIconSize, buttonIconSize)
+			icon := mgo.Icon(c, opts.Icon).Size(buttonIconSize, buttonIconSize)
+			if opts.Foreground.A != 0 {
+				icon.TextColor(opts.Foreground)
+			}
 		}
 		if label != "" {
-			mgo.Text(c, label).SingleLine()
+			t := mgo.Text(c, label).SingleLine()
+			if opts.Foreground.A != 0 {
+				t.TextColor(opts.Foreground)
+			}
+		}
+		if opts.Chevron {
+			mgo.Icon(c, icons.Must("chevron-down")).Size(12, 12).Shrink(0).
+				TextColor(k.TextMuted)
 		}
 	})
 	return b

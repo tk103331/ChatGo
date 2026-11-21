@@ -17,19 +17,21 @@ func TestCreateTabRenders(t *testing.T) {
 	cw := worktreeWindow(t, dir)
 	cw.openCreateTab()
 	tr := cw.tester(1000, 700, "新会话")
-	// The Agent picker and the model picker are separate: the model one
-	// reads as the chosen model.
-	for _, want := range []string{"Agent", "项目", "工作树", "gpt-4", "发送"} {
+	// The Agent, project and worktree controls are chips under the composer,
+	// with no field captions above them; the model stays in the composer.
+	for _, want := range []string{chatAgentName, "gpt-4", "发送"} {
 		if !tr.HasText(want) {
 			t.Fatalf("the create tab lacks %q; texts: %v", want, tr.Texts())
 		}
 	}
+	if containsText(tr.Texts(), "工作树") || containsText(tr.Texts(), "新会话 Agent") {
+		t.Fatalf("the create chips still carry field captions: %v", tr.Texts())
+	}
 }
 
-// The create row's pickers share one style: the agent trigger matches the
-// project picker's height and baseline, so the row reads as one set of
-// fields. Their widths differ by exactly the folder button's room: the
-// 项目 field holds the select and the 新增项目 button side by side.
+// The create row's chips share one style: the agent trigger matches the
+// project chip's height and baseline, so the row reads as one set of
+// immersive buttons.
 func TestCreatePickersShareOneStyle(t *testing.T) {
 	dir := newTestRepo(t)
 	cw := worktreeWindow(t, dir)
@@ -50,9 +52,8 @@ func TestCreatePickersShareOneStyle(t *testing.T) {
 	if agent.Bounds.Y != project.Bounds.Y {
 		t.Fatalf("the pickers do not share a baseline: agent %v, project %v", agent.Bounds, project.Bounds)
 	}
-	if want := agent.Bounds.W - createPickerIconRoom; project.Bounds.W != want {
-		t.Fatalf("the project picker is %.0f wide, want %.0f (the agent's %.0f less the folder button's room)",
-			project.Bounds.W, want, agent.Bounds.W)
+	if agent.Bounds.W > createPickerWidth*1.6+1 {
+		t.Fatalf("the agent chip is %.0f wide, want at most %.0f", agent.Bounds.W, createPickerWidth*1.6)
 	}
 }
 
@@ -74,14 +75,14 @@ func TestCreatePickersShareOneRowOnANarrowPane(t *testing.T) {
 	// not fit, so the pickers must have shared the row out instead.
 	tr := cw.tester(640, 700, "新会话")
 	labels := map[string]float32{}
-	for _, name := range []string{"Agent", "项目", "工作树", "分支"} {
-		r, ok := tr.Find("新会话 " + name)
+	for _, name := range []string{chatAgentName, filepath.Base(dir), "新建 worktree…", "选择分支"} {
+		r, ok := tr.AccessByRole(mgo.RoleButton, name)
 		if !ok {
-			t.Fatalf("the %q label is missing; texts: %v", name, tr.Texts())
+			t.Fatalf("the %q chip is missing; texts: %v", name, tr.Texts())
 		}
-		labels[name] = r.Y
+		labels[name] = r.Bounds.Y
 	}
-	var min, max float32 = labels["项目"], labels["项目"]
+	var min, max float32 = labels[chatAgentName], labels[chatAgentName]
 	for _, y := range labels {
 		if y < min {
 			min = y
@@ -91,7 +92,7 @@ func TestCreatePickersShareOneRowOnANarrowPane(t *testing.T) {
 		}
 	}
 	if max-min > 2 {
-		t.Fatalf("the pickers wrapped on a narrow pane: %v (spread %.1f)", labels, max-min)
+		t.Fatalf("the chips wrapped on a narrow pane: %v (spread %.1f)", labels, max-min)
 	}
 }
 
@@ -130,7 +131,7 @@ func TestCreateTabNewWorktreeShowsBranch(t *testing.T) {
 	cw.create.wt = createNewWorktree
 	cw.openCreateTab()
 	tr := cw.tester(1000, 700, "新会话")
-	if !tr.HasText("分支") || !tr.HasText("选择分支") {
+	if !tr.HasText("选择分支") {
 		t.Fatalf("the branch picker is missing; texts: %v", tr.Texts())
 	}
 }
@@ -145,19 +146,25 @@ func TestCreateTabIsCentered(t *testing.T) {
 	cw.openCreateTab()
 	const width, height = 1600, 1000
 	tr := cw.tester(width, height, "新会话")
-	head, ok := tr.Find("选择 Agent、项目与工作树，输入消息后回车创建会话。")
+	head, ok := tr.Find("在 ChatGo 里做点什么？")
 	if !ok {
 		t.Fatalf("the create heading is missing; texts: %v", tr.Texts())
+	}
+	agent, ok := tr.AccessByRole(mgo.RoleButton, chatAgentName)
+	if !ok {
+		t.Fatalf("the agent chip is missing; texts: %v", tr.Texts())
 	}
 	send, ok := tr.Find("发送")
 	if !ok {
 		t.Fatalf("the send button is missing; texts: %v", tr.Texts())
 	}
-	if head.W >= createWidth+8 {
-		t.Fatalf("the block is %.0f wide, want at most %.0f", head.W, createWidth)
+	if agent.Bounds.X-head.X > createWidth {
+		t.Fatalf("the block is wider than %.0f", createWidth)
 	}
-	// Even side margins mean it sits in the middle horizontally.
-	left, right := head.X, float32(width)-(head.X+head.W)
+	// Even side margins mean it sits in the middle horizontally: the agent
+	// chip starts the composer's row, the send button ends it.
+	left := agent.Bounds.X
+	right := float32(width) - (send.X + send.W)
 	if diff := left - right; diff > 80 || diff < -80 {
 		t.Fatalf("side margins differ: left %.0f, right %.0f", left, right)
 	}
@@ -259,9 +266,9 @@ func TestCreateWorktreeDefaultsToMainTree(t *testing.T) {
 	for range 4 {
 		tr.Frame()
 	}
-	// The trigger now reads as the main tree's branch, not the placeholder.
-	if !tr.HasText("工作树") || !tr.HasText("[主] main") {
-		t.Fatalf("no worktree selector for a Git project; texts: %v", tr.Texts())
+	// The chip now reads as the main tree's branch, not the placeholder.
+	if !tr.HasText("[主] main") {
+		t.Fatalf("no worktree chip for a Git project; texts: %v", tr.Texts())
 	}
 	p := cw.convGitProject(dir)
 	if p == nil {
@@ -342,9 +349,9 @@ func TestCreateWorktreeEntryShowsPath(t *testing.T) {
 	}
 }
 
-// Every picker's label sits on one baseline, however tall a picker grows.
-// Nesting the branch picker inside the worktree column once pushed the other
-// labels out of line, so the row's alignment is asserted here.
+// Every chip sits on one baseline, however tall a picker grows. Nesting the
+// branch picker inside the worktree column once pushed the other pickers out
+// of line, so the row's alignment is asserted here.
 func TestCreatePickerLabelsAlign(t *testing.T) {
 	dir := newTestRepo(t)
 	cw := worktreeWindow(t, dir)
@@ -359,17 +366,17 @@ func TestCreatePickerLabelsAlign(t *testing.T) {
 	cw.openCreateTab()
 	tr := cw.tester(1400, 900, "新会话")
 
-	// The nav rail also shows an "Agent" entry, so each label carries its own
-	// accessible name and is matched by that.
+	// Each chip carries its own accessible name, so it is matched by that
+	// rather than by a caption the immersive row no longer draws.
 	labels := map[string]float32{}
-	for _, name := range []string{"Agent", "项目", "工作树", "分支"} {
-		r, ok := tr.Find("新会话 " + name)
+	for _, name := range []string{chatAgentName, filepath.Base(dir), "新建 worktree…", "选择分支"} {
+		r, ok := tr.AccessByRole(mgo.RoleButton, name)
 		if !ok {
-			t.Fatalf("the %q label is missing; texts: %v", name, tr.Texts())
+			t.Fatalf("the %q chip is missing; texts: %v", name, tr.Texts())
 		}
-		labels[name] = r.Y
+		labels[name] = r.Bounds.Y
 	}
-	var min, max float32 = labels["项目"], labels["项目"]
+	var min, max float32 = labels[chatAgentName], labels[chatAgentName]
 	for _, y := range labels {
 		if y < min {
 			min = y
@@ -379,7 +386,7 @@ func TestCreatePickerLabelsAlign(t *testing.T) {
 		}
 	}
 	if max-min > 2 {
-		t.Fatalf("labels are not on one baseline: %v (spread %.1f)", labels, max-min)
+		t.Fatalf("chips are not on one baseline: %v (spread %.1f)", labels, max-min)
 	}
 }
 

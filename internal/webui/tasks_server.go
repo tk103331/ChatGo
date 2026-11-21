@@ -60,6 +60,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.Publish("task.updated", "", "", map[string]any{"task_id": task.ID})
 	writeJSON(w, http.StatusCreated, map[string]any{"task": task})
 }
 
@@ -91,6 +92,7 @@ func (s *Server) handleUpdateTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.Publish("task.updated", "", "", map[string]any{"task_id": task.ID})
 	writeJSON(w, http.StatusOK, map[string]any{"task": task})
 }
 
@@ -112,6 +114,7 @@ func (s *Server) handleDeleteTask(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	s.Publish("task.deleted", "", "", map[string]any{"task_id": id})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -227,7 +230,7 @@ func (s *Server) beginTaskRun(w http.ResponseWriter, conv *models.Conversation, 
 	ctx, cancel := context.WithCancel(context.Background())
 	rs := &runState{
 		conv: conv, target: target, req: req, cancel: cancel,
-		done: make(chan struct{}), kind: "task", taskID: taskID,
+		done: make(chan struct{}), kind: "task", taskID: taskID, server: s,
 	}
 	s.mu.Lock()
 	if s.runs[conv.ID] != nil {
@@ -249,6 +252,9 @@ func (s *Server) beginTaskRun(w http.ResponseWriter, conv *models.Conversation, 
 		writeError(w, http.StatusInternalServerError, err)
 		return
 	}
+	s.Publish("turn.started", conv.ID, conv.Turns[turnIdx].ID, map[string]any{
+		"kind": "task", "task_id": taskID,
+	})
 	writeJSON(w, http.StatusAccepted, map[string]any{
 		"ok": true, "session_id": conv.ID,
 		"user_message_id":  conv.Turns[turnIdx].UserMsgID,

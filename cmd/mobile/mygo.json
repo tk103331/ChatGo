@@ -1,0 +1,26 @@
+{
+  "name": "ChatGo",
+  "slug": "chatgo-mobile",
+  "identifier": "com.tk103331.chatgo.mobile",
+  "version": "0.1.0",
+  "copyright": "MIT",
+  "icon": "../../internal/ui/assets/logo.png",
+  "main": ".",
+  "out": "../../dist/mobile",
+  "urlSchemes": ["chatgo"],
+  "ios": {
+    "team": "",
+    "minimumSystemVersion": "17.0",
+    "associatedDomains": ["relay.example.com"],
+    "backgroundModes": ["remote-notification"],
+    "infoPlist": {
+      "NSLocalNetworkUsageDescription": "连接你自己的 ChatGo 中继与桌面。",
+      "NSUserNotificationsUsageDescription": "提醒自动任务完成、Agent 提问和权限审批。"
+    }
+  },
+  "android": {
+    "minSdk": 26,
+    "appLinks": ["relay.example.com"],
+    "permissions": ["POST_NOTIFICATIONS"]
+  }
+}

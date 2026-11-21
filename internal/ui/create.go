@@ -107,25 +107,61 @@ func viewportCenter(c *mgo.Context, key string, children func()) {
 	}
 }
 
-// createBody is the "新会话" tab: the choice rows, the composer in the
-// middle, and the agent-specific controls under it. The block is centered in
-// both directions and width-capped, the way the home page's composer is, and
-// it scrolls on a window too short to hold it.
+// createBody is the "新会话" tab: a large greeting and the same composer as
+// a conversation, with Agent and project/worktree controls underneath.
+// The block is centered in both directions and width-capped, and it scrolls
+// on a window too short to hold it.
 func (cw *ChatWindow) createBody(c *mgo.Context) {
 	k := mcore.Tokens(c)
 	u := mcore.Density(c).Unit()
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
 	viewportCenter(c, "create", func() {
 		mgo.Column(c).FillWidth().MaxWidth(createWidth).AlignSelf(mgo.Center).
-			Gap(u * 2).Children(func() {
-			mgo.Text(c, "新会话").FontSize(mcore.FontSize(c, mtheme.H2Size)).
-				FontWeight(600).Shrink(0)
-			mgo.Text(c, "选择 Agent、项目与工作树，输入消息后回车创建会话。").FontSize(caption).
+			AlignItems(mgo.Start).Justify(mgo.Center).
+			Padding(u*6, u*3).Gap(u * 2).Children(func() {
+			mgo.Text(c, "在 ChatGo 里做点什么？").FontSize(mcore.FontSize(c, mtheme.H1Size)).
+				FontWeight(650).Shrink(0).MaxLines(2)
+			mgo.Text(c, "或直接开始，不选项目").FontSize(caption).
 				TextColor(k.TextMuted).Shrink(0)
-			cw.createSelectors(c, "新会话")
 			cw.createComposer(c)
+			cw.createChipRow(c)
 		})
 	})
+}
+
+// createChipRow is the new-session page's immersive picker row: the Agent,
+// the project and the worktree as borderless chips under the composer, with
+// where the session runs on the far right.
+func (cw *ChatWindow) createChipRow(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	k := mcore.Tokens(c)
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	mgo.Row(c).FillWidth().Shrink(0).Gap(u / 2).AlignItems(mgo.Center).Wrap().Children(func() {
+		cw.createAgentChip(c)
+		cw.createWorkspaceChip(c)
+		cw.createWorktreeChip(c)
+		if cw.create.wt == createNewWorktree {
+			cw.createBranchChip(c)
+		}
+		mgo.Spacer(c)
+		mgo.Text(c, "桌面 Agent · 本地执行").FontSize(caption).TextColor(k.TextMuted).Shrink(0)
+	})
+}
+
+// pickCreateAgent records an agent choice: another agent's options are not
+// this one's, so the ACP choices made for the previous agent are dropped.
+func (cw *ChatWindow) pickCreateAgent(ref string) {
+	if ref == cw.create.agent {
+		return
+	}
+	cw.create.agent = ref
+	cw.create.acpConfig = nil
+	cw.invalidate()
+}
+
+// createAgentChip is the immersive Agent chip of the new-session row.
+func (cw *ChatWindow) createAgentChip(c *mgo.Context) {
+	cw.agentPickerChip(c, &cw.create.agent, cw.pickCreateAgent)
 }
 
 // createSelectors lays out the agent, project, worktree and branch pickers as
@@ -176,7 +212,7 @@ func (cw *ChatWindow) pickerWidth() float32 {
 
 // createWidth caps the create block, so the composer keeps a readable
 // measure on a wide pane.
-const createWidth float32 = 760
+const createWidth float32 = 820
 
 // createPickerWidth caps a choice picker: wide enough for a full name on a
 // roomy pane, while createSelectors shrinks the pickers below it to share a
@@ -198,16 +234,7 @@ func (cw *ChatWindow) createAgentSelect(c *mgo.Context, scope string) {
 	kit.FieldColumn(c, "Agent", kit.FieldOptions{
 		Width: w, Name: scope + " Agent",
 	}, func() {
-		cw.agentPickerButton(c, &cw.create.agent, func(ref string) {
-			if ref == cw.create.agent {
-				return
-			}
-			cw.create.agent = ref
-			// Another agent's options are not this one's: drop the ACP
-			// choices made for the previous agent.
-			cw.create.acpConfig = nil
-			cw.invalidate()
-		}, w)
+		cw.agentPickerButton(c, &cw.create.agent, cw.pickCreateAgent, w)
 	})
 }
 
@@ -232,6 +259,30 @@ func (cw *ChatWindow) projectWorkspaces() []string {
 // below never belongs to a different project.
 func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context, scope string) {
 	u := mcore.Density(c).Unit()
+	opts := cw.projectChoices()
+	kit.FieldColumn(c, "项目", kit.FieldOptions{
+		Width: cw.pickerWidth(), Name: scope + " 项目",
+	}, func() {
+		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
+			sel := kit.SearchSelect(c, &cw.create.ws, opts, kit.SearchSelectOptions[string]{
+				Label: "项目", Placeholder: "选择项目",
+				SearchPlaceholder: "搜索项目", Empty: "没有项目，可先新增",
+				MinWidth: cw.pickerWidth() - createPickerIconRoom, MinHeight: createPickerHeight,
+			})
+			sel.Element.Justify(mgo.Start)
+			if mcore.IconAction(c, icons.Must("folder"), "新增项目").Tooltip("新增项目").Clicked() {
+				cw.pickCreateProject()
+			}
+			if sel.Changed() {
+				cw.pickCreateWorkspace(cw.create.ws)
+			}
+		})
+	})
+}
+
+// projectChoices lists the projects the new-session page offers: one entry
+// per main tree, plus directories outside any repository as themselves.
+func (cw *ChatWindow) projectChoices() []kit.SearchSelectOption[string] {
 	projects := cw.projectWorkspaces()
 	if p := cw.convGitProject(cw.create.ws); p != nil && p.Main != "" {
 		cw.create.ws = p.Main
@@ -264,38 +315,48 @@ func (cw *ChatWindow) createWorkspaceSelect(c *mgo.Context, scope string) {
 		}
 		opts = append(opts, kit.SearchSelectOption[string]{Value: ws, Label: name, Note: middleEllipsis(ws, worktreePathWidth)})
 	}
-	kit.FieldColumn(c, "项目", kit.FieldOptions{
-		Width: cw.pickerWidth(), Name: scope + " 项目",
-	}, func() {
-		mgo.Row(c).Gap(u).AlignItems(mgo.End).Children(func() {
-			sel := kit.SearchSelect(c, &cw.create.ws, opts, kit.SearchSelectOptions[string]{
-				Label: "项目", Placeholder: "选择项目",
-				SearchPlaceholder: "搜索项目", Empty: "没有项目，可先新增",
-				MinWidth: cw.pickerWidth() - createPickerIconRoom, MinHeight: createPickerHeight,
-			})
-			sel.Element.Justify(mgo.Start)
-			if mcore.IconAction(c, icons.Must("folder"), "新增项目").Tooltip("新增项目").Clicked() {
-				// The new directory becomes the chosen project, exactly like
-				// picking it from the dropdown: the worktree resets to the
-				// new project's main tree so the pickers never disagree.
-				cw.pickDirectory("选择项目", func(path string) {
-					cw.addWorkspace(path)
-					cw.create.ws = path
-					cw.create.wt, cw.create.branch, cw.create.newBranch = "", "", false
-					cw.ensureConvGit(path)
-					if p := cw.convGitProject(path); p != nil {
-						cw.create.wt = p.Main
-					}
-				})
-			}
-			if sel.Changed() {
-				cw.create.wt, cw.create.branch, cw.create.newBranch = "", "", false
-				cw.ensureConvGit(cw.create.ws)
-				if p := cw.convGitProject(cw.create.ws); p != nil {
-					cw.create.wt = p.Main
-				}
-			}
+	return opts
+}
+
+// pickCreateWorkspace makes ws the project and resets the worktree choice to
+// the new project's main tree, so the pickers never disagree.
+func (cw *ChatWindow) pickCreateWorkspace(ws string) {
+	cw.create.wt, cw.create.branch, cw.create.newBranch = "", "", false
+	cw.ensureConvGit(ws)
+	if p := cw.convGitProject(ws); p != nil {
+		cw.create.wt = p.Main
+	}
+}
+
+// pickCreateProject asks for a directory and makes it the chosen project,
+// exactly like picking it from the dropdown.
+func (cw *ChatWindow) pickCreateProject() {
+	cw.pickDirectory("选择项目", func(path string) {
+		cw.addWorkspace(path)
+		cw.create.ws = path
+		cw.pickCreateWorkspace(path)
+	})
+}
+
+// createWorkspaceChip is the immersive project chip of the new-session row:
+// the project's name, with a button beside it that picks a new directory.
+func (cw *ChatWindow) createWorkspaceChip(c *mgo.Context) {
+	u := mcore.Density(c).Unit()
+	opts := cw.projectChoices()
+	mgo.Row(c).Shrink(0).Gap(u / 2).AlignItems(mgo.Center).Children(func() {
+		sel := kit.SearchSelect(c, &cw.create.ws, opts, kit.SearchSelectOptions[string]{
+			Label: "项目", Placeholder: "选择项目",
+			SearchPlaceholder: "搜索项目", Empty: "没有项目，可先新增",
+			MinHeight: createPickerHeight, Ghost: true, Up: true,
+			Icon: icons.Must("folder"), Foreground: mcore.Tokens(c).Text, Chevron: true,
 		})
+		sel.Element.MaxWidth(createPickerWidth * 1.6).Justify(mgo.Start)
+		if mcore.IconAction(c, icons.Must("plus"), "新增项目").Tooltip("新增项目").Clicked() {
+			cw.pickCreateProject()
+		}
+		if sel.Changed() {
+			cw.pickCreateWorkspace(cw.create.ws)
+		}
 	})
 }
 
@@ -334,6 +395,22 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context, scope string) {
 	if cw.create.wt == "" {
 		cw.create.wt = p.Main
 	}
+	opts := worktreeChoices(p)
+	kit.FieldColumn(c, "工作树", kit.FieldOptions{
+		Width: cw.pickerWidth(), Name: scope + " 工作树",
+	}, func() {
+		sel := kit.SearchSelect(c, &cw.create.wt, opts, kit.SearchSelectOptions[string]{
+			Label: "工作树", Placeholder: "选择工作树",
+			SearchPlaceholder: "搜索工作树", Empty: "此项目没有工作树",
+			MinWidth: cw.pickerWidth(), MinHeight: createPickerHeight,
+		})
+		sel.Element.Justify(mgo.Start)
+	})
+}
+
+// worktreeChoices lists the project's trees, the main one first and marked,
+// with the "new worktree" entry that reveals the branch picker.
+func worktreeChoices(p *Project) []kit.SearchSelectOption[string] {
 	opts := make([]kit.SearchSelectOption[string], 0, len(p.Worktrees)+1)
 	opts = append(opts, kit.SearchSelectOption[string]{Value: createNewWorktree, Label: "新建 worktree…"})
 	for _, path := range p.Worktrees {
@@ -348,16 +425,40 @@ func (cw *ChatWindow) createWorktreeSelect(c *mgo.Context, scope string) {
 			Value: path, Label: label, Note: middleEllipsis(path, worktreePathWidth),
 		})
 	}
-	kit.FieldColumn(c, "工作树", kit.FieldOptions{
-		Width: cw.pickerWidth(), Name: scope + " 工作树",
-	}, func() {
-		sel := kit.SearchSelect(c, &cw.create.wt, opts, kit.SearchSelectOptions[string]{
-			Label: "工作树", Placeholder: "选择工作树",
-			SearchPlaceholder: "搜索工作树", Empty: "此项目没有工作树",
-			MinWidth: cw.pickerWidth(), MinHeight: createPickerHeight,
-		})
-		sel.Element.Justify(mgo.Start)
+	return opts
+}
+
+// createWorktreeChip is the immersive worktree chip of the new-session row.
+// It also covers a plain directory, which runs the session as itself.
+func (cw *ChatWindow) createWorktreeChip(c *mgo.Context) {
+	caption := mcore.FontSize(c, mtheme.CaptionSize)
+	k := mcore.Tokens(c)
+	p := cw.convGitProject(cw.create.ws)
+	if p == nil {
+		if cw.create.ws == "" {
+			return
+		}
+		cw.ensureConvGit(cw.create.ws)
+		if !cw.convGitLoaded(cw.create.ws) {
+			mgo.Text(c, "正在读取项目工作树…").FontSize(caption).TextColor(k.TextMuted)
+			return
+		}
+		b := kit.Button(c, filepath.Base(cw.create.ws), kit.ButtonOptions{
+			Variant: kit.Ghost, Icon: icons.Must("folder"), Disabled: true,
+		}).Tooltip("该目录不是 Git 仓库，会话将直接在其中运行")
+		b.MaxWidth(createPickerWidth * 1.6).MinWidth(0)
+		return
+	}
+	if cw.create.wt == "" {
+		cw.create.wt = p.Main
+	}
+	sel := kit.SearchSelect(c, &cw.create.wt, worktreeChoices(p), kit.SearchSelectOptions[string]{
+		Label: "工作树", Placeholder: "选择工作树",
+		SearchPlaceholder: "搜索工作树", Empty: "此项目没有工作树",
+		MinHeight: createPickerHeight, Ghost: true, Up: true,
+		Icon: icons.Must("git-branch"), Foreground: mcore.Tokens(c).Text, Chevron: true,
 	})
+	sel.Element.MaxWidth(createPickerWidth * 1.6).Justify(mgo.Start)
 }
 
 // "新建 worktree" option that opens the branch picker. Each entry is just the
@@ -386,10 +487,32 @@ func (cw *ChatWindow) createBranchSelect(c *mgo.Context, scope string) {
 	})
 }
 
+// createBranchChip is the immersive branch chip of the new-session row, shown
+// when the worktree choice asks for a new tree.
+func (cw *ChatWindow) createBranchChip(c *mgo.Context) {
+	p := cw.convGitProject(cw.create.ws)
+	var branches []kit.Branch
+	if p != nil {
+		branches = branchList(p.Branches)
+	}
+	sel := kit.BranchSelector(c, &cw.create.branch, branches, kit.BranchSelectorOptions{
+		AllowCreate: true, Key: "create", MinHeight: createPickerHeight, Ghost: true,
+		Foreground: mcore.Tokens(c).Text, Chevron: true,
+	})
+	sel.Element.MaxWidth(createPickerWidth * 1.6).Justify(mgo.Start)
+	if sel.Changed() {
+		cw.create.newBranch = false
+	}
+	if name, ok := sel.Created(); ok {
+		cw.create.branch = name
+		cw.create.newBranch = true
+	}
+}
+
 // createComposer is the central input; its footer holds the agent-specific
 // controls, and Enter starts the conversation.
 func (cw *ChatWindow) createComposer(c *mgo.Context) {
-	cw.startComposer(c, "输入消息，Enter 创建会话并发送", cw.startFromCreate)
+	cw.startComposer(c, "问任何问题，@ 文件，$ Skills，/ 命令", cw.startFromCreate)
 }
 
 // startComposer is the composer shared by the "新会话" tab and the home page:

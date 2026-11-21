@@ -137,8 +137,7 @@ func (cw *ChatWindow) emptyToolPane(c *mgo.Context, tab int, open *bool) {
 		*open = false
 		switch tab {
 		case 0:
-			cw.settings.tab = 1
-			cw.goConfigure(sectionSettings)
+			cw.openSettingsTab("tools")
 		case 1:
 			cw.goConfigure(sectionMCP)
 		case 2:

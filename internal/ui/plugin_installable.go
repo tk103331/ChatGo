@@ -144,8 +144,7 @@ const catalogIndexTimeout = 30 * time.Second
 // filtered to the catalog kind the caller names — the 模型 and ACP pages'
 // "从插件添加" buttons hand the user to where the catalog actually lives.
 func (cw *ChatWindow) goPluginMarket(kind string) {
-	cw.section = sectionSettings
-	cw.settings.tab = 10 // the plugins tab, the last of the settings page
+	cw.openSettingsTab("plugins")
 	cw.pluginUI.marketTab = 1
 	cw.pluginUI.marketFilter = kind
 	cw.pluginUI.installQuery = ""
@@ -273,7 +272,7 @@ func (cw *ChatWindow) installCatalogEntry(e plugin.CatalogEntry) {
 	st.catalogErr = ""
 	cw.invalidate()
 	go func() {
-		_, err := cw.plugins.InstallCatalog(context.Background(), e, true)
+		manifest, err := cw.plugins.InstallCatalog(context.Background(), e, true)
 		cw.postMain(func() {
 			if st.installing != e.ID {
 				return
@@ -282,6 +281,9 @@ func (cw *ChatWindow) installCatalogEntry(e plugin.CatalogEntry) {
 			if err != nil {
 				st.catalogErr = e.Name + "：" + acpFirstLine(err.Error())
 			} else {
+				if e.Kind == "catalog-acp" {
+					cw.addACPCatalogForPlugin(manifest.Name)
+				}
 				cw.toast("已安装并启用 "+e.Name, mcore.SeveritySuccess)
 			}
 			cw.invalidate()

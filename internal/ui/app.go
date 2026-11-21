@@ -284,6 +284,7 @@ type ChatWindow struct {
 	trayMenuKeyCached string
 	quitting          bool
 	web               webServiceState
+	relay             relayServiceState
 
 	// channels owns every IM connection; each configured channel gets its
 	// own driver instance, so several of one platform can run at once.
@@ -442,6 +443,9 @@ func (cw *ChatWindow) Show() {
 	if cw.cfg.WebEnabled {
 		cw.startWebService()
 	}
+	if cw.cfg.Relay.Enabled {
+		cw.startRelayService()
+	}
 	w.OnClose(func(e *mygo.CloseEvent) {
 		if !cw.cfg.RunInBackground {
 			return
@@ -459,6 +463,7 @@ func (cw *ChatWindow) Show() {
 		// would otherwise linger after the window is gone.
 		cw.acpShutdown()
 		cw.stopWebService()
+		cw.stopRelayService()
 		cw.stopQuickWatch()
 		if cw.quick != nil {
 			cw.quick.destroy()

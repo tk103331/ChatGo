@@ -20,3 +20,17 @@ func TestPigLogo(t *testing.T) {
 		t.Fatal("PiAgent must keep the Pi mark")
 	}
 }
+
+// A known coding CLI's brand logo travels as bytes for another device to
+// draw, and an unknown name has none.
+func TestACPLogoBytes(t *testing.T) {
+	for _, name := range []string{"OpenCode", "ClaudeCode", "CodexCLI", "Gemini"} {
+		data, typ := ACPLogoBytes(name)
+		if len(data) == 0 || typ == "" {
+			t.Fatalf("%s: no logo", name)
+		}
+	}
+	if data, _ := ACPLogoBytes("NothingLikeThis"); len(data) != 0 {
+		t.Fatalf("unknown agent got %d bytes", len(data))
+	}
+}

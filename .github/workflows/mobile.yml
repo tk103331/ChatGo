@@ -1,0 +1,137 @@
+name: Mobile
+
+# Builds the native phone app. Android gets an APK/AAB on the Linux runner;
+# iOS gets an unsigned simulator .app on macOS. Signed store builds still need
+# the repository's Apple team and Android keystore secrets.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "cmd/mobile/**"
+      - "internal/mobileapi/**"
+      - "internal/e2e/**"
+      - "internal/ui/kit/**"
+      - "internal/ui/theme/**"
+      - "internal/ui/uikit/**"
+      - "internal/ui/icons/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/mobile.yml"
+  pull_request:
+    paths:
+      - "cmd/mobile/**"
+      - "internal/mobileapi/**"
+      - "internal/e2e/**"
+      - "internal/ui/kit/**"
+      - "internal/ui/theme/**"
+      - "internal/ui/uikit/**"
+      - "internal/ui/icons/**"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/mobile.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test the mobile client
+        run: |
+          go test ./cmd/mobile/... ./internal/mobileapi/... ./internal/e2e/...
+          go vet ./cmd/mobile/... ./internal/mobileapi/... ./internal/e2e/...
+
+  android:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install the Android NDK and platform
+        run: |
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;26.1.10909125"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> "$GITHUB_ENV"
+      - name: Build the MyGo CLI
+        run: go build -o "$RUNNER_TEMP/mygo" github.com/egoist/mygo/cmd/mygo
+      - name: Doctor
+        run: '"$RUNNER_TEMP/mygo" doctor'
+      - name: Build the Android app
+        run: '"$RUNNER_TEMP/mygo" build -platform android ./cmd/mobile'
+      - name: Upload the Android artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist/mobile/android/
+
+  ios:
+    needs: test
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build the MyGo CLI
+        run: go build -o "$RUNNER_TEMP/mygo" github.com/egoist/mygo/cmd/mygo
+      - name: Doctor
+        run: '"$RUNNER_TEMP/mygo" doctor'
+      - name: Build for the iOS Simulator
+        run: '"$RUNNER_TEMP/mygo" build -platform ios/simulator ./cmd/mobile'
+      - name: Zip the simulator app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            dist/mobile/ios-simulator/ChatGo.app \
+            dist/mobile/chatgo-ios-simulator.zip
+      - name: Upload the iOS simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator
+          path: dist/mobile/chatgo-ios-simulator.zip
+
+  publish:
+    needs: [android, ios]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Attach the mobile artifacts to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          cp artifacts/android/*.apk "dist/chatgo-mobile-${GITHUB_REF_NAME}-android.apk"
+          cp artifacts/android/*.aab "dist/chatgo-mobile-${GITHUB_REF_NAME}-android.aab"
+          cp artifacts/ios-simulator/chatgo-ios-simulator.zip "dist/chatgo-mobile-${GITHUB_REF_NAME}-ios-simulator.zip"
+          for i in 1 2 3 4 5; do
+            if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then break; fi
+            sleep 3
+          done
+          if ! gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
+              --draft --verify-tag --title "$GITHUB_REF_NAME" --generate-notes
+          fi
+          gh release upload "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          ls -lh dist

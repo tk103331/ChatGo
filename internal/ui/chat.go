@@ -191,8 +191,7 @@ func (cw *ChatWindow) modelSetupNotice(c *mgo.Context) {
 		mgo.Text(c, msg).TextColor(k.Danger).FontSize(caption).
 			Grow(1).MinWidth(0).MaxLines(2)
 		if kit.Button(c, "去设置", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
-			cw.settings.tab = 0
-			cw.goConfigure(sectionSettings)
+			cw.openSettingsTab("models")
 		}
 	})
 }
@@ -202,8 +201,7 @@ func (cw *ChatWindow) modelSelector(c *mgo.Context) {
 	refs := cw.agentModelRefs()
 	if len(refs) == 0 {
 		if kit.Button(c, "配置模型", kit.ButtonOptions{Variant: kit.Outline}).Clicked() {
-			cw.settings.tab = 0
-			cw.goConfigure(sectionSettings)
+			cw.openSettingsTab("models")
 		}
 		return
 	}
