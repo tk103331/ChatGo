@@ -37,9 +37,10 @@ func TestMobileRelayReconnectConversation(t *testing.T) {
 		case "/api/agents":
 			encode(map[string]any{"agents": []map[string]any{
 				{"ref": "acp:OpenCode", "name": "OpenCode", "kind": "acp"},
+				{"ref": "agent:Helper", "name": "Helper", "kind": "agent"},
 			}})
 		case "/api/agents/icon":
-			if r.URL.Query().Get("ref") != "acp:OpenCode" {
+			if ref := r.URL.Query().Get("ref"); ref != "acp:OpenCode" && ref != "agent:Helper" {
 				http.NotFound(w, r)
 				return
 			}
@@ -167,7 +168,9 @@ func TestMobileRelayReconnectConversation(t *testing.T) {
 	a.conv = nil
 	a.connect(s)
 	await("connect", func() bool { return a.connected })
-	await("agent icon", func() bool { return a.agentIcons["acp:OpenCode"] != nil })
+	await("agent icon", func() bool {
+		return a.agentIcons["acp:OpenCode"] != nil && a.agentIcons["agent:Helper"] != nil
+	})
 	a.disconnect()
 	if a.client != nil || a.eventCancel != nil || a.watchCancel != nil {
 		t.Fatal("disconnect left active connection")

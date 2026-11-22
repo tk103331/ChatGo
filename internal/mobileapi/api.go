@@ -28,6 +28,12 @@ func (c *Client) Session(ctx context.Context, id string) (SessionResponse, error
 }
 
 func (c *Client) CreateSession(ctx context.Context, title, agent, workspace, provider, model string) (SessionResponse, error) {
+	return c.CreateSessionWithACP(ctx, title, agent, workspace, provider, model, nil)
+}
+
+// CreateSessionWithACP creates a conversation with the ACP config choices its
+// first turn should start with, for an agent whose model is one of them.
+func (c *Client) CreateSessionWithACP(ctx context.Context, title, agent, workspace, provider, model string, acpConfig map[string]string) (SessionResponse, error) {
 	body := map[string]any{"title": title}
 	if agent != "" {
 		body["agent"] = agent
@@ -40,6 +46,9 @@ func (c *Client) CreateSession(ctx context.Context, title, agent, workspace, pro
 	}
 	if model != "" {
 		body["model"] = model
+	}
+	if len(acpConfig) > 0 {
+		body["acp_config"] = acpConfig
 	}
 	var out struct {
 		Session models.Conversation `json:"session"`
@@ -105,6 +114,50 @@ func (c *Client) Models(ctx context.Context, agent string) ([]Model, error) {
 	}
 	err := c.do(ctx, "GET", path, nil, &out)
 	return out.Models, err
+}
+
+// ACPOption is one config choice an ACP agent's runtime offers: the model it
+// runs, a mode, or a toggle.
+type ACPOption struct {
+	ID      string     `json:"id"`
+	Name    string     `json:"name"`
+	Current string     `json:"current"`
+	Kind    string     `json:"kind,omitempty"` // select, model or boolean
+	Options []ACPValue `json:"options,omitempty"`
+}
+
+// ACPValue is one value an ACP config choice takes.
+type ACPValue struct {
+	Value string `json:"value"`
+	Name  string `json:"name"`
+}
+
+// ACPOptions reads the config choices an ACP connection's warm-up found. The
+// first call may wait for that warm-up, so the request's deadline must allow
+// it.
+func (c *Client) ACPOptions(ctx context.Context, agent string) ([]ACPOption, error) {
+	var out struct {
+		Options []ACPOption `json:"options"`
+	}
+	err := c.do(ctx, "GET", "/api/acp-options?agent="+url.QueryEscape(agent), nil, &out)
+	return out.Options, err
+}
+
+// SessionACPOptions reads the config choices of a live ACP conversation,
+// warming its session in when it has not started yet.
+func (c *Client) SessionACPOptions(ctx context.Context, id string) ([]ACPOption, error) {
+	var out struct {
+		Options []ACPOption `json:"options"`
+	}
+	err := c.do(ctx, "GET", "/api/sessions/"+url.PathEscape(id)+"/acp-options", nil, &out)
+	return out.Options, err
+}
+
+// SetSessionConfig applies one ACP config choice to a live conversation.
+func (c *Client) SetSessionConfig(ctx context.Context, id, configID, value string) error {
+	return c.do(ctx, "PUT", "/api/sessions/"+url.PathEscape(id)+"/acp-config", map[string]string{
+		"id": configID, "value": value,
+	}, nil)
 }
 
 func (c *Client) Workspaces(ctx context.Context) ([]string, error) {

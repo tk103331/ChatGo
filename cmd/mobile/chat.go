@@ -298,6 +298,7 @@ func (a *app) newChat() {
 		a.screen = screenNew
 		a.newDraft = ""
 		a.newFiles = nil
+		a.newACP = acpModels{}
 		if a.newModel == "" && len(a.meta.Models) > 0 {
 			m := a.meta.Models[0]
 			a.newModel = m.Provider + "::" + m.Model
@@ -442,6 +443,10 @@ func (a *app) agentSheet(c *ui.Context) {
 						},
 					})
 					if row.Clicked() {
+						if a.newAgent != item.Ref {
+							// Another runtime's models are not this one's.
+							a.newACP = acpModels{}
+						}
 						a.newAgent = item.Ref
 						a.agentOpen = false
 					}
@@ -461,8 +466,184 @@ const (
 	modelForChat = "chat"
 )
 
-// modelChip is the model picker in a composer's footer.
+// acpModels is one composer's ACP model list, read from the runtime's warmed
+// config options. The zero value is an agent whose list has not been asked
+// for.
+type acpModels struct {
+	agent    string
+	optionID string
+	current  string
+	values   []mobileapi.ACPValue
+	loading  bool
+	err      string
+}
+
+// agentKind is what an agent reference runs: chat, agent, acp or a2a.
+func (a *app) agentKind(ref string) string {
+	if ref == "" {
+		return "chat"
+	}
+	for _, item := range a.agents {
+		if item.Ref == ref {
+			return firstNonEmpty(item.Kind, "agent")
+		}
+	}
+	switch {
+	case strings.HasPrefix(ref, "acp:"):
+		return "acp"
+	case strings.HasPrefix(ref, "a2a:"):
+		return "a2a"
+	case strings.HasPrefix(ref, "agent:"):
+		return "agent"
+	}
+	return ""
+}
+
+// targetAgent is the agent a composer's model picker is choosing for.
+func (a *app) targetAgent(target string) string {
+	if target == modelForChat {
+		if a.conv != nil {
+			return a.conv.Agent
+		}
+		return ""
+	}
+	return a.newAgent
+}
+
+// acpState is the ACP model list the given composer's picker uses.
+func (a *app) acpState(target string) *acpModels {
+	if target == modelForChat {
+		return &a.chatACP
+	}
+	return &a.newACP
+}
+
+// acpModelLabel names the model an ACP composer shows, from the list its
+// runtime gave.
+func (a *app) acpModelLabel(st *acpModels) string {
+	if st.current != "" {
+		for _, v := range st.values {
+			if v.Value == st.current {
+				return v.Name
+			}
+		}
+		return st.current
+	}
+	if st.loading {
+		return "读取模型…"
+	}
+	return "选择模型"
+}
+
+// ensureACPModels reads an ACP agent's model list from its warmed runtime
+// options, once per agent. A conversation asks its own live session, which
+// warms it in if it has not started.
+func (a *app) ensureACPModels(target string) {
+	agent := a.targetAgent(target)
+	if !strings.HasPrefix(agent, "acp:") || a.client == nil {
+		return
+	}
+	st := a.acpState(target)
+	if st.agent == agent && (st.loading || len(st.values) > 0 || st.err != "") {
+		return
+	}
+	current := ""
+	if target == modelForChat && a.conv != nil && a.conv.ACPConfig != nil {
+		current = a.conv.ACPConfig["model"]
+	}
+	*st = acpModels{agent: agent, current: current, loading: true}
+	client := a.client
+	convID := a.openConv
+	a.invalidate()
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
+		defer cancel()
+		var opts []mobileapi.ACPOption
+		var err error
+		if target == modelForChat && convID != "" {
+			opts, err = client.SessionACPOptions(ctx, convID)
+		} else {
+			opts, err = client.ACPOptions(ctx, agent)
+		}
+		a.update(func() {
+			if a.client != client || a.targetAgent(target) != agent {
+				return
+			}
+			st.loading = false
+			if err != nil {
+				st.err = err.Error()
+				return
+			}
+			for _, opt := range opts {
+				if opt.Kind != "model" {
+					continue
+				}
+				st.optionID, st.values, st.current = opt.ID, opt.Options, opt.Current
+				break
+			}
+			if len(st.values) == 0 {
+				st.err = "该 ACP Agent 没有提供模型选项"
+			}
+		})
+	}()
+}
+
+// modelMatches reports whether a model row matches the picker's filter.
+func modelMatches(filter string, parts ...string) bool {
+	filter = strings.ToLower(strings.TrimSpace(filter))
+	if filter == "" {
+		return true
+	}
+	for _, part := range parts {
+		if strings.Contains(strings.ToLower(part), filter) {
+			return true
+		}
+	}
+	return false
+}
+
+// modelChip is the model picker in a composer's footer. A plain chat or a
+// custom agent picks from the desktop's models; an ACP agent picks from the
+// model its runtime offers; an A2A agent brings its own, so its chip only
+// says where the model runs.
 func (a *app) modelChip(c *ui.Context, ref *string, target string) {
+	agent := a.targetAgent(target)
+	kind := a.agentKind(agent)
+	if kind == "a2a" {
+		t := c.Theme()
+		ui.Row(c).Grow(1).Shrink(1).MinWidth(0).Height(34).Padding(0, 6).
+			Gap(6).AlignItems(ui.Center).Label("远程 Agent 模型").
+			Children(func() {
+				ui.Icon(c, icons.Must("globe")).Size(14, 14).TextColor(t.TextMuted).Shrink(0)
+				ui.Text(c, "远程 Agent 模型").FontSize(13).TextColor(t.TextMuted).
+					Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			})
+		return
+	}
+	if kind == "acp" {
+		st := a.acpState(target)
+		a.ensureACPModels(target)
+		t := c.Theme()
+		chip := ui.ButtonBase(c).Grow(1).Shrink(1).MinWidth(0).Height(34).Padding(0, 6).
+			Radius(12).Gap(6).AlignItems(ui.Center).Role(ui.RoleButton).
+			Label("模型 " + a.acpModelLabel(st))
+		if chip.Pressed() {
+			chip.Background(t.SurfaceHover)
+		}
+		chip.Children(func() {
+			ui.Icon(c, icons.Must("brain")).Size(14, 14).TextColor(t.TextMuted).Shrink(0)
+			ui.Text(c, a.acpModelLabel(st)).FontSize(13).Grow(1).MinWidth(0).
+				SingleLine().Ellipsis("…")
+			ui.Icon(c, icons.Must("chevron-down")).Size(12, 12).TextColor(t.TextMuted).Shrink(0)
+		})
+		if chip.Clicked() {
+			a.modelFilter = ""
+			a.modelFor = target
+			a.modelOpen = true
+			a.ensureACPModels(target)
+		}
+		return
+	}
 	if len(a.meta.Models) == 0 {
 		return
 	}
@@ -479,45 +660,175 @@ func (a *app) modelChip(c *ui.Context, ref *string, target string) {
 		ui.Icon(c, icons.Must("chevron-down")).Size(12, 12).TextColor(t.TextMuted).Shrink(0)
 	})
 	if chip.Clicked() {
+		a.modelFilter = ""
 		a.modelFor = target
 		a.modelOpen = true
 	}
 }
 
+// filteredModelChoices is the desktop model list narrowed by the picker's
+// filter.
+func (a *app) filteredModelChoices() []mobileapi.ModelChoice {
+	out := make([]mobileapi.ModelChoice, 0, len(a.meta.Models))
+	for _, m := range a.meta.Models {
+		if modelMatches(a.modelFilter, m.Model, m.Provider) {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// filteredACPValues is an ACP model list narrowed by the picker's filter.
+func (a *app) filteredACPValues(st *acpModels) []mobileapi.ACPValue {
+	out := make([]mobileapi.ACPValue, 0, len(st.values))
+	for _, v := range st.values {
+		if modelMatches(a.modelFilter, v.Name, v.Value) {
+			out = append(out, v)
+		}
+	}
+	return out
+}
+
+// chooseACPModel records an ACP model, applying it to a live conversation
+// before its next turn.
+func (a *app) chooseACPModel(target, value string) {
+	st := a.acpState(target)
+	old := st.current
+	st.current = value
+	a.modelOpen = false
+	a.invalidate()
+	if target != modelForChat || a.client == nil || a.openConv == "" || st.optionID == "" {
+		return
+	}
+	client, convID, optionID := a.client, a.openConv, st.optionID
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		err := client.SetSessionConfig(ctx, convID, optionID, value)
+		a.update(func() {
+			if a.client != client || a.openConv != convID {
+				return
+			}
+			if err != nil {
+				st.current = old
+				a.status = fmt.Sprintf("切换模型失败: %v", err)
+				return
+			}
+			if a.conv != nil {
+				if a.conv.ACPConfig == nil {
+					a.conv.ACPConfig = map[string]string{}
+				}
+				a.conv.ACPConfig[optionID] = value
+			}
+		})
+	}()
+}
+
 func (a *app) modelSheet(c *ui.Context) {
-	detent := float32(0.45)
-	if len(a.meta.Models) > 3 {
-		detent = 0.7
+	target := a.modelFor
+	agent := a.targetAgent(target)
+	kind := a.agentKind(agent)
+	if kind == "acp" {
+		a.ensureACPModels(target)
 	}
 	ref := &a.newModel
-	if a.modelFor == modelForChat {
+	if target == modelForChat {
 		ref = &a.chatModel
+	}
+	st := a.acpState(target)
+	count := len(a.meta.Models)
+	if kind == "acp" {
+		count = len(st.values)
+	}
+	detent := float32(0.45)
+	if count > 3 || a.modelFilter != "" {
+		detent = 0.7
 	}
 	mobile.Sheet(c, &a.modelOpen, mobile.SheetOptions{Detents: []float32{detent}, Label: "选择模型"}, func() {
 		t := c.Theme()
+		title := "选择模型"
+		if kind == "a2a" {
+			title = "模型"
+		}
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
-			ui.Text(c, "选择模型").FontSize(18).FontWeight(600)
-			ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-				for _, m := range a.meta.Models {
-					choice := m.Provider + "::" + m.Model
-					row := mobile.ListRow(c, mobile.RowOptions{
-						Title:    m.Model,
-						Subtitle: m.Provider,
-						Leading: func() {
-							ui.Icon(c, icons.Must("brain")).Size(20, 20).TextColor(t.TextMuted)
-						},
-						Trailing: func() {
-							if choice == *ref {
-								ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
-							}
-						},
+			ui.Text(c, title).FontSize(18).FontWeight(600)
+			switch kind {
+			case "a2a":
+				ui.Text(c, "远程 A2A Agent 自带模型，模型由对端决定，手机端不需要选择。").
+					FontSize(13).TextColor(t.TextMuted).MaxLines(3)
+			case "acp":
+				if st.loading {
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+						ui.Text(c, "正在从 "+a.agentLabel(agent)+" 预热模型…").
+							FontSize(13).TextColor(t.TextMuted).Grow(1)
 					})
-					if row.Clicked() {
-						*ref = choice
-						a.modelOpen = false
+				} else if st.err != "" {
+					ui.Text(c, st.err).FontSize(13).TextColor(t.Danger).MaxLines(3)
+					if secondaryButton(c, "重试").Clicked() {
+						*st = acpModels{}
+						a.ensureACPModels(target)
 					}
+				} else {
+					filter := ui.TextInput(c, &a.modelFilter).Placeholder("筛选模型")
+					if filter.Changed() {
+						c.Invalidate()
+					}
+					ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+						values := a.filteredACPValues(st)
+						if len(values) == 0 {
+							ui.Text(c, "没有匹配的模型").FontSize(13).TextColor(t.TextMuted).Padding(8, 0)
+						}
+						for _, v := range values {
+							v := v
+							row := mobile.ListRow(c, mobile.RowOptions{
+								Title:    v.Name,
+								Subtitle: "ACP · " + a.agentLabel(agent),
+								Leading: func() {
+									ui.Icon(c, icons.Must("brain")).Size(20, 20).TextColor(t.TextMuted)
+								},
+								Trailing: func() {
+									if v.Value == st.current {
+										ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
+									}
+								},
+							})
+							if row.Clicked() {
+								a.chooseACPModel(target, v.Value)
+							}
+						}
+					})
 				}
-			})
+			default:
+				filter := ui.TextInput(c, &a.modelFilter).Placeholder("筛选模型")
+				if filter.Changed() {
+					c.Invalidate()
+				}
+				ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+					models := a.filteredModelChoices()
+					if len(models) == 0 {
+						ui.Text(c, "没有匹配的模型").FontSize(13).TextColor(t.TextMuted).Padding(8, 0)
+					}
+					for _, m := range models {
+						choice := m.Provider + "::" + m.Model
+						row := mobile.ListRow(c, mobile.RowOptions{
+							Title:    m.Model,
+							Subtitle: m.Provider,
+							Leading: func() {
+								ui.Icon(c, icons.Must("brain")).Size(20, 20).TextColor(t.TextMuted)
+							},
+							Trailing: func() {
+								if choice == *ref {
+									ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
+								}
+							},
+						})
+						if row.Clicked() {
+							*ref = choice
+							a.modelOpen = false
+						}
+					}
+				})
+			}
 			if ghostButton(c, "关闭").Clicked() {
 				a.modelOpen = false
 			}
@@ -685,6 +996,12 @@ func splitModelRef(ref string) (provider, model string) {
 // syncChatModel points the open conversation's composer at the model it last
 // used, falling back to the new-session choice and then the first offered one.
 func (a *app) syncChatModel(conv *models.Conversation) {
+	if conv != nil && (strings.HasPrefix(conv.Agent, "acp:") || strings.HasPrefix(conv.Agent, "a2a:")) {
+		// Those runtimes carry their own model; the desktop's list means
+		// nothing to them.
+		a.chatModel = ""
+		return
+	}
 	if conv != nil && conv.Provider != "" && conv.Model != "" {
 		ref := conv.Provider + "::" + conv.Model
 		for _, m := range a.meta.Models {
@@ -718,10 +1035,22 @@ func (a *app) createNewChat() {
 		a.toast("请先输入内容")
 		return
 	}
-	provider, model := splitModelRef(a.newModel)
 	files := append([]newFile(nil), a.newFiles...)
 	workspace := a.newWorkspace
 	agent := a.newAgent
+	// ACP and A2A carry their own runtime; only a plain chat or a custom
+	// agent picks one of the desktop's models.
+	provider, model := "", ""
+	var acpConfig map[string]string
+	switch a.agentKind(agent) {
+	case "acp":
+		if a.newACP.current != "" {
+			acpConfig = map[string]string{"model": a.newACP.current}
+		}
+	case "a2a":
+	default:
+		provider, model = splitModelRef(a.newModel)
+	}
 	a.creating = true
 	a.status = "正在创建会话…"
 	go func() {
@@ -732,7 +1061,7 @@ func (a *app) createNewChat() {
 		})
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-		resp, err := client.CreateSession(ctx, "新会话", agent, workspace, provider, model)
+		resp, err := client.CreateSessionWithACP(ctx, "新会话", agent, workspace, provider, model, acpConfig)
 		if err != nil {
 			a.connectionError(client, "新建会话失败: %v", err)
 			return
@@ -761,6 +1090,10 @@ func (a *app) createNewChat() {
 			a.openConv = id
 			a.conv = &resp.Session
 			a.chatModel = ""
+			a.chatACP = acpModels{}
+			if a.agentKind(a.conv.Agent) == "acp" {
+				a.chatACP = a.newACP
+			}
 			a.syncChatModel(a.conv)
 			a.running = true
 			a.interaction = nil
@@ -790,6 +1123,7 @@ func (a *app) openChat(id, roomID, roomName string) {
 		a.attachments = nil
 		a.status = ""
 		a.chatModel = ""
+		a.chatACP = acpModels{}
 		a.followEnd = true
 	})
 	a.loadChat(id)
@@ -813,8 +1147,23 @@ func (a *app) loadChat(id string) {
 				return
 			}
 			a.conv = &resp.Session
-			if a.chatModel == "" {
-				a.syncChatModel(a.conv)
+			switch a.agentKind(a.conv.Agent) {
+			case "acp":
+				if a.chatACP.agent != a.conv.Agent {
+					current := ""
+					if a.conv.ACPConfig != nil {
+						current = a.conv.ACPConfig["model"]
+					}
+					a.chatACP = acpModels{agent: a.conv.Agent, current: current}
+				}
+				a.chatModel = ""
+			case "a2a":
+				a.chatACP = acpModels{}
+				a.chatModel = ""
+			default:
+				if a.chatModel == "" {
+					a.syncChatModel(a.conv)
+				}
 			}
 			a.running = resp.Running
 			a.interaction = resp.Interaction
@@ -906,9 +1255,10 @@ func (a *app) sendCurrent() {
 	roomID := a.roomID
 	atts := append([]mobileapi.Attachment(nil), a.attachments...)
 	// A room picks its own members' models; a plain chat sends with the one
-	// chosen in its composer.
+	// chosen in its composer. ACP and A2A bring their own.
 	provider, model := "", ""
-	if roomID == "" {
+	kind := a.agentKind(a.targetAgent(modelForChat))
+	if roomID == "" && kind != "acp" && kind != "a2a" {
 		provider, model = splitModelRef(a.chatModel)
 	}
 	a.update(func() {
@@ -1061,14 +1411,6 @@ func listMark(c *ui.Context, icon string, running bool) {
 	})
 }
 
-// firstRune is the first character of s, for the mark beside an author's name.
-func firstRune(s string) string {
-	for _, r := range s {
-		return string(r)
-	}
-	return ""
-}
-
 func (a *app) messageView(c *ui.Context, m *models.Message, showAuthor bool) {
 	t := c.Theme()
 	ui.Column(c).FillWidth().Gap(6).Children(func() {
@@ -1077,11 +1419,9 @@ func (a *app) messageView(c *ui.Context, m *models.Message, showAuthor bool) {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Row(c).Size(20, 20).Radius(10).Background(t.Accent.Alpha(0.14)).
 					AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-					if ref := a.agentRefForName(author); ref != "" {
-						a.agentMarkColor(c, ref, 14, t.Accent)
-						return
-					}
-					ui.Text(c, firstRune(author)).FontSize(10).FontWeight(600).TextColor(t.Accent)
+					// A named agent carries its own mark; the built-in chat
+					// keeps the chat icon, never a letter.
+					a.agentMarkColor(c, a.agentRefForName(author), 14, t.Accent)
 				})
 				ui.Text(c, author).FontSize(12).FontWeight(600).TextColor(t.TextMuted)
 			})

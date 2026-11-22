@@ -686,3 +686,81 @@ func TestSettingsDoesNotRepeatTheStatusStrip(t *testing.T) {
 		t.Fatalf("status strip repeated on settings; texts: %v", tr.Texts())
 	}
 }
+
+// An ACP chat's model chip names the model its runtime offers, even when the
+// desktop has no plain model list to show.
+func TestACPChatShowsItsRuntimeModel(t *testing.T) {
+	a := testApp()
+	a.screen = screenChat
+	a.conv.Agent = "acp:Claude"
+	a.chatACP = acpModels{
+		agent: "acp:Claude", optionID: "model", current: "m2",
+		values: []mobileapi.ACPValue{{Value: "m1", Name: "Opus"}, {Value: "m2", Name: "Sonnet"}},
+	}
+	a.meta.Models = nil
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Frame()
+	if _, ok := tr.AccessByRole(ui.RoleButton, "模型 Sonnet"); !ok {
+		t.Fatalf("ACP model chip missing; texts: %v", tr.Texts())
+	}
+}
+
+// An A2A agent brings its own model: the composer says so and offers no
+// picker.
+func TestA2AAgentHasNoModelPicker(t *testing.T) {
+	a := testApp()
+	a.screen = screenChat
+	a.conv.Agent = "a2a:Reviewer"
+	a.meta.Models = []mobileapi.ModelChoice{{Provider: "deepseek", Model: "deepseek-chat"}}
+	a.chatModel = "deepseek::deepseek-chat"
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Frame()
+	if !tr.HasText("远程 Agent 模型") {
+		t.Fatalf("no remote model note; texts: %v", tr.Texts())
+	}
+	if _, ok := tr.AccessByRole(ui.RoleButton, "模型 deepseek-chat"); ok {
+		t.Fatal("an A2A agent offered a model picker")
+	}
+}
+
+// The model picker's filter matches a model's name and its provider.
+func TestModelFilterNarrowsChoices(t *testing.T) {
+	a := testApp()
+	a.meta.Models = []mobileapi.ModelChoice{
+		{Provider: "deepseek", Model: "deepseek-chat"},
+		{Provider: "anthropic", Model: "claude-sonnet"},
+		{Provider: "anthropic", Model: "claude-opus"},
+	}
+	a.modelFilter = "sonnet"
+	if got := a.filteredModelChoices(); len(got) != 1 || got[0].Model != "claude-sonnet" {
+		t.Fatalf("filtered = %+v", got)
+	}
+	a.modelFilter = "DEEPSEEK"
+	if got := a.filteredModelChoices(); len(got) != 1 || got[0].Provider != "deepseek" {
+		t.Fatalf("provider filter = %+v", got)
+	}
+	if got := a.filteredModelChoices(); len(got) != 1 {
+		t.Fatalf("filter cleared? = %+v", got)
+	}
+	a.modelFilter = ""
+	if got := a.filteredModelChoices(); len(got) != 3 {
+		t.Fatalf("filtered all = %+v", got)
+	}
+}
+
+// The ACP picker filters by the model's name and its value too.
+func TestModelFilterNarrowsACPValues(t *testing.T) {
+	a := testApp()
+	st := acpModels{values: []mobileapi.ACPValue{
+		{Value: "opus-4", Name: "Opus 4"},
+		{Value: "sonnet-4", Name: "Sonnet 4"},
+	}}
+	a.modelFilter = "OPUS"
+	if got := a.filteredACPValues(&st); len(got) != 1 || got[0].Value != "opus-4" {
+		t.Fatalf("filtered = %+v", got)
+	}
+	a.modelFilter = "sonnet"
+	if got := a.filteredACPValues(&st); len(got) != 1 || got[0].Name != "Sonnet 4" {
+		t.Fatalf("filtered = %+v", got)
+	}
+}

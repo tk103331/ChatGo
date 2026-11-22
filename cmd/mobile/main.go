@@ -149,8 +149,13 @@ type app struct {
 	newWorkspace string
 	// chatModel is the model the open conversation sends with; modelFor says
 	// which composer the model sheet is choosing for.
-	chatModel     string
+	chatModel string
+	// newACP and chatACP are the ACP runtimes' model lists, read when their
+	// model pickers open.
+	newACP        acpModels
+	chatACP       acpModels
 	modelFor      string
+	modelFilter   string
 	newFiles      []newFile
 	workspaces    []string
 	workspaceOpen bool

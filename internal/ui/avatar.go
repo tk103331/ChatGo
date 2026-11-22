@@ -42,6 +42,17 @@ func (cw *ChatWindow) agentLeading(c *mgo.Context, name string) func() {
 
 // makeIdenticon builds an offline identicon bitmap for a seed.
 func makeIdenticon(seed string) *mgo.Bitmap {
+	data := identiconPNG(seed)
+	if data == nil {
+		return nil
+	}
+	bmp, _ := mgo.DecodeBitmap(data)
+	return bmp
+}
+
+// identiconPNG encodes the offline identicon of a seed as a PNG, for the
+// phone, which draws it where the desktop draws the bitmap.
+func identiconPNG(seed string) []byte {
 	h := fnv.New32a()
 	_, _ = h.Write([]byte(seed))
 	palette := []color.Color{
@@ -60,6 +71,5 @@ func makeIdenticon(seed string) *mgo.Bitmap {
 	if err := png.Encode(&buf, img); err != nil {
 		return nil
 	}
-	bmp, _ := mgo.DecodeBitmap(buf.Bytes())
-	return bmp
+	return buf.Bytes()
 }

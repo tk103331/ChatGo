@@ -102,6 +102,13 @@ func (r webRuntime) AgentIcon(ref string) ([]byte, string) {
 				return agentIcon{data: data, typ: iconMediaType(path, data)}
 			}
 		}
+		// A custom agent has no brand mark of its own: the desktop draws its
+		// generated avatar, so the phone gets the same picture.
+		if seed := cw.agentAvatarSeed(ref); seed != "" {
+			if data := identiconPNG(seed); len(data) > 0 {
+				return agentIcon{data: data, typ: "image/png"}
+			}
+		}
 		// A known coding CLI keeps its brand logo, as the desktop draws it
 		// when no icon file was configured.
 		if name, ok := strings.CutPrefix(ref, "acp:"); ok {
@@ -118,6 +125,34 @@ func (r webRuntime) AgentIcon(ref string) ([]byte, string) {
 type agentIcon struct {
 	data []byte
 	typ  string
+}
+
+// agentAvatarSeed is the seed of the generated avatar a reference is drawn
+// with when it has no icon file. A custom agent always has one; an ACP
+// connection only when it was given a seed, since otherwise it keeps its
+// brand logo.
+func (cw *ChatWindow) agentAvatarSeed(ref string) string {
+	if cw.cfg == nil {
+		return ""
+	}
+	switch {
+	case strings.HasPrefix(ref, "agent:"):
+		name := strings.TrimPrefix(ref, "agent:")
+		for _, a := range cw.cfg.Agents {
+			if a.Name == name && a.AvatarSeed != "" {
+				return a.AvatarSeed
+			}
+		}
+		return name
+	case strings.HasPrefix(ref, "acp:"):
+		name := strings.TrimPrefix(ref, "acp:")
+		for _, a := range cw.cfg.ACPAgents {
+			if a.Name == name {
+				return a.AvatarSeed
+			}
+		}
+	}
+	return ""
 }
 
 // agentIconPath is the icon file an agent reference was configured with.
