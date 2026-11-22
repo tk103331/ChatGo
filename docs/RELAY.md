@@ -15,6 +15,48 @@
 
 ## 1. 构建并运行中继
 
+### 一键安装（Linux，推荐）
+
+在全新的 Linux 服务器上安装 `relayd`、systemd 服务和 nginx 反向代理：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/tk103331/ChatGo/main/scripts/install-relay.sh \
+  | sudo bash -s -- --port 8080 --public-url http://relay.example.com:8080
+
+# 或从仓库运行
+sudo bash scripts/install-relay.sh --port 8080 --public-url http://relay.example.com:8080
+```
+
+脚本默认从 GitHub Release 下载 `relayd-linux-<arch>`，创建 `chatgo-relay`
+用户与 `/var/lib/chatgo-relay/relay.db`，并由 nginx 在 8080 端口代理到
+`127.0.0.1:8787`。重复执行会升级二进制，保留数据库。
+
+HTTPS：
+
+```sh
+sudo bash scripts/install-relay.sh --port 443 --domain relay.example.com \
+  --tls-cert /etc/letsencrypt/live/relay.example.com/fullchain.pem \
+  --tls-key /etc/letsencrypt/live/relay.example.com/privkey.pem
+```
+
+推送、直接监听、未发布版本等选项：
+
+```sh
+sudo bash scripts/install-relay.sh --help
+sudo bash scripts/install-relay.sh --apns-key AuthKey.p8 --apns-key-id ABC123 \
+  --apns-team-id TEAM123456 --apns-topic com.example.app
+sudo bash scripts/install-relay.sh --no-nginx --addr 0.0.0.0:8787 \
+  --public-url https://relay.example.com
+sudo bash scripts/install-relay.sh --binary ./relayd
+```
+
+脚本会写入 `/etc/systemd/system/chatgo-relay.service` 与
+`/etc/nginx/conf.d/chatgo-relay.conf`；如果 nginx 配置检查失败，会恢复原配置。
+Release 尚未附带 relayd 资产时，脚本会在检测到 Go 工具链后从源码构建；
+也可以直接用 `--binary ./relayd` 指定本地二进制。
+
+### 手动构建与运行
+
 ```sh
 go build -o relayd ./cmd/relayd
 

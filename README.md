@@ -220,8 +220,19 @@ and never stores conversation content. Phones pair with a one-time code and
 receive a revocable device token. The native app lives in `cmd/mobile` and
 supports Chat, Rooms and scheduled tasks.
 
+Linux 服务器一键安装中继（systemd + nginx，默认 8080）：
+
 ```sh
-# relay (put TLS in front for production)
+curl -fsSL https://raw.githubusercontent.com/tk103331/ChatGo/main/scripts/install-relay.sh \
+  | sudo bash -s -- --port 8080 --public-url http://<server>:8080
+```
+
+或使用仓库内脚本：`sudo bash scripts/install-relay.sh --help`。生产环境请加
+`--domain` 与 `--tls-cert/--tls-key` 启用 HTTPS。
+
+手动运行中继：
+
+```sh
 go build -o relayd ./cmd/relayd
 ./relayd -addr 127.0.0.1:8787 -data relay.db
 

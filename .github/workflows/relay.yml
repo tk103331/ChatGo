@@ -38,6 +38,8 @@ jobs:
           cache: true
       - name: Test the relay
         run: |
+          bash -n scripts/install-relay.sh
+          if command -v shellcheck >/dev/null; then shellcheck scripts/install-relay.sh; fi
           go test ./internal/relay/... ./internal/e2e/...
           go vet ./cmd/relayd/... ./internal/relay/... ./internal/e2e/...
 
