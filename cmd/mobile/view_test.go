@@ -626,3 +626,63 @@ func TestRemoveDesktopBeforeCurrentKeepsTheCurrent(t *testing.T) {
 		t.Fatalf("server = %d, want the same desktop at its new index", a.server)
 	}
 }
+
+// The new-session page greets above its choices, the way the desktop does.
+func TestNewSessionPageGreets(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.connected, a.eventsConnected = true, true
+	a.screen = screenNew
+	a.tab = tabChat
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Advance(20 * time.Millisecond)
+	if !tr.HasText("在 ChatGo 里做点什么？") {
+		t.Fatalf("greeting missing; texts: %v", tr.Texts())
+	}
+}
+
+// An author's name resolves to the configured agent, so the byline can carry
+// the same mark as the lists.
+func TestAgentRefForName(t *testing.T) {
+	a := testApp()
+	a.agents = []mobileapi.Agent{
+		{Ref: "acp:OpenCode", Name: "OpenCode"},
+		{Ref: "a2a:reviewer", Name: "审查员"},
+	}
+	if got := a.agentRefForName("OpenCode"); got != "acp:OpenCode" {
+		t.Fatalf("agentRefForName(OpenCode) = %q", got)
+	}
+	if got := a.agentRefForName("opencode"); got != "acp:OpenCode" {
+		t.Fatalf("agentRefForName(opencode) = %q", got)
+	}
+	if got := a.agentRefForName("别人"); got != "" {
+		t.Fatalf("agentRefForName(别人) = %q", got)
+	}
+}
+
+// A failed connection leaves a client behind, but settings should not offer
+// to disconnect a link that is not there.
+func TestSettingsHidesDisconnectWhenOffline(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.connected, a.eventsConnected = false, false
+	a.screen = screenSettings
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Advance(20 * time.Millisecond)
+	if tr.HasText("断开连接") {
+		t.Fatalf("disconnect offered while offline; texts: %v", tr.Texts())
+	}
+}
+
+// Settings has its own state row, so the global strip does not repeat it.
+func TestSettingsDoesNotRepeatTheStatusStrip(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.connected, a.eventsConnected = false, false
+	a.screen = screenSettings
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Advance(20 * time.Millisecond)
+	if tr.HasText("Test · 未连接") {
+		t.Fatalf("status strip repeated on settings; texts: %v", tr.Texts())
+	}
+}

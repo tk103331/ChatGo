@@ -687,9 +687,9 @@ func (a *app) topBar(c *ui.Context) {
 		Trailing: trailing,
 	})
 	// The status strip only appears when there is something to act on. A
-	// healthy link needs no line on every page; the desktop's name and the
-	// live state live in Settings.
-	if len(a.servers) > 0 && !(a.connected && a.eventsConnected) {
+	// healthy link needs no line on every page; settings has the live state
+	// in its own rows, so it does not repeat it here.
+	if len(a.servers) > 0 && !(a.connected && a.eventsConnected) && a.screen != screenSettings {
 		t := c.Theme()
 		label, color := "已断开", t.TextMuted
 		switch {

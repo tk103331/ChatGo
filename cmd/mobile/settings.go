@@ -154,7 +154,9 @@ func (a *app) connectionRows(c *ui.Context) {
 			a.toast("正在重新连接")
 		}
 	}
-	if a.client != nil {
+	// A failed attempt leaves a client behind, but there is no link to cut:
+	// only offer the action while a connection exists or is being made.
+	if a.connecting || a.connected {
 		if mobile.ListRow(c, mobile.RowOptions{
 			Title:    "断开连接",
 			Subtitle: "保留配对信息，下次可直接重新连接",

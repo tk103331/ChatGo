@@ -245,6 +245,22 @@ func (a *app) sessionAgentLabel(ref string) string {
 	return ref
 }
 
+// agentRefForName is the configured agent behind an author's byline, so a
+// message can carry the same mark the lists give it.
+func (a *app) agentRefForName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return ""
+	}
+	for _, agent := range a.agents {
+		label := firstNonEmpty(agent.Name, agent.Ref)
+		if strings.EqualFold(label, name) {
+			return agent.Ref
+		}
+	}
+	return ""
+}
+
 // sessionIcon marks what kind of agent runs the session.
 func sessionIcon(ref string) string {
 	switch {
@@ -339,14 +355,20 @@ func (a *app) newSessionPage(c *ui.Context) {
 		return
 	}
 	// The choices stack from the bottom edge, as the reference layout does:
-	// project, desktop, agent, then the composer. The space above stays open
-	// for the conversation to come. With the keyboard up the cards give their
-	// room to the composer; Hidden keeps them built, so the field keeps focus.
+	// a greeting, project, agent, then the composer. The space above stays
+	// open for the conversation to come. With the keyboard up the greeting
+	// and cards give their room to the composer; Hidden keeps them built, so
+	// the field keeps focus.
 	_, _, bottom, _ := c.SafeArea()
 	keyboard := bottom > 120
+	t := c.Theme()
 	ui.Column(c).Grow(1).MinHeight(0).Justify(ui.End).Children(func() {
 		ui.Column(c).FillWidth().MaxWidth(680).AlignSelf(ui.Center).
 			Padding(16, 14).Gap(10).Children(func() {
+			ui.Column(c).FillWidth().Gap(3).Hidden(keyboard).Children(func() {
+				ui.Text(c, "在 ChatGo 里做点什么？").FontSize(22).FontWeight(650)
+				ui.Text(c, "或直接开始，不选项目").FontSize(12).TextColor(t.TextMuted)
+			})
 			ui.Column(c).FillWidth().Gap(10).Hidden(keyboard).Children(func() {
 				a.workspaceCard(c)
 				a.agentCard(c)
@@ -1007,8 +1029,6 @@ func messageAuthor(m *models.Message) string {
 	return firstNonEmpty(m.AuthorName, "ChatGo")
 }
 
-// listMark is the soft icon a list row leads with, accented while its item
-// runs.
 // agentMarkBox is an agent's icon in the list's tinted square, or the mark
 // of its kind when the desktop configured none.
 func (a *app) agentMarkBox(c *ui.Context, ref string, running bool) {
@@ -1027,6 +1047,8 @@ func (a *app) agentMarkBox(c *ui.Context, ref string, running bool) {
 	})
 }
 
+// listMark is the soft icon a list row leads with, accented while its item
+// runs.
 func listMark(c *ui.Context, icon string, running bool) {
 	t := c.Theme()
 	fg := t.TextMuted
@@ -1055,6 +1077,10 @@ func (a *app) messageView(c *ui.Context, m *models.Message, showAuthor bool) {
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Children(func() {
 				ui.Row(c).Size(20, 20).Radius(10).Background(t.Accent.Alpha(0.14)).
 					AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+					if ref := a.agentRefForName(author); ref != "" {
+						a.agentMarkColor(c, ref, 14, t.Accent)
+						return
+					}
 					ui.Text(c, firstRune(author)).FontSize(10).FontWeight(600).TextColor(t.Accent)
 				})
 				ui.Text(c, author).FontSize(12).FontWeight(600).TextColor(t.TextMuted)
@@ -1063,7 +1089,7 @@ func (a *app) messageView(c *ui.Context, m *models.Message, showAuthor bool) {
 		if m.Role == "user" {
 			ui.Row(c).FillWidth().Justify(ui.End).Children(func() {
 				ui.Text(c, m.Content).FontSize(15).Padding(10, 14).Radius(mtheme.CardRadius * 2).
-					Background(t.Accent.Alpha(0.16)).MaxLines(30)
+					Background(t.Accent.Alpha(0.16))
 			})
 			return
 		}
@@ -1141,7 +1167,7 @@ func (a *app) segmentsView(c *ui.Context, m *models.Message) {
 					case seg.Kind == "tool" && seg.ToolCall != nil:
 						a.toolView(c, m.ID+":seg:"+strconv.Itoa(i), seg.ToolCall)
 					case seg.Kind == "text" && strings.TrimSpace(seg.Text) != "":
-						kit.MarkdownView(c, seg.Text)
+						kit.MarkdownView(c, seg.Text).Padding(2, 8)
 					}
 				}
 			})
@@ -1203,7 +1229,7 @@ func (a *app) reasoningRow(c *ui.Context, key, text string) {
 	// The opened thought sits in the same box as an opened tool call.
 	ui.Column(c).FillWidth().Gap(6).Padding(8, 10).Radius(mtheme.ControlRadius).
 		Background(t.Background).Border(1, t.Border).Children(func() {
-		ui.Text(c, text).FontSize(12).TextColor(t.Text).MaxLines(24)
+		ui.Text(c, text).FontSize(12).TextColor(t.Text)
 	})
 }
 
@@ -1341,17 +1367,17 @@ func (a *app) toolView(c *ui.Context, key string, tc *models.ToolCall) {
 		if tc.Arguments != "" {
 			ui.Text(c, "参数").FontSize(11).TextColor(t.TextMuted)
 			ui.Text(c, clipText(tc.Arguments, 4000)).Font(mtheme.MonoFont).
-				FontSize(11).TextColor(t.Text).MaxLines(14)
+				FontSize(11).TextColor(t.Text)
 		}
 		if tc.Result != "" {
 			ui.Text(c, "结果").FontSize(11).TextColor(t.TextMuted)
 			ui.Text(c, clipText(tc.Result, 4000)).Font(mtheme.MonoFont).
-				FontSize(11).TextColor(t.Text).MaxLines(14)
+				FontSize(11).TextColor(t.Text)
 		}
 		if tc.Error != "" {
 			ui.Text(c, "错误").FontSize(11).TextColor(t.Danger)
 			ui.Text(c, clipText(tc.Error, 4000)).Font(mtheme.MonoFont).
-				FontSize(11).TextColor(t.Danger).MaxLines(10)
+				FontSize(11).TextColor(t.Danger)
 		}
 	})
 }
