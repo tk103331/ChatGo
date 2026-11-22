@@ -71,7 +71,11 @@ jobs:
       - name: Build the MyGo CLI
         run: go build -o "$RUNNER_TEMP/mygo" github.com/egoist/mygo/cmd/mygo
       - name: Doctor
-        run: '"$RUNNER_TEMP/mygo" doctor'
+        # The runner has no WebKitGTK, which only desktop builds need.
+        run: |
+          out=$("$RUNNER_TEMP/mygo" doctor || true)
+          echo "$out"
+          if echo "$out" | grep -E '✗.*(android|adb|ndk|jdk)'; then exit 1; fi
       - name: Build the Android app
         run: '"$RUNNER_TEMP/mygo" build -platform android ./cmd/mobile'
       - name: Upload the Android artifacts
