@@ -2,9 +2,11 @@ package webui
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 )
 
 // toolTestRunner adds the optional tool surface to the feature fake.
@@ -74,5 +76,47 @@ func TestToolRoutesNeedRuntime(t *testing.T) {
 	w := serve(t, s, http.MethodGet, "/api/files?dir=/w", "")
 	if w.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d %s", w.Code, w.Body)
+	}
+}
+
+// The terminal routes start a persistent shell, feed it input and return
+// output; the session outlives the client.
+func TestTerminalRoutes(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	dir := t.TempDir()
+	r := &toolTestRunner{fakeRunner: &fakeRunner{}}
+	s, _ := runnerServer(t, r)
+	w := serve(t, s, http.MethodPost, "/api/terminals", `{"dir":"`+dir+`","cols":40,"rows":10}`)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("start: %d %s", w.Code, w.Body)
+	}
+	var start struct {
+		Session TerminalInfo `json:"session"`
+	}
+	if err := jsonUnmarshal(w.Body.Bytes(), &start); err != nil || start.Session.ID == "" {
+		t.Fatalf("start: %v %s", err, w.Body)
+	}
+	id := start.Session.ID
+	if w := serve(t, s, http.MethodGet, "/api/terminals", ""); w.Code != http.StatusOK || !strings.Contains(w.Body.String(), id) {
+		t.Fatalf("list: %d %s", w.Code, w.Body)
+	}
+	input := base64.StdEncoding.EncodeToString([]byte("echo 7\n"))
+	if w := serve(t, s, http.MethodPost, "/api/terminals/"+id+"/input", `{"data":"`+input+`"}`); w.Code != http.StatusOK {
+		t.Fatalf("input: %d %s", w.Code, w.Body)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		w := serve(t, s, http.MethodGet, "/api/terminals/"+id+"/output?since=0&wait_ms=100", "")
+		var out TerminalOutput
+		if w.Code == http.StatusOK && jsonUnmarshal(w.Body.Bytes(), &out) == nil && strings.Contains(string(out.Data), "7") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("output did not arrive: %s", w.Body)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if w := serve(t, s, http.MethodDelete, "/api/terminals/"+id, ""); w.Code != http.StatusOK {
+		t.Fatalf("close: %d %s", w.Code, w.Body)
 	}
 }
