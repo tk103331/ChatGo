@@ -13,6 +13,7 @@ type toolTestRunner struct {
 	project string
 }
 
+func (f *toolTestRunner) WorkspaceDir(dir string) (string, error) { return dir, nil }
 func (f *toolTestRunner) Files(dir string) ([]FileEntry, error) {
 	return []FileEntry{{Name: "a.txt", Path: dir + "/a.txt", Size: 5}}, nil
 }

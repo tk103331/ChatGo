@@ -2,7 +2,9 @@ package mobileapi
 
 import (
 	"context"
+	"encoding/base64"
 	"net/url"
+	"strconv"
 	"time"
 
 	"chatgo/pkg/models"
@@ -422,5 +424,78 @@ func (c *Client) Directories(ctx context.Context, dir string) (FSListing, error)
 		path += "?dir=" + url.QueryEscape(dir)
 	}
 	err := c.do(ctx, "GET", path, nil, &out)
+	return out, err
+}
+
+// TerminalInfo is one persistent desktop shell.
+type TerminalInfo struct {
+	ID       string    `json:"id"`
+	Title    string    `json:"title"`
+	Dir      string    `json:"dir"`
+	Cols     int       `json:"cols"`
+	Rows     int       `json:"rows"`
+	Exited   bool      `json:"exited,omitempty"`
+	ExitCode int       `json:"exit_code,omitempty"`
+	Created  time.Time `json:"created"`
+}
+
+// TerminalOutput is one long-poll chunk of terminal output.
+type TerminalOutput struct {
+	Seq      int64  `json:"seq"`
+	Data     []byte `json:"data,omitempty"`
+	Reset    bool   `json:"reset,omitempty"`
+	Exited   bool   `json:"exited,omitempty"`
+	ExitCode int    `json:"exit_code,omitempty"`
+}
+
+func (c *Client) Terminals(ctx context.Context) ([]TerminalInfo, error) {
+	var out struct {
+		Sessions []TerminalInfo `json:"sessions"`
+	}
+	err := c.do(ctx, "GET", "/api/terminals", nil, &out)
+	return out.Sessions, err
+}
+
+func (c *Client) StartTerminal(ctx context.Context, dir string, cols, rows int, title string) (TerminalInfo, error) {
+	var out struct {
+		Session TerminalInfo `json:"session"`
+	}
+	err := c.do(ctx, "POST", "/api/terminals", map[string]any{
+		"dir": dir, "cols": cols, "rows": rows, "title": title,
+	}, &out)
+	return out.Session, err
+}
+
+func (c *Client) CloseTerminal(ctx context.Context, id string) error {
+	return c.do(ctx, "DELETE", "/api/terminals/"+url.PathEscape(id), nil, nil)
+}
+
+func (c *Client) TerminalInput(ctx context.Context, id string, data []byte) error {
+	return c.do(ctx, "POST", "/api/terminals/"+url.PathEscape(id)+"/input", map[string]string{
+		"data": base64.StdEncoding.EncodeToString(data),
+	}, nil)
+}
+
+func (c *Client) TerminalResize(ctx context.Context, id string, cols, rows int) error {
+	return c.do(ctx, "POST", "/api/terminals/"+url.PathEscape(id)+"/resize", map[string]int{
+		"cols": cols, "rows": rows,
+	}, nil)
+}
+
+// TerminalOutput long-polls for output after since. It waits up to wait on the
+// server, so its HTTP client allows that plus a margin.
+func (c *Client) TerminalOutput(ctx context.Context, id string, since int64, wait time.Duration) (TerminalOutput, error) {
+	cp := *c
+	if c.HTTP != nil {
+		hc := *c.HTTP
+		hc.Timeout = wait + 30*time.Second
+		cp.HTTP = &hc
+	}
+	var out TerminalOutput
+	path := "/api/terminals/" + url.PathEscape(id) + "/output?since=" + strconv.FormatInt(since, 10)
+	if wait > 0 {
+		path += "&wait_ms=" + strconv.FormatInt(wait.Milliseconds(), 10)
+	}
+	err := cp.do(ctx, "GET", path, nil, &out)
 	return out, err
 }

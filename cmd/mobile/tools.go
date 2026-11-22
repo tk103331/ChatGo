@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
+	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/mobile"
+	"github.com/hinshun/vt10x"
 
 	"chatgo/internal/mobileapi"
 	"chatgo/internal/ui/icons"
@@ -64,6 +67,8 @@ func (a *app) projectList(c *ui.Context) {
 }
 
 func (a *app) openProject(dir string) {
+	a.stopTerminalIO()
+	a.clearTerminalInput()
 	a.update(func() {
 		a.screen = screenProject
 		a.projectDir = dir
@@ -74,7 +79,10 @@ func (a *app) openProject(dir string) {
 		a.gitStatus, a.gitLog = mobileapi.GitStatus{}, nil
 		a.gitErr = ""
 		a.gitCommitMsg = ""
-		a.termOutput, a.termDraft, a.termErr = "", "", ""
+		a.termID, a.termVT = "", nil
+		a.termSince, a.termExited, a.termExitCode, a.termConnErr = 0, false, 0, ""
+		a.termDraft, a.termSent = "", ""
+		a.termClosed = false
 	})
 	a.loadFiles()
 }
@@ -104,6 +112,11 @@ func (a *app) projectView(c *ui.Context) {
 						a.loadFiles()
 					case projectGit:
 						a.loadGit()
+					case projectTerm:
+						a.ensureTerminal()
+					}
+					if tab.value != projectTerm {
+						a.stopTerminalIO()
 					}
 					a.invalidate()
 				}
@@ -526,85 +539,452 @@ func (a *app) commitGit() {
 
 // --- terminal ---
 
+const (
+	terminalCols = 40
+	terminalRows = 26
+)
+
 func (a *app) projectTerminal(c *ui.Context) {
 	t := c.Theme()
-	ui.Column(c).Grow(1).MinHeight(0).Children(func() {
-		ui.Row(c).FillWidth().Padding(4, 16).Gap(6).AlignItems(ui.Center).Children(func() {
-			ui.Icon(c, icons.Must("terminal")).Size(14, 14).TextColor(t.TextMuted).Shrink(0)
-			ui.Text(c, filepath.Base(a.projectDir)).FontSize(12).TextColor(t.TextMuted).
-				Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-			if smallGhostButton(c, "清空").Clicked() {
-				a.termOutput = ""
-			}
-		})
-		if a.termRunning {
-			ui.Row(c).FillWidth().Padding(0, 16, 6, 16).Gap(6).AlignItems(ui.Center).Children(func() {
-				ui.Text(c, "运行中…").FontSize(12).TextColor(t.Accent)
+	if a.termID == "" {
+		if a.termClosed {
+			ui.Column(c).Grow(1).Justify(ui.Center).Children(func() {
+				emptyState(c, "terminal", "终端已关闭", "重新打开一个交互式终端。", func() {
+					if primaryButton(c, "新建终端").Clicked() {
+						a.newTerminal()
+					}
+				})
 			})
+			return
 		}
-		ui.Scroll(c).Grow(1).MinHeight(0).TrackScroll(&a.termScroll).Children(func() {
-			ui.Text(c, a.termText()).Font(mtheme.MonoFont).FontSize(12).TextColor(t.Text).
-				PreserveSpaces().Padding(8, 16)
-		})
-		ui.Row(c).FillWidth().Padding(8, 12).Gap(8).AlignItems(ui.Center).Children(func() {
-			input := ui.TextInput(c, &a.termDraft).Grow(1).Placeholder("输入命令…")
-			send := kit.IconButton(c, icons.Must("arrow-up"), "运行命令", kit.IconButtonOptions{
-				Variant: kit.Primary, Size: 36,
-				Disabled: a.termRunning || strings.TrimSpace(a.termDraft) == "",
+		if a.termConnErr != "" {
+			ui.Column(c).Grow(1).Justify(ui.Center).Children(func() {
+				emptyState(c, "terminal", "终端连接失败", a.termConnErr, func() {
+					if secondaryButton(c, "重试").Clicked() {
+						a.termStarting = false
+						a.ensureTerminal()
+					}
+				})
 			})
-			if send.Clicked() || input.Submitted() {
-				a.runTerminal()
-			}
-		})
-	})
-}
-
-func (a *app) termText() string {
-	if strings.TrimSpace(a.termOutput) == "" {
-		return "输入命令，在桌面项目目录中执行。\n命令结束前会占用一个终端，超时 60 秒。"
-	}
-	return strings.TrimRight(a.termOutput, "\n")
-}
-
-func (a *app) runTerminal() {
-	client := a.client
-	command := strings.TrimSpace(a.termDraft)
-	if client == nil || command == "" || a.termRunning {
+			return
+		}
+		ui.Text(c, "正在连接终端…").FontSize(13).TextColor(t.TextMuted).Padding(16)
+		a.ensureTerminal()
 		return
 	}
-	dir := a.projectDir
-	a.update(func() {
-		a.termRunning = true
-		a.termDraft = ""
-		a.termOutput += "$ " + command + "\n"
-		a.termScroll.Y = math.MaxFloat32
+	ui.Column(c).Grow(1).MinHeight(0).Background(t.Surface).Children(func() {
+		ui.Row(c).FillWidth().Padding(4, 12).Gap(6).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, icons.Must("terminal")).Size(14, 14).TextColor(t.TextMuted).Shrink(0)
+			ui.Text(c, firstNonEmpty(a.termInfo.Title, filepath.Base(a.projectDir))).
+				FontSize(12).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			if smallGhostButton(c, "新终端").Clicked() {
+				a.newTerminal()
+			}
+			if smallIconButton(c, "x", "关闭终端").Clicked() {
+				a.closeTerminal()
+			}
+		})
+		if a.termConnErr != "" {
+			ui.Text(c, "连接中断，正在重连…").FontSize(11).TextColor(t.Warning).Padding(0, 12, 2, 12)
+		}
+		ui.Scroll(c).Grow(1).MinHeight(0).TrackScroll(&a.termScroll).Children(func() {
+			ui.Text(c, a.termScreen()).Font(mtheme.MonoFont).FontSize(11).
+				TextColor(t.Text).PreserveSpaces().Padding(4, 8)
+		})
+		if a.termExited {
+			ui.Row(c).FillWidth().Padding(4, 12).Gap(8).AlignItems(ui.Center).Children(func() {
+				ui.Text(c, "进程已退出").FontSize(12).TextColor(t.TextMuted).Grow(1)
+				if secondaryButton(c, "重新启动").Clicked() {
+					a.newTerminal()
+				}
+			})
+		}
+		ui.Row(c).FillWidth().Padding(4, 12).Gap(6).AlignItems(ui.Center).Children(func() {
+			if smallGhostButton(c, "Ctrl+C").Clicked() {
+				a.queueTermInput([]byte{0x03})
+			}
+			if smallGhostButton(c, "Esc").Clicked() {
+				a.queueTermInput([]byte{0x1b})
+			}
+			if smallGhostButton(c, "Tab").Clicked() {
+				a.queueTermInput([]byte{'\t'})
+			}
+		})
+		ui.Row(c).FillWidth().Padding(3, 12, 8, 12).Gap(8).AlignItems(ui.Center).Children(func() {
+			input := ui.TextInput(c, &a.termDraft).Grow(1).Placeholder("终端输入…")
+			input.OnTextKey(func(k ui.TextKey) bool {
+				seq, clear := terminalKey(k)
+				if seq == nil {
+					return false // Backspace and printable text edit locally
+				}
+				a.queueTermInput(seq)
+				if clear {
+					k.SetText("")
+					a.termSent = ""
+				}
+				return true
+			})
+			if input.Changed() && !input.Composing() {
+				a.sendTermDiff()
+			}
+		})
 	})
+}
+
+// terminalKey translates a key the soft keyboard does not type into the bytes
+// a shell expects. clear says the local line should reset.
+func terminalKey(k ui.TextKey) ([]byte, bool) {
+	if k.Mods&ui.Ctrl != 0 && k.Key >= ui.KeyA && k.Key <= ui.KeyZ {
+		return []byte{byte(k.Key-ui.KeyA) + 1}, true
+	}
+	switch k.Key {
+	case ui.KeyEnter:
+		return []byte{'\r'}, true
+	case ui.KeyTab:
+		return []byte{'\t'}, false
+	case ui.KeyEscape:
+		return []byte{0x1b}, false
+	case ui.KeyDelete:
+		return []byte("\x1b[3~"), false
+	case ui.KeyUp:
+		return []byte("\x1b[A"), false
+	case ui.KeyDown:
+		return []byte("\x1b[B"), false
+	case ui.KeyRight:
+		return []byte("\x1b[C"), false
+	case ui.KeyLeft:
+		return []byte("\x1b[D"), false
+	case ui.KeyHome:
+		return []byte("\x1b[H"), false
+	case ui.KeyEnd:
+		return []byte("\x1b[F"), false
+	case ui.KeyPageUp:
+		return []byte("\x1b[5~"), false
+	case ui.KeyPageDown:
+		return []byte("\x1b[6~"), false
+	}
+	return nil, false
+}
+
+// sendTermDiff sends the change from the previous local line to the current
+// one: printable input as UTF-8, deletions as backspaces. An input method's
+// composition waits until it commits.
+func (a *app) sendTermDiff() {
+	prev, next := a.termSent, a.termDraft
+	if prev == next {
+		return
+	}
+	prefix := 0
+	for prefix < len(prev) && prefix < len(next) && prev[prefix] == next[prefix] {
+		prefix++
+	}
+	suffix := 0
+	for suffix < len(prev)-prefix && suffix < len(next)-prefix &&
+		prev[len(prev)-1-suffix] == next[len(next)-1-suffix] {
+		suffix++
+	}
+	var out []byte
+	for i := prefix; i < len(prev)-suffix; i++ {
+		out = append(out, 0x7f)
+	}
+	out = append(out, next[prefix:len(next)-suffix]...)
+	if len(out) > 0 {
+		a.queueTermInput(out)
+	}
+	a.termSent = next
+}
+
+// clearTerminalInput drops keystrokes queued for a previous session.
+func (a *app) clearTerminalInput() {
+	a.termInputMu.Lock()
+	a.termInput = nil
+	a.termInputMu.Unlock()
+}
+
+// ensureTerminal attaches to the project's existing shell or starts one. The
+// session outlives the phone, so reconnecting reuses it.
+func (a *app) ensureTerminal() {
+	if a.termClosed {
+		return
+	}
+	if a.termID != "" {
+		if a.termVT == nil {
+			a.termVT = vt10x.New(vt10x.WithSize(a.termInfo.Cols, a.termInfo.Rows))
+		}
+		a.startTerminalIO()
+		return
+	}
+	if a.termStarting || a.client == nil || a.projectDir == "" {
+		return
+	}
+	client := a.client
+	dir := a.projectDir
+	a.termStarting = true
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
 		defer cancel()
-		result, err := client.RunCommand(ctx, dir, command)
+		sessions, err := client.Terminals(ctx)
+		var info mobileapi.TerminalInfo
+		if err == nil {
+			for _, s := range sessions {
+				if s.Dir == dir && !s.Exited {
+					info = s
+					break
+				}
+			}
+			if info.ID == "" {
+				info, err = client.StartTerminal(ctx, dir, terminalCols, terminalRows, filepath.Base(dir))
+			}
+		}
 		a.update(func() {
 			if a.client != client || a.projectDir != dir {
 				return
 			}
-			a.termRunning = false
+			a.termStarting = false
 			if err != nil {
-				a.termOutput += "请求失败：" + err.Error() + "\n"
-			} else {
-				a.termOutput += result.Output + "\n"
-				if result.ExitCode != 0 {
-					a.termOutput += fmt.Sprintf("[退出码 %d]\n", result.ExitCode)
-				}
-				if result.Truncated {
-					a.termOutput += "[输出已截断]\n"
-				}
+				a.termConnErr = err.Error()
+				return
 			}
-			if len(a.termOutput) > 512<<10 {
-				a.termOutput = "... " + a.termOutput[len(a.termOutput)-256<<10:]
-			}
-			a.termScroll.Y = math.MaxFloat32
+			a.termID = info.ID
+			a.termInfo = info
+			a.termVT = vt10x.New(vt10x.WithSize(info.Cols, info.Rows))
+			a.termSince = 0
+			a.termExited, a.termExitCode = info.Exited, info.ExitCode
+			a.termConnErr = ""
+			a.termDraft, a.termSent = "", ""
+			a.startTerminalIO()
 		})
 	}()
+}
+
+// startTerminalIO starts the output long-poll and input sender for the
+// attached shell.
+func (a *app) startTerminalIO() {
+	a.stopTerminalIO()
+	if a.client == nil || a.termID == "" {
+		return
+	}
+	client, id := a.client, a.termID
+	pctx, pcancel := context.WithCancel(context.Background())
+	a.termPollCancel = pcancel
+	sctx, scancel := context.WithCancel(context.Background())
+	a.termSendCancel = scancel
+	a.termInputWake = make(chan struct{}, 1)
+	go a.terminalInputLoop(sctx, client, id)
+	go func() {
+		since := a.termSince
+		for {
+			out, err := client.TerminalOutput(pctx, id, since, 20*time.Second)
+			if pctx.Err() != nil {
+				return
+			}
+			if err != nil {
+				var apiErr mobileapi.APIError
+				if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+					a.update(func() {
+						if a.client == client && a.termID == id {
+							a.termID, a.termVT = "", nil
+							a.termClosed = true
+							a.termConnErr = ""
+						}
+					})
+					return
+				}
+				a.update(func() {
+					if a.client == client && a.termID == id {
+						a.termConnErr = err.Error()
+					}
+				})
+				select {
+				case <-pctx.Done():
+					return
+				case <-time.After(700 * time.Millisecond):
+				}
+				continue
+			}
+			since = out.Seq
+			a.update(func() {
+				if a.client != client || a.termID != id {
+					return
+				}
+				if out.Reset || a.termVT == nil {
+					a.termVT = vt10x.New(vt10x.WithSize(a.termInfo.Cols, a.termInfo.Rows))
+				}
+				if len(out.Data) > 0 {
+					_, _ = a.termVT.Write(out.Data)
+				}
+				a.termSince = out.Seq
+				a.termConnErr = ""
+				a.termExited, a.termExitCode = out.Exited, out.ExitCode
+				a.termScroll.Y = math.MaxFloat32
+			})
+			if out.Exited {
+				return
+			}
+		}
+	}()
+}
+
+func (a *app) stopTerminalIO() {
+	if a.termPollCancel != nil {
+		a.termPollCancel()
+		a.termPollCancel = nil
+	}
+	if a.termSendCancel != nil {
+		a.termSendCancel()
+		a.termSendCancel = nil
+	}
+}
+
+// terminalInputLoop sends queued keystrokes in order, keeping them while the
+// relay is down so a reconnected session receives them.
+func (a *app) terminalInputLoop(ctx context.Context, client *mobileapi.Client, id string) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-a.termInputWake:
+		}
+		a.termInputMu.Lock()
+		data := append([]byte(nil), a.termInput...)
+		a.termInput = nil
+		a.termInputMu.Unlock()
+		if len(data) == 0 {
+			continue
+		}
+		ictx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		err := client.TerminalInput(ictx, id, data)
+		cancel()
+		if err == nil {
+			continue
+		}
+		var apiErr mobileapi.APIError
+		if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+			return
+		}
+		// Put the keys back at the front and try again after a pause.
+		a.termInputMu.Lock()
+		a.termInput = append(data, a.termInput...)
+		if len(a.termInput) > 64<<10 {
+			a.termInput = a.termInput[len(a.termInput)-64<<10:]
+		}
+		a.termInputMu.Unlock()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(500 * time.Millisecond):
+		}
+	}
+}
+
+func (a *app) queueTermInput(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	a.termInputMu.Lock()
+	a.termInput = append(a.termInput, data...)
+	if len(a.termInput) > 64<<10 {
+		a.termInput = a.termInput[len(a.termInput)-64<<10:]
+	}
+	a.termInputMu.Unlock()
+	if a.termInputWake != nil {
+		select {
+		case a.termInputWake <- struct{}{}:
+		default:
+		}
+	}
+}
+
+// termScreen renders the emulated screen, with a block at the cursor.
+func (a *app) termScreen() string {
+	if a.termVT == nil {
+		return "正在连接…"
+	}
+	a.termVT.Lock()
+	defer a.termVT.Unlock()
+	cols, rows := a.termVT.Size()
+	cx, cy := a.termVT.Cursor().X, a.termVT.Cursor().Y
+	showCursor := a.termVT.CursorVisible()
+	var b strings.Builder
+	for y := 0; y < rows; y++ {
+		for x := 0; x < cols; x++ {
+			ch := a.termVT.Cell(x, y).Char
+			if ch == 0 {
+				ch = ' '
+			}
+			if showCursor && x == cx && y == cy {
+				ch = '█'
+			}
+			b.WriteRune(ch)
+		}
+		if y < rows-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+func (a *app) newTerminal() {
+	client := a.client
+	dir := a.projectDir
+	oldID := a.termID
+	a.stopTerminalIO()
+	a.clearTerminalInput()
+	a.update(func() {
+		a.termID, a.termVT = "", nil
+		a.termSince, a.termExited, a.termExitCode, a.termConnErr = 0, false, 0, ""
+		a.termDraft, a.termSent = "", ""
+		a.termStarting = false
+		a.termClosed = false
+	})
+	if client == nil || dir == "" {
+		return
+	}
+	a.termStarting = true
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		if oldID != "" {
+			_ = client.CloseTerminal(ctx, oldID)
+		}
+		info, err := client.StartTerminal(ctx, dir, terminalCols, terminalRows, filepath.Base(dir))
+		a.update(func() {
+			if a.client != client || a.projectDir != dir {
+				return
+			}
+			a.termStarting = false
+			if err != nil {
+				a.termConnErr = err.Error()
+				return
+			}
+			a.termID, a.termInfo = info.ID, info
+			a.termVT = vt10x.New(vt10x.WithSize(info.Cols, info.Rows))
+			a.termSince, a.termExited, a.termExitCode = 0, info.Exited, info.ExitCode
+			a.termConnErr = ""
+			a.termDraft, a.termSent = "", ""
+			a.startTerminalIO()
+		})
+	}()
+}
+
+func (a *app) closeTerminal() {
+	client := a.client
+	id := a.termID
+	a.stopTerminalIO()
+	a.clearTerminalInput()
+	a.update(func() {
+		a.termID, a.termVT = "", nil
+		a.termSince, a.termExited, a.termExitCode, a.termConnErr = 0, false, 0, ""
+		a.termDraft, a.termSent = "", ""
+		a.termClosed = true
+	})
+	if client != nil && id != "" {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			_ = client.CloseTerminal(ctx, id)
+		}()
+	}
 }
 
 // --- new project ---
@@ -701,7 +1081,9 @@ func (a *app) createProject() {
 				a.fileDir = path
 				a.files = nil
 				a.gitStatus, a.gitLog = mobileapi.GitStatus{}, nil
-				a.termOutput, a.termDraft = "", ""
+				a.termID, a.termVT = "", nil
+				a.termSince, a.termExited, a.termExitCode, a.termConnErr = 0, false, 0, ""
+				a.termDraft, a.termSent = "", ""
 				opened = true
 			}
 		})

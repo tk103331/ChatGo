@@ -57,6 +57,9 @@ type Server struct {
 	mcpHandler http.Handler
 	a2aHandler http.Handler
 	a2aREST    http.Handler
+
+	termMu    sync.Mutex
+	terminals *TerminalManager
 }
 
 // runState is the live copy of a conversation while a reply streams. GET
@@ -163,6 +166,13 @@ func (s *Server) ListenAndServe(addr string) error {
 
 // Close stops accepting requests and waits briefly for active handlers.
 func (s *Server) Close() error {
+	s.termMu.Lock()
+	terminals := s.terminals
+	s.terminals = nil
+	s.termMu.Unlock()
+	if terminals != nil {
+		terminals.Close()
+	}
 	if s.httpServer == nil {
 		return nil
 	}
@@ -248,6 +258,12 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/git/stage", s.handleGitStage)
 	mux.HandleFunc("POST /api/git/commit", s.handleGitCommit)
 	mux.HandleFunc("POST /api/terminal", s.handleTerminal)
+	mux.HandleFunc("GET /api/terminals", s.handleListTerminals)
+	mux.HandleFunc("POST /api/terminals", s.handleStartTerminal)
+	mux.HandleFunc("DELETE /api/terminals/{id}", s.handleCloseTerminal)
+	mux.HandleFunc("POST /api/terminals/{id}/input", s.handleTerminalInput)
+	mux.HandleFunc("POST /api/terminals/{id}/resize", s.handleTerminalResize)
+	mux.HandleFunc("GET /api/terminals/{id}/output", s.handleTerminalOutput)
 	mux.HandleFunc("POST /api/projects", s.handleCreateProject)
 	mux.HandleFunc("POST /api/worktrees", s.handleCreateWorktree)
 	mux.HandleFunc("GET /api/skills", s.handleSkills)

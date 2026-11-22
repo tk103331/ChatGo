@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/egoist/mygo/plugins/push"
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/mobile"
+	"github.com/hinshun/vt10x"
 
 	"chatgo/internal/mobileapi"
 	"chatgo/internal/ui/icons"
@@ -196,11 +198,23 @@ type app struct {
 	gitDiffTitle    string
 	gitDiff         string
 	gitDiffErr      string
-	termOutput      string
 	termDraft       string
-	termRunning     bool
-	termErr         string
+	termSent        string
+	termID          string
+	termInfo        mobileapi.TerminalInfo
+	termVT          vt10x.Terminal
+	termSince       int64
+	termExited      bool
+	termExitCode    int
+	termConnErr     string
+	termStarting    bool
+	termClosed      bool
 	termScroll      ui.ScrollState
+	termInputMu     sync.Mutex
+	termInput       []byte
+	termInputWake   chan struct{}
+	termPollCancel  context.CancelFunc
+	termSendCancel  context.CancelFunc
 
 	projectFormOpen    bool
 	projectName        string
@@ -289,6 +303,12 @@ func (a *app) start() {
 
 func (a *app) connect(s server) {
 	a.disconnect()
+	// A terminal belongs to the desktop it started on; another desktop
+	// needs its own shell.
+	a.termID, a.termVT = "", nil
+	a.termSince, a.termExited, a.termExitCode, a.termConnErr = 0, false, 0, ""
+	a.termClosed = false
+	a.clearTerminalInput()
 	ctx, cancel := context.WithCancel(context.Background())
 	a.connectionCancel = cancel
 	a.stopEvents()
@@ -424,6 +444,7 @@ func (a *app) agentMarkColor(c *ui.Context, ref string, size float32, color ui.C
 // disconnect keeps pairing credentials and drafts so reconnecting needs no
 // new pairing code, while cancelling work owned by the previous connection.
 func (a *app) disconnect() {
+	a.stopTerminalIO()
 	if a.connectionCancel != nil {
 		a.connectionCancel()
 		a.connectionCancel = nil
@@ -939,6 +960,7 @@ func (a *app) backToRooms() {
 }
 
 func (a *app) backToProjects() {
+	a.stopTerminalIO()
 	a.screen = screenProjects
 	a.projectDir = ""
 	a.projectTab = 0

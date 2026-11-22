@@ -8,6 +8,8 @@ import (
 
 	"github.com/egoist/mygo/ui"
 
+	"github.com/hinshun/vt10x"
+
 	"chatgo/internal/mobileapi"
 	"chatgo/pkg/models"
 )
@@ -984,10 +986,14 @@ func TestProjectToolsRender(t *testing.T) {
 	}
 
 	a.projectTab = projectTerm
-	a.termOutput = "$ echo hi\nhi\n"
-	tr3 := ui.NewTester(a.view, 390, 844)
+	a.termID = "t1"
+	a.termInfo = mobileapi.TerminalInfo{ID: "t1", Cols: 44, Rows: 26}
+	a.termVT = vt10x.New(vt10x.WithSize(44, 26))
+	_, _ = a.termVT.Write([]byte("hi\r\n"))
+	a.client = nil
+	tr3 := ui.NewTester(a.projectTerminal, 390, 844)
 	tr3.Frame()
-	if !tr3.HasText("hi") || !tr3.HasText("运行命令") {
+	if !tr3.HasText("hi") || !tr3.HasText("新终端") {
 		t.Fatalf("terminal missing; texts: %v", tr3.Texts())
 	}
 }
@@ -1007,5 +1013,27 @@ func TestProjectFloatingButtonOpensTheForm(t *testing.T) {
 	tr.Advance(50 * time.Millisecond)
 	if !a.projectFormOpen {
 		t.Fatal("project form did not open")
+	}
+}
+
+// Terminal keys become the byte sequences a shell expects, and a local line's
+// edit becomes input plus backspaces.
+func TestTerminalInputEncoding(t *testing.T) {
+	if seq, clear := terminalKey(ui.TextKey{Key: ui.KeyEnter}); !clear || string(seq) != "\r" {
+		t.Fatalf("enter = %q clear=%v", seq, clear)
+	}
+	if seq, _ := terminalKey(ui.TextKey{Key: ui.KeyC, Mods: ui.Ctrl}); string(seq) != "\x03" {
+		t.Fatalf("ctrl-c = %q", seq)
+	}
+	a := &app{}
+	a.termDraft = "ab"
+	a.sendTermDiff()
+	if string(a.termInput) != "ab" {
+		t.Fatalf("input = %q", a.termInput)
+	}
+	a.termDraft = "ac"
+	a.sendTermDiff()
+	if string(a.termInput) != "ab\x7fc" {
+		t.Fatalf("edited input = %q", a.termInput)
 	}
 }

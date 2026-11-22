@@ -219,9 +219,9 @@ so it needs no public IP and no inbound port; the relay only forwards `/api`
 and never stores conversation content. Phones pair with a one-time code and
 receive a revocable device token. The native app lives in `cmd/mobile` and
 supports Chat, Rooms, scheduled tasks and a Projects tab with read-only file
-browsing, Git status/diff/commit and a command terminal, including session
-rename/delete, group speaking rules, per-task workspaces and new-project
-creation.
+browsing, Git status/diff/commit and an interactive PTY terminal that
+reconnects to the same desktop shell, including session rename/delete, group
+speaking rules, per-task workspaces and new-project creation.
 
 Linux 服务器一键安装中继（systemd + nginx，默认 8080）：
 

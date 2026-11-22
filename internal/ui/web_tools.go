@@ -75,6 +75,11 @@ func (r webRuntime) workspaceFile(path string) (string, error) {
 	return real, nil
 }
 
+// WorkspaceDir exposes the project boundary to the web server's tools.
+func (r webRuntime) WorkspaceDir(dir string) (string, error) {
+	return r.workspaceDir(dir)
+}
+
 // Files lists one workspace directory.
 func (r webRuntime) Files(dir string) ([]webui.FileEntry, error) {
 	root, err := r.workspaceDir(dir)

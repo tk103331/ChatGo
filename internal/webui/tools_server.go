@@ -2,8 +2,10 @@ package webui
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -180,4 +182,148 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	s.Publish("workspace.created", "", "", map[string]any{"path": path})
 	writeJSON(w, http.StatusCreated, map[string]any{"path": path})
+}
+
+// terminalManager returns the desktop shells, creating the manager on first
+// use. It is nil when this server has no desktop runtime.
+func (s *Server) terminalManager() (*TerminalManager, error) {
+	s.termMu.Lock()
+	defer s.termMu.Unlock()
+	if s.terminals != nil {
+		return s.terminals, nil
+	}
+	if s.runner == nil {
+		return nil, errors.New("此功能需要桌面版运行时")
+	}
+	tr, ok := s.runner.(ToolRunner)
+	if !ok {
+		return nil, errors.New("当前桌面版本不支持终端")
+	}
+	s.terminals = NewTerminalManager(tr.WorkspaceDir)
+	return s.terminals, nil
+}
+
+func (s *Server) handleStartTerminal(w http.ResponseWriter, r *http.Request) {
+	m, err := s.terminalManager()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	var body struct {
+		Dir   string `json:"dir"`
+		Cols  int    `json:"cols"`
+		Rows  int    `json:"rows"`
+		Title string `json:"title"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	info, err := m.Start(strings.TrimSpace(body.Dir), body.Cols, body.Rows, strings.TrimSpace(body.Title))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"session": info})
+}
+
+func (s *Server) handleListTerminals(w http.ResponseWriter, r *http.Request) {
+	m, err := s.terminalManager()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": m.List()})
+}
+
+func (s *Server) handleCloseTerminal(w http.ResponseWriter, r *http.Request) {
+	m, err := s.terminalManager()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if !m.Remove(r.PathValue("id")) {
+		writeError(w, http.StatusNotFound, errors.New("终端不存在"))
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleTerminalInput(w http.ResponseWriter, r *http.Request) {
+	m, err := s.terminalManager()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	session, ok := m.Get(r.PathValue("id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, errors.New("终端不存在"))
+		return
+	}
+	var body struct {
+		Data string `json:"data"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	data, err := base64.StdEncoding.DecodeString(body.Data)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := session.Write(data); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleTerminalResize(w http.ResponseWriter, r *http.Request) {
+	m, err := s.terminalManager()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	session, ok := m.Get(r.PathValue("id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, errors.New("终端不存在"))
+		return
+	}
+	var body struct {
+		Cols int `json:"cols"`
+		Rows int `json:"rows"`
+	}
+	if err := readJSON(r, &body); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := session.Resize(body.Cols, body.Rows); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleTerminalOutput(w http.ResponseWriter, r *http.Request) {
+	m, err := s.terminalManager()
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	session, ok := m.Get(r.PathValue("id"))
+	if !ok {
+		writeError(w, http.StatusNotFound, errors.New("终端不存在"))
+		return
+	}
+	since, _ := strconv.ParseInt(r.URL.Query().Get("since"), 10, 64)
+	wait, _ := strconv.Atoi(r.URL.Query().Get("wait_ms"))
+	if wait <= 0 {
+		wait = 20000
+	}
+	if wait > 30000 {
+		wait = 30000
+	}
+	out := session.Output(since, time.Duration(wait)*time.Millisecond)
+	writeJSON(w, http.StatusOK, out)
 }

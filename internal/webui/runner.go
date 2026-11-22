@@ -206,6 +206,9 @@ type InteractionInfo struct {
 // without it answers those routes as unsupported, so the standalone webd and
 // the browser keep their smaller API.
 type ToolRunner interface {
+	// WorkspaceDir resolves a directory inside one of the registered
+	// projects, for the tools that may only touch those.
+	WorkspaceDir(dir string) (string, error)
 	// Files lists one workspace directory, files and directories.
 	Files(dir string) ([]FileEntry, error)
 	// ReadFile reads one text file inside a workspace, up to a bounded size.

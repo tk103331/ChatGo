@@ -21,11 +21,13 @@ require (
 	github.com/cloudwego/eino-ext/components/tool/wikipedia v0.0.0-20260924074145-3603a39473c3
 	github.com/cloudwego/eino-ext/libs/acl/openai v0.1.17
 	github.com/coder/acp-go-sdk v0.13.5
+	github.com/creack/pty v1.1.24
 	github.com/ebitengine/purego v0.11.1
 	github.com/egoist/mygo v0.10.0
 	github.com/eino-contrib/jsonschema v1.0.3
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/yamux v0.1.2
+	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/issue9/identicon v1.2.1
 	github.com/larksuite/oapi-sdk-go/v3 v3.12.0
 	github.com/mark3labs/mcp-go v1.2.1
