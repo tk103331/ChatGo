@@ -816,3 +816,38 @@ func TestComposerSendButtonIsCompact(t *testing.T) {
 		t.Fatalf("send button is %+v, want at most 36x36", send.Bounds)
 	}
 }
+
+// A model row is lower than a standard list row, so more of the list stays
+// visible above the keyboard.
+func TestModelRowIsCompact(t *testing.T) {
+	tr := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).FillWidth().Children(func() {
+			modelRow(c, "claude-sonnet", "anthropic", true, nil)
+		})
+	}, 390, 400)
+	tr.Frame()
+	row, ok := tr.AccessByRole(ui.RoleButton, "claude-sonnet, anthropic")
+	if !ok {
+		t.Fatalf("model row missing; texts: %v", tr.Texts())
+	}
+	if row.Bounds.H > 46 {
+		t.Fatalf("model row is %v tall, want at most 46", row.Bounds.H)
+	}
+}
+
+// With the keyboard up the composer stays above it, not under it.
+func TestComposerClearsTheKeyboard(t *testing.T) {
+	a := testApp()
+	a.screen = screenChat
+	a.draft = "hi"
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.SetInsets(0, 0, 300, 0)
+	tr.Frame()
+	send, ok := tr.AccessByRole(ui.RoleButton, "发送")
+	if !ok {
+		t.Fatal("send button missing")
+	}
+	if bottom := send.Bounds.Y + send.Bounds.H; bottom > 844-300 {
+		t.Fatalf("composer ends at %v, under the keyboard (top %v)", bottom, 844-300)
+	}
+}

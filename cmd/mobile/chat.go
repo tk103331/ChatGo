@@ -724,6 +724,42 @@ func (a *app) chooseACPModel(target, value string) {
 	}()
 }
 
+// modelRow is one model in the picker: the name, the provider or runtime it
+// belongs to on the right, and a check when chosen. It is deliberately lower
+// than a list row, so a phone shows more of the list above the keyboard.
+func modelRow(c *ui.Context, title, trailing string, selected bool, onClick func()) ui.Element {
+	t := c.Theme()
+	label := title
+	if trailing != "" {
+		label += ", " + trailing
+	}
+	row := ui.Row(c).FillWidth().AlignItems(ui.Center).Padding(7, 14).Gap(10).
+		Role(ui.RoleButton).Label(label)
+	mobile.Ink(row)
+	if mobile.Current() == mobile.Cupertino && row.Pressed() {
+		row.Background(t.SurfacePressed)
+	}
+	row.Children(func() {
+		ui.Row(c).Size(28, 28).Radius(9).Background(t.Accent.Alpha(0.10)).
+			AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
+			ui.Icon(c, icons.Must("brain")).Size(16, 16).TextColor(t.TextMuted)
+		})
+		ui.Text(c, title).FontSize(14).Grow(1).Basis(0).MinWidth(0).
+			SingleLine().Ellipsis("…")
+		if trailing != "" {
+			ui.Text(c, trailing).FontSize(11).TextColor(t.TextMuted).Shrink(0).
+				MaxWidth(112).SingleLine().Ellipsis("…")
+		}
+		if selected {
+			ui.Icon(c, icons.Must("check")).Size(15, 15).TextColor(t.Accent).Shrink(0)
+		}
+	})
+	if row.Clicked() && onClick != nil {
+		onClick()
+	}
+	return row
+}
+
 func (a *app) modelSheet(c *ui.Context) {
 	target := a.modelFor
 	agent := a.targetAgent(target)
@@ -736,15 +772,9 @@ func (a *app) modelSheet(c *ui.Context) {
 		ref = &a.chatModel
 	}
 	st := a.acpState(target)
-	count := len(a.meta.Models)
-	if kind == "acp" {
-		count = len(st.values)
-	}
-	detent := float32(0.45)
-	if count > 3 || a.modelFilter != "" {
-		detent = 0.7
-	}
-	mobile.Sheet(c, &a.modelOpen, mobile.SheetOptions{Detents: []float32{detent}, Label: "选择模型"}, func() {
+	// The picker keeps a tall detent: the filter's keyboard covers the
+	// window's lower part, and the models must stay above it.
+	mobile.Sheet(c, &a.modelOpen, mobile.SheetOptions{Detents: []float32{0.85}, Label: "选择模型"}, func() {
 		t := c.Theme()
 		title := "选择模型"
 		if kind == "a2a" {
@@ -774,28 +804,18 @@ func (a *app) modelSheet(c *ui.Context) {
 						c.Invalidate()
 					}
 					ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-						values := a.filteredACPValues(st)
-						if len(values) == 0 {
-							ui.Text(c, "没有匹配的模型").FontSize(13).TextColor(t.TextMuted).Padding(8, 0)
-						}
-						for _, v := range values {
-							v := v
-							row := mobile.ListRow(c, mobile.RowOptions{
-								Title:    v.Name,
-								Subtitle: "ACP · " + a.agentLabel(agent),
-								Leading: func() {
-									ui.Icon(c, icons.Must("brain")).Size(20, 20).TextColor(t.TextMuted)
-								},
-								Trailing: func() {
-									if v.Value == st.current {
-										ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
-									}
-								},
-							})
-							if row.Clicked() {
-								a.chooseACPModel(target, v.Value)
+						ui.Column(c).FillWidth().Gap(2).Children(func() {
+							values := a.filteredACPValues(st)
+							if len(values) == 0 {
+								ui.Text(c, "没有匹配的模型").FontSize(13).TextColor(t.TextMuted).Padding(8, 0)
 							}
-						}
+							for _, v := range values {
+								v := v
+								modelRow(c, v.Name, "", v.Value == st.current, func() {
+									a.chooseACPModel(target, v.Value)
+								})
+							}
+						})
 					})
 				}
 			default:
@@ -804,29 +824,19 @@ func (a *app) modelSheet(c *ui.Context) {
 					c.Invalidate()
 				}
 				ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-					models := a.filteredModelChoices()
-					if len(models) == 0 {
-						ui.Text(c, "没有匹配的模型").FontSize(13).TextColor(t.TextMuted).Padding(8, 0)
-					}
-					for _, m := range models {
-						choice := m.Provider + "::" + m.Model
-						row := mobile.ListRow(c, mobile.RowOptions{
-							Title:    m.Model,
-							Subtitle: m.Provider,
-							Leading: func() {
-								ui.Icon(c, icons.Must("brain")).Size(20, 20).TextColor(t.TextMuted)
-							},
-							Trailing: func() {
-								if choice == *ref {
-									ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
-								}
-							},
-						})
-						if row.Clicked() {
-							*ref = choice
-							a.modelOpen = false
+					ui.Column(c).FillWidth().Gap(2).Children(func() {
+						models := a.filteredModelChoices()
+						if len(models) == 0 {
+							ui.Text(c, "没有匹配的模型").FontSize(13).TextColor(t.TextMuted).Padding(8, 0)
 						}
-					}
+						for _, m := range models {
+							choice := m.Provider + "::" + m.Model
+							modelRow(c, m.Model, m.Provider, choice == *ref, func() {
+								*ref = choice
+								a.modelOpen = false
+							})
+						}
+					})
 				})
 			}
 			if ghostButton(c, "关闭").Clicked() {
