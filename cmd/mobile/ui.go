@@ -32,6 +32,27 @@ func fabButton(c *ui.Context, icon, label string, onClick func()) {
 	}
 }
 
+// composerField is the composer's text. The card around it draws the border
+// and fill, so the bare field keeps none of its own and no inset: the card's
+// padding is all the space around the text. An idle field is one line tall;
+// with the keyboard on it, it opens to three so there is something to reread.
+func composerField(c *ui.Context, text *string) ui.Element {
+	field := ui.TextAreaBase(c, text).FillWidth().
+		BorderWidth(0, 0, 0, 0).Background(ui.Transparent).FontSize(15).
+		Placeholder("输入消息…").Label("消息输入框")
+	if field.Focused() {
+		field.Lines(3, 3)
+	} else {
+		field.Lines(1, 1)
+	}
+	// A whole line, even at rest, is still big enough to tap.
+	field.MinHeight(28)
+	if field.Changed() {
+		c.Invalidate()
+	}
+	return field
+}
+
 // ChatGo's desktop controls all come from the same kit. These small wrappers
 // keep the phone on that visual language instead of MyGo's bare default
 // buttons.

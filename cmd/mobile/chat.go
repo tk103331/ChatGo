@@ -838,7 +838,7 @@ func (a *app) modelSheet(c *ui.Context) {
 
 func (a *app) newSessionComposer(c *ui.Context) {
 	t := c.Theme()
-	ui.Column(c).FillWidth().Gap(6).Padding(6, 10).Radius(16).
+	ui.Column(c).FillWidth().Gap(5).Padding(5, 10).Radius(16).
 		Background(t.Surface).Children(func() {
 		if len(a.newFiles) > 0 {
 			ui.Row(c).FillWidth().Gap(6).Wrap().Padding(2, 0).Children(func() {
@@ -857,12 +857,7 @@ func (a *app) newSessionComposer(c *ui.Context) {
 			})
 		}
 		// The field is the card: no border or fill of its own.
-		input := ui.TextInput(c, &a.newDraft).FillWidth().MinHeight(58).MaxLines(8).
-			BorderWidth(0, 0, 0, 0).Background(ui.Transparent).
-			Placeholder("输入消息…")
-		if input.Changed() {
-			c.Invalidate()
-		}
+		composerField(c, &a.newDraft)
 		ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 			attach := kit.Button(c, "", kit.ButtonOptions{
 				Variant: kit.Ghost, Icon: icons.Must("plus"), Label: "添加附件",
@@ -876,7 +871,7 @@ func (a *app) newSessionComposer(c *ui.Context) {
 				ui.Spacer(c)
 			}
 			send := kit.IconButton(c, icons.Must("arrow-up"), "创建会话", kit.IconButtonOptions{
-				Variant: kit.Primary, Size: 42, Disabled: a.creating || a.connecting || a.connErr != "" || strings.TrimSpace(a.newDraft) == "",
+				Variant: kit.Primary, Size: 36, Disabled: a.creating || a.connecting || a.connErr != "" || strings.TrimSpace(a.newDraft) == "",
 			})
 			// Only the button sends: Enter is a newline in the field.
 			if send.Clicked() {
@@ -1745,7 +1740,7 @@ func (a *app) composer(c *ui.Context) {
 				}
 			})
 		}
-		ui.Column(c).FillWidth().Gap(6).Padding(6, 10).Radius(16).
+		ui.Column(c).FillWidth().Gap(5).Padding(5, 10).Radius(16).
 			Background(t.Surface).Children(func() {
 			if len(a.attachments) > 0 || a.attachBusy {
 				ui.Row(c).FillWidth().Gap(6).Wrap().Padding(2, 0).Children(func() {
@@ -1767,12 +1762,7 @@ func (a *app) composer(c *ui.Context) {
 				})
 			}
 			// The field is the card: no border or fill of its own.
-			input := ui.TextInput(c, &a.draft).FillWidth().MinHeight(58).MaxLines(8).
-				BorderWidth(0, 0, 0, 0).Background(ui.Transparent).
-				Placeholder("输入消息…")
-			if input.Changed() {
-				c.Invalidate()
-			}
+			composerField(c, &a.draft)
 			ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
 				attach := kit.Button(c, "", kit.ButtonOptions{
 					Variant: kit.Ghost, Icon: icons.Must("plus"), Label: "添加附件",
@@ -1791,14 +1781,14 @@ func (a *app) composer(c *ui.Context) {
 				}
 				if a.running {
 					stop := kit.IconButton(c, icons.Must("square"), "停止", kit.IconButtonOptions{
-						Variant: kit.Danger, Size: 42,
+						Variant: kit.Danger, Size: 36,
 					})
 					if stop.Clicked() {
 						a.stopCurrent()
 					}
 				} else {
 					send := kit.IconButton(c, icons.Must("arrow-up"), "发送", kit.IconButtonOptions{
-						Variant: kit.Primary, Size: 42,
+						Variant: kit.Primary, Size: 36,
 						Disabled: strings.TrimSpace(a.draft) == "",
 					})
 					// Only the button sends: Enter is a newline in the field.

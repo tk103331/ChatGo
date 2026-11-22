@@ -764,3 +764,55 @@ func TestModelFilterNarrowsACPValues(t *testing.T) {
 		t.Fatalf("filtered = %+v", got)
 	}
 }
+
+// The composer's field rests at one line and opens to three while focused,
+// folding back when the keyboard focus leaves it.
+func TestComposerFieldOpensWithFocus(t *testing.T) {
+	draft := ""
+	var height float32
+	var focused bool
+	tr := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).FillWidth().Children(func() {
+			field := composerField(c, &draft)
+			height, focused = field.Bounds().H, field.Focused()
+		})
+	}, 390, 400)
+	settle := func() {
+		tr.Frame()
+		tr.Frame()
+	}
+	settle()
+	if focused || height > 32 {
+		t.Fatalf("resting field: focused=%v height=%v", focused, height)
+	}
+	if err := tr.Click("消息输入框"); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	if !focused || height < 45 {
+		t.Fatalf("focused field: focused=%v height=%v", focused, height)
+	}
+	// A click outside takes the focus away.
+	tr.ClickAt(120, 360)
+	settle()
+	if focused || height > 32 {
+		t.Fatalf("blurred field: focused=%v height=%v", focused, height)
+	}
+}
+
+// The send button stays small so the one-line composer does not grow around
+// it.
+func TestComposerSendButtonIsCompact(t *testing.T) {
+	a := testApp()
+	a.screen = screenChat
+	a.draft = "hi"
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Frame()
+	send, ok := tr.AccessByRole(ui.RoleButton, "发送")
+	if !ok {
+		t.Fatal("send button missing")
+	}
+	if send.Bounds.W > 36 || send.Bounds.H > 36 {
+		t.Fatalf("send button is %+v, want at most 36x36", send.Bounds)
+	}
+}
