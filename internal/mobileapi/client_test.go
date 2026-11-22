@@ -199,3 +199,66 @@ func TestRenameAndDeleteSession(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// Files, Git, terminal and project creation decode their responses.
+func TestProjectTools(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/files":
+			_ = json.NewEncoder(w).Encode(map[string]any{"files": []map[string]any{
+				{"name": "a.txt", "path": "/w/a.txt", "size": 5},
+			}})
+		case "/api/file":
+			_ = json.NewEncoder(w).Encode(map[string]any{"file": map[string]any{"name": "a.txt", "content": "hello", "size": 5}})
+		case "/api/git/status":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": map[string]any{"branch": "main", "changes": []map[string]any{{"path": "a.txt", "status": " M"}}}})
+		case "/api/git/diff":
+			_ = json.NewEncoder(w).Encode(map[string]any{"diff": "+hello"})
+		case "/api/git/log":
+			_ = json.NewEncoder(w).Encode(map[string]any{"commits": []map[string]any{{"hash": "abc", "subject": "init"}}})
+		case "/api/git/stage", "/api/git/commit":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		case "/api/terminal":
+			_ = json.NewEncoder(w).Encode(map[string]any{"result": map[string]any{"output": "hi", "exit_code": 0}})
+		case "/api/projects":
+			_ = json.NewEncoder(w).Encode(map[string]any{"path": "/w/new"})
+		case "/api/fs":
+			_ = json.NewEncoder(w).Encode(map[string]any{"dir": "/home/tk", "parent": "/home", "entries": []map[string]any{{"name": "code", "path": "/home/tk/code"}}})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+	c := New(ts.URL, "dev", "d1")
+	ctx := context.Background()
+	if files, err := c.Files(ctx, "/w"); err != nil || len(files) != 1 || files[0].Name != "a.txt" {
+		t.Fatalf("files = %+v, %v", files, err)
+	}
+	if file, err := c.ReadFile(ctx, "/w/a.txt"); err != nil || file.Content != "hello" {
+		t.Fatalf("file = %+v, %v", file, err)
+	}
+	if status, err := c.GitStatus(ctx, "/w"); err != nil || status.Branch != "main" || len(status.Changes) != 1 {
+		t.Fatalf("status = %+v, %v", status, err)
+	}
+	if diff, err := c.GitDiff(ctx, "/w", "a.txt"); err != nil || diff != "+hello" {
+		t.Fatalf("diff = %q, %v", diff, err)
+	}
+	if log, err := c.GitLog(ctx, "/w"); err != nil || len(log) != 1 || log[0].Hash != "abc" {
+		t.Fatalf("log = %+v, %v", log, err)
+	}
+	if err := c.GitStage(ctx, "/w", ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.GitCommit(ctx, "/w", "msg"); err != nil {
+		t.Fatal(err)
+	}
+	if result, err := c.RunCommand(ctx, "/w", "echo hi"); err != nil || result.Output != "hi" {
+		t.Fatalf("result = %+v, %v", result, err)
+	}
+	if path, err := c.CreateProject(ctx, "/w", "new", true); err != nil || path != "/w/new" {
+		t.Fatalf("path = %q, %v", path, err)
+	}
+	if listing, err := c.Directories(ctx, ""); err != nil || listing.Dir != "/home/tk" || len(listing.Entries) != 1 {
+		t.Fatalf("listing = %+v, %v", listing, err)
+	}
+}

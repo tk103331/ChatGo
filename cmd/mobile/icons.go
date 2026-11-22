@@ -24,3 +24,11 @@ func iconSettings(p *ui.Painter, r ui.Rect, c ui.Color) {
 	p.Stroke(ui.Rect{X: r.X + 3, Y: r.Y + 3, W: r.W - 6, H: r.H - 6}, c, 10, 2)
 	p.Stroke(ui.Rect{X: r.X + 9, Y: r.Y + 9, W: r.W - 18, H: r.H - 18}, c, 4, 2)
 }
+
+func iconProjects(p *ui.Painter, r ui.Rect, c ui.Color) {
+	p.Stroke(ui.Rect{X: r.X + 2, Y: r.Y + 6, W: r.W - 4, H: r.H - 10}, c, 4, 2)
+	p.Line(r.X+2, r.Y+6, r.X+9, r.Y+6, 2, c)
+	p.Line(r.X+9, r.Y+6, r.X+11, r.Y+3, 2, c)
+	p.Line(r.X+11, r.Y+3, r.X+r.W-4, r.Y+3, 2, c)
+	p.Line(r.X+r.W-4, r.Y+3, r.X+r.W-2, r.Y+6, 2, c)
+}

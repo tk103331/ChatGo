@@ -924,3 +924,88 @@ func TestDeletedEventsLeaveTheOpenPage(t *testing.T) {
 		t.Fatalf("task delete left screen=%v task=%q", a.screen, a.taskID)
 	}
 }
+
+// The project tab lists the desktop's workspaces and opens one.
+func TestProjectListOpensAWorkspace(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.connected, a.eventsConnected = true, true
+	a.screen = screenProjects
+	a.workspaces = []string{"/work/alpha", "/work/beta"}
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Frame()
+	if !tr.HasText("alpha") || !tr.HasText("beta") {
+		t.Fatalf("projects missing; texts: %v", tr.Texts())
+	}
+	// Queue the navigation's update: the project page opens without a file
+	// request racing this frame.
+	updates := make(chan func(), 4)
+	a.dispatch = func(fn func()) { updates <- fn }
+	if err := tr.Click("alpha"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case fn := <-updates:
+		fn()
+	case <-time.After(time.Second):
+		t.Fatal("project navigation did not arrive")
+	}
+	if a.screen != screenProject || a.projectDir != "/work/alpha" {
+		t.Fatalf("screen=%v dir=%q", a.screen, a.projectDir)
+	}
+}
+
+// The project page renders its files, Git summary and terminal output.
+func TestProjectToolsRender(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.connected, a.eventsConnected = true, true
+	a.screen = screenProject
+	a.projectDir = "/work/alpha"
+	a.projectTab = projectFiles
+	a.fileDir = "/work/alpha"
+	a.files = []mobileapi.FileEntry{
+		{Name: "src", Path: "/work/alpha/src", Dir: true},
+		{Name: "README.md", Path: "/work/alpha/README.md", Size: 2048},
+	}
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Frame()
+	if !tr.HasText("README.md") || !tr.HasText("2.0 KB") {
+		t.Fatalf("files missing; texts: %v", tr.Texts())
+	}
+
+	a.projectTab = projectGit
+	a.gitStatus = mobileapi.GitStatus{Branch: "main", Changes: []mobileapi.GitChange{{Path: "README.md", Status: " M"}}}
+	a.gitLog = []mobileapi.GitCommit{{Hash: "abc1234", Subject: "init", Author: "tk", Date: "2026-01-01"}}
+	tr2 := ui.NewTester(a.view, 390, 844)
+	tr2.Frame()
+	if !tr2.HasText("main") || !tr2.HasText("abc1234") || !tr2.HasText("init") {
+		t.Fatalf("git missing; texts: %v", tr2.Texts())
+	}
+
+	a.projectTab = projectTerm
+	a.termOutput = "$ echo hi\nhi\n"
+	tr3 := ui.NewTester(a.view, 390, 844)
+	tr3.Frame()
+	if !tr3.HasText("hi") || !tr3.HasText("运行命令") {
+		t.Fatalf("terminal missing; texts: %v", tr3.Texts())
+	}
+}
+
+// The project tab's floating button starts a new project.
+func TestProjectFloatingButtonOpensTheForm(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.connected, a.eventsConnected = true, true
+	a.screen = screenProjects
+	a.workspaces = []string{"/work/alpha"}
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Frame()
+	if err := tr.Click("新建项目"); err != nil {
+		t.Fatal(err)
+	}
+	tr.Advance(50 * time.Millisecond)
+	if !a.projectFormOpen {
+		t.Fatal("project form did not open")
+	}
+}

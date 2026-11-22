@@ -3,6 +3,7 @@ package mobileapi
 import (
 	"context"
 	"net/url"
+	"time"
 
 	"chatgo/pkg/models"
 )
@@ -272,4 +273,154 @@ func (c *Client) TaskSessions(ctx context.Context, id string) ([]RoomSession, er
 	}
 	err := c.do(ctx, "GET", "/api/tasks/"+url.PathEscape(id)+"/sessions", nil, &out)
 	return out.Sessions, err
+}
+
+// FileEntry is one file or directory of a workspace.
+type FileEntry struct {
+	Name     string    `json:"name"`
+	Path     string    `json:"path"`
+	Dir      bool      `json:"dir,omitempty"`
+	Size     int64     `json:"size,omitempty"`
+	Modified time.Time `json:"modified,omitempty"`
+}
+
+// FileContent is a bounded text file the phone can show.
+type FileContent struct {
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	Content   string `json:"content,omitempty"`
+	Size      int64  `json:"size"`
+	Binary    bool   `json:"binary,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
+// GitChange is one changed path of a workspace.
+type GitChange struct {
+	Path   string `json:"path"`
+	Status string `json:"status"`
+	Staged bool   `json:"staged,omitempty"`
+}
+
+// GitStatus is a workspace's branch and changes.
+type GitStatus struct {
+	Branch  string      `json:"branch"`
+	Changes []GitChange `json:"changes,omitempty"`
+}
+
+// GitCommit is one recent commit.
+type GitCommit struct {
+	Hash    string `json:"hash"`
+	Author  string `json:"author,omitempty"`
+	Date    string `json:"date,omitempty"`
+	Subject string `json:"subject"`
+}
+
+// CommandResult is a terminal command's output and exit code.
+type CommandResult struct {
+	Output    string `json:"output"`
+	ExitCode  int    `json:"exit_code"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Duration  int64  `json:"duration_ms,omitempty"`
+}
+
+// Directory is one subdirectory the new-project parent picker offers.
+type Directory struct {
+	Name string `json:"name"`
+	Path string `json:"path"`
+}
+
+// FSListing is one directory of the host file browser.
+type FSListing struct {
+	Dir     string      `json:"dir"`
+	Parent  string      `json:"parent,omitempty"`
+	Entries []Directory `json:"entries"`
+}
+
+func (c *Client) Files(ctx context.Context, dir string) ([]FileEntry, error) {
+	var out struct {
+		Files []FileEntry `json:"files"`
+	}
+	err := c.do(ctx, "GET", "/api/files?dir="+url.QueryEscape(dir), nil, &out)
+	return out.Files, err
+}
+
+func (c *Client) ReadFile(ctx context.Context, path string) (FileContent, error) {
+	var out struct {
+		File FileContent `json:"file"`
+	}
+	err := c.do(ctx, "GET", "/api/file?path="+url.QueryEscape(path), nil, &out)
+	return out.File, err
+}
+
+func (c *Client) GitStatus(ctx context.Context, dir string) (GitStatus, error) {
+	var out struct {
+		Status GitStatus `json:"status"`
+	}
+	err := c.do(ctx, "GET", "/api/git/status?dir="+url.QueryEscape(dir), nil, &out)
+	return out.Status, err
+}
+
+func (c *Client) GitDiff(ctx context.Context, dir, path string) (string, error) {
+	var out struct {
+		Diff string `json:"diff"`
+	}
+	q := "/api/git/diff?dir=" + url.QueryEscape(dir)
+	if path != "" {
+		q += "&path=" + url.QueryEscape(path)
+	}
+	err := c.do(ctx, "GET", q, nil, &out)
+	return out.Diff, err
+}
+
+func (c *Client) GitLog(ctx context.Context, dir string) ([]GitCommit, error) {
+	var out struct {
+		Commits []GitCommit `json:"commits"`
+	}
+	err := c.do(ctx, "GET", "/api/git/log?dir="+url.QueryEscape(dir), nil, &out)
+	return out.Commits, err
+}
+
+func (c *Client) GitStage(ctx context.Context, dir, path string) error {
+	return c.do(ctx, "POST", "/api/git/stage", map[string]string{"dir": dir, "path": path}, nil)
+}
+
+func (c *Client) GitCommit(ctx context.Context, dir, message string) error {
+	return c.do(ctx, "POST", "/api/git/commit", map[string]string{"dir": dir, "message": message}, nil)
+}
+
+// RunCommand runs one shell command on the desktop and waits for its output.
+func (c *Client) RunCommand(ctx context.Context, dir, command string) (CommandResult, error) {
+	// The command may legitimately take a minute; the client's usual 30s
+	// deadline would cut it first.
+	cp := *c
+	if c.HTTP != nil {
+		hc := *c.HTTP
+		hc.Timeout = 90 * time.Second
+		cp.HTTP = &hc
+	}
+	var out struct {
+		Result CommandResult `json:"result"`
+	}
+	err := cp.do(ctx, "POST", "/api/terminal", map[string]string{"dir": dir, "command": command}, &out)
+	return out.Result, err
+}
+
+func (c *Client) CreateProject(ctx context.Context, parent, name string, git bool) (string, error) {
+	var out struct {
+		Path string `json:"path"`
+	}
+	err := c.do(ctx, "POST", "/api/projects", map[string]any{"parent": parent, "name": name, "git": git}, &out)
+	return out.Path, err
+}
+
+// Directories lists the subdirectories of the host, for the project parent
+// picker. An empty dir starts at the desktop user's home.
+func (c *Client) Directories(ctx context.Context, dir string) (FSListing, error) {
+	var out FSListing
+	path := "/api/fs"
+	if dir != "" {
+		path += "?dir=" + url.QueryEscape(dir)
+	}
+	err := c.do(ctx, "GET", path, nil, &out)
+	return out, err
 }

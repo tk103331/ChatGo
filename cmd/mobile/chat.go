@@ -1035,6 +1035,16 @@ func (a *app) workspaceSheet(c *ui.Context) {
 			ui.Text(c, title).FontSize(18).FontWeight(600)
 			ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 				row := mobile.ListRow(c, mobile.RowOptions{
+					Title: "新建项目", Subtitle: "创建目录并加入项目",
+					Leading: func() {
+						ui.Icon(c, icons.Must("plus")).Size(18, 18).TextColor(t.Accent)
+					},
+				})
+				if row.Clicked() {
+					a.workspaceOpen = false
+					a.openProjectForm()
+				}
+				row = mobile.ListRow(c, mobile.RowOptions{
 					Title: "不指定工作区", Subtitle: "在当前目录外开始",
 					Trailing: func() {
 						if *target == "" {

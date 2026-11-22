@@ -2,6 +2,7 @@ package webui
 
 import (
 	"context"
+	"time"
 
 	"chatgo/pkg/models"
 )
@@ -199,4 +200,78 @@ type InteractionInfo struct {
 	Kind       string             `json:"kind"` // ask or permission
 	Items      []AskItem          `json:"items,omitempty"`
 	Permission *PermissionRequest `json:"permission,omitempty"`
+}
+
+// ToolRunner is the desktop runtime's file, Git and terminal surface. A server
+// without it answers those routes as unsupported, so the standalone webd and
+// the browser keep their smaller API.
+type ToolRunner interface {
+	// Files lists one workspace directory, files and directories.
+	Files(dir string) ([]FileEntry, error)
+	// ReadFile reads one text file inside a workspace, up to a bounded size.
+	ReadFile(path string) (FileContent, error)
+	// GitStatus reports the branch and working-tree changes of a workspace.
+	GitStatus(dir string) (GitStatusInfo, error)
+	// GitDiff returns a path's diff, or the whole working tree's.
+	GitDiff(dir, path string) (string, error)
+	// GitLog lists recent commits of a workspace.
+	GitLog(dir string) ([]GitCommitInfo, error)
+	// GitStage stages a path, or every change when path is empty.
+	GitStage(dir, path string) error
+	// GitCommit commits the staged changes with message.
+	GitCommit(dir, message string) error
+	// RunCommand runs one shell command in a workspace and returns what it
+	// printed, capped and with a timeout.
+	RunCommand(ctx context.Context, dir, command string) CommandResult
+	// CreateProject makes a project directory under parent, initializes Git
+	// when asked, registers it as a workspace, and returns its path.
+	CreateProject(parent, name string, git bool) (string, error)
+}
+
+// FileEntry is one entry of a workspace directory.
+type FileEntry struct {
+	Name     string    `json:"name"`
+	Path     string    `json:"path"`
+	Dir      bool      `json:"dir,omitempty"`
+	Size     int64     `json:"size,omitempty"`
+	Modified time.Time `json:"modified,omitempty"`
+}
+
+// FileContent is a text file's bounded contents.
+type FileContent struct {
+	Path      string `json:"path"`
+	Name      string `json:"name"`
+	Content   string `json:"content,omitempty"`
+	Size      int64  `json:"size"`
+	Binary    bool   `json:"binary,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
+// GitChange is one changed path in a working tree.
+type GitChange struct {
+	Path   string `json:"path"`
+	Status string `json:"status"`
+	Staged bool   `json:"staged,omitempty"`
+}
+
+// GitStatusInfo is a workspace's branch and changes.
+type GitStatusInfo struct {
+	Branch  string      `json:"branch"`
+	Changes []GitChange `json:"changes,omitempty"`
+}
+
+// GitCommitInfo is one commit of a workspace's log.
+type GitCommitInfo struct {
+	Hash    string `json:"hash"`
+	Author  string `json:"author,omitempty"`
+	Date    string `json:"date,omitempty"`
+	Subject string `json:"subject"`
+}
+
+// CommandResult is what a terminal command printed and how it ended.
+type CommandResult struct {
+	Output    string `json:"output"`
+	ExitCode  int    `json:"exit_code"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Duration  int64  `json:"duration_ms,omitempty"`
 }

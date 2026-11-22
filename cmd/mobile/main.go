@@ -32,6 +32,7 @@ const (
 	tabChat = iota
 	tabRooms
 	tabTasks
+	tabProjects
 	tabSettings
 )
 
@@ -44,6 +45,8 @@ const (
 	screenRoom
 	screenTasks
 	screenTask
+	screenProjects
+	screenProject
 	screenSettings
 	screenNew
 )
@@ -173,11 +176,49 @@ type app struct {
 	roomActivation string
 	roomMaster     string
 	roomSelf       bool
-	newFiles       []newFile
-	workspaces     []string
-	workspaceOpen  bool
-	agentOpen      bool
-	modelOpen      bool
+
+	// The project tools: files, Git and a command terminal.
+	projectDir      string
+	projectTab      int
+	fileDir         string
+	files           []mobileapi.FileEntry
+	fileLoading     bool
+	fileErr         string
+	filePreviewOpen bool
+	filePreview     mobileapi.FileContent
+	filePreviewErr  string
+	gitStatus       mobileapi.GitStatus
+	gitLog          []mobileapi.GitCommit
+	gitLoading      bool
+	gitErr          string
+	gitCommitMsg    string
+	gitDiffOpen     bool
+	gitDiffTitle    string
+	gitDiff         string
+	gitDiffErr      string
+	termOutput      string
+	termDraft       string
+	termRunning     bool
+	termErr         string
+	termScroll      ui.ScrollState
+
+	projectFormOpen    bool
+	projectName        string
+	projectParent      string
+	projectInitGit     bool
+	projectCreating    bool
+	projectFormErr     string
+	projectPickOpen    bool
+	projectPickDir     string
+	projectPickParent  string
+	projectPickDirs    []mobileapi.Directory
+	projectPickLoading bool
+	projectPickErr     string
+	newFiles           []newFile
+	workspaces         []string
+	workspaceOpen      bool
+	agentOpen          bool
+	modelOpen          bool
 
 	toolOpen    map[string]bool
 	thinkOpen   map[string]bool
@@ -396,6 +437,30 @@ func (a *app) disconnect() {
 	a.status = "已断开连接"
 }
 
+func (a *app) refreshWorkspaces() {
+	if a.client == nil {
+		return
+	}
+	client := a.client
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		workspaces, err := client.Workspaces(ctx)
+		if err != nil {
+			return
+		}
+		a.update(func() {
+			if a.client != client {
+				return
+			}
+			a.workspaces = workspaces
+			if a.newWorkspace != "" && !slices.Contains(workspaces, a.newWorkspace) {
+				a.newWorkspace = ""
+			}
+		})
+	}()
+}
+
 func (a *app) refreshSessions() {
 	if a.client == nil {
 		return
@@ -570,6 +635,8 @@ func (a *app) handleEvent(e mobileapi.Event) {
 			}
 		}
 		a.refreshRooms()
+	case "workspace.created":
+		a.refreshWorkspaces()
 	case "task.updated":
 		a.refreshTasks()
 	case "task.deleted":
@@ -643,6 +710,10 @@ func (a *app) view(c *ui.Context) {
 			a.taskList(c)
 		case screenTask:
 			a.taskView(c)
+		case screenProjects:
+			a.projectList(c)
+		case screenProject:
+			a.projectView(c)
 		case screenSettings:
 			a.settingsView(c)
 		case screenNew:
@@ -662,12 +733,16 @@ func (a *app) view(c *ui.Context) {
 		// The workspace picker is opened from the new-session, room and task
 		// forms, so it draws above them.
 		a.workspaceSheet(c)
+		a.projectFormSheet(c)
+		a.projectPickSheet(c)
+		a.filePreviewSheet(c)
+		a.gitDiffSheet(c)
 	})
 }
 
 func (a *app) tabBarVisible() bool {
 	switch a.screen {
-	case screenList, screenRooms, screenTasks, screenSettings, screenNew:
+	case screenList, screenRooms, screenTasks, screenProjects, screenSettings, screenNew:
 		return !a.pairOpen
 	}
 	return false
@@ -741,6 +816,20 @@ func (a *app) topBar(c *ui.Context) {
 				a.loadTaskSessions(a.taskID)
 			}
 		}
+	case screenProjects:
+		title = "项目"
+		trailing = func() {
+			if !a.offline() && smallIconButton(c, "refresh-cw", "刷新").Clicked() {
+				a.refreshWorkspaces()
+			}
+		}
+	case screenProject:
+		title = filepath.Base(a.projectDir)
+		leading = func() {
+			if smallIconButton(c, "chevron-left", "返回").Clicked() {
+				a.backToProjects()
+			}
+		}
 	case screenSettings:
 		title = "设置"
 	case screenNew:
@@ -796,6 +885,7 @@ func (a *app) bottomBar(c *ui.Context) {
 		mobile.BarButton{Label: "会话", Icon: iconChat},
 		mobile.BarButton{Label: "群聊", Icon: iconRooms},
 		mobile.BarButton{Label: "任务", Icon: iconTasks},
+		mobile.BarButton{Label: "项目", Icon: iconProjects},
 		mobile.BarButton{Label: "设置", Icon: iconSettings},
 	)
 	if bar.Changed() {
@@ -815,6 +905,9 @@ func (a *app) bottomBar(c *ui.Context) {
 		case tabTasks:
 			a.screen = screenTasks
 			a.refreshTasks()
+		case tabProjects:
+			a.screen = screenProjects
+			a.refreshWorkspaces()
 		case tabSettings:
 			a.screen = screenSettings
 		}
@@ -843,6 +936,12 @@ func (a *app) backToRooms() {
 	a.stopWatch()
 	a.screen = screenRooms
 	a.refreshRooms()
+}
+
+func (a *app) backToProjects() {
+	a.screen = screenProjects
+	a.projectDir = ""
+	a.projectTab = 0
 }
 
 func (a *app) backToTasks() {
