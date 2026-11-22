@@ -110,25 +110,7 @@ func (a *app) visibleSessions() []mobileapi.SessionSummary {
 // newSessionButton floats over the list: the one thing to do from here is
 // start a conversation.
 func (a *app) newSessionButton(c *ui.Context) {
-	t := c.Theme()
-	fab := ui.Row(c).Size(56, 56).Radius(16).Background(t.Accent).
-		Shadow(0, 3, 8, 0, ui.RGBA(0, 0, 0, 0.3)).
-		AlignItems(ui.Center).Justify(ui.Center).
-		Role(ui.RoleButton).Label("新建会话").
-		Absolute().Right(16).Bottom(16)
-	mobile.Ink(fab)
-	if mobile.Current() == mobile.Cupertino {
-		fab.Radius(28)
-		if fab.Pressed() {
-			fab.Background(t.Accent.Alpha(0.85))
-		}
-	}
-	fab.Children(func() {
-		ui.Icon(c, icons.Must("plus")).Size(24, 24).TextColor(t.AccentText)
-	})
-	if fab.Clicked() {
-		a.newChat()
-	}
+	fabButton(c, "plus", "新建会话", a.newChat)
 }
 
 // sessionGroup is one day's sessions under a heading, newest first.

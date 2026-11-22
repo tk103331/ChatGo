@@ -2,10 +2,35 @@ package main
 
 import (
 	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/mobile"
 
 	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
 )
+
+// fabButton floats the one action a list is for over its rows, within reach
+// of the thumb.
+func fabButton(c *ui.Context, icon, label string, onClick func()) {
+	t := c.Theme()
+	fab := ui.Row(c).Size(56, 56).Radius(16).Background(t.Accent).
+		Shadow(0, 3, 8, 0, ui.RGBA(0, 0, 0, 0.3)).
+		AlignItems(ui.Center).Justify(ui.Center).
+		Role(ui.RoleButton).Label(label).
+		Absolute().Right(16).Bottom(16)
+	mobile.Ink(fab)
+	if mobile.Current() == mobile.Cupertino {
+		fab.Radius(28)
+		if fab.Pressed() {
+			fab.Background(t.Accent.Alpha(0.85))
+		}
+	}
+	fab.Children(func() {
+		ui.Icon(c, icons.Must(icon)).Size(24, 24).TextColor(t.AccentText)
+	})
+	if fab.Clicked() && onClick != nil {
+		onClick()
+	}
+}
 
 // ChatGo's desktop controls all come from the same kit. These small wrappers
 // keep the phone on that visual language instead of MyGo's bare default

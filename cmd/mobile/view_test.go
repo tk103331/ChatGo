@@ -527,3 +527,102 @@ func TestChatTabLeavesNewSessionForTheList(t *testing.T) {
 		t.Fatalf("screen = %v, want the list", a.screen)
 	}
 }
+
+// The rooms list floats the button that starts a group, and the bar only
+// refreshes.
+func TestRoomFloatingButtonOpensTheForm(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.connected, a.eventsConnected = true, true
+	a.screen = screenRooms
+	a.rooms = []mobileapi.Room{{ID: "r1", Name: "讨论组", Members: []mobileapi.RoomMember{{Agent: "", Name: "Chat"}}}}
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Advance(20 * time.Millisecond)
+	if err := tr.Click("新建群聊"); err != nil {
+		t.Fatal(err)
+	}
+	tr.Advance(200 * time.Millisecond)
+	if !a.roomFormOpen {
+		t.Fatal("the group form did not open")
+	}
+}
+
+// The task list floats the button that starts a task.
+func TestTaskFloatingButtonOpensTheForm(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.connected, a.eventsConnected = true, true
+	a.screen = screenTasks
+	a.tasks = []mobileapi.Task{{ID: "t1", Name: "早报", Enabled: true}}
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Advance(20 * time.Millisecond)
+	if err := tr.Click("新建任务"); err != nil {
+		t.Fatal(err)
+	}
+	tr.Advance(200 * time.Millisecond)
+	if !a.taskFormOpen {
+		t.Fatal("the task form did not open")
+	}
+}
+
+// The settings page says what the link is doing.
+func TestSettingsShowsTheConnectionState(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.connected, a.eventsConnected = true, true
+	a.screen = screenSettings
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Advance(20 * time.Millisecond)
+	if !tr.HasText("已连接") {
+		t.Fatalf("connection state missing; texts: %v", tr.Texts())
+	}
+	if !tr.HasText("状态") {
+		t.Fatalf("state row missing; texts: %v", tr.Texts())
+	}
+}
+
+// The "移除" button inside a desktop row takes that desktop away and does
+// not also switch to it.
+func TestRemoveDesktopButtonOnlyRemoves(t *testing.T) {
+	a := testApp()
+	a.storageDir = t.TempDir()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.servers = []server{
+		{ID: "d1", Name: "工作台式机", RelayURL: "https://relay.example.com", DesktopID: "d1", Token: "t"},
+		{ID: "d2", Name: "家里那台", RelayURL: "https://relay.example.com", DesktopID: "d2", Token: "t"},
+	}
+	a.server = 0
+	a.screen = screenSettings
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Advance(20 * time.Millisecond)
+	if err := tr.Click("移除"); err != nil {
+		t.Fatal(err)
+	}
+	tr.Advance(200 * time.Millisecond)
+	if len(a.servers) != 1 || a.servers[0].DesktopID != "d1" {
+		t.Fatalf("servers = %+v, want the other desktop kept", a.servers)
+	}
+	if a.server != 0 {
+		t.Fatalf("server = %d, want the current desktop", a.server)
+	}
+}
+
+// Removing a desktop above the current one keeps the phone on the desktop it
+// is talking to, without reconnecting.
+func TestRemoveDesktopBeforeCurrentKeepsTheCurrent(t *testing.T) {
+	a := testApp()
+	a.storageDir = t.TempDir()
+	a.servers = []server{
+		{ID: "d1", DesktopID: "d1"},
+		{ID: "d2", DesktopID: "d2"},
+		{ID: "d3", DesktopID: "d3"},
+	}
+	a.server = 1
+	a.removeServer(0)
+	if len(a.servers) != 2 || a.servers[0].DesktopID != "d2" {
+		t.Fatalf("servers = %+v, want d1 gone", a.servers)
+	}
+	if a.server != 0 {
+		t.Fatalf("server = %d, want the same desktop at its new index", a.server)
+	}
+}

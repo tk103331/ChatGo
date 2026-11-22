@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
-	"github.com/egoist/mygo/ui"
-	"github.com/egoist/mygo/ui/mobile"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/egoist/mygo/ui"
+	"github.com/egoist/mygo/ui/mobile"
+
 	"chatgo/internal/mobileapi"
+	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
 )
 
@@ -27,43 +30,64 @@ func (a *app) taskList(c *ui.Context) {
 		})
 		return
 	}
-	t := c.Theme()
-	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-		mobile.Section(c, "任务", func() {
-			for _, task := range a.tasks {
-				tk := task
-				row := mobile.ListRow(c, mobile.RowOptions{
-					Title:      firstNonEmpty(tk.Name, "未命名"),
-					Subtitle:   taskSubtitle(tk),
-					Disclosure: true,
-					Leading: func() {
-						listMark(c, "clock", tk.Running)
-					},
-					Trailing: func() {
-						if tk.Running {
-							ui.Text(c, "运行中").FontSize(11).TextColor(t.Accent)
-						} else if !tk.Enabled {
-							ui.Text(c, "已停用").FontSize(11).TextColor(t.TextMuted)
-						}
-					},
-				})
-				if row.Clicked() {
-					a.openTask(tk.ID)
+	ui.Column(c).Grow(1).MinHeight(0).Children(func() {
+		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			// The bottom padding keeps the last row clear of the button
+			// floating over the list.
+			ui.Column(c).FillWidth().Padding(4, 0, 88, 0).Gap(6).Children(func() {
+				for _, task := range a.tasks {
+					a.taskRow(c, task)
 				}
-			}
+			})
 		})
+		fabButton(c, "plus", "新建任务", func() { a.openTaskForm("") })
 	})
 }
 
+// taskRow is one scheduled task: its name, when it runs and when it last
+// ran.
+func (a *app) taskRow(c *ui.Context, task mobileapi.Task) {
+	t := c.Theme()
+	title := firstNonEmpty(task.Name, "未命名")
+	row := ui.Row(c).FillWidth().AlignItems(ui.Center).Padding(12, 16).Gap(12).
+		Role(ui.RoleButton).Label(title + ", " + taskSubtitle(task))
+	mobile.Ink(row)
+	if mobile.Current() == mobile.Cupertino && row.Pressed() {
+		row.Background(t.SurfacePressed)
+	}
+	row.Children(func() {
+		listMark(c, "clock", task.Running)
+		ui.Column(c).Grow(1).Basis(0).Gap(3).Children(func() {
+			ui.Text(c, title).FontSize(15).FontWeight(600).SingleLine().Ellipsis("…")
+			ui.Text(c, taskSubtitle(task)).FontSize(13).TextColor(t.TextMuted).
+				MaxLines(1).Ellipsis("…")
+		})
+		ui.Column(c).AlignItems(ui.End).Shrink(0).Gap(4).Children(func() {
+			if task.Running {
+				ui.Row(c).Gap(4).AlignItems(ui.Center).Children(func() {
+					ui.Box(c).Size(6, 6).Radius(3).Background(t.Accent).Shrink(0)
+					ui.Text(c, "运行中").FontSize(10).TextColor(t.Accent)
+				})
+			} else if !task.Enabled {
+				ui.Text(c, "已停用").FontSize(10).TextColor(t.TextMuted)
+			}
+			if !task.LastRun.IsZero() {
+				ui.Text(c, shortTime(task.LastRun)).FontSize(11).TextColor(t.TextMuted)
+			}
+		})
+	})
+	if row.Clicked() {
+		a.openTask(task.ID)
+	}
+}
+
+// taskSubtitle says when the task runs and when it last ran.
 func taskSubtitle(t mobileapi.Task) string {
 	parts := []string{scheduleText(t.Schedule)}
 	if t.LastRun.IsZero() {
 		parts = append(parts, "未运行")
 	} else {
-		parts = append(parts, shortTime(t.LastRun))
-		if t.LastNote != "" {
-			parts = append(parts, t.LastNote)
-		}
+		parts = append(parts, "上次 "+shortTime(t.LastRun))
 	}
 	return strings.Join(parts, " · ")
 }
@@ -143,17 +167,43 @@ func (a *app) taskView(c *ui.Context) {
 			return
 		}
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-			ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
-				ui.Text(c, task.Name).FontSize(20).FontWeight(600)
-				ui.Text(c, scheduleText(task.Schedule)).FontSize(13).TextColor(t.TextMuted)
-				if task.LastNote != "" {
-					ui.Text(c, "上次: "+task.LastNote).FontSize(13).TextColor(t.TextMuted)
+			ui.Column(c).FillWidth().Padding(12, 16, 16, 16).Gap(10).Children(func() {
+				ui.Text(c, firstNonEmpty(task.Name, "未命名")).FontSize(19).FontWeight(600).
+					SingleLine().Ellipsis("…")
+				ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Children(func() {
+					ui.Row(c).Gap(4).AlignItems(ui.Center).Padding(3, 8).Radius(8).
+						Background(t.Surface).Children(func() {
+						ui.Icon(c, icons.Must("clock")).Size(12, 12).TextColor(t.TextMuted).Shrink(0)
+						ui.Text(c, scheduleText(task.Schedule)).FontSize(12).TextColor(t.Text)
+					})
+					if task.Running {
+						ui.Row(c).Gap(4).AlignItems(ui.Center).Padding(3, 8).Radius(8).
+							Background(t.Accent.Alpha(0.12)).Children(func() {
+							ui.Box(c).Size(6, 6).Radius(3).Background(t.Accent).Shrink(0)
+							ui.Text(c, "运行中").FontSize(12).TextColor(t.Accent)
+						})
+					} else if !task.Enabled {
+						ui.Text(c, "已停用").FontSize(12).TextColor(t.TextMuted)
+					}
+					if task.Agent != "" {
+						ui.Text(c, a.agentLabel(task.Agent)).FontSize(12).TextColor(t.TextMuted).
+							SingleLine().Ellipsis("…").MaxWidth(140)
+					}
+				})
+				if task.Prompt != "" {
+					ui.Text(c, task.Prompt).FontSize(13).TextColor(t.Text).MaxLines(4).Ellipsis("…")
 				}
-				ui.Text(c, task.Prompt).FontSize(14).MaxLines(20)
 				if task.Workspace != "" {
-					ui.Text(c, task.Workspace).FontSize(11).TextColor(t.TextMuted).SingleLine().Ellipsis("…")
+					ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+						ui.Icon(c, icons.Must("folder")).Size(13, 13).TextColor(t.TextMuted).Shrink(0)
+						ui.Text(c, filepath.Base(task.Workspace)).FontSize(11).TextColor(t.TextMuted).
+							SingleLine().Ellipsis("…")
+					})
 				}
-				ui.Row(c).FillWidth().Gap(6).AlignItems(ui.Center).Wrap().Children(func() {
+				if task.LastNote != "" {
+					ui.Text(c, "上次: "+task.LastNote).FontSize(12).TextColor(t.TextMuted).MaxLines(3)
+				}
+				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 					if primaryButton(c, "立即运行").Clicked() {
 						a.runTask(task.ID)
 					}
@@ -167,31 +217,45 @@ func (a *app) taskView(c *ui.Context) {
 					if ghostButton(c, "编辑").Clicked() {
 						a.openTaskForm(task.ID)
 					}
-					ui.Spacer(c)
-					if kit.Button(c, "删除", kit.ButtonOptions{
-						Variant: kit.Ghost, Foreground: t.Danger,
-					}).Height(34).Padding(0, 10).Clicked() {
-						a.deleteTask(task.ID)
-					}
 				})
-				ui.Text(c, "运行历史").FontSize(15).FontWeight(600)
+				ui.Text(c, "运行历史").FontSize(14).FontWeight(600)
 				if len(a.taskSess) == 0 {
 					ui.Text(c, "还没有运行记录").FontSize(13).TextColor(t.TextMuted)
 				}
 				for _, s := range a.taskSess {
-					session := s
-					row := mobile.ListRow(c, mobile.RowOptions{
-						Title:      firstNonEmpty(session.Label, session.ID),
-						Subtitle:   shortTime(session.Updated),
-						Disclosure: true,
-					})
-					if row.Clicked() {
-						a.openChat(session.ID, "", "")
-					}
+					a.taskSessionRow(c, s)
 				}
+				// Deleting a task takes its history with it, so the button
+				// sits at the end rather than in the bar.
+				ui.Row(c).FillWidth().Padding(0, 0, 24, 0).Justify(ui.Center).Children(func() {
+					if kit.Button(c, "删除任务", kit.ButtonOptions{
+						Variant: kit.Ghost, Foreground: t.Danger,
+					}).Height(34).Padding(0, 12).Clicked() {
+						a.deleteTask(task.ID)
+					}
+				})
 			})
 		})
 	})
+}
+
+// taskSessionRow is one run of a task: when it happened and what it said.
+func (a *app) taskSessionRow(c *ui.Context, s mobileapi.RoomSession) {
+	t := c.Theme()
+	title := firstNonEmpty(s.Label, s.ID)
+	row := ui.Row(c).FillWidth().AlignItems(ui.Center).Padding(12, 0).Gap(12).
+		Role(ui.RoleButton).Label(title)
+	mobile.Ink(row)
+	row.Children(func() {
+		listMark(c, "message-square", false)
+		ui.Text(c, title).FontSize(14).Grow(1).Basis(0).SingleLine().Ellipsis("…")
+		if !s.Updated.IsZero() {
+			ui.Text(c, shortTime(s.Updated)).FontSize(11).TextColor(t.TextMuted).Shrink(0)
+		}
+	})
+	if row.Clicked() {
+		a.openChat(s.ID, "", "")
+	}
 }
 
 func (a *app) runTask(id string) {
@@ -283,6 +347,7 @@ func (a *app) openTaskForm(id string) {
 
 func (a *app) taskFormSheet(c *ui.Context) {
 	mobile.Sheet(c, &a.taskFormOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "任务"}, func() {
+		t := c.Theme()
 		ui.Column(c).FillWidth().Padding(16).Gap(10).Children(func() {
 			title := "新建任务"
 			if a.taskEditing != "" {
@@ -291,54 +356,61 @@ func (a *app) taskFormSheet(c *ui.Context) {
 			ui.Text(c, title).FontSize(17).FontWeight(600)
 			ui.TextInput(c, &a.taskForm.Name).Placeholder("任务名称")
 			ui.TextInput(c, &a.taskForm.Prompt).Placeholder("提示词").MaxLines(5)
-			ui.Text(c, "Agent").FontSize(12).TextColor(c.Theme().TextMuted)
+			ui.Text(c, "Agent").FontSize(13).TextColor(t.TextMuted)
 			ui.Row(c).Gap(6).Wrap().Children(func() {
 				for _, item := range append([]mobileapi.Agent{{Ref: "", Name: "Chat", Kind: "chat"}}, a.agents...) {
 					if item.Disabled {
 						continue
 					}
-					label := item.Name
-					if a.taskForm.Agent == item.Ref {
-						label = "● " + label
+					item := item
+					selected := a.taskForm.Agent == item.Ref
+					fg := t.Text
+					if selected {
+						fg = t.AccentText
 					}
-					ref := item.Ref
-					if secondaryButton(c, label).Clicked() {
-						a.taskForm.Agent = ref
+					chip := kit.Button(c, firstNonEmpty(item.Name, item.Ref), kit.ButtonOptions{
+						Variant: chipVariant(selected),
+						Leading: func() {
+							a.agentMarkColor(c, item.Ref, 14, fg)
+						},
+					}).Height(34).Padding(0, 12)
+					if chip.Clicked() {
+						a.taskForm.Agent = item.Ref
 						a.invalidate()
 					}
 				}
 			})
-			ui.Text(c, "计划").FontSize(13).TextColor(c.Theme().TextMuted)
+			ui.Text(c, "计划").FontSize(13).TextColor(t.TextMuted)
 			ui.Row(c).Gap(6).Wrap().Children(func() {
 				for _, kind := range []struct{ key, label string }{
 					{"daily", "每天"}, {"weekly", "每周"}, {"monthly", "每月"}, {"manual", "手动"},
 				} {
 					kind := kind
-					label := kind.label
-					if a.taskForm.Schedule.Kind == kind.key {
-						label = "● " + label
-					}
-					if secondaryButton(c, label).Clicked() {
+					selected := a.taskForm.Schedule.Kind == kind.key
+					chip := kit.Button(c, kind.label, kit.ButtonOptions{
+						Variant: chipVariant(selected),
+					}).Height(34).Padding(0, 12)
+					if chip.Clicked() {
 						a.taskForm.Schedule.Kind = kind.key
 						a.invalidate()
 					}
 				}
 			})
-			ui.Row(c).Gap(8).Children(func() {
+			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.TextInput(c, &a.taskHour).Width(64).Placeholder("时")
 				ui.TextInput(c, &a.taskMinute).Width(64).Placeholder("分")
-				ui.Text(c, "时 / 分（0-23 / 0-59）").FontSize(11).TextColor(c.Theme().TextMuted)
+				ui.Text(c, "0-23 时 / 0-59 分").FontSize(11).TextColor(t.TextMuted)
 			})
 			if a.taskForm.Schedule.Kind == "weekly" {
-				ui.Row(c).Gap(8).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.TextInput(c, &a.taskWeekday).Width(64).Placeholder("周几")
-					ui.Text(c, "0=周日 … 6=周六").FontSize(11).TextColor(c.Theme().TextMuted)
+					ui.Text(c, "0 = 周日").FontSize(11).TextColor(t.TextMuted)
 				})
 			}
 			if a.taskForm.Schedule.Kind == "monthly" {
-				ui.Row(c).Gap(8).Children(func() {
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
 					ui.TextInput(c, &a.taskDay).Width(64).Placeholder("日")
-					ui.Text(c, "每月执行日（1-31）").FontSize(11).TextColor(c.Theme().TextMuted)
+					ui.Text(c, "1-31 日").FontSize(11).TextColor(t.TextMuted)
 				})
 			}
 			ui.Row(c).Gap(8).Children(func() {
@@ -351,6 +423,14 @@ func (a *app) taskFormSheet(c *ui.Context) {
 			})
 		})
 	})
+}
+
+// chipVariant picks how a choice chip looks: the chosen one stands out.
+func chipVariant(selected bool) kit.ButtonVariant {
+	if selected {
+		return kit.Primary
+	}
+	return kit.Secondary
 }
 
 func (a *app) saveTaskForm() {

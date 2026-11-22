@@ -18,28 +18,11 @@ import (
 func (a *app) settingsView(c *ui.Context) {
 	t := c.Theme()
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-		ui.Column(c).FillWidth().Padding(0, 0, 16, 0).Gap(16).Children(func() {
+		ui.Column(c).FillWidth().Padding(0, 0, 24, 0).Gap(16).Children(func() {
 			mobile.Section(c, "桌面", func() {
 				for i, srv := range a.servers {
 					i, srv := i, srv
-					row := mobile.ListRow(c, mobile.RowOptions{
-						Title:    firstNonEmpty(srv.Name, srv.DesktopID),
-						Subtitle: apiBase(srv.RelayURL) + " · " + srv.DesktopID,
-						Trailing: func() {
-							if i == a.server {
-								ui.Text(c, "当前").FontSize(12).TextColor(t.Accent)
-							}
-						},
-					})
-					if row.Clicked() {
-						a.update(func() {
-							a.server = i
-							a.connErr = ""
-						})
-						a.connect(srv)
-						a.saveServers()
-						a.toast("已切换桌面")
-					}
+					a.desktopRow(c, i, srv)
 				}
 				row := mobile.ListRow(c, mobile.RowOptions{
 					Title:      "添加桌面",
@@ -57,62 +40,14 @@ func (a *app) settingsView(c *ui.Context) {
 				}
 			})
 
-			if len(a.servers) > 1 {
-				mobile.Section(c, "移除", func() {
-					for i, srv := range a.servers {
-						i, srv := i, srv
-						row := mobile.ListRow(c, mobile.RowOptions{
-							Title:    "移除 " + firstNonEmpty(srv.Name, srv.DesktopID),
-							Subtitle: "只删除本机保存的令牌，不会影响桌面",
-						})
-						if row.Clicked() {
-							a.removeServer(i)
-							a.toast("桌面已移除")
-							return
-						}
-					}
-				})
-			}
-
 			mobile.Section(c, "连接", func() {
-				if a.pairRequired {
-					row := mobile.ListRow(c, mobile.RowOptions{
-						Title:    "重新配对",
-						Subtitle: "桌面已移除这台手机或令牌失效，需要新的配对码",
-					})
-					if row.Clicked() {
-						a.openPairSheet(true)
-					}
-				}
-				if a.client != nil {
-					if mobile.ListRow(c, mobile.RowOptions{Title: "断开连接", Subtitle: "保留配对信息，下次可直接重新连接"}).Clicked() {
-						a.disconnect()
-					}
-				}
-				if !a.pairRequired {
-					row := mobile.ListRow(c, mobile.RowOptions{
-						Title:    "重新连接",
-						Subtitle: a.status,
-					})
-					if row.Clicked() && len(a.servers) > 0 {
-						a.connect(a.servers[a.server])
-						a.toast("正在重新连接")
-					}
-				}
-				row := mobile.ListRow(c, mobile.RowOptions{
-					Title:    "通知",
-					Subtitle: "自动任务完成、提问和权限审批由系统推送",
-				})
-				if row.Clicked() {
-					a.startPush()
-					a.toast("已重新注册推送")
-				}
+				a.connectionRows(c)
 			})
 
 			mobile.Section(c, "关于", func() {
 				mobile.ListRow(c, mobile.RowOptions{
 					Title:    "ChatGo Mobile",
-					Subtitle: "通过自建中继连接桌面 ChatGo",
+					Subtitle: versionText(),
 				})
 				if a.client != nil {
 					mobile.ListRow(c, mobile.RowOptions{
@@ -121,13 +56,120 @@ func (a *app) settingsView(c *ui.Context) {
 					})
 				}
 			})
-			if a.connErr != "" {
-				mobile.Section(c, "连接错误", func() {
-					ui.Text(c, a.connErr).FontSize(12).TextColor(t.Danger).Padding(12, 16).MaxLines(6)
-				})
-			}
 		})
 	})
+}
+
+// versionText is the app's own version, as the build reports it.
+func versionText() string {
+	version := strings.TrimSpace(mygo.App.Version())
+	if version == "" {
+		return "通过自建中继连接桌面 ChatGo"
+	}
+	return "版本 " + version
+}
+
+// desktopRow is one paired desktop: its name, where it is reached and which
+// one the phone is talking to.
+func (a *app) desktopRow(c *ui.Context, i int, srv server) {
+	t := c.Theme()
+	row := mobile.ListRow(c, mobile.RowOptions{
+		Title:    firstNonEmpty(srv.Name, srv.DesktopID),
+		Subtitle: apiBase(srv.RelayURL) + " · " + srv.DesktopID,
+		Trailing: func() {
+			if i == a.server {
+				ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
+			} else if len(a.servers) > 1 {
+				if kit.Button(c, "移除", kit.ButtonOptions{
+					Variant: kit.Ghost, Foreground: t.Danger, Label: "移除桌面",
+				}).Height(30).Padding(0, 8).Clicked() {
+					a.removeServer(i)
+					a.toast("桌面已移除")
+				}
+			}
+		},
+	})
+	if row.Clicked() {
+		// The row may have been the "移除" button inside it, which takes the
+		// desktop away: then this click means nothing else.
+		if i >= len(a.servers) || a.servers[i].DesktopID != srv.DesktopID {
+			return
+		}
+		if i == a.server {
+			return
+		}
+		a.update(func() {
+			a.server = i
+			a.connErr = ""
+		})
+		a.connect(srv)
+		a.saveServers()
+		a.toast("已切换桌面")
+	}
+}
+
+// connectionRows is what the phone does about the link: its state, and the
+// ways out of it.
+func (a *app) connectionRows(c *ui.Context) {
+	t := c.Theme()
+	mobile.ListRow(c, mobile.RowOptions{
+		Title: "状态",
+		Trailing: func() {
+			label, color := "未连接", t.TextMuted
+			switch {
+			case a.connecting:
+				label, color = "连接中", t.Accent
+			case a.connected && a.eventsConnected:
+				label, color = "已连接", t.Success
+			case a.connected:
+				label, color = "已连接桌面", t.Warning
+			}
+			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+				ui.Box(c).Size(7, 7).Radius(4).Background(color).Shrink(0)
+				ui.Text(c, label).FontSize(12).TextColor(color)
+			})
+		},
+	})
+	if a.connErr != "" {
+		mobile.ListRow(c, mobile.RowOptions{
+			Title:    "连接错误",
+			Subtitle: a.connErr,
+		})
+	}
+	if a.pairRequired {
+		row := mobile.ListRow(c, mobile.RowOptions{
+			Title:    "重新配对",
+			Subtitle: "桌面已移除这台手机或令牌失效，需要新的配对码",
+		})
+		if row.Clicked() {
+			a.openPairSheet(true)
+		}
+	}
+	if !a.connecting && (!a.connected || a.pairRequired) {
+		row := mobile.ListRow(c, mobile.RowOptions{
+			Title: "重新连接",
+		})
+		if row.Clicked() && len(a.servers) > 0 {
+			a.connect(a.servers[a.server])
+			a.toast("正在重新连接")
+		}
+	}
+	if a.client != nil {
+		if mobile.ListRow(c, mobile.RowOptions{
+			Title:    "断开连接",
+			Subtitle: "保留配对信息，下次可直接重新连接",
+		}).Clicked() {
+			a.disconnect()
+		}
+	}
+	row := mobile.ListRow(c, mobile.RowOptions{
+		Title:    "通知",
+		Subtitle: "自动任务完成、提问和权限审批由系统推送",
+	})
+	if row.Clicked() {
+		a.startPush()
+		a.toast("已重新注册推送")
+	}
 }
 
 func (a *app) pairSheet(c *ui.Context) {

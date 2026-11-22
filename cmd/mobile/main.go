@@ -346,12 +346,16 @@ func decodeIcon(data []byte) ui.ImageSource {
 
 // agentMark draws an agent's configured icon, or the mark of its kind.
 func (a *app) agentMark(c *ui.Context, ref string, size float32) {
+	a.agentMarkColor(c, ref, size, c.Theme().TextMuted)
+}
+
+// agentMarkColor draws an agent's mark in the given color.
+func (a *app) agentMarkColor(c *ui.Context, ref string, size float32, color ui.Color) {
 	if src := a.agentIcons[ref]; src != nil {
 		ui.Image(c, src).Size(size, size).Shrink(0)
 		return
 	}
-	ui.Icon(c, icons.Must(sessionIcon(ref))).Size(size, size).
-		TextColor(c.Theme().TextMuted).Shrink(0)
+	ui.Icon(c, icons.Must(sessionIcon(ref))).Size(size, size).TextColor(color).Shrink(0)
 }
 
 // disconnect keeps pairing credentials and drafts so reconnecting needs no
@@ -631,8 +635,8 @@ func (a *app) topBar(c *ui.Context) {
 	case screenRooms:
 		title = "群聊"
 		trailing = func() {
-			if !a.offline() && smallIconButton(c, "plus", "新建").Clicked() {
-				a.openRoomForm("")
+			if !a.offline() && smallIconButton(c, "refresh-cw", "刷新").Clicked() {
+				a.refreshRooms()
 			}
 		}
 	case screenRoom:
@@ -642,11 +646,16 @@ func (a *app) topBar(c *ui.Context) {
 				a.backToRooms()
 			}
 		}
+		trailing = func() {
+			if !a.offline() && smallIconButton(c, "refresh-cw", "刷新").Clicked() {
+				a.loadRoomSessions(a.roomID)
+			}
+		}
 	case screenTasks:
 		title = "自动任务"
 		trailing = func() {
-			if !a.offline() && smallIconButton(c, "plus", "新建").Clicked() {
-				a.openTaskForm("")
+			if !a.offline() && smallIconButton(c, "refresh-cw", "刷新").Clicked() {
+				a.refreshTasks()
 			}
 		}
 	case screenTask:
@@ -654,6 +663,11 @@ func (a *app) topBar(c *ui.Context) {
 		leading = func() {
 			if smallIconButton(c, "chevron-left", "返回").Clicked() {
 				a.backToTasks()
+			}
+		}
+		trailing = func() {
+			if !a.offline() && smallIconButton(c, "refresh-cw", "刷新").Clicked() {
+				a.loadTaskSessions(a.taskID)
 			}
 		}
 	case screenSettings:
@@ -913,16 +927,26 @@ func (a *app) removeServer(i int) {
 	if i < 0 || i >= len(a.servers) {
 		return
 	}
+	// Removing a desktop the phone is not talking to must leave the live
+	// connection alone; removing the current one moves to a neighbour.
+	current := i == a.server
 	deleteToken(a.servers[i].DesktopID)
 	deleteE2EKey(a.servers[i].DesktopID)
 	a.servers = append(a.servers[:i], a.servers[i+1:]...)
-	if a.server >= len(a.servers) {
-		a.server = len(a.servers) - 1
-	}
-	if a.server < 0 {
-		a.server = 0
+	if current {
+		if a.server >= len(a.servers) {
+			a.server = len(a.servers) - 1
+		}
+		if a.server < 0 {
+			a.server = 0
+		}
+	} else if i < a.server {
+		a.server--
 	}
 	a.saveServers()
+	if !current {
+		return
+	}
 	if len(a.servers) > 0 {
 		a.connect(a.servers[a.server])
 	} else {
