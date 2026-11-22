@@ -36,11 +36,30 @@ func (a *app) taskList(c *ui.Context) {
 			// floating over the list.
 			ui.Column(c).FillWidth().Padding(4, 0, 88, 0).Gap(6).Children(func() {
 				for _, task := range a.tasks {
-					a.taskRow(c, task)
+					a.taskSwipeRow(c, task)
 				}
 			})
 		})
 		fabButton(c, "plus", "新建任务", func() { a.openTaskForm("") })
+	})
+}
+
+// taskSwipeRow adds the quick enable/disable action to a task row.
+func (a *app) taskSwipeRow(c *ui.Context, task mobileapi.Task) {
+	tk := task
+	label := "停用"
+	if !tk.Enabled {
+		label = "启用"
+	}
+	opts := mobile.SwipeOptions{}
+	if !tk.Running {
+		opts.Leading = []mobile.SwipeAction{{
+			Label: label,
+			OnTap: func() { a.toggleTask(&tk) },
+		}}
+	}
+	mobile.SwipeRow(c, nil, opts, func() {
+		a.taskRow(c, tk)
 	})
 }
 
@@ -338,6 +357,7 @@ func (a *app) openTaskForm(id string) {
 		a.taskFormOpen = true
 		a.taskEditing = id
 		a.taskForm = form
+		a.taskWorkspace = form.Workspace
 		a.taskHour = strconv.Itoa(form.Schedule.Hour)
 		a.taskMinute = strconv.Itoa(form.Schedule.Minute)
 		a.taskWeekday = strconv.Itoa(form.Schedule.Weekday)
@@ -348,78 +368,103 @@ func (a *app) openTaskForm(id string) {
 func (a *app) taskFormSheet(c *ui.Context) {
 	mobile.Sheet(c, &a.taskFormOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "任务"}, func() {
 		t := c.Theme()
-		ui.Column(c).FillWidth().Padding(16).Gap(10).Children(func() {
-			title := "新建任务"
-			if a.taskEditing != "" {
-				title = "编辑任务"
-			}
-			ui.Text(c, title).FontSize(17).FontWeight(600)
-			ui.TextInput(c, &a.taskForm.Name).Placeholder("任务名称")
-			ui.TextInput(c, &a.taskForm.Prompt).Placeholder("提示词").MaxLines(5)
-			ui.Text(c, "Agent").FontSize(13).TextColor(t.TextMuted)
-			ui.Row(c).Gap(6).Wrap().Children(func() {
-				for _, item := range append([]mobileapi.Agent{{Ref: "", Name: "Chat", Kind: "chat"}}, a.agents...) {
-					if item.Disabled {
-						continue
-					}
-					item := item
-					selected := a.taskForm.Agent == item.Ref
-					fg := t.Text
-					if selected {
-						fg = t.AccentText
-					}
-					chip := kit.Button(c, firstNonEmpty(item.Name, item.Ref), kit.ButtonOptions{
-						Variant: chipVariant(selected),
-						Leading: func() {
-							a.agentMarkColor(c, item.Ref, 14, fg)
-						},
-					}).Height(34).Padding(0, 12)
-					if chip.Clicked() {
-						a.taskForm.Agent = item.Ref
-						a.invalidate()
-					}
+		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			ui.Column(c).FillWidth().Padding(16).Gap(10).Children(func() {
+				title := "新建任务"
+				if a.taskEditing != "" {
+					title = "编辑任务"
 				}
-			})
-			ui.Text(c, "计划").FontSize(13).TextColor(t.TextMuted)
-			ui.Row(c).Gap(6).Wrap().Children(func() {
-				for _, kind := range []struct{ key, label string }{
-					{"daily", "每天"}, {"weekly", "每周"}, {"monthly", "每月"}, {"manual", "手动"},
-				} {
-					kind := kind
-					selected := a.taskForm.Schedule.Kind == kind.key
-					chip := kit.Button(c, kind.label, kit.ButtonOptions{
-						Variant: chipVariant(selected),
-					}).Height(34).Padding(0, 12)
-					if chip.Clicked() {
-						a.taskForm.Schedule.Kind = kind.key
-						a.invalidate()
+				ui.Text(c, title).FontSize(17).FontWeight(600)
+				ui.TextInput(c, &a.taskForm.Name).Placeholder("任务名称")
+				ui.TextInput(c, &a.taskForm.Prompt).Placeholder("提示词").MaxLines(5)
+				ui.Text(c, "Agent").FontSize(13).TextColor(t.TextMuted)
+				ui.Row(c).Gap(6).Wrap().Children(func() {
+					for _, item := range append([]mobileapi.Agent{{Ref: "", Name: "Chat", Kind: "chat"}}, a.agents...) {
+						if item.Disabled {
+							continue
+						}
+						item := item
+						selected := a.taskForm.Agent == item.Ref
+						fg := t.Text
+						if selected {
+							fg = t.AccentText
+						}
+						chip := kit.Button(c, firstNonEmpty(item.Name, item.Ref), kit.ButtonOptions{
+							Variant: chipVariant(selected),
+							Leading: func() {
+								a.agentMarkColor(c, item.Ref, 14, fg)
+							},
+						}).Height(34).Padding(0, 12)
+						if chip.Clicked() {
+							a.taskForm.Agent = item.Ref
+							a.invalidate()
+						}
 					}
-				}
-			})
-			ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-				ui.TextInput(c, &a.taskHour).Width(64).Placeholder("时")
-				ui.TextInput(c, &a.taskMinute).Width(64).Placeholder("分")
-				ui.Text(c, "0-23 时 / 0-59 分").FontSize(11).TextColor(t.TextMuted)
-			})
-			if a.taskForm.Schedule.Kind == "weekly" {
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.TextInput(c, &a.taskWeekday).Width(64).Placeholder("周几")
-					ui.Text(c, "0 = 周日").FontSize(11).TextColor(t.TextMuted)
 				})
-			}
-			if a.taskForm.Schedule.Kind == "monthly" {
-				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
-					ui.TextInput(c, &a.taskDay).Width(64).Placeholder("日")
-					ui.Text(c, "1-31 日").FontSize(11).TextColor(t.TextMuted)
+				ui.Text(c, "计划").FontSize(13).TextColor(t.TextMuted)
+				ui.Row(c).Gap(6).Wrap().Children(func() {
+					for _, kind := range []struct{ key, label string }{
+						{"daily", "每天"}, {"weekly", "每周"}, {"monthly", "每月"}, {"manual", "手动"},
+					} {
+						kind := kind
+						selected := a.taskForm.Schedule.Kind == kind.key
+						chip := kit.Button(c, kind.label, kit.ButtonOptions{
+							Variant: chipVariant(selected),
+						}).Height(34).Padding(0, 12)
+						if chip.Clicked() {
+							a.taskForm.Schedule.Kind = kind.key
+							a.invalidate()
+						}
+					}
 				})
-			}
-			ui.Row(c).Gap(8).Children(func() {
-				if primaryButton(c, "保存").Clicked() {
-					a.saveTaskForm()
+				ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.TextInput(c, &a.taskHour).Width(64).Placeholder("时")
+					ui.TextInput(c, &a.taskMinute).Width(64).Placeholder("分")
+					ui.Text(c, "0-23 时 / 0-59 分").FontSize(11).TextColor(t.TextMuted)
+				})
+				if a.taskForm.Schedule.Kind == "weekly" {
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+						ui.TextInput(c, &a.taskWeekday).Width(64).Placeholder("周几")
+						ui.Text(c, "0 = 周日").FontSize(11).TextColor(t.TextMuted)
+					})
 				}
-				if ghostButton(c, "取消").Clicked() {
-					a.taskFormOpen = false
+				if a.taskForm.Schedule.Kind == "monthly" {
+					ui.Row(c).Gap(8).AlignItems(ui.Center).Children(func() {
+						ui.TextInput(c, &a.taskDay).Width(64).Placeholder("日")
+						ui.Text(c, "1-31 日").FontSize(11).TextColor(t.TextMuted)
+					})
 				}
+				label := "不指定工作区"
+				if a.taskWorkspace != "" {
+					label = filepath.Base(a.taskWorkspace)
+				}
+				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, icons.Must("folder")).Size(16, 16).TextColor(t.TextMuted).Shrink(0)
+					ui.Column(c).Grow(1).Basis(0).Children(func() {
+						ui.Text(c, "工作区").FontSize(11).TextColor(t.TextMuted)
+						ui.Text(c, label).FontSize(13).SingleLine().Ellipsis("…")
+					})
+					if smallSecondaryButton(c, "选择").Clicked() {
+						a.workspaceFor = "task"
+						a.workspaceOpen = true
+					}
+				})
+				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Column(c).Grow(1).Basis(0).Gap(2).Children(func() {
+						ui.Text(c, "复用会话").FontSize(13)
+						ui.Text(c, "每次运行沿用同一个会话，保留之前的上下文。").
+							FontSize(11).TextColor(t.TextMuted).MaxLines(2)
+					})
+					mobile.Switch(c, &a.taskForm.Reuse)
+				})
+				ui.Row(c).Gap(8).Children(func() {
+					if primaryButton(c, "保存").Clicked() {
+						a.saveTaskForm()
+					}
+					if ghostButton(c, "取消").Clicked() {
+						a.taskFormOpen = false
+					}
+				})
 			})
 		})
 	})
@@ -452,6 +497,7 @@ func (a *app) saveTaskForm() {
 	}
 	a.taskForm.Name = name
 	a.taskForm.Prompt = prompt
+	a.taskForm.Workspace = a.taskWorkspace
 	a.taskForm.Schedule.Hour = hour
 	a.taskForm.Schedule.Minute = minute
 	if hour < 0 || hour > 23 || minute < 0 || minute > 59 {

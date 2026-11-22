@@ -59,7 +59,7 @@ func (a *app) chatList(c *ui.Context) {
 					group := group
 					mobile.Section(c, group.label, func() {
 						for _, session := range group.sessions {
-							a.sessionRow(c, session)
+							a.sessionSwipeRow(c, session)
 						}
 					})
 				}
@@ -147,6 +147,132 @@ func sessionDay(t time.Time) string {
 	default:
 		return "更早"
 	}
+}
+
+// sessionSwipeRow is a conversation that can be renamed or deleted by swiping
+// it aside, as the phone's lists do.
+func (a *app) sessionSwipeRow(c *ui.Context, s mobileapi.SessionSummary) {
+	mobile.SwipeRow(c, nil, mobile.SwipeOptions{
+		Leading: []mobile.SwipeAction{{
+			Label: "重命名",
+			OnTap: func() { a.openRename(s) },
+		}},
+		Trailing: []mobile.SwipeAction{{
+			Label:       "删除",
+			Destructive: true,
+			OnTap:       func() { a.openDelete(s) },
+		}},
+	}, func() {
+		a.sessionRow(c, s)
+	})
+}
+
+// openRename asks for a conversation's new title.
+func (a *app) openRename(s mobileapi.SessionSummary) {
+	a.renameID, a.renameText = s.ID, sessionTitle(s)
+	a.renameOpen = true
+}
+
+// renameSheet is the title editor a swiped conversation opens.
+func (a *app) renameSheet(c *ui.Context) {
+	mobile.Sheet(c, &a.renameOpen, mobile.SheetOptions{Detents: []float32{0.75}, Label: "重命名会话"}, func() {
+		ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
+			ui.Text(c, "重命名会话").FontSize(17).FontWeight(600)
+			ui.TextInput(c, &a.renameText).Placeholder("会话名称")
+			ui.Row(c).Gap(8).Children(func() {
+				if primaryButton(c, "保存").Clicked() {
+					a.renameSession()
+				}
+				if ghostButton(c, "取消").Clicked() {
+					a.renameOpen = false
+				}
+			})
+		})
+	})
+}
+
+func (a *app) renameSession() {
+	title := strings.TrimSpace(a.renameText)
+	id := a.renameID
+	if title == "" {
+		a.toast("会话名称不能为空")
+		return
+	}
+	client := a.client
+	if client == nil {
+		return
+	}
+	a.update(func() { a.renameOpen = false })
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := client.RenameSession(ctx, id, title); err != nil {
+			a.errorf("重命名失败: %v", err)
+			return
+		}
+		a.update(func() {
+			for i := range a.sessions {
+				if a.sessions[i].ID == id {
+					a.sessions[i].Title = title
+				}
+			}
+			if a.conv != nil && a.conv.ID == id {
+				a.conv.Title = title
+			}
+		})
+		a.refreshSessions()
+	}()
+}
+
+// openDelete asks before deleting a conversation: swiping is easy to do by
+// accident.
+func (a *app) openDelete(s mobileapi.SessionSummary) {
+	a.deleteID, a.deleteTitle = s.ID, sessionTitle(s)
+	a.deleteOpen = true
+}
+
+func (a *app) deleteSheet(c *ui.Context) {
+	t := c.Theme()
+	mobile.Sheet(c, &a.deleteOpen, mobile.SheetOptions{Detents: []float32{0.38}, Label: "删除会话"}, func() {
+		ui.Column(c).FillWidth().Padding(16).Gap(10).Children(func() {
+			ui.Text(c, "删除这个会话？").FontSize(17).FontWeight(600)
+			ui.Text(c, a.deleteTitle).FontSize(14).TextColor(t.Text).SingleLine().Ellipsis("…")
+			ui.Text(c, "消息与运行记录都会删除，无法恢复。").FontSize(12).TextColor(t.TextMuted).MaxLines(3)
+			ui.Row(c).Gap(8).Children(func() {
+				if dangerButton(c, "删除").Clicked() {
+					a.deleteSession()
+				}
+				if ghostButton(c, "取消").Clicked() {
+					a.deleteOpen = false
+				}
+			})
+		})
+	})
+}
+
+func (a *app) deleteSession() {
+	id := a.deleteID
+	client := a.client
+	if client == nil {
+		return
+	}
+	a.update(func() { a.deleteOpen = false })
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		if err := client.DeleteSession(ctx, id); err != nil {
+			a.errorf("删除会话失败: %v", err)
+			return
+		}
+		a.update(func() {
+			if a.openConv == id {
+				a.screen = screenList
+				a.openConv = ""
+				a.conv = nil
+			}
+		})
+		a.refreshSessions()
+	}()
 }
 
 // sessionRow is one conversation: a compact title and a two-line preview,
@@ -388,6 +514,7 @@ func (a *app) workspaceCard(c *ui.Context) {
 		ui.Icon(c, icons.Must("folder")).Size(18, 18).TextColor(t.TextMuted).Shrink(0)
 	})
 	if card.Clicked() {
+		a.workspaceFor = "new"
 		a.workspaceOpen = true
 	}
 }
@@ -892,21 +1019,31 @@ func (a *app) newSessionComposer(c *ui.Context) {
 }
 
 func (a *app) workspaceSheet(c *ui.Context) {
-	mobile.Sheet(c, &a.workspaceOpen, mobile.SheetOptions{Detents: []float32{0.75}, Label: "选择项目"}, func() {
+	target := &a.newWorkspace
+	title := "选择项目"
+	switch a.workspaceFor {
+	case "task":
+		target = &a.taskWorkspace
+		title = "选择任务工作区"
+	case "room":
+		target = &a.roomWorkspace
+		title = "选择群聊工作区"
+	}
+	mobile.Sheet(c, &a.workspaceOpen, mobile.SheetOptions{Detents: []float32{0.75}, Label: title}, func() {
 		t := c.Theme()
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
-			ui.Text(c, "项目").FontSize(18).FontWeight(600)
+			ui.Text(c, title).FontSize(18).FontWeight(600)
 			ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 				row := mobile.ListRow(c, mobile.RowOptions{
-					Title: "不选项目", Subtitle: "在当前目录外开始",
+					Title: "不指定工作区", Subtitle: "在当前目录外开始",
 					Trailing: func() {
-						if a.newWorkspace == "" {
+						if *target == "" {
 							ui.Text(c, "当前").FontSize(11).TextColor(t.Accent)
 						}
 					},
 				})
 				if row.Clicked() {
-					a.newWorkspace = ""
+					*target = ""
 					a.workspaceOpen = false
 				}
 				for _, ws := range a.workspaces {
@@ -914,13 +1051,13 @@ func (a *app) workspaceSheet(c *ui.Context) {
 					row := mobile.ListRow(c, mobile.RowOptions{
 						Title: filepath.Base(ws), Subtitle: ws,
 						Trailing: func() {
-							if a.newWorkspace == ws {
+							if *target == ws {
 								ui.Text(c, "当前").FontSize(11).TextColor(t.Accent)
 							}
 						},
 					})
 					if row.Clicked() {
-						a.newWorkspace = ws
+						*target = ws
 						a.workspaceOpen = false
 					}
 				}
@@ -1869,40 +2006,42 @@ func (a *app) askSheet(c *ui.Context) {
 		a.askOpen = false
 		return
 	}
-	mobile.Sheet(c, &a.askOpen, mobile.SheetOptions{Detents: []float32{0.5, 0.92}, Label: "Agent 交互"}, func() {
-		ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
-			i := a.interaction
-			if i.Kind == "permission" && i.Permission != nil {
-				ui.Text(c, i.Permission.Title).FontSize(17).FontWeight(600)
-				if i.Permission.Detail != "" {
-					ui.Text(c, i.Permission.Detail).FontSize(13).TextColor(c.Theme().TextMuted).MaxLines(8)
-				}
-				for _, opt := range i.Permission.Options {
-					option := opt
-					if secondaryButton(c, option.Name).Clicked() {
-						a.decide(option.ID, false)
+	mobile.Sheet(c, &a.askOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "Agent 交互"}, func() {
+		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
+				i := a.interaction
+				if i.Kind == "permission" && i.Permission != nil {
+					ui.Text(c, i.Permission.Title).FontSize(17).FontWeight(600)
+					if i.Permission.Detail != "" {
+						ui.Text(c, i.Permission.Detail).FontSize(13).TextColor(c.Theme().TextMuted).MaxLines(8)
 					}
-				}
-				if ghostButton(c, "取消").Clicked() {
-					a.decide("", true)
-				}
-				return
-			}
-			if len(i.Items) > 0 {
-				ui.Text(c, i.Items[0].Question).FontSize(16).FontWeight(600)
-				if len(i.Items[0].Options) > 0 {
-					for _, opt := range i.Items[0].Options {
+					for _, opt := range i.Permission.Options {
 						option := opt
-						if secondaryButton(c, option).Clicked() {
-							a.answerQuestion(option)
+						if secondaryButton(c, option.Name).Clicked() {
+							a.decide(option.ID, false)
 						}
 					}
+					if ghostButton(c, "取消").Clicked() {
+						a.decide("", true)
+					}
+					return
 				}
-				answerInput := ui.TextInput(c, &a.answer).Placeholder("输入回答")
-				if primaryButton(c, "提交").Clicked() || answerInput.Submitted() {
-					a.answerQuestion(a.answer)
+				if len(i.Items) > 0 {
+					ui.Text(c, i.Items[0].Question).FontSize(16).FontWeight(600)
+					if len(i.Items[0].Options) > 0 {
+						for _, opt := range i.Items[0].Options {
+							option := opt
+							if secondaryButton(c, option).Clicked() {
+								a.answerQuestion(option)
+							}
+						}
+					}
+					answerInput := ui.TextInput(c, &a.answer).Placeholder("输入回答")
+					if primaryButton(c, "提交").Clicked() || answerInput.Submitted() {
+						a.answerQuestion(a.answer)
+					}
 				}
-			}
+			})
 		})
 	})
 }

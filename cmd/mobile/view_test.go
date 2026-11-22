@@ -851,3 +851,76 @@ func TestComposerClearsTheKeyboard(t *testing.T) {
 		t.Fatalf("composer ends at %v, under the keyboard (top %v)", bottom, 844-300)
 	}
 }
+
+// Swiping a session opens its rename and delete sheets with that session's
+// values.
+func TestSessionActionsLoadTheRow(t *testing.T) {
+	a := testApp()
+	s := mobileapi.SessionSummary{ID: "c1", Title: "旧名字"}
+	a.openRename(s)
+	if !a.renameOpen || a.renameID != "c1" || a.renameText != "旧名字" {
+		t.Fatalf("rename = %+v", a)
+	}
+	a.openDelete(s)
+	if !a.deleteOpen || a.deleteID != "c1" || a.deleteTitle != "旧名字" {
+		t.Fatalf("delete = %+v", a)
+	}
+}
+
+// Editing a room loads its workspace and speaking rules, not just its name.
+func TestRoomFormLoadsItsSettings(t *testing.T) {
+	a := testApp()
+	a.rooms = []mobileapi.Room{{
+		ID: "r1", Name: "讨论组", Workspace: "/work/chatgo",
+		Activation: "mention", Master: "openai::gpt-5", AllowSelfResponses: true,
+		Members: []mobileapi.RoomMember{{Agent: "agent:A", Name: "A"}},
+	}}
+	a.openRoomForm("r1")
+	if a.roomFormName != "讨论组" || a.roomWorkspace != "/work/chatgo" ||
+		a.roomActivation != "mention" || a.roomMaster != "openai::gpt-5" || !a.roomSelf {
+		t.Fatalf("room form = %+v", a)
+	}
+}
+
+// Editing a task keeps its workspace and reuse setting.
+func TestTaskFormLoadsWorkspaceAndReuse(t *testing.T) {
+	a := testApp()
+	a.tasks = []mobileapi.Task{{
+		ID: "t1", Name: "日报", Prompt: "总结", Workspace: "/work/chatgo", Reuse: true,
+		Enabled: true,
+	}}
+	a.openTaskForm("t1")
+	if a.taskWorkspace != "/work/chatgo" || !a.taskForm.Reuse {
+		t.Fatalf("task form workspace=%q reuse=%v", a.taskWorkspace, a.taskForm.Reuse)
+	}
+}
+
+// Deleting the open conversation or group from another device leaves the
+// phone on a list that still exists, not on a page whose API will 404.
+func TestDeletedEventsLeaveTheOpenPage(t *testing.T) {
+	a := testApp()
+	// No client: the refresh calls have nothing to fetch, and the test only
+	// watches how the deleted pages are left.
+	a.client = nil
+	a.screen = screenChat
+	a.openConv = "c1"
+	a.conv = &models.Conversation{ID: "c1"}
+	a.handleEvent(mobileapi.Event{Type: "session.deleted", SessionID: "c1"})
+	if a.screen != screenList || a.openConv != "" || a.conv != nil {
+		t.Fatalf("session delete left screen=%v conv=%q", a.screen, a.openConv)
+	}
+
+	a.screen = screenRoom
+	a.roomID = "r1"
+	a.handleEvent(mobileapi.Event{Type: "room.deleted", Data: []byte(`{"room_id":"r1"}`)})
+	if a.screen != screenRooms || a.roomID != "" {
+		t.Fatalf("room delete left screen=%v room=%q", a.screen, a.roomID)
+	}
+
+	a.screen = screenTask
+	a.taskID = "t1"
+	a.handleEvent(mobileapi.Event{Type: "task.deleted", Data: []byte(`{"task_id":"t1"}`)})
+	if a.screen != screenTasks || a.taskID != "" {
+		t.Fatalf("task delete left screen=%v task=%q", a.screen, a.taskID)
+	}
+}

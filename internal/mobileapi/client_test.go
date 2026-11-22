@@ -169,3 +169,33 @@ func TestCreateSessionCarriesACPConfig(t *testing.T) {
 		t.Fatalf("acp_config = %#v", body["acp_config"])
 	}
 }
+
+// A session can be renamed and deleted from the phone.
+func TestRenameAndDeleteSession(t *testing.T) {
+	var patch map[string]string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "PATCH" && r.URL.Path == "/api/sessions/c1":
+			if err := json.NewDecoder(r.Body).Decode(&patch); err != nil {
+				t.Error(err)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		case r.Method == "DELETE" && r.URL.Path == "/api/sessions/c1":
+			_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	c := New(ts.URL, "dev", "d1")
+	if err := c.RenameSession(context.Background(), "c1", "新名字"); err != nil {
+		t.Fatal(err)
+	}
+	if patch["title"] != "新名字" {
+		t.Fatalf("patch = %#v", patch)
+	}
+	if err := c.DeleteSession(context.Background(), "c1"); err != nil {
+		t.Fatal(err)
+	}
+}

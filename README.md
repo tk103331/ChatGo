@@ -218,7 +218,8 @@ generates a random token again.
 so it needs no public IP and no inbound port; the relay only forwards `/api`
 and never stores conversation content. Phones pair with a one-time code and
 receive a revocable device token. The native app lives in `cmd/mobile` and
-supports Chat, Rooms and scheduled tasks.
+supports Chat, Rooms and scheduled tasks, including session rename/delete,
+group speaking rules and per-task workspaces.
 
 Linux 服务器一键安装中继（systemd + nginx，默认 8080）：
 

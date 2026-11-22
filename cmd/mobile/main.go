@@ -152,15 +152,32 @@ type app struct {
 	chatModel string
 	// newACP and chatACP are the ACP runtimes' model lists, read when their
 	// model pickers open.
-	newACP        acpModels
-	chatACP       acpModels
-	modelFor      string
-	modelFilter   string
-	newFiles      []newFile
-	workspaces    []string
-	workspaceOpen bool
-	agentOpen     bool
-	modelOpen     bool
+	newACP      acpModels
+	chatACP     acpModels
+	modelFor    string
+	modelFilter string
+
+	// The session list's rename and delete sheets.
+	renameOpen  bool
+	renameID    string
+	renameText  string
+	deleteOpen  bool
+	deleteID    string
+	deleteTitle string
+
+	// The form fields a task or room edits beyond its own name.
+	taskWorkspace string
+	roomWorkspace string
+	// workspaceFor says which form the workspace sheet picks for.
+	workspaceFor   string
+	roomActivation string
+	roomMaster     string
+	roomSelf       bool
+	newFiles       []newFile
+	workspaces     []string
+	workspaceOpen  bool
+	agentOpen      bool
+	modelOpen      bool
 
 	toolOpen    map[string]bool
 	thinkOpen   map[string]bool
@@ -528,14 +545,41 @@ func (a *app) handleEvent(e mobileapi.Event) {
 			a.refreshCurrent(e.SessionID)
 		}
 		a.refreshSessions()
-	case "session.created", "session.deleted":
+	case "session.created":
 		a.refreshSessions()
-	case "room.updated", "room.deleted":
+	case "session.deleted":
+		if e.SessionID != "" && e.SessionID == a.openConv {
+			a.stopWatch()
+			a.openConv, a.conv = "", nil
+			if a.screen == screenChat {
+				a.screen = screenList
+			}
+		}
+		a.refreshSessions()
+	case "room.updated":
 		a.refreshRooms()
 		if e.SessionID != "" && e.SessionID == a.roomID {
 			a.loadRoomSessions(a.roomID)
 		}
-	case "task.updated", "task.deleted":
+	case "room.deleted":
+		if id := eventField(e.Data, "room_id"); id != "" && id == a.roomID {
+			a.stopWatch()
+			a.roomID, a.roomName = "", ""
+			if a.screen == screenRoom {
+				a.screen = screenRooms
+			}
+		}
+		a.refreshRooms()
+	case "task.updated":
+		a.refreshTasks()
+	case "task.deleted":
+		if id := eventField(e.Data, "task_id"); id != "" && id == a.taskID {
+			a.stopWatch()
+			a.taskID, a.task = "", nil
+			if a.screen == screenTask {
+				a.screen = screenTasks
+			}
+		}
 		a.refreshTasks()
 	case "resync":
 		a.refreshSessions()
@@ -545,6 +589,19 @@ func (a *app) handleEvent(e mobileapi.Event) {
 			a.refreshCurrent(a.openConv)
 		}
 	}
+}
+
+// eventField reads one string field of an event's payload.
+func eventField(data json.RawMessage, key string) string {
+	if len(data) == 0 {
+		return ""
+	}
+	var fields map[string]any
+	if json.Unmarshal(data, &fields) != nil {
+		return ""
+	}
+	s, _ := fields[key].(string)
+	return s
 }
 
 func (a *app) update(fn func()) {
@@ -595,12 +652,16 @@ func (a *app) view(c *ui.Context) {
 			a.bottomBar(c)
 		}
 		a.pairSheet(c)
+		a.renameSheet(c)
+		a.deleteSheet(c)
 		a.askSheet(c)
-		a.workspaceSheet(c)
 		a.agentSheet(c)
 		a.modelSheet(c)
 		a.roomFormSheet(c)
 		a.taskFormSheet(c)
+		// The workspace picker is opened from the new-session, room and task
+		// forms, so it draws above them.
+		a.workspaceSheet(c)
 	})
 }
 
@@ -652,8 +713,13 @@ func (a *app) topBar(c *ui.Context) {
 			}
 		}
 		trailing = func() {
-			if !a.offline() && smallIconButton(c, "refresh-cw", "刷新").Clicked() {
-				a.loadRoomSessions(a.roomID)
+			if !a.offline() {
+				if smallIconButton(c, "pencil", "编辑群聊").Clicked() {
+					a.openRoomForm(a.roomID)
+				}
+				if smallIconButton(c, "refresh-cw", "刷新").Clicked() {
+					a.loadRoomSessions(a.roomID)
+				}
 			}
 		}
 	case screenTasks:

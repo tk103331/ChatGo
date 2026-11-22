@@ -287,6 +287,10 @@ func (a *app) openRoomForm(id string) {
 		a.roomEditing = id
 		a.roomFormName = form.Name
 		a.roomFormSel = sel
+		a.roomWorkspace = form.Workspace
+		a.roomActivation = firstNonEmpty(form.Activation, "all")
+		a.roomMaster = form.Master
+		a.roomSelf = form.AllowSelfResponses
 	})
 	if len(a.agents) == 0 && a.client != nil {
 		go func() {
@@ -300,71 +304,117 @@ func (a *app) openRoomForm(id string) {
 }
 
 func (a *app) roomFormSheet(c *ui.Context) {
-	mobile.Sheet(c, &a.roomFormOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "新建群聊"}, func() {
-		ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
-			title := "新建群聊"
-			if a.roomEditing != "" {
-				title = "编辑群聊"
-			}
-			ui.Text(c, title).FontSize(17).FontWeight(600)
-			ui.TextInput(c, &a.roomFormName).Placeholder("群名称")
-			ui.Text(c, "成员").FontSize(13).TextColor(c.Theme().TextMuted)
-			ui.Scroll(c).MaxHeight(320).Children(func() {
-				for _, agent := range a.agents {
-					if agent.Disabled {
-						continue
-					}
-					ref := agent.Ref
-					selected := a.roomFormSel[ref]
-					row := mobile.ListRow(c, mobile.RowOptions{
-						Title:    firstNonEmpty(agent.Name, agent.Ref),
-						Subtitle: firstNonEmpty(agent.Kind, "chat"),
-						Leading: func() {
-							a.agentMark(c, ref, 20)
-						},
-						Trailing: func() {
-							if selected {
-								ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(c.Theme().Accent)
-							}
-						},
+	t := c.Theme()
+	mobile.Sheet(c, &a.roomFormOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "群聊"}, func() {
+		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
+			ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
+				title := "新建群聊"
+				if a.roomEditing != "" {
+					title = "编辑群聊"
+				}
+				ui.Text(c, title).FontSize(17).FontWeight(600)
+				ui.TextInput(c, &a.roomFormName).Placeholder("群名称")
+
+				label := "不选工作区"
+				if a.roomWorkspace != "" {
+					label = filepath.Base(a.roomWorkspace)
+				}
+				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Icon(c, icons.Must("folder")).Size(16, 16).TextColor(t.TextMuted).Shrink(0)
+					ui.Column(c).Grow(1).Basis(0).Children(func() {
+						ui.Text(c, "工作区").FontSize(11).TextColor(t.TextMuted)
+						ui.Text(c, label).FontSize(13).SingleLine().Ellipsis("…")
 					})
-					if row.Clicked() {
-						a.roomFormSel[ref] = !selected
-						a.invalidate()
+					if smallSecondaryButton(c, "选择").Clicked() {
+						a.workspaceFor = "room"
+						a.workspaceOpen = true
 					}
+				})
+
+				ui.Text(c, "成员").FontSize(13).TextColor(t.TextMuted)
+				ui.Column(c).FillWidth().Gap(4).Children(func() {
+					for _, agent := range a.agents {
+						if agent.Disabled {
+							continue
+						}
+						ref := agent.Ref
+						selected := a.roomFormSel[ref]
+						row := mobile.ListRow(c, mobile.RowOptions{
+							Title:    firstNonEmpty(agent.Name, agent.Ref),
+							Subtitle: firstNonEmpty(agent.Kind, "chat"),
+							Leading: func() {
+								a.agentMark(c, ref, 20)
+							},
+							Trailing: func() {
+								if selected {
+									ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
+								}
+							},
+						})
+						if row.Clicked() {
+							a.roomFormSel[ref] = !selected
+							a.invalidate()
+						}
+					}
+				})
+
+				ui.Text(c, "谁发言").FontSize(13).TextColor(t.TextMuted)
+				ui.Row(c).Gap(6).Wrap().Children(func() {
+					for _, act := range []struct{ key, label string }{
+						{"all", "全部成员"}, {"natural", "自然发言"}, {"pooled", "轮流发言"},
+						{"mention", "仅被点名"}, {"master", "主持模型"},
+					} {
+						act := act
+						chip := kit.Button(c, act.label, kit.ButtonOptions{
+							Variant: chipVariant(a.roomActivation == act.key),
+						}).Height(34).Padding(0, 12)
+						if chip.Clicked() {
+							a.roomActivation = act.key
+							a.invalidate()
+						}
+					}
+				})
+				if a.roomActivation == "master" {
+					ui.Text(c, "主持模型").FontSize(13).TextColor(t.TextMuted)
+					ui.Row(c).Gap(6).Wrap().Children(func() {
+						choices := []struct{ ref, label string }{{"", "当前模型"}}
+						for _, m := range a.meta.Models {
+							choices = append(choices, struct{ ref, label string }{
+								m.Provider + "::" + m.Model, m.Model,
+							})
+						}
+						for _, choice := range choices {
+							choice := choice
+							chip := kit.Button(c, choice.label, kit.ButtonOptions{
+								Variant: chipVariant(a.roomMaster == choice.ref),
+							}).Height(34).Padding(0, 12)
+							if chip.Clicked() {
+								a.roomMaster = choice.ref
+								a.invalidate()
+							}
+						}
+					})
 				}
-			})
-			ui.Row(c).Gap(8).Children(func() {
-				if primaryButton(c, "保存").Clicked() {
-					a.createRoom()
-				}
-				if ghostButton(c, "取消").Clicked() {
-					a.roomFormOpen = false
-				}
+				ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+					ui.Column(c).Grow(1).Basis(0).Gap(2).Children(func() {
+						ui.Text(c, "允许连续发言").FontSize(13)
+						ui.Text(c, "关闭时，上一轮最后发言的成员本轮不再发言。").
+							FontSize(11).TextColor(t.TextMuted).MaxLines(2)
+					})
+					mobile.Switch(c, &a.roomSelf)
+				})
+
+				ui.Row(c).Gap(8).Children(func() {
+					if primaryButton(c, "保存").Clicked() {
+						a.createRoom()
+					}
+					if ghostButton(c, "取消").Clicked() {
+						a.roomFormOpen = false
+					}
+				})
 			})
 		})
 	})
-}
-
-func (a *app) currentRoomActivation() string {
-	if r := a.findRoom(a.roomEditing); r != nil {
-		return r.Activation
-	}
-	return "all"
-}
-
-func (a *app) currentRoomMaster() string {
-	if r := a.findRoom(a.roomEditing); r != nil {
-		return r.Master
-	}
-	return ""
-}
-
-func (a *app) currentRoomSelfResponses() bool {
-	if r := a.findRoom(a.roomEditing); r != nil {
-		return r.AllowSelfResponses
-	}
-	return false
 }
 
 func (a *app) createRoom() {
@@ -388,10 +438,11 @@ func (a *app) createRoom() {
 	}
 	in := mobileapi.RoomInput{
 		Name:               name,
-		Activation:         firstNonEmpty(a.currentRoomActivation(), "all"),
-		Master:             a.currentRoomMaster(),
+		Workspace:          a.roomWorkspace,
+		Activation:         firstNonEmpty(a.roomActivation, "all"),
+		Master:             a.roomMaster,
 		Members:            members,
-		AllowSelfResponses: a.currentRoomSelfResponses(),
+		AllowSelfResponses: a.roomSelf,
 	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

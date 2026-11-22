@@ -27,6 +27,16 @@ func (c *Client) Session(ctx context.Context, id string) (SessionResponse, error
 	return out, err
 }
 
+// RenameSession changes a conversation's title without touching its messages.
+func (c *Client) RenameSession(ctx context.Context, id, title string) error {
+	return c.do(ctx, "PATCH", "/api/sessions/"+url.PathEscape(id), map[string]string{"title": title}, nil)
+}
+
+// DeleteSession removes a conversation and its messages.
+func (c *Client) DeleteSession(ctx context.Context, id string) error {
+	return c.do(ctx, "DELETE", "/api/sessions/"+url.PathEscape(id), nil, nil)
+}
+
 func (c *Client) CreateSession(ctx context.Context, title, agent, workspace, provider, model string) (SessionResponse, error) {
 	return c.CreateSessionWithACP(ctx, title, agent, workspace, provider, model, nil)
 }
