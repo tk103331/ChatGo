@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo/ui"
+	mgo "github.com/egoist/mygo/ui"
 
 	"github.com/hinshun/vt10x"
 
@@ -1035,5 +1036,115 @@ func TestTerminalInputEncoding(t *testing.T) {
 	a.sendTermDiff()
 	if string(a.termInput) != "ab\x7fc" {
 		t.Fatalf("edited input = %q", a.termInput)
+	}
+}
+
+// Back goes up a page or closes an overlay, and only the tab pages let the
+// app leave.
+func TestBackGoesUpPages(t *testing.T) {
+	a := testApp()
+	a.screen = screenChat
+	if !a.backPage() || a.screen != screenList {
+		t.Fatalf("chat back: screen=%v", a.screen)
+	}
+	a.screen = screenNew
+	if !a.backPage() || a.screen != screenList {
+		t.Fatalf("new-session back: screen=%v", a.screen)
+	}
+	a.screen = screenRoom
+	a.roomID = "r1"
+	if !a.backPage() || a.screen != screenRooms {
+		t.Fatalf("room back: screen=%v", a.screen)
+	}
+	a.screen = screenTask
+	a.taskID = "t1"
+	if !a.backPage() || a.screen != screenTasks {
+		t.Fatalf("task back: screen=%v", a.screen)
+	}
+	a.screen = screenProject
+	a.projectDir = "/w"
+	if !a.backPage() || a.screen != screenProjects {
+		t.Fatalf("project back: screen=%v", a.screen)
+	}
+	a.screen = screenList
+	a.filePreviewOpen = true
+	if !a.backPage() || a.filePreviewOpen {
+		t.Fatal("overlay did not close")
+	}
+	if a.backPage() {
+		t.Fatal("the list should leave back to the app")
+	}
+}
+
+// Several desktops are told apart by where they run, not only by name.
+func TestDesktopSubtitleNamesHost(t *testing.T) {
+	srv := server{
+		Name: "Mac", Host: "studio.local", Platform: "darwin",
+		RelayURL: "https://relay.example.com/d/d1", DesktopID: "d1",
+	}
+	if got, want := desktopSubtitle(srv), "studio.local · macOS · https://relay.example.com/d/d1"; got != want {
+		t.Fatalf("subtitle = %q, want %q", got, want)
+	}
+	if got, want := desktopSubtitle(server{DesktopID: "d1"}), "d1"; got != want {
+		t.Fatalf("empty subtitle = %q, want %q", got, want)
+	}
+}
+
+// Connecting records the desktop's own name, so a pairing made before this
+// field existed still shows the host after the first connection.
+func TestApplyDesktopInfo(t *testing.T) {
+	a := testApp()
+	a.storageDir = t.TempDir()
+	a.applyDesktopInfo("d1", mobileapi.DesktopInfo{
+		Name: "Studio", Hostname: "studio.local", Platform: "darwin",
+	})
+	srv := a.servers[0]
+	if srv.Name != "Studio" || srv.Host != "studio.local" || srv.Platform != "darwin" {
+		t.Fatalf("server = %+v", srv)
+	}
+}
+
+// The window's Back shortcut takes the key the engine routes, as Android's
+// surface sends it.
+func TestBackShortcutHandlesKey(t *testing.T) {
+	a := testApp()
+	a.screen = screenSettings
+	a.tab = tabSettings
+	tr := mgo.NewTester(a.view, 390, 844)
+	tr.Frame()
+	tr.Frame()
+	tr.Key(0, ui.KeyBack)
+	tr.Frame()
+	tr.Frame()
+	if a.lastBack.IsZero() {
+		t.Fatal("back not taken")
+	}
+}
+
+// Back on the page works after a sheet closed, rather than being lost to
+// the sheet that is no longer there.
+func TestBackAfterSheetClose(t *testing.T) {
+	a := testApp()
+	a.screen = screenSettings
+	a.tab = tabSettings
+	a.pairOpen = true
+	tr := mgo.NewTester(a.view, 390, 844)
+	for i := 0; i < 5; i++ {
+		tr.Frame()
+	}
+	tr.Key(0, ui.KeyEscape)
+	for i := 0; i < 20; i++ {
+		tr.Frame()
+	}
+	if a.pairOpen {
+		t.Fatal("sheet did not close")
+	}
+	before := a.lastBack
+	tr.Key(0, ui.KeyBack)
+	for i := 0; i < 10; i++ {
+		tr.Frame()
+	}
+	if a.lastBack.Equal(before) {
+		t.Fatalf("back after the sheet close was not handled")
 	}
 }

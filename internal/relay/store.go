@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -22,14 +23,16 @@ type Desktop struct {
 
 // Device is one phone paired with a desktop.
 type Device struct {
-	ID           string
-	DesktopID    string
-	Name         string
-	Platform     string
-	TokenHash    []byte `json:"-"`
-	CreatedAt    time.Time
-	LastSeen     time.Time
-	Revoked      bool
+	ID        string
+	DesktopID string
+	Name      string
+	Platform  string
+	TokenHash []byte `json:"-"`
+	CreatedAt time.Time
+	LastSeen  time.Time
+	Revoked   bool
+	// Disabled keeps the pairing while the relay refuses the device token.
+	Disabled     bool
 	PushProvider string
 	PushToken    string `json:"-"`
 	PushEnv      string
@@ -98,7 +101,15 @@ CREATE TABLE IF NOT EXISTS devices (
 );
 CREATE INDEX IF NOT EXISTS devices_desktop ON devices(desktop_id);
 `)
-	return err
+	if err != nil {
+		return err
+	}
+	// Databases from before the enabled switch predate this column.
+	if _, err := s.db.Exec(`ALTER TABLE devices ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0`); err != nil &&
+		!strings.Contains(err.Error(), "duplicate column") {
+		return err
+	}
+	return nil
 }
 
 // Close closes the database.
@@ -145,8 +156,8 @@ func (s *Store) TouchDesktop(id string) {
 // AddDevice records a newly paired phone.
 func (s *Store) AddDevice(d Device) error {
 	_, err := s.db.Exec(`INSERT INTO devices
-(id, desktop_id, name, platform, token_hash, created_at, last_seen, revoked)
-VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
+(id, desktop_id, name, platform, token_hash, created_at, last_seen, revoked, disabled)
+VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0)`,
 		d.ID, d.DesktopID, d.Name, d.Platform, d.TokenHash, d.CreatedAt.Unix(), d.LastSeen.Unix())
 	return err
 }
@@ -154,7 +165,7 @@ VALUES (?, ?, ?, ?, ?, ?, ?, 0)`,
 // DeviceByToken finds the device a bearer token belongs to, scoped to one
 // desktop. It touches the device's last-seen time on success.
 func (s *Store) DeviceByToken(desktopID string, tokenHash []byte) (*Device, error) {
-	rows, err := s.db.Query(`SELECT id, desktop_id, name, platform, token_hash, created_at, last_seen, revoked
+	rows, err := s.db.Query(`SELECT id, desktop_id, name, platform, token_hash, created_at, last_seen, revoked, disabled
 FROM devices WHERE desktop_id = ? AND revoked = 0`, desktopID)
 	if err != nil {
 		return nil, err
@@ -164,7 +175,7 @@ FROM devices WHERE desktop_id = ? AND revoked = 0`, desktopID)
 	for rows.Next() {
 		var d Device
 		var created, seen int64
-		if err := rows.Scan(&d.ID, &d.DesktopID, &d.Name, &d.Platform, &d.TokenHash, &created, &seen, &d.Revoked); err != nil {
+		if err := rows.Scan(&d.ID, &d.DesktopID, &d.Name, &d.Platform, &d.TokenHash, &created, &seen, &d.Revoked, &d.Disabled); err != nil {
 			return nil, err
 		}
 		if subtle.ConstantTimeCompare(d.TokenHash, tokenHash) == 1 {
@@ -180,13 +191,19 @@ FROM devices WHERE desktop_id = ? AND revoked = 0`, desktopID)
 	if found == nil {
 		return nil, ErrUnauthorized
 	}
+	// A disabled device keeps its pairing but the relay refuses its token,
+	// so the phone can tell the user the desktop paused it rather than
+	// treating the phone as dropped and demanding a new pair.
+	if found.Disabled {
+		return nil, ErrDeviceDisabled
+	}
 	_, _ = s.db.Exec(`UPDATE devices SET last_seen = ? WHERE id = ?`, time.Now().Unix(), found.ID)
 	return found, nil
 }
 
 // ListDevices lists one desktop's paired phones.
 func (s *Store) ListDevices(desktopID string) ([]Device, error) {
-	rows, err := s.db.Query(`SELECT id, desktop_id, name, platform, created_at, last_seen, revoked,
+	rows, err := s.db.Query(`SELECT id, desktop_id, name, platform, created_at, last_seen, revoked, disabled,
 push_provider, push_token, push_env FROM devices WHERE desktop_id = ? ORDER BY created_at DESC`, desktopID)
 	if err != nil {
 		return nil, err
@@ -196,7 +213,7 @@ push_provider, push_token, push_env FROM devices WHERE desktop_id = ? ORDER BY c
 	for rows.Next() {
 		var d Device
 		var created, seen int64
-		if err := rows.Scan(&d.ID, &d.DesktopID, &d.Name, &d.Platform, &created, &seen, &d.Revoked,
+		if err := rows.Scan(&d.ID, &d.DesktopID, &d.Name, &d.Platform, &created, &seen, &d.Revoked, &d.Disabled,
 			&d.PushProvider, &d.PushToken, &d.PushEnv); err != nil {
 			return nil, err
 		}
@@ -214,6 +231,13 @@ func (s *Store) RevokeDevice(desktopID, deviceID string) error {
 	return err
 }
 
+// SetDeviceDisabled keeps a device paired while its token is refused.
+func (s *Store) SetDeviceDisabled(desktopID, deviceID string, disabled bool) error {
+	_, err := s.db.Exec(`UPDATE devices SET disabled = ? WHERE id = ? AND desktop_id = ?`,
+		disabled, deviceID, desktopID)
+	return err
+}
+
 // SetPushToken records or clears one device's push registration.
 func (s *Store) SetPushToken(deviceID, desktopID, provider, token, env string) error {
 	_, err := s.db.Exec(`UPDATE devices SET push_provider = ?, push_token = ?, push_env = ?
@@ -224,7 +248,7 @@ WHERE id = ? AND desktop_id = ?`, provider, token, env, deviceID, desktopID)
 // PushTargets lists the push registrations of a desktop's live devices.
 func (s *Store) PushTargets(desktopID string) ([]PushTarget, error) {
 	rows, err := s.db.Query(`SELECT id, push_provider, push_token, push_env FROM devices
-WHERE desktop_id = ? AND revoked = 0 AND push_token <> ''`, desktopID)
+WHERE desktop_id = ? AND revoked = 0 AND disabled = 0 AND push_token <> ''`, desktopID)
 	if err != nil {
 		return nil, err
 	}

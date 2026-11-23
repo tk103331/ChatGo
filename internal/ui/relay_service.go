@@ -210,6 +210,34 @@ func (cw *ChatWindow) newRelayPairCode() {
 	cw.invalidate()
 }
 
+// setRelayDeviceDisabled pauses a paired phone without forgetting it: the
+// relay refuses its token until the switch is turned back on.
+func (cw *ChatWindow) setRelayDeviceDisabled(id string, disabled bool) {
+	cw.relay.mu.Lock()
+	conn := cw.relay.conn
+	cw.relay.mu.Unlock()
+	if conn == nil {
+		cw.toastErrorDetail("修改设备状态失败", "中继未连接")
+		return
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := conn.SetDeviceDisabled(ctx, id, disabled); err != nil {
+			cw.postMain(func() { cw.toastErrorDetail("修改设备状态失败", err.Error()) })
+			return
+		}
+		message := "设备已启用"
+		if disabled {
+			message = "设备已停用"
+		}
+		cw.postMain(func() {
+			cw.toast(message, mcore.SeveritySuccess)
+			cw.invalidate()
+		})
+	}()
+}
+
 func (cw *ChatWindow) revokeRelayDevice(id string) {
 	cw.relay.mu.Lock()
 	conn := cw.relay.conn
@@ -252,6 +280,7 @@ func (cw *ChatWindow) saveRelayDevices(devices []relayclient.Device) {
 			Name:      d.Name,
 			Platform:  d.Platform,
 			CreatedAt: d.CreatedAt,
+			Disabled:  d.Disabled,
 		}
 		if len(d.E2EKey) > 0 {
 			entry.E2EKey = base64.StdEncoding.EncodeToString(d.E2EKey)
@@ -270,6 +299,7 @@ func relayDevices(in []config.RelayDevice) []relayclient.Device {
 			Name:      d.Name,
 			Platform:  d.Platform,
 			CreatedAt: d.CreatedAt,
+			Disabled:  d.Disabled,
 		}
 		if d.E2EKey != "" {
 			if key, err := base64.StdEncoding.DecodeString(d.E2EKey); err == nil {

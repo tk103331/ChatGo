@@ -95,6 +95,9 @@ type RelayDevice struct {
 	Name      string    `yaml:"name"`
 	Platform  string    `yaml:"platform,omitempty"`
 	CreatedAt time.Time `yaml:"created_at,omitempty"`
+	// Disabled keeps the pairing but refuses the phone's token until it is
+	// enabled again.
+	Disabled bool `yaml:"disabled,omitempty"`
 	// E2EKey is the base64 per-device ChaCha20-Poly1305. It should move
 	// to the system keychain with the desktop secret.
 	E2EKey string `yaml:"e2e_key,omitempty"`

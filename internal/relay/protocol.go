@@ -36,6 +36,7 @@ const (
 var (
 	ErrDesktopOffline = errors.New("desktop is offline")
 	ErrDeviceRevoked  = errors.New("device is revoked")
+	ErrDeviceDisabled = errors.New("device is disabled")
 	ErrUnauthorized   = errors.New("unauthorized")
 	ErrBadPairCode    = errors.New("invalid or expired pair code")
 	ErrRateLimited    = errors.New("too many requests")

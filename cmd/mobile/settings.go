@@ -73,9 +73,10 @@ func versionText() string {
 // one the phone is talking to.
 func (a *app) desktopRow(c *ui.Context, i int, srv server) {
 	t := c.Theme()
+	subtitle := desktopSubtitle(srv)
 	row := mobile.ListRow(c, mobile.RowOptions{
 		Title:    firstNonEmpty(srv.Name, srv.DesktopID),
-		Subtitle: apiBase(srv.RelayURL) + " · " + srv.DesktopID,
+		Subtitle: subtitle,
 		Trailing: func() {
 			if i == a.server {
 				ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
@@ -108,6 +109,42 @@ func (a *app) desktopRow(c *ui.Context, i int, srv server) {
 	}
 }
 
+// desktopSubtitle names where a desktop runs and how the phone reaches it,
+// which is what tells several desktops of the same name apart.
+func desktopSubtitle(srv server) string {
+	parts := []string{}
+	if host := strings.TrimSpace(srv.Host); host != "" {
+		parts = append(parts, host)
+	}
+	if platform := strings.TrimSpace(srv.Platform); platform != "" {
+		parts = append(parts, platformLabel(platform))
+	}
+	if relay := strings.TrimSpace(srv.RelayURL); relay != "" {
+		parts = append(parts, apiBase(relay))
+	}
+	if len(parts) == 0 {
+		return srv.DesktopID
+	}
+	return strings.Join(parts, " · ")
+}
+
+// platformLabel is the desktop platform as the phone reads it.
+func platformLabel(platform string) string {
+	switch strings.ToLower(strings.TrimSpace(platform)) {
+	case "darwin", "macos":
+		return "macOS"
+	case "windows":
+		return "Windows"
+	case "linux":
+		return "Linux"
+	case "android":
+		return "Android"
+	case "ios":
+		return "iOS"
+	}
+	return platform
+}
+
 // connectionRows is what the phone does about the link: its state, and the
 // ways out of it.
 func (a *app) connectionRows(c *ui.Context) {
@@ -134,6 +171,12 @@ func (a *app) connectionRows(c *ui.Context) {
 		mobile.ListRow(c, mobile.RowOptions{
 			Title:    "连接错误",
 			Subtitle: a.connErr,
+		})
+	}
+	if a.deviceDisabled {
+		mobile.ListRow(c, mobile.RowOptions{
+			Title:    "桌面已停用",
+			Subtitle: "这台手机被桌面暂停，在桌面设置 → 手机里启用后重新连接",
 		})
 	}
 	if a.pairRequired {
@@ -176,6 +219,7 @@ func (a *app) connectionRows(c *ui.Context) {
 
 func (a *app) pairSheet(c *ui.Context) {
 	mobile.Sheet(c, &a.pairOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "配对"}, func() {
+		a.sheetBack(c)
 		ui.Scroll(c).Grow(1).Children(func() {
 			ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
 				ui.Text(c, "连接桌面").FontSize(18).FontWeight(600)
@@ -241,7 +285,9 @@ func (a *app) pair() {
 		}
 		srv := server{
 			ID:        res.DesktopID,
-			Name:      firstNonEmpty(res.Name, name),
+			Name:      firstNonEmpty(res.DesktopName, res.DesktopID),
+			Host:      res.DesktopName,
+			Platform:  res.Platform,
 			RelayURL:  relay,
 			DesktopID: res.DesktopID,
 		}
@@ -257,6 +303,7 @@ func (a *app) pair() {
 			a.pairOpen = false
 			a.pairErr = ""
 			a.pairRequired = false
+			a.deviceDisabled = false
 			a.addServer(srv)
 			a.tab = tabChat
 			a.screen = screenNew

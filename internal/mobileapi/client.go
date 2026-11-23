@@ -193,6 +193,7 @@ var apiErrorHints = map[string]string{
 	"pair_failed":     "配对失败，请确认配对码是否已过期",
 	"e2e_clock_skew":  "手机与桌面时间相差过大，请校准手机时间后重试",
 	"e2e_rejected":    "加密请求被桌面拒绝，请重新配对后再试",
+	"device_disabled": "桌面已停用这台手机，请在桌面设置里启用后重试",
 }
 
 func hintFor(code string) string { return apiErrorHints[code] }
@@ -212,10 +213,15 @@ func (c *Client) reportAuthError(err error) {
 		return
 	}
 	var apiErr APIError
-	if !errors.As(err, &apiErr) || apiErr.Status != http.StatusUnauthorized {
+	if !errors.As(err, &apiErr) {
 		return
 	}
-	c.OnAuthError(err)
+	// 401 drops the dead token; 403 device_disabled keeps it, since the
+	// desktop paused this phone rather than removing it.
+	if apiErr.Status == http.StatusUnauthorized ||
+		(apiErr.Status == http.StatusForbidden && apiErr.Code == "device_disabled") {
+		c.OnAuthError(err)
+	}
 }
 
 // Meta is GET /api/meta.
@@ -227,12 +233,21 @@ type Meta struct {
 	Note         string          `json:"note,omitempty"`
 	Models       []ModelChoice   `json:"models,omitempty"`
 	Capabilities map[string]bool `json:"capabilities"`
+	// Desktop names the machine serving this API.
+	Desktop DesktopInfo `json:"desktop"`
 	// Theme mirrors the desktop's appearance so the phone uses the same
 	// accent and light/dark choice.
 	Theme struct {
 		Mode  string `json:"mode"`
 		Color string `json:"color"`
 	} `json:"theme"`
+}
+
+// DesktopInfo tells the phone which machine it is connected to.
+type DesktopInfo struct {
+	Name     string `json:"name"`
+	Hostname string `json:"hostname"`
+	Platform string `json:"platform"`
 }
 
 type ModelChoice struct {
@@ -391,6 +406,8 @@ type PairResult struct {
 	DeviceID      string          `json:"device_id"`
 	Token         string          `json:"token"`
 	Name          string          `json:"name"`
+	DesktopName   string          `json:"desktop_name,omitempty"`
+	Platform      string          `json:"platform,omitempty"`
 	Capabilities  map[string]bool `json:"capabilities"`
 	Protocol      int             `json:"protocol"`
 	DesktopPubKey string          `json:"desktop_pubkey,omitempty"`

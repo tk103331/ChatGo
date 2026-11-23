@@ -330,3 +330,87 @@ func TestRelayDesktopOffline(t *testing.T) {
 		t.Fatalf("offline status = %d", resp.StatusCode)
 	}
 }
+
+// A paired phone learns which desktop it reached, and a disabled one is
+// refused with a code that keeps its pairing.
+func TestRelayPairDesktopNameAndDeviceDisabled(t *testing.T) {
+	store, err := relay.OpenStore("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	srv := relay.NewWithStore(relay.Config{}, store)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	local := newLocalWeb(t, "local-token")
+	defer local.Close()
+
+	conn := relayclient.New(relayclient.Config{
+		RelayURL:     "ws" + strings.TrimPrefix(ts.URL, "http"),
+		DesktopID:    "desktop-1",
+		DesktopName:  "Test Mac",
+		Secret:       "desktop-secret",
+		LocalURL:     local.URL,
+		LocalToken:   "local-token",
+		AllowPairing: true,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go conn.Run(ctx)
+	waitState(t, conn, relayclient.StateConnected)
+
+	code, _ := conn.NewPairCode(time.Minute)
+	body := `{"desktop_id":"desktop-1","code":"` + code + `","device_name":"iPhone","platform":"ios"}`
+	resp, err := http.Post(ts.URL+"/v1/pair", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var pair struct {
+		DeviceID    string `json:"device_id"`
+		Token       string `json:"token"`
+		DesktopName string `json:"desktop_name"`
+		Platform    string `json:"platform"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&pair); err != nil {
+		t.Fatal(err)
+	}
+	if pair.DesktopName != "Test Mac" || pair.Platform == "" {
+		t.Fatalf("pair desktop = %q/%q", pair.DesktopName, pair.Platform)
+	}
+
+	metaReq := func() int {
+		req, _ := http.NewRequest(http.MethodGet, ts.URL+"/d/desktop-1/api/meta", nil)
+		req.Header.Set("Authorization", "Bearer "+pair.Token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode
+	}
+	if status := metaReq(); status != http.StatusOK {
+		t.Fatalf("paired status = %d", status)
+	}
+	if err := conn.SetDeviceDisabled(ctx, pair.DeviceID, true); err != nil {
+		t.Fatal(err)
+	}
+	if status := metaReq(); status != http.StatusForbidden {
+		t.Fatalf("disabled status = %d, want 403", status)
+	}
+	devices := conn.Devices()
+	if len(devices) != 1 || !devices[0].Disabled {
+		t.Fatalf("devices = %+v", devices)
+	}
+	if err := conn.SetDeviceDisabled(ctx, pair.DeviceID, false); err != nil {
+		t.Fatal(err)
+	}
+	if status := metaReq(); status != http.StatusOK {
+		t.Fatalf("enabled status = %d", status)
+	}
+	devices = conn.Devices()
+	if len(devices) != 1 || devices[0].Disabled {
+		t.Fatalf("devices after enable = %+v", devices)
+	}
+}

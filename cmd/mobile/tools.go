@@ -267,6 +267,7 @@ func (a *app) openFile(path string) {
 func (a *app) filePreviewSheet(c *ui.Context) {
 	t := c.Theme()
 	mobile.Sheet(c, &a.filePreviewOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "文件"}, func() {
+		a.sheetBack(c)
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
 			ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
 				ui.Text(c, a.filePreview.Name).FontSize(17).FontWeight(600).Grow(1).MinWidth(0).
@@ -469,6 +470,7 @@ func (a *app) openGitDiff(path string) {
 func (a *app) gitDiffSheet(c *ui.Context) {
 	t := c.Theme()
 	mobile.Sheet(c, &a.gitDiffOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "差异"}, func() {
+		a.sheetBack(c)
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
 			ui.Text(c, a.gitDiffTitle).Font(mtheme.MonoFont).FontSize(14).FontWeight(600).
 				SingleLine().Ellipsis("…")
@@ -1031,6 +1033,7 @@ func (a *app) openProjectForm() {
 func (a *app) projectFormSheet(c *ui.Context) {
 	t := c.Theme()
 	mobile.Sheet(c, &a.projectFormOpen, mobile.SheetOptions{Detents: []float32{0.85}, Label: "新建项目"}, func() {
+		a.sheetBack(c)
 		ui.Column(c).FillWidth().Padding(16).Gap(10).Children(func() {
 			ui.Text(c, "新建项目").FontSize(17).FontWeight(600)
 			ui.TextInput(c, &a.projectName).Placeholder("项目名称")
@@ -1161,6 +1164,7 @@ func (a *app) loadProjectDirs(dir string) {
 func (a *app) projectPickSheet(c *ui.Context) {
 	t := c.Theme()
 	mobile.Sheet(c, &a.projectPickOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "选择位置"}, func() {
+		a.sheetBack(c)
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
 			ui.Text(c, "选择位置").FontSize(18).FontWeight(600)
 			ui.Text(c, a.projectPickDir).FontSize(11).TextColor(t.TextMuted).SingleLine().Ellipsis("…")

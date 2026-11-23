@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -333,11 +334,19 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	// Uploads are handled by the server itself, with or without the desktop
 	// runtime, so the composer always offers them.
 	caps[CapAttachments] = true
+	host, _ := os.Hostname()
 	resp := map[string]any{
-		"provider":     s.target.Name,
-		"model":        s.target.Model,
-		"ready":        s.Ready(),
-		"models":       s.modelChoices(),
+		"provider": s.target.Name,
+		"model":    s.target.Model,
+		"ready":    s.Ready(),
+		"models":   s.modelChoices(),
+		// The desktop names itself so the phone can tell several desktops
+		// apart in its settings.
+		"desktop": map[string]string{
+			"name":     host,
+			"hostname": host,
+			"platform": runtime.GOOS,
+		},
 		"capabilities": caps,
 		"theme": func() map[string]string {
 			if s.cfg == nil {

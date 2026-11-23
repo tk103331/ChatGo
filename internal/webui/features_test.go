@@ -149,12 +149,20 @@ func TestMetaReportsRunnerCapabilities(t *testing.T) {
 	}
 	var resp struct {
 		Capabilities map[string]bool `json:"capabilities"`
+		Desktop      struct {
+			Name     string `json:"name"`
+			Hostname string `json:"hostname"`
+			Platform string `json:"platform"`
+		} `json:"desktop"`
 	}
 	if err := jsonUnmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
 	if !resp.Capabilities[CapAgents] || !resp.Capabilities[CapAsk] || !resp.Capabilities[CapAttachments] {
 		t.Fatalf("capabilities = %#v", resp.Capabilities)
+	}
+	if resp.Desktop.Hostname == "" || resp.Desktop.Platform == "" {
+		t.Fatalf("desktop = %+v", resp.Desktop)
 	}
 }
 

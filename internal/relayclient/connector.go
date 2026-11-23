@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,6 +46,9 @@ type Device struct {
 	Name      string    `json:"name"`
 	Platform  string    `json:"platform,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+	// Disabled keeps the device paired but refuses its token until the
+	// desktop enables it again.
+	Disabled bool `json:"disabled,omitempty"`
 	// E2EKey is the per-device ChaCha20-Poly1305. It never leaves the
 	// desktop except in the pairing response's public keys.
 	E2EKey []byte `json:"-"`
@@ -388,6 +392,10 @@ type pairResult struct {
 	Capabilities  map[string]bool `json:"capabilities"`
 	DesktopPubKey string          `json:"desktop_pubkey,omitempty"`
 	E2E           bool            `json:"e2e,omitempty"`
+	// DesktopName and Platform tell the phone which machine it paired with,
+	// so several desktops are told apart in its settings.
+	DesktopName string `json:"desktop_name,omitempty"`
+	Platform    string `json:"platform,omitempty"`
 }
 
 // NewPairCode creates a fresh 8-character code valid for ttl.
@@ -484,7 +492,34 @@ func (c *Connector) pair(in pairRequest) (pairResult, error) {
 		Capabilities:  c.cfg.Capabilities,
 		DesktopPubKey: desktopPub,
 		E2E:           e2eOn,
+		DesktopName:   c.cfg.DesktopName,
+		Platform:      runtime.GOOS,
 	}, nil
+}
+
+// SetDeviceDisabled keeps a paired phone's token but tells the relay to
+// refuse it until the desktop enables it again. The local list updates only
+// after the relay takes the change, so the switch never shows a state the
+// relay does not share.
+func (c *Connector) SetDeviceDisabled(ctx context.Context, deviceID string, disabled bool) error {
+	body := map[string]any{"device_id": deviceID, "disabled": disabled}
+	if err := c.control(ctx, "/__relay/device", body); err != nil {
+		return err
+	}
+	c.mu.Lock()
+	if d, ok := c.devices[deviceID]; ok {
+		d.Disabled = disabled
+		c.devices[deviceID] = d
+	}
+	devices := make([]Device, 0, len(c.devices))
+	for _, d := range c.devices {
+		devices = append(devices, d)
+	}
+	c.mu.Unlock()
+	if c.cfg.OnDevices != nil {
+		c.cfg.OnDevices(devices)
+	}
+	return nil
 }
 
 // Revoke tells the relay first, then removes the device locally. A relay

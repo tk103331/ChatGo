@@ -232,6 +232,29 @@ func (s *Server) controlHandler(t *Tunnel) http.Handler {
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 	})
+	mux.HandleFunc("POST /__relay/device", func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(HeaderDesktopID) != t.id {
+			writeError(w, http.StatusUnauthorized, "unauthorized", ErrUnauthorized)
+			return
+		}
+		var in struct {
+			DeviceID string `json:"device_id"`
+			Disabled bool   `json:"disabled"`
+		}
+		if err := decodeLimited(r, &in, 64<<10); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", err)
+			return
+		}
+		if strings.TrimSpace(in.DeviceID) == "" {
+			writeError(w, http.StatusBadRequest, "bad_request", errors.New("device_id is required"))
+			return
+		}
+		if err := s.store.SetDeviceDisabled(t.id, in.DeviceID, in.Disabled); err != nil {
+			writeError(w, http.StatusInternalServerError, "internal_error", err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "disabled": in.Disabled})
+	})
 	mux.HandleFunc("GET /__relay/devices", func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(HeaderDesktopID) != t.id {
 			writeError(w, http.StatusUnauthorized, "unauthorized", ErrUnauthorized)
@@ -355,6 +378,8 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		"protocol":       Protocol,
 		"desktop_pubkey": out.DesktopPubKey,
 		"e2e":            out.E2E,
+		"desktop_name":   out.DesktopName,
+		"platform":       out.Platform,
 	})
 }
 
@@ -365,13 +390,15 @@ type pairResponse struct {
 	Capabilities  map[string]bool `json:"capabilities"`
 	DesktopPubKey string          `json:"desktop_pubkey,omitempty"`
 	E2E           bool            `json:"e2e,omitempty"`
+	DesktopName   string          `json:"desktop_name,omitempty"`
+	Platform      string          `json:"platform,omitempty"`
 }
 
 func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 	desktopID := strings.TrimSpace(r.Header.Get(HeaderDesktopID))
 	device, err := s.deviceFor(r, desktopID)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "unauthorized", err)
+		writeDeviceError(w, err)
 		return
 	}
 	var in struct {
@@ -411,7 +438,7 @@ func (s *Server) handleProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	device, err := s.deviceFor(r, desktopID)
 	if err != nil {
-		writeError(w, http.StatusUnauthorized, "unauthorized", err)
+		writeDeviceError(w, err)
 		return
 	}
 	tunnel, ok := s.tunnel(desktopID)
@@ -445,6 +472,16 @@ func (s *Server) deviceFor(r *http.Request, desktopID string) (*Device, error) {
 		return nil, ErrUnauthorized
 	}
 	return s.store.DeviceByToken(desktopID, HashToken(token))
+}
+
+// writeDeviceError tells a phone apart from a desktop that paused it: a
+// disabled device gets a code it can name in its settings.
+func writeDeviceError(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrDeviceDisabled) {
+		writeError(w, http.StatusForbidden, "device_disabled", err)
+		return
+	}
+	writeError(w, http.StatusUnauthorized, "unauthorized", err)
 }
 
 func decodeLimited(r *http.Request, v any, limit int64) error {

@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -56,6 +57,8 @@ const (
 type server struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
+	Host      string `json:"host,omitempty"`
+	Platform  string `json:"platform,omitempty"`
 	RelayURL  string `json:"relay_url"`
 	DesktopID string `json:"desktop_id"`
 	DeviceID  string `json:"device_id,omitempty"`
@@ -125,6 +128,9 @@ type app struct {
 	// pairRequired is set when the desktop or the relay refuses the device
 	// token: the phone has to pair again before it can be used.
 	pairRequired bool
+	// deviceDisabled is set when the desktop paused this phone. The token
+	// stays good, so reconnecting is enough after the desktop enables it.
+	deviceDisabled bool
 
 	serverFormOpen bool
 	serverName     string
@@ -209,6 +215,10 @@ type app struct {
 	termConnErr     string
 	termStarting    bool
 	termClosed      bool
+	lastBack        time.Time
+	backHint        bool
+	backAt          time.Time
+	overlayWas      bool
 	termScroll      ui.ScrollState
 	termInputMu     sync.Mutex
 	termInput       []byte
@@ -317,10 +327,11 @@ func (a *app) connect(s server) {
 	a.client.E2EKey = s.E2EKey
 	a.client.DeviceID = s.DeviceID
 	a.connErr = ""
+	a.deviceDisabled = false
 	a.connecting = true
 	a.status = "正在连接桌面…"
 	client := a.client
-	client.OnAuthError = func(error) { a.onAuthError(client) }
+	client.OnAuthError = func(err error) { a.onAuthError(client, err) }
 	go func() {
 		ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 		defer cancel()
@@ -343,7 +354,9 @@ func (a *app) connect(s server) {
 			a.connecting, a.connected = false, true
 			a.status = ""
 			a.pairRequired = false
+			a.deviceDisabled = false
 			a.meta = meta
+			a.applyDesktopInfo(client.DesktopID, meta.Desktop)
 			a.themeMode = mcore.ParseMode(meta.Theme.Mode)
 			a.colorTheme = mtheme.ByName(meta.Theme.Color)
 			a.ensureNewChoices()
@@ -709,6 +722,23 @@ func (a *app) invalidate() {
 }
 
 func (a *app) view(c *ui.Context) {
+	// A sheet that closed keeps its modal in the last frame it built, which
+	// makes the phone stop routing back to this page. One more frame after
+	// its closing animation puts the page's shortcut back.
+	if a.overlayOpen() {
+		a.overlayWas = true
+	} else if a.overlayWas {
+		a.overlayWas = false
+		time.AfterFunc(400*time.Millisecond, func() { a.update(a.invalidate) })
+	}
+	// The system's back goes up a page, or asks twice before leaving the
+	// tab pages. Registering the shortcut here also tells the phone that
+	// the view takes back, so Android routes it here instead of leaving.
+	a.backShortcut(c)
+	if a.backHint {
+		c.Toast("再按一次退出")
+		a.backHint = false
+	}
 	mcore.Use(c, mcore.Settings{
 		Mode:    a.themeMode,
 		Density: mtheme.Comfortable,
@@ -957,6 +987,104 @@ func (a *app) backToRooms() {
 	a.stopWatch()
 	a.screen = screenRooms
 	a.refreshRooms()
+}
+
+// overlayOpen reports whether a sheet takes the view.
+func (a *app) overlayOpen() bool {
+	return a.projectPickOpen || a.projectFormOpen || a.filePreviewOpen || a.gitDiffOpen ||
+		a.workspaceOpen || a.roomFormOpen || a.taskFormOpen || a.modelOpen ||
+		a.agentOpen || a.askOpen || a.deleteOpen || a.renameOpen || a.pairOpen
+}
+
+// backShortcut registers the back key in the context being built: the root
+// page, or an open sheet's overlay, which the root's shortcut cannot reach.
+func (a *app) backShortcut(c *ui.Context) {
+	if c.Shortcut(0, ui.KeyBack) {
+		a.handleBack()
+	}
+}
+
+// sheetBack takes both keys Android's back sends: Escape closes the sheet,
+// and consuming it keeps the following Back from reaching the page behind.
+func (a *app) sheetBack(c *ui.Context) {
+	if c.Shortcut(0, ui.KeyEscape) || c.Shortcut(0, ui.KeyBack) {
+		a.handleBack()
+	}
+}
+
+// handleBack takes the system's back: close what is open, go up one page, or
+// ask for a second press before leaving the app.
+func (a *app) handleBack() {
+	// A sheet and the root may both register the system's back; take one
+	// press once.
+	if time.Since(a.backAt) < 300*time.Millisecond {
+		return
+	}
+	a.backAt = time.Now()
+	if a.backPage() {
+		return
+	}
+	if time.Since(a.lastBack) < 2*time.Second {
+		a.lastBack = time.Time{}
+		mygo.App.Exit(0)
+		return
+	}
+	a.lastBack = time.Now()
+	a.backHint = true
+	a.invalidate()
+}
+
+// backPage closes an overlay or returns to a parent page. It reports whether
+// it handled the back.
+func (a *app) backPage() bool {
+	switch {
+	case a.projectPickOpen:
+		a.projectPickOpen = false
+	case a.projectFormOpen:
+		a.projectFormOpen = false
+	case a.filePreviewOpen:
+		a.filePreviewOpen = false
+	case a.gitDiffOpen:
+		a.gitDiffOpen = false
+	case a.workspaceOpen:
+		a.workspaceOpen = false
+	case a.roomFormOpen:
+		a.roomFormOpen = false
+	case a.taskFormOpen:
+		a.taskFormOpen = false
+	case a.modelOpen:
+		a.modelOpen = false
+	case a.agentOpen:
+		a.agentOpen = false
+	case a.askOpen:
+		a.askOpen = false
+	case a.deleteOpen:
+		a.deleteOpen = false
+	case a.renameOpen:
+		a.renameOpen = false
+	case a.pairOpen:
+		a.pairOpen = false
+	default:
+		switch a.screen {
+		case screenChat:
+			a.backFromChat()
+		case screenRoom:
+			a.backToRooms()
+		case screenTask:
+			a.backToTasks()
+		case screenProject:
+			a.backToProjects()
+		case screenNew:
+			a.screen = screenList
+			a.tab = tabChat
+			a.refreshSessions()
+		default:
+			return false
+		}
+	}
+	a.lastBack = time.Time{}
+	a.invalidate()
+	return true
 }
 
 func (a *app) backToProjects() {
@@ -1212,10 +1340,26 @@ func (a *app) connectionError(client *mobileapi.Client, format string, args ...a
 	})
 }
 
-// onAuthError handles a refused device token: the desktop dropped this
-// phone, so the saved token is dead and the app asks for a new pairing
-// instead of retrying a request that can never succeed.
-func (a *app) onAuthError(client *mobileapi.Client) {
+// onAuthError handles a refused device token. A desktop that paused this
+// phone gets a code that keeps the pairing, so only connecting again is
+// needed; any other refusal means the phone was dropped and must pair anew.
+func (a *app) onAuthError(client *mobileapi.Client, err error) {
+	var apiErr mobileapi.APIError
+	if errors.As(err, &apiErr) && apiErr.Code == "device_disabled" {
+		a.update(func() {
+			if a.client != client {
+				return
+			}
+			a.stopEvents()
+			a.client = nil
+			a.connected, a.connecting = false, false
+			a.connErr = ""
+			a.status = ""
+			a.pairRequired = false
+			a.deviceDisabled = true
+		})
+		return
+	}
 	a.update(func() {
 		if a.client != client {
 			return
@@ -1239,6 +1383,32 @@ func (a *app) onAuthError(client *mobileapi.Client) {
 		a.status = ""
 		a.pairRequired = true
 	})
+}
+
+// applyDesktopInfo records the machine the phone reached, so the settings
+// list tells several desktops apart even before the next pairing.
+func (a *app) applyDesktopInfo(desktopID string, info mobileapi.DesktopInfo) {
+	changed := false
+	for i := range a.servers {
+		if a.servers[i].DesktopID != desktopID {
+			continue
+		}
+		if name := strings.TrimSpace(info.Name); name != "" && a.servers[i].Name != name {
+			a.servers[i].Name = name
+			changed = true
+		}
+		if host := strings.TrimSpace(info.Hostname); host != "" && a.servers[i].Host != host {
+			a.servers[i].Host = host
+			changed = true
+		}
+		if platform := strings.TrimSpace(info.Platform); platform != "" && a.servers[i].Platform != platform {
+			a.servers[i].Platform = platform
+			changed = true
+		}
+	}
+	if changed {
+		a.saveServers()
+	}
 }
 
 // openPairSheet opens the pairing sheet. It runs on the main thread, from a

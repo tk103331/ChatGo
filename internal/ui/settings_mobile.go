@@ -184,12 +184,24 @@ func (cw *ChatWindow) mobileTab(c *mgo.Context) {
 							if detail != "" {
 								mgo.Text(c, detail).FontSize(small).TextColor(k.TextMuted)
 							}
+							if device.Disabled {
+								mgo.Text(c, "已停用，这台手机无法连接").FontSize(small).TextColor(k.Warning)
+							}
 						})
-						if kit.Button(c, "吊销", kit.ButtonOptions{
-							Variant: kit.Ghost, Icon: icons.Must("x"),
-						}).Clicked() {
-							cw.revokeRelayDevice(device.ID)
-						}
+						mgo.Row(c).Gap(u / 2).Shrink(0).Children(func() {
+							label := "停用"
+							if device.Disabled {
+								label = "启用"
+							}
+							if kit.Button(c, label, kit.ButtonOptions{Variant: kit.Ghost}).Clicked() {
+								cw.setRelayDeviceDisabled(device.ID, !device.Disabled)
+							}
+							if kit.Button(c, "吊销", kit.ButtonOptions{
+								Variant: kit.Ghost, Icon: icons.Must("x"),
+							}).Clicked() {
+								cw.revokeRelayDevice(device.ID)
+							}
+						})
 					})
 				}
 			}

@@ -176,6 +176,7 @@ func (a *app) openRename(s mobileapi.SessionSummary) {
 // renameSheet is the title editor a swiped conversation opens.
 func (a *app) renameSheet(c *ui.Context) {
 	mobile.Sheet(c, &a.renameOpen, mobile.SheetOptions{Detents: []float32{0.75}, Label: "重命名会话"}, func() {
+		a.sheetBack(c)
 		ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
 			ui.Text(c, "重命名会话").FontSize(17).FontWeight(600)
 			ui.TextInput(c, &a.renameText).Placeholder("会话名称")
@@ -234,6 +235,7 @@ func (a *app) openDelete(s mobileapi.SessionSummary) {
 func (a *app) deleteSheet(c *ui.Context) {
 	t := c.Theme()
 	mobile.Sheet(c, &a.deleteOpen, mobile.SheetOptions{Detents: []float32{0.38}, Label: "删除会话"}, func() {
+		a.sheetBack(c)
 		ui.Column(c).FillWidth().Padding(16).Gap(10).Children(func() {
 			ui.Text(c, "删除这个会话？").FontSize(17).FontWeight(600)
 			ui.Text(c, a.deleteTitle).FontSize(14).TextColor(t.Text).SingleLine().Ellipsis("…")
@@ -441,6 +443,11 @@ func (a *app) offlineState(c *ui.Context) {
 		// pairing, so say so instead of offering a retry that cannot work.
 		title, hint, icon = "需要重新配对", "桌面已移除这台手机，或令牌已失效。请重新扫码配对。", "key-round"
 	}
+	if a.deviceDisabled {
+		// The pairing is still good; the desktop only paused it, so the
+		// retry offered below works once the desktop enables the phone.
+		title, hint, icon = "桌面已停用这台手机", "请让桌面在 设置 → 手机 中启用这台手机，然后重新连接。", "lock"
+	}
 	if a.pairing {
 		title, hint, icon = "正在配对", "正在连接桌面，请稍候…", "key-round"
 	}
@@ -548,6 +555,7 @@ func (a *app) agentSheet(c *ui.Context) {
 		detent = 0.7
 	}
 	mobile.Sheet(c, &a.agentOpen, mobile.SheetOptions{Detents: []float32{detent}, Label: "选择 Agent"}, func() {
+		a.sheetBack(c)
 		t := c.Theme()
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
 			ui.Text(c, "选择 Agent").FontSize(18).FontWeight(600)
@@ -902,6 +910,7 @@ func (a *app) modelSheet(c *ui.Context) {
 	// The picker keeps a tall detent: the filter's keyboard covers the
 	// window's lower part, and the models must stay above it.
 	mobile.Sheet(c, &a.modelOpen, mobile.SheetOptions{Detents: []float32{0.85}, Label: "选择模型"}, func() {
+		a.sheetBack(c)
 		t := c.Theme()
 		title := "选择模型"
 		if kind == "a2a" {
@@ -1030,6 +1039,7 @@ func (a *app) workspaceSheet(c *ui.Context) {
 		title = "选择群聊工作区"
 	}
 	mobile.Sheet(c, &a.workspaceOpen, mobile.SheetOptions{Detents: []float32{0.75}, Label: title}, func() {
+		a.sheetBack(c)
 		t := c.Theme()
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
 			ui.Text(c, title).FontSize(18).FontWeight(600)
@@ -2017,6 +2027,7 @@ func (a *app) askSheet(c *ui.Context) {
 		return
 	}
 	mobile.Sheet(c, &a.askOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "Agent 交互"}, func() {
+		a.sheetBack(c)
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
 				i := a.interaction
