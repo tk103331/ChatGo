@@ -318,6 +318,17 @@ func (c *Connector) handler() http.Handler {
 	mux.HandleFunc("/__relay/", func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 	})
+	mux.HandleFunc("GET /api/terminals/{id}/ws", func(w http.ResponseWriter, r *http.Request) {
+		if id := r.Header.Get(relay.HeaderRelayDesktop); id != "" && id != c.cfg.DesktopID {
+			http.Error(w, "wrong desktop", http.StatusForbidden)
+			return
+		}
+		if r.Header.Get(e2e.HeaderVersion) == e2e.Version {
+			c.proxyTerminalWS(w, r)
+			return
+		}
+		proxy.ServeHTTP(w, r)
+	})
 	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
 		if id := r.Header.Get(relay.HeaderRelayDesktop); id != "" && id != c.cfg.DesktopID {
 			http.Error(w, "wrong desktop", http.StatusForbidden)
@@ -618,6 +629,98 @@ func (c *Connector) decryptRequest(r *http.Request, key []byte, deviceID string)
 var eventUpgrader = websocket.Upgrader{
 	HandshakeTimeout: 15 * time.Second,
 	CheckOrigin:      func(*http.Request) bool { return true },
+}
+
+// proxyTerminalWS carries a terminal's WebSocket through the relay. Each
+// frame is sealed with a one-byte kind: 0 for shell bytes, 1 for JSON
+// control, so the two ends keep their message types across encryption.
+func (c *Connector) proxyTerminalWS(w http.ResponseWriter, r *http.Request) {
+	deviceID := r.Header.Get(relay.HeaderDeviceID)
+	key := c.deviceKey(deviceID)
+	if len(key) == 0 {
+		http.Error(w, "e2e key not found", http.StatusUnauthorized)
+		return
+	}
+	ts, err := strconv.ParseInt(strings.TrimSpace(r.Header.Get(e2e.HeaderTime)), 10, 64)
+	if err != nil || !e2e.WithinWindow(ts) {
+		http.Error(w, "e2e timestamp outside the accepted window", http.StatusUnauthorized)
+		return
+	}
+	conn, err := eventUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	defer conn.Close()
+
+	local := strings.TrimRight(c.cfg.LocalURL, "/")
+	local = strings.Replace(local, "https://", "wss://", 1)
+	local = strings.Replace(local, "http://", "ws://", 1)
+	local += r.URL.Path
+	if r.URL.RawQuery != "" {
+		local += "?" + r.URL.RawQuery
+	}
+	headers := http.Header{}
+	if c.cfg.LocalToken != "" {
+		headers.Set("Authorization", "Bearer "+c.cfg.LocalToken)
+	}
+	dialer := websocket.Dialer{HandshakeTimeout: 15 * time.Second}
+	upstream, _, err := dialer.Dial(local, headers)
+	if err != nil {
+		return
+	}
+	defer upstream.Close()
+
+	done := make(chan struct{}, 2)
+	go func() {
+		defer func() { done <- struct{}{} }()
+		for {
+			mt, msg, err := upstream.ReadMessage()
+			if err != nil {
+				return
+			}
+			kind := byte(0)
+			if mt == websocket.TextMessage {
+				kind = 1
+			}
+			plain := append([]byte{kind}, msg...)
+			nonce, ciphertext, err := e2e.Seal(key, plain, e2e.TerminalAAD(deviceID, "s2c"))
+			if err != nil {
+				return
+			}
+			frame := make([]byte, 0, 1+len(nonce)+len(ciphertext))
+			frame = append(frame, 1)
+			frame = append(frame, nonce...)
+			frame = append(frame, ciphertext...)
+			if err := conn.WriteMessage(websocket.BinaryMessage, frame); err != nil {
+				return
+			}
+		}
+	}()
+	go func() {
+		defer func() { done <- struct{}{} }()
+		for {
+			mt, msg, err := conn.ReadMessage()
+			if err != nil {
+				return
+			}
+			if mt != websocket.BinaryMessage || len(msg) < 14 || msg[0] != 1 {
+				continue
+			}
+			plain, err := e2e.Open(key, msg[1:13], msg[13:], e2e.TerminalAAD(deviceID, "c2s"))
+			if err != nil || len(plain) == 0 {
+				return
+			}
+			kind, payload := plain[0], plain[1:]
+			out := websocket.BinaryMessage
+			if kind == 1 {
+				out = websocket.TextMessage
+			}
+			if err := upstream.WriteMessage(out, payload); err != nil {
+				return
+			}
+		}
+	}()
+	<-done
 }
 
 func (c *Connector) proxyEvents(w http.ResponseWriter, r *http.Request) {

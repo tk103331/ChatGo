@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // toolTestRunner adds the optional tool surface to the feature fake.
@@ -118,5 +121,50 @@ func TestTerminalRoutes(t *testing.T) {
 	}
 	if w := serve(t, s, http.MethodDelete, "/api/terminals/"+id, ""); w.Code != http.StatusOK {
 		t.Fatalf("close: %d %s", w.Code, w.Body)
+	}
+}
+
+// The WebSocket terminal replays its screen and carries live input.
+func TestTerminalWebSocket(t *testing.T) {
+	t.Setenv("SHELL", "/bin/sh")
+	dir := t.TempDir()
+	r := &toolTestRunner{fakeRunner: &fakeRunner{}}
+	s, _ := runnerServer(t, r)
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+	auth := "Bearer " + s.Token()
+	w := serve(t, s, http.MethodPost, "/api/terminals", `{"dir":"`+dir+`","cols":40,"rows":10}`)
+	var start struct {
+		Session TerminalInfo `json:"session"`
+	}
+	if err := jsonUnmarshal(w.Body.Bytes(), &start); err != nil || start.Session.ID == "" {
+		t.Fatalf("start: %v %s", err, w.Body)
+	}
+	wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/api/terminals/" + start.Session.ID + "/ws"
+	conn, _, err := (&websocket.Dialer{}).Dial(wsURL, http.Header{"Authorization": {auth}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	// The first frame is the reset control; then the shell's prompt.
+	_, first, err := conn.ReadMessage()
+	if err != nil || !strings.Contains(string(first), "\"reset\"") {
+		t.Fatalf("first frame = %s %v", first, err)
+	}
+	if err := conn.WriteMessage(websocket.BinaryMessage, []byte("echo 7\n")); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("read: %v", err)
+		}
+		if strings.Contains(string(msg), "7") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("terminal output did not arrive: %s", msg)
+		}
 	}
 }

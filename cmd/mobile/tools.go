@@ -2,16 +2,16 @@ package main
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"fmt"
 	"math"
-	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/egoist/mygo/ui"
 	"github.com/egoist/mygo/ui/mobile"
+	"github.com/gorilla/websocket"
 	"github.com/hinshun/vt10x"
 
 	"chatgo/internal/mobileapi"
@@ -701,6 +701,25 @@ func (a *app) clearTerminalInput() {
 	a.termInputMu.Unlock()
 }
 
+// queueTermInput appends keys for the writer, keeping them across a reconnect.
+func (a *app) queueTermInput(data []byte) {
+	if len(data) == 0 {
+		return
+	}
+	a.termInputMu.Lock()
+	a.termInput = append(a.termInput, data...)
+	if len(a.termInput) > 64<<10 {
+		a.termInput = a.termInput[len(a.termInput)-64<<10:]
+	}
+	a.termInputMu.Unlock()
+	if a.termInputWake != nil {
+		select {
+		case a.termInputWake <- struct{}{}:
+		default:
+		}
+	}
+}
+
 // ensureTerminal attaches to the project's existing shell or starts one. The
 // session outlives the phone, so reconnecting reuses it.
 func (a *app) ensureTerminal() {
@@ -757,72 +776,20 @@ func (a *app) ensureTerminal() {
 	}()
 }
 
-// startTerminalIO starts the output long-poll and input sender for the
-// attached shell.
+// startTerminalIO attaches a WebSocket to the shell. Reconnects are handled
+// here: the session stays on the desktop, and queued keys wait for the next
+// connection.
 func (a *app) startTerminalIO() {
 	a.stopTerminalIO()
 	if a.client == nil || a.termID == "" {
 		return
 	}
 	client, id := a.client, a.termID
-	pctx, pcancel := context.WithCancel(context.Background())
-	a.termPollCancel = pcancel
-	sctx, scancel := context.WithCancel(context.Background())
-	a.termSendCancel = scancel
+	ctx, cancel := context.WithCancel(context.Background())
+	a.termPollCancel = cancel
 	a.termInputWake = make(chan struct{}, 1)
-	go a.terminalInputLoop(sctx, client, id)
-	go func() {
-		since := a.termSince
-		for {
-			out, err := client.TerminalOutput(pctx, id, since, 20*time.Second)
-			if pctx.Err() != nil {
-				return
-			}
-			if err != nil {
-				var apiErr mobileapi.APIError
-				if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
-					a.update(func() {
-						if a.client == client && a.termID == id {
-							a.termID, a.termVT = "", nil
-							a.termClosed = true
-							a.termConnErr = ""
-						}
-					})
-					return
-				}
-				a.update(func() {
-					if a.client == client && a.termID == id {
-						a.termConnErr = err.Error()
-					}
-				})
-				select {
-				case <-pctx.Done():
-					return
-				case <-time.After(700 * time.Millisecond):
-				}
-				continue
-			}
-			since = out.Seq
-			a.update(func() {
-				if a.client != client || a.termID != id {
-					return
-				}
-				if out.Reset || a.termVT == nil {
-					a.termVT = vt10x.New(vt10x.WithSize(a.termInfo.Cols, a.termInfo.Rows))
-				}
-				if len(out.Data) > 0 {
-					_, _ = a.termVT.Write(out.Data)
-				}
-				a.termSince = out.Seq
-				a.termConnErr = ""
-				a.termExited, a.termExitCode = out.Exited, out.ExitCode
-				a.termScroll.Y = math.MaxFloat32
-			})
-			if out.Exited {
-				return
-			}
-		}
-	}()
+	wake := a.termInputWake
+	go a.terminalWSLoop(ctx, client, id, wake)
 }
 
 func (a *app) stopTerminalIO() {
@@ -830,20 +797,116 @@ func (a *app) stopTerminalIO() {
 		a.termPollCancel()
 		a.termPollCancel = nil
 	}
-	if a.termSendCancel != nil {
-		a.termSendCancel()
-		a.termSendCancel = nil
+	a.termSendCancel = nil
+}
+
+// terminalWSLoop keeps the terminal WebSocket connected. The desktop replays
+// the session's scrollback on every attach, so a reconnect restores the screen.
+func (a *app) terminalWSLoop(ctx context.Context, client *mobileapi.Client, id string, wake chan struct{}) {
+	for ctx.Err() == nil {
+		conn, err := client.DialTerminal(ctx, id)
+		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
+			a.update(func() {
+				if a.client == client && a.termID == id {
+					a.termConnErr = err.Error()
+				}
+			})
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(700 * time.Millisecond):
+			}
+			continue
+		}
+		a.update(func() {
+			if a.client == client && a.termID == id {
+				a.termConnErr = ""
+			}
+		})
+		writeDone := make(chan struct{})
+		go func() {
+			defer close(writeDone)
+			a.terminalWriter(ctx, conn, client, wake)
+		}()
+		exited := false
+		for ctx.Err() == nil {
+			kind, payload, err := mobileapi.ReadTerminalFrame(conn, client.E2EKey, client.DesktopID, "s2c")
+			if err != nil {
+				break
+			}
+			if kind == 1 {
+				var control struct {
+					Type string `json:"type"`
+					Cols int    `json:"cols"`
+					Rows int    `json:"rows"`
+					Code int    `json:"code"`
+				}
+				if json.Unmarshal(payload, &control) == nil {
+					switch control.Type {
+					case "reset":
+						cols, rows := control.Cols, control.Rows
+						if cols <= 0 || rows <= 0 {
+							cols, rows = a.termInfo.Cols, a.termInfo.Rows
+						}
+						a.update(func() {
+							if a.client == client && a.termID == id {
+								a.termVT = vt10x.New(vt10x.WithSize(cols, rows))
+								a.termConnErr = ""
+							}
+						})
+					case "exit":
+						exited = true
+						a.update(func() {
+							if a.client == client && a.termID == id {
+								a.termExited, a.termExitCode = true, control.Code
+							}
+						})
+					}
+				}
+				continue
+			}
+			if len(payload) > 0 {
+				a.update(func() {
+					if a.client != client || a.termID != id {
+						return
+					}
+					if a.termVT == nil {
+						a.termVT = vt10x.New(vt10x.WithSize(a.termInfo.Cols, a.termInfo.Rows))
+					}
+					_, _ = a.termVT.Write(payload)
+					a.termScroll.Y = math.MaxFloat32
+				})
+			}
+		}
+		_ = conn.Close()
+		<-writeDone
+		if exited || ctx.Err() != nil {
+			return
+		}
+		a.update(func() {
+			if a.client == client && a.termID == id {
+				a.termConnErr = "连接中断，正在重连…"
+			}
+		})
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(700 * time.Millisecond):
+		}
 	}
 }
 
-// terminalInputLoop sends queued keystrokes in order, keeping them while the
-// relay is down so a reconnected session receives them.
-func (a *app) terminalInputLoop(ctx context.Context, client *mobileapi.Client, id string) {
+// terminalWriter owns all writes on one connection, flushing queued keys in
+// order. A failed write puts them back for the next connection.
+func (a *app) terminalWriter(ctx context.Context, conn *websocket.Conn, client *mobileapi.Client, wake chan struct{}) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-a.termInputWake:
+		case <-wake:
 		}
 		a.termInputMu.Lock()
 		data := append([]byte(nil), a.termInput...)
@@ -852,45 +915,11 @@ func (a *app) terminalInputLoop(ctx context.Context, client *mobileapi.Client, i
 		if len(data) == 0 {
 			continue
 		}
-		ictx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		err := client.TerminalInput(ictx, id, data)
-		cancel()
-		if err == nil {
-			continue
-		}
-		var apiErr mobileapi.APIError
-		if errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound {
+		if err := mobileapi.WriteTerminalFrame(conn, client.E2EKey, client.DesktopID, "c2s", 0, data); err != nil {
+			a.termInputMu.Lock()
+			a.termInput = append(data, a.termInput...)
+			a.termInputMu.Unlock()
 			return
-		}
-		// Put the keys back at the front and try again after a pause.
-		a.termInputMu.Lock()
-		a.termInput = append(data, a.termInput...)
-		if len(a.termInput) > 64<<10 {
-			a.termInput = a.termInput[len(a.termInput)-64<<10:]
-		}
-		a.termInputMu.Unlock()
-		select {
-		case <-ctx.Done():
-			return
-		case <-time.After(500 * time.Millisecond):
-		}
-	}
-}
-
-func (a *app) queueTermInput(data []byte) {
-	if len(data) == 0 {
-		return
-	}
-	a.termInputMu.Lock()
-	a.termInput = append(a.termInput, data...)
-	if len(a.termInput) > 64<<10 {
-		a.termInput = a.termInput[len(a.termInput)-64<<10:]
-	}
-	a.termInputMu.Unlock()
-	if a.termInputWake != nil {
-		select {
-		case a.termInputWake <- struct{}{}:
-		default:
 		}
 	}
 }

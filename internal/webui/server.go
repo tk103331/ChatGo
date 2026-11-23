@@ -264,6 +264,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /api/terminals/{id}/input", s.handleTerminalInput)
 	mux.HandleFunc("POST /api/terminals/{id}/resize", s.handleTerminalResize)
 	mux.HandleFunc("GET /api/terminals/{id}/output", s.handleTerminalOutput)
+	mux.HandleFunc("GET /api/terminals/{id}/ws", s.handleTerminalWS)
 	mux.HandleFunc("POST /api/projects", s.handleCreateProject)
 	mux.HandleFunc("POST /api/worktrees", s.handleCreateWorktree)
 	mux.HandleFunc("GET /api/skills", s.handleSkills)

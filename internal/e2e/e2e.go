@@ -123,3 +123,9 @@ func ResponseAAD(string) []byte {
 func EventAAD(string) []byte {
 	return []byte("events")
 }
+
+// TerminalAAD binds a terminal frame to its device and direction, so a frame
+// cannot be reflected from one side of the terminal to the other.
+func TerminalAAD(deviceID, direction string) []byte {
+	return []byte("terminal\n" + direction + "\n" + deviceID)
+}
