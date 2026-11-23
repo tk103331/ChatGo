@@ -15,13 +15,13 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	"chatgo/internal/config"
+	"chatgo/internal/hostinfo"
 	"chatgo/internal/llm"
 	"chatgo/pkg/models"
 )
@@ -334,7 +334,6 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 	// Uploads are handled by the server itself, with or without the desktop
 	// runtime, so the composer always offers them.
 	caps[CapAttachments] = true
-	host, _ := os.Hostname()
 	resp := map[string]any{
 		"provider": s.target.Name,
 		"model":    s.target.Model,
@@ -342,11 +341,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		"models":   s.modelChoices(),
 		// The desktop names itself so the phone can tell several desktops
 		// apart in its settings.
-		"desktop": map[string]string{
-			"name":     host,
-			"hostname": host,
-			"platform": runtime.GOOS,
-		},
+		"desktop":      hostinfo.Current(),
 		"capabilities": caps,
 		"theme": func() map[string]string {
 			if s.cfg == nil {

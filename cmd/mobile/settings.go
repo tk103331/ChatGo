@@ -13,6 +13,7 @@ import (
 	"chatgo/internal/qrscanner"
 	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
+	mtheme "chatgo/internal/ui/theme"
 )
 
 func (a *app) settingsView(c *ui.Context) {
@@ -72,9 +73,15 @@ func (a *app) settingsView(c *ui.Context) {
 // currentDesktopCard names the desktop the phone is talking to, its link
 // state, and the one action that is useful from here.
 func (a *app) currentDesktopCard(c *ui.Context) {
+	ui.Row(c).FillWidth().Padding(0, 16).Children(func() {
+		a.currentDesktopCardBody(c)
+	})
+}
+
+func (a *app) currentDesktopCardBody(c *ui.Context) {
 	t := c.Theme()
 	if len(a.servers) == 0 {
-		ui.Column(c).FillWidth().Margin(0, 16, 0, 16).Padding(16).Gap(10).
+		ui.Column(c).FillWidth().Padding(16).Gap(10).
 			Background(t.Surface).Radius(16).Border(1, t.Border).Children(func() {
 			ui.Text(c, "还没有桌面").FontSize(16).FontWeight(600)
 			ui.Text(c, "配对桌面后，就能在手机上使用会话、群聊和自动任务。").
@@ -96,7 +103,7 @@ func (a *app) currentDesktopCard(c *ui.Context) {
 	case a.connected:
 		label, color = "已连接桌面", t.Warning
 	}
-	ui.Column(c).FillWidth().Margin(0, 16, 0, 16).Padding(16).Gap(12).
+	ui.Column(c).FillWidth().Padding(16).Gap(12).
 		Background(t.Surface).Radius(16).Border(1, t.Border).Children(func() {
 		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
 			ui.Row(c).Size(42, 42).Radius(13).Background(t.Accent.Alpha(0.12)).
@@ -104,10 +111,16 @@ func (a *app) currentDesktopCard(c *ui.Context) {
 				ui.Icon(c, icons.Must("columns-2")).Size(22, 22).TextColor(t.Accent)
 			})
 			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(3).Children(func() {
-				ui.Text(c, firstNonEmpty(srv.Name, srv.DesktopID)).FontSize(17).FontWeight(600).
+				ui.Text(c, desktopTitle(srv)).FontSize(17).FontWeight(600).
 					SingleLine().Ellipsis("…")
-				ui.Text(c, desktopPlace(srv)).FontSize(12).TextColor(t.TextMuted).
-					SingleLine().Ellipsis("…")
+				if place := desktopPlace(srv); place != "" {
+					ui.Text(c, place).FontSize(12).TextColor(t.TextMuted).
+						SingleLine().Ellipsis("…")
+				}
+				if srv.MAC != "" {
+					ui.Text(c, "MAC "+srv.MAC).Font(mtheme.MonoFont).FontSize(11).
+						TextColor(t.TextMuted).SingleLine().Ellipsis("…")
+				}
 			})
 			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
 				ui.Box(c).Size(7, 7).Radius(4).Background(color)
@@ -132,23 +145,36 @@ func (a *app) currentDesktopCard(c *ui.Context) {
 	})
 }
 
-// desktopPlace is where a desktop runs, without the relay address the card
-// already carries.
+// desktopTitle is the machine's own name. A pairing made before desktops
+// named themselves still carries the phone's name, which must not label the
+// desktop, so the hostname wins whenever the phone knows it.
+func desktopTitle(srv server) string {
+	if host := strings.TrimSpace(srv.Host); host != "" {
+		return host
+	}
+	name := strings.TrimSpace(srv.Name)
+	if name != "" && name != "ChatGo Mobile" && name != strings.TrimSpace(srv.DesktopID) {
+		return name
+	}
+	if id := strings.TrimSpace(srv.DesktopID); id != "" {
+		return id
+	}
+	return "桌面"
+}
+
+// desktopPlace is the system and LAN address that say where the desktop
+// runs, under its name.
 func desktopPlace(srv server) string {
 	parts := []string{}
-	if host := strings.TrimSpace(srv.Host); host != "" {
-		parts = append(parts, host)
-	}
 	if platform := strings.TrimSpace(srv.Platform); platform != "" {
 		parts = append(parts, platformLabel(platform))
 	}
-	if len(parts) == 0 {
-		return srv.DesktopID
+	if ip := strings.TrimSpace(srv.IP); ip != "" {
+		parts = append(parts, ip)
 	}
 	return strings.Join(parts, " · ")
 }
 
-// versionText is the app's own version, as the build reports it.
 func versionText() string {
 	version := strings.TrimSpace(mygo.App.Version())
 	if version == "" {
@@ -162,8 +188,8 @@ func versionText() string {
 func (a *app) desktopRow(c *ui.Context, i int, srv server) {
 	t := c.Theme()
 	row := mobile.ListRow(c, mobile.RowOptions{
-		Title:    firstNonEmpty(srv.Name, srv.DesktopID),
-		Subtitle: desktopSubtitle(srv),
+		Title:    desktopTitle(srv),
+		Subtitle: desktopPlace(srv),
 		Leading: func() {
 			ui.Row(c).Size(30, 30).Radius(10).Background(t.Accent.Alpha(0.08)).
 				AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
@@ -214,12 +240,22 @@ func (a *app) deskActionsSheet(c *ui.Context) {
 	}
 	t := c.Theme()
 	srv := a.servers[a.deskAction]
-	sheet(c, &a.deskActionsOpen, mobile.SheetOptions{Detents: []float32{0.46}, Label: "桌面操作"}, func() {
+	sheet(c, &a.deskActionsOpen, mobile.SheetOptions{Detents: []float32{0.5}, Label: "桌面操作"}, func() {
 		a.sheetBack(c)
 		ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
 			ui.Column(c).Gap(3).Children(func() {
-				ui.Text(c, firstNonEmpty(srv.Name, srv.DesktopID)).FontSize(17).FontWeight(600)
-				ui.Text(c, desktopSubtitle(srv)).FontSize(12).TextColor(t.TextMuted).MaxLines(2)
+				ui.Text(c, desktopTitle(srv)).FontSize(17).FontWeight(600)
+				if place := desktopPlace(srv); place != "" {
+					ui.Text(c, place).FontSize(12).TextColor(t.TextMuted).MaxLines(2)
+				}
+				if srv.MAC != "" {
+					ui.Text(c, "MAC "+srv.MAC).Font(mtheme.MonoFont).FontSize(11).
+						TextColor(t.TextMuted).MaxLines(1)
+				}
+				if srv.IP != "" && srv.IP != srv.Host {
+					ui.Text(c, "IP "+srv.IP).Font(mtheme.MonoFont).FontSize(11).
+						TextColor(t.TextMuted).MaxLines(1)
+				}
 			})
 			if a.deskAction != a.server {
 				if kit.Button(c, "切换到这台桌面", kit.ButtonOptions{Variant: kit.Primary}).
@@ -248,22 +284,6 @@ func (a *app) deskActionsSheet(c *ui.Context) {
 			}
 		})
 	})
-}
-
-// desktopSubtitle names where a desktop runs and how the phone reaches it,
-// which is what tells several desktops of the same name apart.
-func desktopSubtitle(srv server) string {
-	parts := []string{}
-	if host := strings.TrimSpace(srv.Host); host != "" {
-		parts = append(parts, host)
-	}
-	if platform := strings.TrimSpace(srv.Platform); platform != "" {
-		parts = append(parts, platformLabel(platform))
-	}
-	if len(parts) == 0 {
-		return srv.DesktopID
-	}
-	return strings.Join(parts, " · ")
 }
 
 // platformLabel is the desktop platform as the phone reads it.
@@ -438,6 +458,8 @@ func (a *app) pair() {
 			Name:      firstNonEmpty(res.DesktopName, res.DesktopID),
 			Host:      res.DesktopName,
 			Platform:  res.Platform,
+			MAC:       res.MAC,
+			IP:        res.IP,
 			RelayURL:  relay,
 			DesktopID: res.DesktopID,
 		}

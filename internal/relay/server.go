@@ -380,6 +380,8 @@ func (s *Server) handlePair(w http.ResponseWriter, r *http.Request) {
 		"e2e":            out.E2E,
 		"desktop_name":   out.DesktopName,
 		"platform":       out.Platform,
+		"mac":            out.MAC,
+		"ip":             out.IP,
 	})
 }
 
@@ -392,6 +394,8 @@ type pairResponse struct {
 	E2E           bool            `json:"e2e,omitempty"`
 	DesktopName   string          `json:"desktop_name,omitempty"`
 	Platform      string          `json:"platform,omitempty"`
+	MAC           string          `json:"mac,omitempty"`
+	IP            string          `json:"ip,omitempty"`
 }
 
 func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {

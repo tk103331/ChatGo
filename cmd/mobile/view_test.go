@@ -1077,16 +1077,19 @@ func TestBackGoesUpPages(t *testing.T) {
 }
 
 // Several desktops are told apart by where they run, not only by name.
-func TestDesktopSubtitleNamesHost(t *testing.T) {
+func TestDesktopIdentityNamesHost(t *testing.T) {
 	srv := server{
-		Name: "Mac", Host: "studio.local", Platform: "darwin",
+		Name: "ChatGo Mobile", Host: "studio.local", Platform: "darwin", IP: "192.168.1.20",
 		RelayURL: "https://relay.example.com/d/d1", DesktopID: "d1",
 	}
-	if got, want := desktopSubtitle(srv), "studio.local · macOS"; got != want {
-		t.Fatalf("subtitle = %q, want %q", got, want)
+	if got := desktopTitle(srv); got != "studio.local" {
+		t.Fatalf("title = %q, want the hostname", got)
 	}
-	if got, want := desktopSubtitle(server{DesktopID: "d1"}), "d1"; got != want {
-		t.Fatalf("empty subtitle = %q, want %q", got, want)
+	if got, want := desktopPlace(srv), "macOS · 192.168.1.20"; got != want {
+		t.Fatalf("place = %q, want %q", got, want)
+	}
+	if got, want := desktopTitle(server{Name: "ChatGo Mobile", DesktopID: "d1"}), "d1"; got != want {
+		t.Fatalf("old pairing title = %q, want %q", got, want)
 	}
 }
 
@@ -1097,10 +1100,17 @@ func TestApplyDesktopInfo(t *testing.T) {
 	a.storageDir = t.TempDir()
 	a.applyDesktopInfo("d1", mobileapi.DesktopInfo{
 		Name: "Studio", Hostname: "studio.local", Platform: "darwin",
+		MAC: "A4:83:E7:12:34:56", IP: "192.168.1.20",
 	})
 	srv := a.servers[0]
 	if srv.Name != "Studio" || srv.Host != "studio.local" || srv.Platform != "darwin" {
 		t.Fatalf("server = %+v", srv)
+	}
+	if srv.MAC != "A4:83:E7:12:34:56" || srv.IP != "192.168.1.20" {
+		t.Fatalf("identifiers = %+v", srv)
+	}
+	if got := desktopTitle(srv); got != "studio.local" {
+		t.Fatalf("title = %q", got)
 	}
 }
 

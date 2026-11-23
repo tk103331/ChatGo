@@ -248,6 +248,8 @@ type DesktopInfo struct {
 	Name     string `json:"name"`
 	Hostname string `json:"hostname"`
 	Platform string `json:"platform"`
+	MAC      string `json:"mac,omitempty"`
+	IP       string `json:"ip,omitempty"`
 }
 
 type ModelChoice struct {
@@ -408,6 +410,8 @@ type PairResult struct {
 	Name          string          `json:"name"`
 	DesktopName   string          `json:"desktop_name,omitempty"`
 	Platform      string          `json:"platform,omitempty"`
+	MAC           string          `json:"mac,omitempty"`
+	IP            string          `json:"ip,omitempty"`
 	Capabilities  map[string]bool `json:"capabilities"`
 	Protocol      int             `json:"protocol"`
 	DesktopPubKey string          `json:"desktop_pubkey,omitempty"`

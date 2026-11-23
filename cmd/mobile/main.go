@@ -59,6 +59,8 @@ type server struct {
 	Name      string `json:"name"`
 	Host      string `json:"host,omitempty"`
 	Platform  string `json:"platform,omitempty"`
+	MAC       string `json:"mac,omitempty"`
+	IP        string `json:"ip,omitempty"`
 	RelayURL  string `json:"relay_url"`
 	DesktopID string `json:"desktop_id"`
 	DeviceID  string `json:"device_id,omitempty"`
@@ -1020,7 +1022,7 @@ func (a *app) topBar(c *ui.Context) {
 		}
 		ui.Row(c).FillWidth().Padding(2, 16).Gap(6).AlignItems(ui.Center).Children(func() {
 			ui.Box(c).Size(6, 6).Radius(3).Background(color).Shrink(0)
-			ui.Text(c, firstNonEmpty(a.currentServer().Name, "桌面")+" · "+label).
+			ui.Text(c, desktopTitle(a.currentServer())+" · "+label).
 				FontSize(11).TextColor(t.TextMuted).Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
 		})
 	}
@@ -1510,6 +1512,14 @@ func (a *app) applyDesktopInfo(desktopID string, info mobileapi.DesktopInfo) {
 		}
 		if platform := strings.TrimSpace(info.Platform); platform != "" && a.servers[i].Platform != platform {
 			a.servers[i].Platform = platform
+			changed = true
+		}
+		if mac := strings.TrimSpace(info.MAC); mac != "" && a.servers[i].MAC != mac {
+			a.servers[i].MAC = mac
+			changed = true
+		}
+		if ip := strings.TrimSpace(info.IP); ip != "" && a.servers[i].IP != ip {
+			a.servers[i].IP = ip
 			changed = true
 		}
 	}

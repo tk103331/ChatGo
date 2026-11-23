@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -28,6 +27,7 @@ import (
 	"github.com/hashicorp/yamux"
 
 	"chatgo/internal/e2e"
+	"chatgo/internal/hostinfo"
 	"chatgo/internal/relay"
 )
 
@@ -392,10 +392,12 @@ type pairResult struct {
 	Capabilities  map[string]bool `json:"capabilities"`
 	DesktopPubKey string          `json:"desktop_pubkey,omitempty"`
 	E2E           bool            `json:"e2e,omitempty"`
-	// DesktopName and Platform tell the phone which machine it paired with,
-	// so several desktops are told apart in its settings.
+	// DesktopName, Platform, MAC and IP tell the phone which machine it
+	// paired with, so several desktops are told apart in its settings.
 	DesktopName string `json:"desktop_name,omitempty"`
 	Platform    string `json:"platform,omitempty"`
+	MAC         string `json:"mac,omitempty"`
+	IP          string `json:"ip,omitempty"`
 }
 
 // NewPairCode creates a fresh 8-character code valid for ttl.
@@ -485,6 +487,7 @@ func (c *Connector) pair(in pairRequest) (pairResult, error) {
 	if c.cfg.OnDevices != nil {
 		c.cfg.OnDevices(devices)
 	}
+	host := hostinfo.Current()
 	return pairResult{
 		DeviceID:      device.ID,
 		Token:         token,
@@ -492,8 +495,10 @@ func (c *Connector) pair(in pairRequest) (pairResult, error) {
 		Capabilities:  c.cfg.Capabilities,
 		DesktopPubKey: desktopPub,
 		E2E:           e2eOn,
-		DesktopName:   c.cfg.DesktopName,
-		Platform:      runtime.GOOS,
+		DesktopName:   firstNonEmpty(c.cfg.DesktopName, host.Name),
+		Platform:      host.Platform,
+		MAC:           host.MAC,
+		IP:            host.IP,
 	}, nil
 }
 
