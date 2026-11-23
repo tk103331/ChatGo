@@ -647,6 +647,16 @@ func (a *app) targetAgent(target string) string {
 	return a.newAgent
 }
 
+// remoteModelAgent reports an A2A or AG-UI agent, whose model is chosen by
+// the remote service and so has no picker.
+func (a *app) remoteModelAgent(target string) bool {
+	switch a.agentKind(a.targetAgent(target)) {
+	case "a2a", "agui":
+		return true
+	}
+	return false
+}
+
 // acpState is the ACP model list the given composer's picker uses.
 func (a *app) acpState(target string) *acpModels {
 	if target == modelForChat {
@@ -746,15 +756,9 @@ func modelMatches(filter string, parts ...string) bool {
 func (a *app) modelChip(c *ui.Context, ref *string, target string) {
 	agent := a.targetAgent(target)
 	kind := a.agentKind(agent)
+	// A2A and AG-UI agents choose their own model and expose no list, so
+	// there is nothing to select here.
 	if kind == "a2a" || kind == "agui" {
-		t := c.Theme()
-		ui.Row(c).Grow(1).Shrink(1).MinWidth(0).Height(34).Padding(0, 6).
-			Gap(6).AlignItems(ui.Center).Label("远程 Agent 模型").
-			Children(func() {
-				ui.Icon(c, icons.Must("globe")).Size(14, 14).TextColor(t.TextMuted).Shrink(0)
-				ui.Text(c, "远程 Agent 模型").FontSize(13).TextColor(t.TextMuted).
-					Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
-			})
 		return
 	}
 	if kind == "acp" {
@@ -1015,7 +1019,7 @@ func (a *app) newSessionComposer(c *ui.Context) {
 				a.pickNewAttachments()
 			}
 			a.modelChip(c, &a.newModel, modelForNew)
-			if len(a.meta.Models) == 0 {
+			if len(a.meta.Models) == 0 || a.remoteModelAgent(modelForNew) {
 				ui.Spacer(c)
 			}
 			send := kit.IconButton(c, icons.Must("arrow-up"), "创建会话", kit.IconButtonOptions{
@@ -1947,7 +1951,7 @@ func (a *app) composer(c *ui.Context) {
 				if a.roomID == "" {
 					a.modelChip(c, &a.chatModel, modelForChat)
 				}
-				if a.roomID != "" || len(a.meta.Models) == 0 {
+				if a.roomID != "" || len(a.meta.Models) == 0 || a.remoteModelAgent(modelForChat) {
 					ui.Spacer(c)
 				}
 				if a.running {

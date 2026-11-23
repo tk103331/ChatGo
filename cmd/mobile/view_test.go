@@ -1209,3 +1209,31 @@ func TestSwitchDesktopStartsOverlay(t *testing.T) {
 		t.Fatalf("switch overlay missing; texts: %v", tr.Texts())
 	}
 }
+
+// A2A and AG-UI agents choose their own model: the phone has no model picker
+// for them, in a conversation or on the new-session page.
+func TestExternalAgentsHideModelPicker(t *testing.T) {
+	a := testApp()
+	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
+	a.meta.Models = []mobileapi.ModelChoice{{Provider: "deepseek", Model: "deepseek-chat"}}
+	a.agents = []mobileapi.Agent{
+		{Ref: "a2a:Remote", Name: "Remote", Kind: "a2a"},
+		{Ref: "agui:Web", Name: "Web", Kind: "agui"},
+	}
+	a.conv.Agent = "a2a:Remote"
+	a.screen = screenChat
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Frame()
+	if tr.HasText("远程 Agent 模型") || tr.HasText("deepseek-chat") {
+		t.Fatalf("A2A still shows a model picker: %v", tr.Texts())
+	}
+
+	a.screen = screenNew
+	a.newAgent = "agui:Web"
+	a.newModel = "deepseek::deepseek-chat"
+	tr = ui.NewTester(a.view, 390, 844)
+	tr.Frame()
+	if tr.HasText("deepseek-chat") || tr.HasText("远程 Agent 模型") {
+		t.Fatalf("AG-UI new-session page still shows a model picker: %v", tr.Texts())
+	}
+}
