@@ -16,22 +16,25 @@ import (
 )
 
 func (a *app) settingsView(c *ui.Context) {
-	t := c.Theme()
 	ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
-		ui.Column(c).FillWidth().Padding(0, 0, 24, 0).Gap(16).Children(func() {
+		ui.Column(c).FillWidth().Padding(0, 0, 28, 0).Gap(18).Children(func() {
+			a.currentDesktopCard(c)
+
 			mobile.Section(c, "桌面", func() {
 				for i, srv := range a.servers {
+					if i == a.server {
+						continue
+					}
 					i, srv := i, srv
 					a.desktopRow(c, i, srv)
 				}
 				row := mobile.ListRow(c, mobile.RowOptions{
-					Title:      "添加桌面",
-					Subtitle:   "扫描桌面二维码或手动输入配对码",
-					Disclosure: true,
+					Title:    "添加桌面",
+					Subtitle: "扫码或输入配对码",
 					Leading: func() {
-						ui.Row(c).Size(28, 28).Radius(14).Background(t.Accent.Alpha(0.12)).
+						ui.Row(c).Size(28, 28).Radius(9).Background(c.Theme().Accent.Alpha(0.12)).
 							AlignItems(ui.Center).Justify(ui.Center).Children(func() {
-							ui.Icon(c, icons.Must("plus")).Size(16, 16).TextColor(t.Accent)
+							ui.Icon(c, icons.Must("plus")).Size(16, 16).TextColor(c.Theme().Accent)
 						})
 					},
 				})
@@ -48,16 +51,101 @@ func (a *app) settingsView(c *ui.Context) {
 				mobile.ListRow(c, mobile.RowOptions{
 					Title:    "ChatGo Mobile",
 					Subtitle: versionText(),
+					Leading: func() {
+						ui.Icon(c, icons.Must("info")).Size(18, 18).TextColor(c.Theme().TextMuted)
+					},
 				})
 				if a.client != nil {
 					mobile.ListRow(c, mobile.RowOptions{
 						Title:    "中继",
 						Subtitle: apiBase(a.currentServer().RelayURL) + "/d/" + a.currentServer().DesktopID,
+						Leading: func() {
+							ui.Icon(c, icons.Must("globe")).Size(18, 18).TextColor(c.Theme().TextMuted)
+						},
 					})
 				}
 			})
 		})
 	})
+}
+
+// currentDesktopCard names the desktop the phone is talking to, its link
+// state, and the one action that is useful from here.
+func (a *app) currentDesktopCard(c *ui.Context) {
+	t := c.Theme()
+	if len(a.servers) == 0 {
+		ui.Column(c).FillWidth().Margin(0, 16, 0, 16).Padding(16).Gap(10).
+			Background(t.Surface).Radius(16).Border(1, t.Border).Children(func() {
+			ui.Text(c, "还没有桌面").FontSize(16).FontWeight(600)
+			ui.Text(c, "配对桌面后，就能在手机上使用会话、群聊和自动任务。").
+				FontSize(12).TextColor(t.TextMuted).MaxLines(2)
+			if kit.Button(c, "添加桌面", kit.ButtonOptions{Variant: kit.Primary}).
+				FillWidth().MinHeight(42).Clicked() {
+				a.openPairSheet(false)
+			}
+		})
+		return
+	}
+	srv := a.currentServer()
+	label, color := "未连接", t.TextMuted
+	switch {
+	case a.connecting:
+		label, color = "连接中", t.Accent
+	case a.connected && a.eventsConnected:
+		label, color = "已连接", t.Success
+	case a.connected:
+		label, color = "已连接桌面", t.Warning
+	}
+	ui.Column(c).FillWidth().Margin(0, 16, 0, 16).Padding(16).Gap(12).
+		Background(t.Surface).Radius(16).Border(1, t.Border).Children(func() {
+		ui.Row(c).FillWidth().Gap(12).AlignItems(ui.Center).Children(func() {
+			ui.Row(c).Size(42, 42).Radius(13).Background(t.Accent.Alpha(0.12)).
+				AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
+				ui.Icon(c, icons.Must("columns-2")).Size(22, 22).TextColor(t.Accent)
+			})
+			ui.Column(c).Grow(1).Basis(0).MinWidth(0).Gap(3).Children(func() {
+				ui.Text(c, firstNonEmpty(srv.Name, srv.DesktopID)).FontSize(17).FontWeight(600).
+					SingleLine().Ellipsis("…")
+				ui.Text(c, desktopPlace(srv)).FontSize(12).TextColor(t.TextMuted).
+					SingleLine().Ellipsis("…")
+			})
+			ui.Row(c).Gap(6).AlignItems(ui.Center).Shrink(0).Children(func() {
+				ui.Box(c).Size(7, 7).Radius(4).Background(color)
+				ui.Text(c, label).FontSize(11).TextColor(color)
+			})
+		})
+		ui.Row(c).FillWidth().Gap(8).AlignItems(ui.Center).Children(func() {
+			ui.Icon(c, icons.Must("globe")).Size(13, 13).TextColor(t.TextMuted).Shrink(0)
+			ui.Text(c, apiBase(srv.RelayURL)+"/d/"+srv.DesktopID).FontSize(11).TextColor(t.TextMuted).
+				Grow(1).MinWidth(0).SingleLine().Ellipsis("…")
+			switch {
+			case a.pairRequired:
+				if smallGhostButton(c, "重新配对").Clicked() {
+					a.openPairSheet(true)
+				}
+			case !a.connecting && (!a.connected || a.deviceDisabled):
+				if smallGhostButton(c, "重连").Clicked() {
+					a.connect(srv)
+				}
+			}
+		})
+	})
+}
+
+// desktopPlace is where a desktop runs, without the relay address the card
+// already carries.
+func desktopPlace(srv server) string {
+	parts := []string{}
+	if host := strings.TrimSpace(srv.Host); host != "" {
+		parts = append(parts, host)
+	}
+	if platform := strings.TrimSpace(srv.Platform); platform != "" {
+		parts = append(parts, platformLabel(platform))
+	}
+	if len(parts) == 0 {
+		return srv.DesktopID
+	}
+	return strings.Join(parts, " · ")
 }
 
 // versionText is the app's own version, as the build reports it.
@@ -73,40 +161,93 @@ func versionText() string {
 // one the phone is talking to.
 func (a *app) desktopRow(c *ui.Context, i int, srv server) {
 	t := c.Theme()
-	subtitle := desktopSubtitle(srv)
 	row := mobile.ListRow(c, mobile.RowOptions{
 		Title:    firstNonEmpty(srv.Name, srv.DesktopID),
-		Subtitle: subtitle,
+		Subtitle: desktopSubtitle(srv),
+		Leading: func() {
+			ui.Row(c).Size(30, 30).Radius(10).Background(t.Accent.Alpha(0.08)).
+				AlignItems(ui.Center).Justify(ui.Center).Shrink(0).Children(func() {
+				ui.Icon(c, icons.Must("columns-2")).Size(17, 17).TextColor(t.Accent)
+			})
+		},
 		Trailing: func() {
-			if i == a.server {
-				ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
-			} else if len(a.servers) > 1 {
-				if kit.Button(c, "移除", kit.ButtonOptions{
-					Variant: kit.Ghost, Foreground: t.Danger, Label: "移除桌面",
-				}).Height(30).Padding(0, 8).Clicked() {
-					a.removeServer(i)
-					a.toast("桌面已移除")
+			ui.Row(c).Gap(2).AlignItems(ui.Center).Children(func() {
+				if i == a.server {
+					ui.Icon(c, icons.Must("check")).Size(16, 16).TextColor(t.Accent)
 				}
-			}
+				if smallIconButton(c, "ellipsis", "桌面操作").Clicked() {
+					a.openDeskActions(i)
+				}
+			})
 		},
 	})
 	if row.Clicked() {
-		// The row may have been the "移除" button inside it, which takes the
-		// desktop away: then this click means nothing else.
-		if i >= len(a.servers) || a.servers[i].DesktopID != srv.DesktopID {
+		// The ellipsis inside the row opened the actions: the row itself
+		// means nothing else then.
+		if a.deskActionsOpen || i >= len(a.servers) || a.servers[i].DesktopID != srv.DesktopID {
 			return
 		}
 		if i == a.server {
 			return
 		}
-		a.update(func() {
-			a.server = i
-			a.connErr = ""
-		})
-		a.connect(srv)
-		a.saveServers()
-		a.toast("已切换桌面")
+		a.startDesktopSwitch(i, srv)
 	}
+}
+
+// openDeskActions shows what can be done with one desktop besides tapping
+// it to switch.
+func (a *app) openDeskActions(i int) {
+	if i < 0 || i >= len(a.servers) {
+		return
+	}
+	a.deskAction = i
+	a.deskActionsOpen = true
+}
+
+func (a *app) deskActionsSheet(c *ui.Context) {
+	if !a.deskActionsOpen {
+		return
+	}
+	if a.deskAction < 0 || a.deskAction >= len(a.servers) {
+		a.deskActionsOpen = false
+		return
+	}
+	t := c.Theme()
+	srv := a.servers[a.deskAction]
+	sheet(c, &a.deskActionsOpen, mobile.SheetOptions{Detents: []float32{0.46}, Label: "桌面操作"}, func() {
+		a.sheetBack(c)
+		ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
+			ui.Column(c).Gap(3).Children(func() {
+				ui.Text(c, firstNonEmpty(srv.Name, srv.DesktopID)).FontSize(17).FontWeight(600)
+				ui.Text(c, desktopSubtitle(srv)).FontSize(12).TextColor(t.TextMuted).MaxLines(2)
+			})
+			if a.deskAction != a.server {
+				if kit.Button(c, "切换到这台桌面", kit.ButtonOptions{Variant: kit.Primary}).
+					FillWidth().MinHeight(44).Clicked() {
+					i := a.deskAction
+					a.deskActionsOpen = false
+					a.startDesktopSwitch(i, srv)
+				}
+			} else if secondaryButton(c, "重新连接").FillWidth().MinHeight(44).Clicked() {
+				a.deskActionsOpen = false
+				a.connect(srv)
+				a.toast("正在重新连接")
+			}
+			if len(a.servers) > 1 {
+				if kit.Button(c, "移除桌面", kit.ButtonOptions{
+					Variant: kit.Ghost, Foreground: t.Danger,
+				}).FillWidth().MinHeight(42).Clicked() {
+					i := a.deskAction
+					a.deskActionsOpen = false
+					a.removeServer(i)
+					a.toast("桌面已移除")
+				}
+			}
+			if ghostButton(c, "取消").FillWidth().Clicked() {
+				a.deskActionsOpen = false
+			}
+		})
+	})
 }
 
 // desktopSubtitle names where a desktop runs and how the phone reaches it,
@@ -118,9 +259,6 @@ func desktopSubtitle(srv server) string {
 	}
 	if platform := strings.TrimSpace(srv.Platform); platform != "" {
 		parts = append(parts, platformLabel(platform))
-	}
-	if relay := strings.TrimSpace(srv.RelayURL); relay != "" {
-		parts = append(parts, apiBase(relay))
 	}
 	if len(parts) == 0 {
 		return srv.DesktopID
@@ -149,18 +287,24 @@ func platformLabel(platform string) string {
 // ways out of it.
 func (a *app) connectionRows(c *ui.Context) {
 	t := c.Theme()
+	label, color := "未连接", t.TextMuted
+	switch {
+	case a.connecting:
+		label, color = "连接中", t.Accent
+	case a.connected && a.eventsConnected:
+		label, color = "已连接", t.Success
+	case a.connected:
+		label, color = "已连接桌面", t.Warning
+	}
+	leading := func(icon string, ink ui.Color) {
+		ui.Icon(c, icons.Must(icon)).Size(18, 18).TextColor(ink)
+	}
 	mobile.ListRow(c, mobile.RowOptions{
-		Title: "状态",
+		Title: "连接状态",
+		Leading: func() {
+			ui.Box(c).Size(8, 8).Radius(4).Background(color)
+		},
 		Trailing: func() {
-			label, color := "未连接", t.TextMuted
-			switch {
-			case a.connecting:
-				label, color = "连接中", t.Accent
-			case a.connected && a.eventsConnected:
-				label, color = "已连接", t.Success
-			case a.connected:
-				label, color = "已连接桌面", t.Warning
-			}
 			ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
 				ui.Box(c).Size(7, 7).Radius(4).Background(color).Shrink(0)
 				ui.Text(c, label).FontSize(12).TextColor(color)
@@ -171,18 +315,21 @@ func (a *app) connectionRows(c *ui.Context) {
 		mobile.ListRow(c, mobile.RowOptions{
 			Title:    "连接错误",
 			Subtitle: a.connErr,
+			Leading:  func() { leading("triangle-alert", t.Danger) },
 		})
 	}
 	if a.deviceDisabled {
 		mobile.ListRow(c, mobile.RowOptions{
 			Title:    "桌面已停用",
-			Subtitle: "这台手机被桌面暂停，在桌面设置 → 手机里启用后重新连接",
+			Subtitle: "在桌面设置 → 手机里启用后重新连接",
+			Leading:  func() { leading("lock", t.Warning) },
 		})
 	}
 	if a.pairRequired {
 		row := mobile.ListRow(c, mobile.RowOptions{
 			Title:    "重新配对",
 			Subtitle: "桌面已移除这台手机或令牌失效，需要新的配对码",
+			Leading:  func() { leading("key-round", t.Accent) },
 		})
 		if row.Clicked() {
 			a.openPairSheet(true)
@@ -190,7 +337,8 @@ func (a *app) connectionRows(c *ui.Context) {
 	}
 	if !a.connecting && (!a.connected || a.pairRequired) {
 		row := mobile.ListRow(c, mobile.RowOptions{
-			Title: "重新连接",
+			Title:   "重新连接",
+			Leading: func() { leading("refresh-cw", t.Accent) },
 		})
 		if row.Clicked() && len(a.servers) > 0 {
 			a.connect(a.servers[a.server])
@@ -203,6 +351,7 @@ func (a *app) connectionRows(c *ui.Context) {
 		if mobile.ListRow(c, mobile.RowOptions{
 			Title:    "断开连接",
 			Subtitle: "保留配对信息，下次可直接重新连接",
+			Leading:  func() { leading("wifi-off", t.TextMuted) },
 		}).Clicked() {
 			a.disconnect()
 		}
@@ -210,6 +359,7 @@ func (a *app) connectionRows(c *ui.Context) {
 	row := mobile.ListRow(c, mobile.RowOptions{
 		Title:    "通知",
 		Subtitle: "自动任务完成、提问和权限审批由系统推送",
+		Leading:  func() { leading("message-square", t.TextMuted) },
 	})
 	if row.Clicked() {
 		a.startPush()

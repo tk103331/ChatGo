@@ -185,9 +185,13 @@ type app struct {
 	roomMaster     string
 	roomSelf       bool
 
-	// The project tools: files, Git and a command terminal.
+	// The project tools: files, Git and a command terminal. Opened from a
+	// conversation, back returns to that conversation rather than the
+	// project list.
 	projectDir      string
 	projectTab      int
+	projectFromChat bool
+	chatToolsOpen   bool
 	fileDir         string
 	files           []mobileapi.FileEntry
 	fileLoading     bool
@@ -218,6 +222,15 @@ type app struct {
 	lastBack        time.Time
 	backHint        bool
 	backAt          time.Time
+
+	// Switching desktops plays a short overlay while the link comes up.
+	switchName    string
+	switchStarted time.Time
+	switchEnded   time.Time
+	switching     bool
+
+	deskActionsOpen bool
+	deskAction      int
 
 	termScroll     ui.ScrollState
 	termInputMu    sync.Mutex
@@ -344,6 +357,9 @@ func (a *app) connect(s server) {
 				a.connecting = false
 				a.connErr = err.Error()
 				a.status = "连接失败"
+				if a.switching {
+					a.switchEnded = time.Now()
+				}
 			})
 			return
 		}
@@ -353,6 +369,9 @@ func (a *app) connect(s server) {
 			}
 			a.connecting, a.connected = false, true
 			a.status = ""
+			if a.switching {
+				a.switchEnded = time.Now()
+			}
 			a.pairRequired = false
 			a.deviceDisabled = false
 			a.meta = meta
@@ -779,6 +798,7 @@ func (a *app) view(c *ui.Context) {
 		a.projectPickSheet(c)
 		a.filePreviewSheet(c)
 		a.gitDiffSheet(c)
+		a.deskActionsSheet(c)
 	})
 	// Android's back is Escape first, then Back. This overlay takes each as
 	// the page's back unless something on top, as a sheet, took it first:
@@ -789,6 +809,83 @@ func (a *app) view(c *ui.Context) {
 		if back.OverlayShortcut(0, ui.KeyEscape) || back.OverlayShortcut(0, ui.KeyBack) {
 			a.handleBack()
 		}
+	})
+	a.switchOverlay(c)
+}
+
+// startDesktopSwitch moves to srv with a short overlay while the link comes
+// up, so the list changing is not a jump.
+func (a *app) startDesktopSwitch(i int, srv server) {
+	if i < 0 || i >= len(a.servers) || i == a.server {
+		return
+	}
+	a.update(func() {
+		a.server = i
+		a.connErr = ""
+		a.switchName = firstNonEmpty(srv.Name, srv.DesktopID)
+		a.switchStarted = time.Now()
+		a.switchEnded = time.Time{}
+		a.switching = true
+	})
+	a.connect(srv)
+	a.saveServers()
+}
+
+// switchOverlay fades a small card in while a desktop connects, then out
+// once the link settles.
+func (a *app) switchOverlay(c *ui.Context) {
+	if !a.switching {
+		return
+	}
+	const fadeIn, fadeOut = 160 * time.Millisecond, 240 * time.Millisecond
+	now := time.Now()
+	ended := !a.switchEnded.IsZero()
+	elapsed := now.Sub(a.switchStarted)
+	// A slow link keeps connecting after the overlay has served its
+	// purpose; the settings card shows the rest.
+	if !ended && elapsed > 3*time.Second {
+		a.switching = false
+		return
+	}
+	alpha := float32(1)
+	if !ended {
+		alpha = min(1, float32(elapsed)/float32(fadeIn))
+		c.AnimationFrame()
+	} else {
+		alpha = 1 - min(1, float32(now.Sub(a.switchEnded))/float32(fadeOut))
+		if alpha <= 0 {
+			a.switching = false
+			return
+		}
+		c.AnimationFrame()
+	}
+	t := c.Theme()
+	title, hint, icon, color := "正在切换桌面", a.switchName, "loader-circle", t.Accent
+	angle := float32(now.Sub(a.switchStarted).Milliseconds()%900) / 900 * 360
+	if ended {
+		if a.connected {
+			title, icon, color = "已切换到", "circle-check", t.Success
+		} else {
+			title, hint, icon, color = "切换失败", "稍后可在下方重新连接", "circle-alert", t.Danger
+		}
+		angle = 0
+	}
+	ui.Overlay(c, func() {
+		scrim := ui.Box(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
+			Background(ui.RGBA(0, 0, 0, 0.18*alpha))
+		scrim.Clicked() // the switch owns the screen while it shows
+		ui.Column(c).Absolute().Left(0).Top(0).Right(0).Bottom(0).
+			AlignItems(ui.Center).Justify(ui.Center).Children(func() {
+			ui.Row(c).Gap(12).Padding(14, 18).Radius(16).Background(t.Surface).
+				Shadow(0, 8, 24, 0, ui.RGBA(0, 0, 0, 0.18)).
+				Opacity(alpha).Translate(0, (1-alpha)*10).Children(func() {
+				ui.Icon(c, icons.Must(icon)).Size(22, 22).TextColor(color).Rotate(angle)
+				ui.Column(c).Gap(2).Children(func() {
+					ui.Text(c, title).FontSize(13).FontWeight(600)
+					ui.Text(c, hint).FontSize(12).TextColor(t.TextMuted)
+				})
+			})
+		})
 	})
 }
 
@@ -824,6 +921,13 @@ func (a *app) topBar(c *ui.Context) {
 			if smallIconButton(c, "chevron-left", "返回").Clicked() {
 				a.backFromChat()
 			}
+		}
+		trailing = func() {
+			b := smallIconButton(c, "wrench", "项目工具")
+			if b.Clicked() {
+				a.chatToolsOpen = !a.chatToolsOpen
+			}
+			a.chatTools(c, b)
 		}
 	case screenRooms:
 		title = "群聊"
@@ -1040,6 +1144,10 @@ func (a *app) backPage() bool {
 		a.filePreviewOpen = false
 	case a.gitDiffOpen:
 		a.gitDiffOpen = false
+	case a.deskActionsOpen:
+		a.deskActionsOpen = false
+	case a.chatToolsOpen:
+		a.chatToolsOpen = false
 	case a.workspaceOpen:
 		a.workspaceOpen = false
 	case a.roomFormOpen:
@@ -1083,9 +1191,14 @@ func (a *app) backPage() bool {
 
 func (a *app) backToProjects() {
 	a.stopTerminalIO()
-	a.screen = screenProjects
 	a.projectDir = ""
 	a.projectTab = 0
+	if a.projectFromChat {
+		a.projectFromChat = false
+		a.screen = screenChat
+		return
+	}
+	a.screen = screenProjects
 }
 
 func (a *app) backToTasks() {

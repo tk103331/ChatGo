@@ -579,14 +579,13 @@ func TestSettingsShowsTheConnectionState(t *testing.T) {
 	if !tr.HasText("已连接") {
 		t.Fatalf("connection state missing; texts: %v", tr.Texts())
 	}
-	if !tr.HasText("状态") {
+	if !tr.HasText("连接状态") {
 		t.Fatalf("state row missing; texts: %v", tr.Texts())
 	}
 }
 
-// The "移除" button inside a desktop row takes that desktop away and does
-// not also switch to it.
-func TestRemoveDesktopButtonOnlyRemoves(t *testing.T) {
+// The actions of one desktop remove it without switching to it.
+func TestRemoveDesktopActionOnlyRemoves(t *testing.T) {
 	a := testApp()
 	a.storageDir = t.TempDir()
 	a.client = mobileapi.New("http://127.0.0.1:1", "t", "d1")
@@ -596,9 +595,10 @@ func TestRemoveDesktopButtonOnlyRemoves(t *testing.T) {
 	}
 	a.server = 0
 	a.screen = screenSettings
+	a.openDeskActions(1)
 	tr := ui.NewTester(a.view, 390, 844)
 	tr.Advance(20 * time.Millisecond)
-	if err := tr.Click("移除"); err != nil {
+	if err := tr.Click("移除桌面"); err != nil {
 		t.Fatal(err)
 	}
 	tr.Advance(200 * time.Millisecond)
@@ -1082,7 +1082,7 @@ func TestDesktopSubtitleNamesHost(t *testing.T) {
 		Name: "Mac", Host: "studio.local", Platform: "darwin",
 		RelayURL: "https://relay.example.com/d/d1", DesktopID: "d1",
 	}
-	if got, want := desktopSubtitle(srv), "studio.local · macOS · https://relay.example.com/d/d1"; got != want {
+	if got, want := desktopSubtitle(srv), "studio.local · macOS"; got != want {
 		t.Fatalf("subtitle = %q, want %q", got, want)
 	}
 	if got, want := desktopSubtitle(server{DesktopID: "d1"}), "d1"; got != want {
@@ -1147,5 +1147,51 @@ func TestBackAfterSheetClose(t *testing.T) {
 	}
 	if a.lastBack.Equal(before) {
 		t.Fatalf("back after the sheet close was not handled")
+	}
+}
+
+// The conversation's wrench offers the workspace's files, Git and terminal.
+func TestChatToolsMenuListsProjectTools(t *testing.T) {
+	a := testApp()
+	a.connected = true
+	a.eventsConnected = true
+	a.screen = screenChat
+	a.conv.Workspace = "/w"
+	a.chatToolsOpen = true
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Advance(20 * time.Millisecond)
+	for _, want := range []string{"文件", "Git", "终端"} {
+		if !tr.HasText(want) {
+			t.Fatalf("tools menu lacks %q; texts: %v", want, tr.Texts())
+		}
+	}
+}
+
+// Tools opened from a conversation go back to it, not to the project list.
+func TestProjectToolsReturnToChat(t *testing.T) {
+	a := testApp()
+	a.screen = screenChat
+	a.conv.Workspace = "/w"
+	a.openProjectTools("/w", projectGit)
+	if a.screen != screenProject || a.projectTab != projectGit || !a.projectFromChat {
+		t.Fatalf("tools = screen %v tab %v fromChat %v", a.screen, a.projectTab, a.projectFromChat)
+	}
+	if !a.backPage() || a.screen != screenChat {
+		t.Fatalf("back screen = %v, want the chat", a.screen)
+	}
+	if a.projectFromChat || a.projectDir != "" {
+		t.Fatalf("left tools state: fromChat=%v dir=%q", a.projectFromChat, a.projectDir)
+	}
+}
+
+// Selecting another desktop starts the switch and its overlay.
+func TestSwitchDesktopStartsOverlay(t *testing.T) {
+	a := testApp()
+	a.servers = append(a.servers, server{ID: "d2", Name: "Studio", DesktopID: "d2"})
+	a.switching, a.switchName, a.switchStarted = true, "Studio", time.Now()
+	tr := ui.NewTester(a.view, 390, 844)
+	tr.Advance(20 * time.Millisecond)
+	if !tr.HasText("正在切换桌面") {
+		t.Fatalf("switch overlay missing; texts: %v", tr.Texts())
 	}
 }

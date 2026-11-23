@@ -71,6 +71,7 @@ func (a *app) openProject(dir string) {
 	a.clearTerminalInput()
 	a.update(func() {
 		a.screen = screenProject
+		a.projectFromChat = false
 		a.projectDir = dir
 		a.projectTab = projectFiles
 		a.fileDir = dir
@@ -85,6 +86,27 @@ func (a *app) openProject(dir string) {
 		a.termClosed = false
 	})
 	a.loadFiles()
+}
+
+// openProjectTools opens a conversation's workspace at one of its tools.
+// It remembers the conversation, so back returns there rather than to the
+// project list.
+func (a *app) openProjectTools(dir string, tab int) {
+	a.openProject(dir)
+	a.update(func() { a.projectFromChat = true })
+	if tab != projectFiles {
+		a.update(func() { a.projectTab = tab })
+		switch tab {
+		case projectGit:
+			a.loadGit()
+		case projectTerm:
+			a.ensureTerminal()
+		}
+	}
+	if tab != projectTerm {
+		a.stopTerminalIO()
+	}
+	a.invalidate()
 }
 
 func (a *app) projectView(c *ui.Context) {

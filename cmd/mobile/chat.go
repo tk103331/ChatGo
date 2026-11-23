@@ -2109,3 +2109,58 @@ func (a *app) decide(option string, canceled bool) {
 		a.loadChat(id)
 	}()
 }
+
+// chatTools is the conversation's tools menu under the wrench: its workspace
+// at the files, Git or terminal view.
+func (a *app) chatTools(c *ui.Context, anchor ui.Element) {
+	if !a.chatToolsOpen {
+		return
+	}
+	t := c.Theme()
+	dir := ""
+	if a.conv != nil {
+		dir = strings.TrimSpace(a.conv.Workspace)
+	}
+	if dir == "" && len(a.workspaces) == 1 {
+		dir = a.workspaces[0]
+	}
+	available := dir != "" && !a.offline()
+	ui.PopoverBase(c, anchor, &a.chatToolsOpen, func(panel ui.Element) {
+		panel.AttachTo(anchor, ui.AnchorBottomEnd, ui.AnchorTopEnd).
+			Width(190).Padding(6).Gap(2).Background(t.Surface).
+			Border(1, t.Border).Radius(14).Shadow(0, 8, 20, 0, ui.RGBA(0, 0, 0, 0.18))
+		row := func(icon, label string, tab int) {
+			b := ui.ButtonBase(c).FillWidth().Height(44).Padding(0, 10).Gap(10).
+				Radius(10).AlignItems(ui.Center).Justify(ui.Start).Role(ui.RoleButton).Label(label)
+			if b.Pressed() && available {
+				b.Background(t.SurfaceHover)
+			}
+			b.Children(func() {
+				ui.Icon(c, icons.Must(icon)).Size(18, 18).TextColor(t.TextMuted)
+				ui.Text(c, label).FontSize(14).TextColor(func() ui.Color {
+					if available {
+						return t.Text
+					}
+					return t.TextMuted
+				}())
+			})
+			if b.Clicked() && available {
+				a.chatToolsOpen = false
+				a.openProjectTools(dir, tab)
+			}
+		}
+		row("file-text", "文件", projectFiles)
+		row("git-branch", "Git", projectGit)
+		row("terminal", "终端", projectTerm)
+		hint := ""
+		switch {
+		case a.offline():
+			hint = "桌面未连接"
+		case dir == "":
+			hint = "此会话没有工作目录"
+		}
+		if hint != "" {
+			ui.Text(c, hint).FontSize(11).TextColor(t.TextMuted).Padding(6, 10, 4, 10)
+		}
+	})
+}
