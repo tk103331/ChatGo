@@ -296,7 +296,7 @@ func (cw *ChatWindow) centerTabIcon(c *mgo.Context, tab *centerTab) {
 		switch {
 		case strings.HasPrefix(tab.Agent, "acp:"):
 			cw.acpLeading(c, strings.TrimPrefix(tab.Agent, "acp:"), 14)
-		case strings.HasPrefix(tab.Agent, "a2a:"):
+		case strings.HasPrefix(tab.Agent, "a2a:"), strings.HasPrefix(tab.Agent, "agui:"):
 			mgo.Icon(c, icons.Must("globe")).Size(14, 14).TextColor(mcore.Tokens(c).Accent)
 		case strings.HasPrefix(tab.Agent, "agent:"):
 			cw.agentMarkByName(c, strings.TrimPrefix(tab.Agent, "agent:"), 14)

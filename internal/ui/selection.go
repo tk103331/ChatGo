@@ -7,9 +7,10 @@ import (
 )
 
 // isRemoteAgentRef reports an agent whose runtime is not the local Eino
-// model: an ACP CLI or a remote A2A agent.
+// model: an ACP CLI or a remote A2A or AG-UI agent.
 func isRemoteAgentRef(agent string) bool {
-	return strings.HasPrefix(agent, "acp:") || strings.HasPrefix(agent, "a2a:")
+	return strings.HasPrefix(agent, "acp:") || strings.HasPrefix(agent, "a2a:") ||
+		strings.HasPrefix(agent, "agui:")
 }
 
 // agentWorkspace is the directory an agent runs in, or empty for the caller's.

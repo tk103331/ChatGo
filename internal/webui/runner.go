@@ -121,10 +121,10 @@ type PermissionDecision struct {
 
 // AgentInfo is one assistant a session can run.
 type AgentInfo struct {
-	Ref         string   `json:"ref"` // "", "agent:Name", "acp:Name" or "a2a:Name"
+	Ref         string   `json:"ref"` // "", "agent:Name", "acp:Name", "a2a:Name" or "agui:Name"
 	Name        string   `json:"name"`
 	Description string   `json:"description,omitempty"`
-	Kind        string   `json:"kind"` // chat, agent, acp or a2a
+	Kind        string   `json:"kind"` // chat, agent, acp, a2a or agui
 	Disabled    bool     `json:"disabled,omitempty"`
 	Icon        string   `json:"icon,omitempty"`
 	Models      []string `json:"models,omitempty"`

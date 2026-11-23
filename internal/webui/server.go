@@ -1401,6 +1401,8 @@ func authorName(agent string) string {
 		return strings.TrimPrefix(agent, "acp:")
 	case strings.HasPrefix(agent, "a2a:"):
 		return strings.TrimPrefix(agent, "a2a:")
+	case strings.HasPrefix(agent, "agui:"):
+		return strings.TrimPrefix(agent, "agui:")
 	case strings.HasPrefix(agent, "agent:"):
 		return strings.TrimPrefix(agent, "agent:")
 	case agent != "":

@@ -17,7 +17,7 @@ import (
 
 // agentPickItem is one row of the agent picker.
 type agentPickItem struct {
-	ref      string // "", "agent:Name", "acp:Name" or "a2a:Name"
+	ref      string // "", "agent:Name", "acp:Name", "a2a:Name" or "agui:Name"
 	label    string
 	detail   string
 	disabled bool
@@ -63,6 +63,18 @@ func (cw *ChatWindow) agentPickItems() []agentPickItem {
 			ref: "a2a:" + conn.Name, label: conn.Name, detail: detail,
 		})
 	}
+	for _, conn := range cw.cfg.AGUIAgents {
+		if conn.Disabled {
+			continue
+		}
+		detail := conn.Description
+		if detail == "" {
+			detail = conn.URL
+		}
+		out = append(out, agentPickItem{
+			ref: "agui:" + conn.Name, label: conn.Name, detail: detail,
+		})
+	}
 	return out
 }
 
@@ -84,7 +96,8 @@ func agentPickLabel(ref string) string {
 	}
 	ref = strings.TrimPrefix(ref, "agent:")
 	ref = strings.TrimPrefix(ref, "acp:")
-	return strings.TrimPrefix(ref, "a2a:")
+	ref = strings.TrimPrefix(ref, "a2a:")
+	return strings.TrimPrefix(ref, "agui:")
 }
 
 // agentPickMark draws an assistant's mark: the chat icon, the agent's own
@@ -96,7 +109,7 @@ func (cw *ChatWindow) agentPickMark(c *mgo.Context, ref string, size float32) {
 			TextColor(mcore.Tokens(c).Accent)
 	case strings.HasPrefix(ref, "acp:"):
 		cw.acpLeading(c, strings.TrimPrefix(ref, "acp:"), size)
-	case strings.HasPrefix(ref, "a2a:"):
+	case strings.HasPrefix(ref, "a2a:"), strings.HasPrefix(ref, "agui:"):
 		mgo.Icon(c, icons.Must("globe")).Size(size, size).Shrink(0).
 			TextColor(mcore.Tokens(c).Accent)
 	default:

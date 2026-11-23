@@ -83,10 +83,10 @@ func (cw *ChatWindow) createIsACP() bool {
 	return strings.HasPrefix(cw.create.agent, "acp:")
 }
 
-// createIsA2A reports whether the chosen agent is a remote A2A agent, whose
-// own runtime owns the model and tools.
-func (cw *ChatWindow) createIsA2A() bool {
-	return strings.HasPrefix(cw.create.agent, "a2a:")
+// createIsExternalAgent reports whether the chosen agent is a remote A2A or
+// AG-UI agent, whose own runtime owns the model and tools.
+func (cw *ChatWindow) createIsExternalAgent() bool {
+	return strings.HasPrefix(cw.create.agent, "a2a:") || strings.HasPrefix(cw.create.agent, "agui:")
 }
 
 // viewportCenter is a Scroll that centers its content when the viewport is
@@ -527,7 +527,7 @@ func (cw *ChatWindow) startComposer(c *mgo.Context, placeholder string, start fu
 				cw.createACPControls(c)
 				return
 			}
-			if cw.createIsA2A() {
+			if cw.createIsExternalAgent() {
 				return
 			}
 			cw.contextButton(c, true)

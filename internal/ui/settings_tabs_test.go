@@ -5,7 +5,7 @@ import "testing"
 func TestSettingsTabsAreNamed(t *testing.T) {
 	for id, index := range map[string]int{
 		"models": settingsModelsTab, "tools": settingsToolsTab,
-		"acp": settingsACPTab, "a2a": settingsA2ATab,
+		"acp": settingsACPTab, "a2a": settingsA2ATab, "agui": settingsAGUITab,
 		"channels": settingsChannelsTab, "shortcuts": settingsShortcutsTab,
 		"quick": settingsQuickTab, "appearance": settingsAppearanceTab,
 		"experimental": settingsExperimentalTab, "system": settingsSystemTab,

@@ -169,6 +169,8 @@ type Conversation struct {
 	// where several A2A agents speak in turn, such as a room. A one-to-one
 	// conversation uses A2ATaskID/A2AContextID above.
 	A2ASessions map[string]A2ASession `json:"a2a_sessions,omitempty"`
+	// AGUIThreadID continues an AG-UI thread across turns.
+	AGUIThreadID string `json:"agui_thread_id,omitempty"`
 	// Plan is the agent's current execution plan. An ACP agent replaces it
 	// whole on every update; a conversation that never planned leaves it nil.
 	Plan   []PlanEntry `json:"plan,omitempty"`

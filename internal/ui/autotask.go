@@ -566,6 +566,9 @@ func agentLabel(agent string) string {
 	if name, ok := strings.CutPrefix(agent, "a2a:"); ok {
 		return "A2A · " + name
 	}
+	if name, ok := strings.CutPrefix(agent, "agui:"); ok {
+		return "AG-UI · " + name
+	}
 	return chatAgentName
 }
 

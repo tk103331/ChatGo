@@ -23,7 +23,7 @@ func (cw *ChatWindow) chatMenus(c *mgo.Context, in kit.InputResult) {
 			in.Input.Focus()
 			cw.invalidate()
 		}
-	case cw.isA2A():
+	case cw.isExternalAgent():
 		// A remote agent brings its own commands and tools.
 	default:
 		cmds, tokens := cw.slashSkills()

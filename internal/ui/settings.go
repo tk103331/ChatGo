@@ -15,6 +15,7 @@ const (
 	settingsToolsTab
 	settingsACPTab
 	settingsA2ATab
+	settingsAGUITab
 	settingsChannelsTab
 	settingsShortcutsTab
 	settingsQuickTab
@@ -39,6 +40,7 @@ var settingsTabMetas = []settingsTabMeta{
 	{"tools", "工具"},
 	{"acp", "ACP"},
 	{"a2a", "A2A"},
+	{"agui", "AG-UI"},
 	{"channels", "渠道"},
 	{"shortcuts", "快捷键"},
 	{"quick", "快捷任务"},
@@ -77,6 +79,7 @@ type settingsState struct {
 	exclude     textForm
 	channel     channelForm
 	a2a         a2aForm
+	agui        aguiForm
 	proxy       proxyForm
 	webToken    textForm
 	relayURL    textForm
@@ -224,6 +227,8 @@ func (cw *ChatWindow) settingsTabPanel(c *mgo.Context, id string) {
 		cw.acpTab(c)
 	case "a2a":
 		cw.a2aTab(c)
+	case "agui":
+		cw.aguiTab(c)
 	case "channels":
 		cw.channelTab(c)
 	case "shortcuts":

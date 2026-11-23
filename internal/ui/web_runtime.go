@@ -46,7 +46,7 @@ func (r webRuntime) Capabilities() map[string]bool {
 func (r webRuntime) Agents() []webui.AgentInfo {
 	cw := r.cw
 	return onMain(cw, func() []webui.AgentInfo {
-		out := make([]webui.AgentInfo, 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+len(cw.cfg.A2AAgents))
+		out := make([]webui.AgentInfo, 0, len(cw.cfg.Agents)+len(cw.cfg.ACPAgents)+len(cw.cfg.A2AAgents)+len(cw.cfg.AGUIAgents))
 		for _, a := range cw.cfg.Agents {
 			info := webui.AgentInfo{
 				Ref: "agent:" + a.Name, Name: a.Name, Kind: "agent",
@@ -84,6 +84,19 @@ func (r webRuntime) Agents() []webui.AgentInfo {
 			}
 			out = append(out, webui.AgentInfo{
 				Ref: "a2a:" + a.Name, Name: a.Name, Kind: "a2a",
+				Description: desc, Icon: a.Icon,
+			})
+		}
+		for _, a := range cw.cfg.AGUIAgents {
+			if a.Disabled {
+				continue
+			}
+			desc := a.Description
+			if desc == "" {
+				desc = a.URL
+			}
+			out = append(out, webui.AgentInfo{
+				Ref: "agui:" + a.Name, Name: a.Name, Kind: "agui",
 				Description: desc, Icon: a.Icon,
 			})
 		}
@@ -151,6 +164,13 @@ func (cw *ChatWindow) agentAvatarSeed(ref string) string {
 				return a.AvatarSeed
 			}
 		}
+	case strings.HasPrefix(ref, "agui:"):
+		name := strings.TrimPrefix(ref, "agui:")
+		for _, a := range cw.cfg.AGUIAgents {
+			if a.Name == name {
+				return a.AvatarSeed
+			}
+		}
 	}
 	return ""
 }
@@ -179,6 +199,13 @@ func (cw *ChatWindow) agentIconPath(ref string) string {
 				return a.Icon
 			}
 		}
+	case strings.HasPrefix(ref, "agui:"):
+		name := strings.TrimPrefix(ref, "agui:")
+		for _, a := range cw.cfg.AGUIAgents {
+			if a.Name == name {
+				return a.Icon
+			}
+		}
 	}
 	return ""
 }
@@ -202,7 +229,7 @@ func iconMediaType(path string, data []byte) string {
 }
 
 func (r webRuntime) Tools(agent string) []webui.ToolInfo {
-	if strings.HasPrefix(agent, "a2a:") {
+	if strings.HasPrefix(agent, "a2a:") || strings.HasPrefix(agent, "agui:") {
 		return nil
 	}
 	cw := r.cw
@@ -560,7 +587,7 @@ func createWorktreeIn(cw *ChatWindow, project, branch string, newBranch bool) (s
 }
 
 func (r webRuntime) Skills(agent string) []webui.SkillInfo {
-	if strings.HasPrefix(agent, "a2a:") {
+	if strings.HasPrefix(agent, "a2a:") || strings.HasPrefix(agent, "agui:") {
 		return nil
 	}
 	cw := r.cw
@@ -622,6 +649,9 @@ func (r webRuntime) Run(ctx context.Context, conv *models.Conversation, replyIdx
 	}
 	if strings.HasPrefix(req.Agent, "a2a:") {
 		return r.cw.webRunA2A(ctx, conv, replyIdx, req, live)
+	}
+	if strings.HasPrefix(req.Agent, "agui:") {
+		return r.cw.webRunAGUI(ctx, conv, replyIdx, req, live)
 	}
 	return r.cw.webRunLLM(ctx, conv, replyIdx, req, live)
 }

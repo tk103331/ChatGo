@@ -190,6 +190,8 @@ func (cw *ChatWindow) sendDraft() {
 		turn.Provider = strings.TrimPrefix(conv.Agent, "acp:")
 	} else if strings.HasPrefix(conv.Agent, "a2a:") {
 		turn.Provider = "a2a"
+	} else if strings.HasPrefix(conv.Agent, "agui:") {
+		turn.Provider = "agui"
 	} else {
 		turn.Provider = cw.provider
 		turn.Model = cw.model
@@ -222,6 +224,14 @@ func (cw *ChatWindow) sendDraft() {
 		go cw.runA2AChat(ctx, conv, strings.TrimPrefix(conv.Agent, "a2a:"), idx, text)
 		return
 	}
+	if strings.HasPrefix(conv.Agent, "agui:") {
+		ctx, cancel := context.WithCancel(context.Background())
+		cw.beginStream(conv.ID, reply.ID, cancel)
+		cw.invalidate()
+		cw.reloadConvs()
+		go cw.runAGUIChat(ctx, conv, strings.TrimPrefix(conv.Agent, "agui:"), idx, text)
+		return
+	}
 	msgs := cw.chatMessages(conv, idx)
 	ctx, cancel := context.WithCancel(context.Background())
 	ctx = llm.WithToolResultHook(ctx, cw.toolResultHook())
@@ -246,7 +256,7 @@ func (cw *ChatWindow) applyConversationAgent(conv *models.Conversation) {
 	case strings.HasPrefix(conv.Agent, "acp:"):
 		cw.llmClient, cw.reactClient = nil, nil
 		cw.acpWarmup(conv)
-	case strings.HasPrefix(conv.Agent, "a2a:"):
+	case strings.HasPrefix(conv.Agent, "a2a:"), strings.HasPrefix(conv.Agent, "agui:"):
 		cw.llmClient, cw.reactClient = nil, nil
 	default:
 		cw.restoreAgent("")

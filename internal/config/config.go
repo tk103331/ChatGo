@@ -38,10 +38,11 @@ type Config struct {
 	WebToken string `yaml:"web_token,omitempty"`
 	// Relay connects this desktop to a self-hosted ChatGo relay so paired
 	// phones can use the same /api. Off by default.
-	Relay     RelayConfig     `yaml:"relay,omitempty"`
-	Agents    []AgentDef      `yaml:"agents,omitempty"`
-	ACPAgents []ACPConnection `yaml:"acp_agents,omitempty"`
-	A2AAgents []A2AConnection `yaml:"a2a_agents,omitempty"`
+	Relay      RelayConfig      `yaml:"relay,omitempty"`
+	Agents     []AgentDef       `yaml:"agents,omitempty"`
+	ACPAgents  []ACPConnection  `yaml:"acp_agents,omitempty"`
+	A2AAgents  []A2AConnection  `yaml:"a2a_agents,omitempty"`
+	AGUIAgents []AGUIConnection `yaml:"agui_agents,omitempty"`
 	// AgentCheckpoint auto-commits an agent's file changes as checkpoints:
 	// "off" (default) disables it, "turn" commits once per completed reply,
 	// "batch" once per finished tool-call batch. Experimental.
@@ -494,6 +495,23 @@ type ACPConnection struct {
 // URL is either the agent's base URL (the card is fetched from
 // /.well-known/agent-card.json) or the full agent-card URL.
 type A2AConnection struct {
+	Name        string `yaml:"name"`
+	URL         string `yaml:"url"`
+	Description string `yaml:"description,omitempty"`
+	// APIKey is sent as "Authorization: Bearer <key>" when Headers does not
+	// already set Authorization.
+	APIKey     string            `yaml:"api_key,omitempty"`
+	Headers    map[string]string `yaml:"headers,omitempty"`
+	Icon       string            `yaml:"icon,omitempty"`
+	AvatarSeed string            `yaml:"avatar_seed,omitempty"`
+	Disabled   bool              `yaml:"disabled,omitempty"`
+	// Source names the plugin that contributed this connection.
+	Source string `yaml:"-"`
+}
+
+// AGUIConnection is a remote agent spoken to over the AG-UI protocol. URL is
+// the run endpoint itself, such as https://agent.example.com/agui.
+type AGUIConnection struct {
 	Name        string `yaml:"name"`
 	URL         string `yaml:"url"`
 	Description string `yaml:"description,omitempty"`

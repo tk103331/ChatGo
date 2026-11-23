@@ -18,6 +18,8 @@ func authorNameOf(agent string) string {
 		return strings.TrimPrefix(agent, "acp:")
 	case strings.HasPrefix(agent, "a2a:"):
 		return strings.TrimPrefix(agent, "a2a:")
+	case strings.HasPrefix(agent, "agui:"):
+		return strings.TrimPrefix(agent, "agui:")
 	case strings.HasPrefix(agent, "app:"):
 		if a, ok := appByID(strings.TrimPrefix(agent, "app:")); ok {
 			return a.Title

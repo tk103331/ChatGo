@@ -394,7 +394,7 @@ func sessionIcon(ref string) string {
 	switch {
 	case strings.HasPrefix(ref, "acp:"):
 		return "terminal"
-	case strings.HasPrefix(ref, "a2a:"):
+	case strings.HasPrefix(ref, "a2a:"), strings.HasPrefix(ref, "agui:"):
 		return "globe"
 	default:
 		return "message-square"
@@ -628,6 +628,8 @@ func (a *app) agentKind(ref string) string {
 		return "acp"
 	case strings.HasPrefix(ref, "a2a:"):
 		return "a2a"
+	case strings.HasPrefix(ref, "agui:"):
+		return "agui"
 	case strings.HasPrefix(ref, "agent:"):
 		return "agent"
 	}
@@ -744,7 +746,7 @@ func modelMatches(filter string, parts ...string) bool {
 func (a *app) modelChip(c *ui.Context, ref *string, target string) {
 	agent := a.targetAgent(target)
 	kind := a.agentKind(agent)
-	if kind == "a2a" {
+	if kind == "a2a" || kind == "agui" {
 		t := c.Theme()
 		ui.Row(c).Grow(1).Shrink(1).MinWidth(0).Height(34).Padding(0, 6).
 			Gap(6).AlignItems(ui.Center).Label("远程 Agent 模型").
@@ -913,14 +915,14 @@ func (a *app) modelSheet(c *ui.Context) {
 		a.sheetBack(c)
 		t := c.Theme()
 		title := "选择模型"
-		if kind == "a2a" {
+		if kind == "a2a" || kind == "agui" {
 			title = "模型"
 		}
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
 			ui.Text(c, title).FontSize(18).FontWeight(600)
 			switch kind {
-			case "a2a":
-				ui.Text(c, "远程 A2A Agent 自带模型，模型由对端决定，手机端不需要选择。").
+			case "a2a", "agui":
+				ui.Text(c, "远程 Agent 自带模型，模型由对端决定，手机端不需要选择。").
 					FontSize(13).TextColor(t.TextMuted).MaxLines(3)
 			case "acp":
 				if st.loading {
@@ -1134,6 +1136,8 @@ func agentSubtitle(item mobileapi.Agent) string {
 		return "ACP 编程 Agent"
 	case "a2a":
 		return "远程 A2A Agent"
+	case "agui":
+		return "远程 AG-UI Agent"
 	}
 	return item.Kind
 }
@@ -1209,7 +1213,7 @@ func (a *app) createNewChat() {
 		if a.newACP.current != "" {
 			acpConfig = map[string]string{"model": a.newACP.current}
 		}
-	case "a2a":
+	case "a2a", "agui":
 	default:
 		provider, model = splitModelRef(a.newModel)
 	}
@@ -1319,7 +1323,7 @@ func (a *app) loadChat(id string) {
 					a.chatACP = acpModels{agent: a.conv.Agent, current: current}
 				}
 				a.chatModel = ""
-			case "a2a":
+			case "a2a", "agui":
 				a.chatACP = acpModels{}
 				a.chatModel = ""
 			default:
@@ -1420,7 +1424,7 @@ func (a *app) sendCurrent() {
 	// chosen in its composer. ACP and A2A bring their own.
 	provider, model := "", ""
 	kind := a.agentKind(a.targetAgent(modelForChat))
-	if roomID == "" && kind != "acp" && kind != "a2a" {
+	if roomID == "" && kind != "acp" && kind != "a2a" && kind != "agui" {
 		provider, model = splitModelRef(a.chatModel)
 	}
 	a.update(func() {
