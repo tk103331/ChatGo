@@ -1083,7 +1083,11 @@ func TestDesktopIdentityNamesHost(t *testing.T) {
 		RelayURL: "https://relay.example.com/d/d1", DesktopID: "d1",
 	}
 	if got := desktopTitle(srv); got != "studio.local" {
-		t.Fatalf("title = %q, want the hostname", got)
+		t.Fatalf("title = %q, want the host name", got)
+	}
+	friendly := server{Name: "tiankai的MacBook Pro", Host: "localhost", DesktopID: "d1"}
+	if got := desktopTitle(friendly); got != "tiankai的MacBook Pro" {
+		t.Fatalf("title = %q, want the computer name over localhost", got)
 	}
 	if got, want := desktopPlace(srv), "macOS · 192.168.1.20"; got != want {
 		t.Fatalf("place = %q, want %q", got, want)
@@ -1109,7 +1113,7 @@ func TestApplyDesktopInfo(t *testing.T) {
 	if srv.MAC != "A4:83:E7:12:34:56" || srv.IP != "192.168.1.20" {
 		t.Fatalf("identifiers = %+v", srv)
 	}
-	if got := desktopTitle(srv); got != "studio.local" {
+	if got := desktopTitle(srv); got != "Studio" {
 		t.Fatalf("title = %q", got)
 	}
 }

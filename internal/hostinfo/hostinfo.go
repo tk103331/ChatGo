@@ -3,8 +3,10 @@
 package hostinfo
 
 import (
+	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"runtime"
 	"sort"
 	"strings"
@@ -24,12 +26,88 @@ type Info struct {
 func Current() Info {
 	host, _ := os.Hostname()
 	host = strings.TrimSpace(host)
-	info := Info{Name: host, Hostname: host, Platform: runtime.GOOS}
+	name := computerName()
+	if placeholder(name) {
+		name = host
+	}
+	info := Info{Name: name, Hostname: host, Platform: runtime.GOOS}
 	info.MAC, info.IPs = interfaces()
 	if len(info.IPs) > 0 {
 		info.IP = info.IPs[0]
 	}
+	// A machine left at localhost still needs a name the phone can tell
+	// apart: fall back to the platform and the hardware address.
+	if placeholder(info.Name) {
+		if info.MAC != "" {
+			short := strings.ReplaceAll(info.MAC, ":", "")
+			info.Name = fmt.Sprintf("%s-%s", platformName(), short[max(0, len(short)-6):])
+		} else if info.Hostname != "" && !placeholder(info.Hostname) {
+			info.Name = info.Hostname
+		}
+	}
+	if info.Name == "" {
+		info.Name = info.Hostname
+	}
 	return info
+}
+
+// computerName returns the name the system shows for this machine, which
+// differs from the network host name on macOS and Windows.
+func computerName() string {
+	switch runtime.GOOS {
+	case "darwin":
+		for _, args := range [][]string{
+			{"scutil", "--get", "ComputerName"},
+			{"scutil", "--get", "LocalHostName"},
+		} {
+			if out, err := exec.Command(args[0], args[1:]...).Output(); err == nil {
+				if name := strings.TrimSpace(string(out)); name != "" {
+					return name
+				}
+			}
+		}
+	case "windows":
+		if name := strings.TrimSpace(os.Getenv("COMPUTERNAME")); name != "" {
+			return name
+		}
+	case "linux":
+		if data, err := os.ReadFile("/etc/hostname"); err == nil {
+			if name := strings.TrimSpace(string(data)); name != "" {
+				return name
+			}
+		}
+		if name := strings.TrimSpace(os.Getenv("HOSTNAME")); name != "" {
+			return name
+		}
+	}
+	return strings.TrimSpace(mustHostname())
+}
+
+func mustHostname() string {
+	host, _ := os.Hostname()
+	return host
+}
+
+// placeholder reports whether a name says nothing about the machine.
+func placeholder(name string) bool {
+	low := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(name), ".local"))
+	switch low {
+	case "", "localhost", "localhost.localdomain", "unknown":
+		return true
+	}
+	return false
+}
+
+func platformName() string {
+	switch runtime.GOOS {
+	case "darwin", "macos":
+		return "Mac"
+	case "windows":
+		return "Windows"
+	case "linux":
+		return "Linux"
+	}
+	return "ChatGo"
 }
 
 type candidate struct {

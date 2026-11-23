@@ -145,21 +145,30 @@ func (a *app) currentDesktopCardBody(c *ui.Context) {
 	})
 }
 
-// desktopTitle is the machine's own name. A pairing made before desktops
-// named themselves still carries the phone's name, which must not label the
-// desktop, so the hostname wins whenever the phone knows it.
+// desktopTitle is the machine's own name: the computer name a system
+// reports, not its network host name, which is "localhost" on many Macs.
 func desktopTitle(srv server) string {
-	if host := strings.TrimSpace(srv.Host); host != "" {
-		return host
-	}
 	name := strings.TrimSpace(srv.Name)
-	if name != "" && name != "ChatGo Mobile" && name != strings.TrimSpace(srv.DesktopID) {
+	if validDesktopName(name) && name != strings.TrimSpace(srv.DesktopID) {
 		return name
+	}
+	if host := strings.TrimSpace(srv.Host); validDesktopName(host) {
+		return host
 	}
 	if id := strings.TrimSpace(srv.DesktopID); id != "" {
 		return id
 	}
 	return "桌面"
+}
+
+// validDesktopName reports whether a name says which machine this is.
+func validDesktopName(name string) bool {
+	low := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(name), ".local"))
+	switch low {
+	case "", "localhost", "localhost.localdomain", "chatgo mobile":
+		return false
+	}
+	return true
 }
 
 // desktopPlace is the system and LAN address that say where the desktop

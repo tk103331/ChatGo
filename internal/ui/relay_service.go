@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"chatgo/internal/config"
+	"chatgo/internal/hostinfo"
 	"chatgo/internal/relay"
 	"chatgo/internal/relayclient"
 	mcore "chatgo/internal/ui/uikit"
@@ -101,11 +101,10 @@ func (cw *ChatWindow) startRelayService() {
 		return
 	}
 
-	host, _ := os.Hostname()
 	conn := relayclient.New(relayclient.Config{
 		RelayURL:     strings.TrimSpace(cw.cfg.Relay.URL),
 		DesktopID:    cw.cfg.Relay.DesktopID,
-		DesktopName:  host,
+		DesktopName:  hostinfo.Current().Name,
 		Secret:       cw.cfg.Relay.DesktopSecret,
 		LocalURL:     addr,
 		LocalToken:   srv.Token(),
