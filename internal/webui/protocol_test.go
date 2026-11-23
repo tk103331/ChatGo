@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	a2aclient "chatgo/internal/a2a"
+	"chatgo/internal/agui"
 	"chatgo/internal/config"
 	"chatgo/pkg/models"
 )
@@ -179,6 +180,40 @@ func TestAGUIRunStreamsEvents(t *testing.T) {
 	}
 	if len(all) != 1 || len(all[0].Messages) != 4 {
 		t.Fatalf("AG-UI thread conversations = %d, messages = %d", len(all), len(all[0].Messages))
+	}
+}
+
+func TestAGUIClientAgainstEndpoint(t *testing.T) {
+	s := protocolServer(t, &protocolRunner{chunks: []string{"client ", "roundtrip"}})
+	ts := httptest.NewServer(s.Handler())
+	defer ts.Close()
+
+	cli, err := agui.New(config.AGUIConnection{Name: "local", URL: ts.URL + "/agui", APIKey: testWebToken})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var chunks []string
+	res, err := cli.Chat(context.Background(), agui.ChatRequest{Text: "你好"}, func(s string) {
+		chunks = append(chunks, s)
+	})
+	if err != nil {
+		t.Fatalf("chat: %v", err)
+	}
+	if res.Text != "client roundtrip" || strings.Join(chunks, "") != res.Text {
+		t.Fatalf("text = %q chunks = %v", res.Text, chunks)
+	}
+	if res.ThreadID == "" {
+		t.Fatal("no thread id")
+	}
+	if _, err := cli.Chat(context.Background(), agui.ChatRequest{ThreadID: res.ThreadID, Text: "继续"}, nil); err != nil {
+		t.Fatalf("second turn: %v", err)
+	}
+	all, err := s.cm.ListConversations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || len(all[0].Messages) != 4 {
+		t.Fatalf("thread conversations = %d messages = %d", len(all), len(all[0].Messages))
 	}
 }
 
