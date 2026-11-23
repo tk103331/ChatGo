@@ -102,10 +102,7 @@ func acpProbeModels(cw *ChatWindow, conn config.ACPConnection) ([]acpModelOption
 // categorised as a model; grouped option lists flatten in group order.
 func acpModelsFromConfigs(configs []acp.SessionConfigOption) []acpModelOption {
 	for _, opt := range configs {
-		if opt.Select == nil || opt.Select.Category == nil {
-			continue
-		}
-		if *opt.Select.Category != acp.SessionConfigOptionCategoryModel {
+		if !acpOptionIsModel(opt.Select) {
 			continue
 		}
 		var raw []acp.SessionConfigSelectOption

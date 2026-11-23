@@ -2,6 +2,7 @@ package ui
 
 import (
 	"sort"
+	"strings"
 
 	acp "github.com/coder/acp-go-sdk"
 	mgo "github.com/egoist/mygo/ui"
@@ -12,8 +13,12 @@ import (
 // acpConfigItem is one selectable control in the composer's ACP row: a
 // mode picker or a configuration option.
 type acpConfigItem struct {
-	label   string
-	rank    int
+	label string
+	rank  int
+	// model marks the option that chooses the model. It stays inline even
+	// when the adapter gives it no model category, never inside the
+	// settings popover with the other ConfigOptions.
+	model   bool
 	mode    *acp.SessionMode
 	acpsel  *acp.SessionConfigOptionSelect
 	boolean *acp.SessionConfigOptionBoolean
@@ -35,9 +40,15 @@ func acpConfigItemsFromOptions(opts []acp.SessionConfigOption) []acpConfigItem {
 	for _, opt := range opts {
 		switch {
 		case opt.Select != nil:
+			model := acpOptionIsModel(opt.Select)
+			rank := acpConfigRank(opt.Select.Category)
+			if model {
+				rank = 0
+			}
 			items = append(items, acpConfigItem{
 				label:  opt.Select.Name,
-				rank:   acpConfigRank(opt.Select.Category),
+				rank:   rank,
+				model:  model,
 				acpsel: opt.Select,
 			})
 		case opt.Boolean != nil:
@@ -48,7 +59,14 @@ func acpConfigItemsFromOptions(opts []acp.SessionConfigOption) []acpConfigItem {
 			})
 		}
 	}
-	sort.SliceStable(items, func(i, j int) bool { return items[i].rank < items[j].rank })
+	// The model stays first: it is the one control every narrow composer
+	// keeps outside the settings popover.
+	sort.SliceStable(items, func(i, j int) bool {
+		if items[i].model != items[j].model {
+			return items[i].model
+		}
+		return items[i].rank < items[j].rank
+	})
 	return items
 }
 
@@ -72,6 +90,27 @@ func (cw *ChatWindow) acpConfigItems(rt *acpConv) []acpConfigItem {
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].rank < items[j].rank })
 	return items
+}
+
+// acpOptionIsModel reports a select that chooses the model: categorised as
+// one, or named and identified as one by adapters that leave the category out.
+// The model is never drawn inside the ConfigOptions popover.
+func acpOptionIsModel(s *acp.SessionConfigOptionSelect) bool {
+	if s == nil {
+		return false
+	}
+	if s.Category != nil && *s.Category == acp.SessionConfigOptionCategoryModel {
+		return true
+	}
+	id := strings.ToLower(strings.TrimSpace(string(s.Id)))
+	name := strings.ToLower(strings.TrimSpace(s.Name))
+	for _, v := range []string{"model", "models", "模型", "模型选择"} {
+		if id == v || name == v {
+			return true
+		}
+	}
+	return strings.HasSuffix(id, "_model") || strings.HasSuffix(id, "modelid") ||
+		strings.HasSuffix(id, "model_id")
 }
 
 // acpConfigRank orders the categories the way a user reaches for them.

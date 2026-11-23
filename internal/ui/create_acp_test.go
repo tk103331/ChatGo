@@ -95,3 +95,54 @@ func TestCreateACPChoicesReportWarmFailure(t *testing.T) {
 		}
 	}
 }
+
+// An adapter that reports the model as a plain ConfigOption, without the
+// model category, still keeps the model list outside the settings popover.
+func TestACPUncategorizedModelStaysInline(t *testing.T) {
+	models := acp.SessionConfigSelectOptionsUngrouped{
+		{Value: "m1", Name: "小模型"},
+		{Value: "m2", Name: "大模型"},
+		{Value: "m3", Name: "长上下文"},
+		{Value: "m4", Name: "快速"},
+	}
+	opts := []acp.SessionConfigOption{
+		{Select: &acp.SessionConfigOptionSelect{
+			Id: "model", Name: "模型", CurrentValue: "m1",
+			Options: acp.SessionConfigSelectOptions{Ungrouped: &models},
+		}},
+		{Boolean: &acp.SessionConfigOptionBoolean{Id: "think", Name: "思考", CurrentValue: true}},
+		{Select: &acp.SessionConfigOptionSelect{Id: "approval", Name: "审批",
+			Options: acp.SessionConfigSelectOptions{Ungrouped: &acp.SessionConfigSelectOptionsUngrouped{
+				{Value: "always", Name: "总是"}, {Value: "never", Name: "从不"},
+			}}}},
+	}
+	items := acpConfigItemsFromOptions(opts)
+	if len(items) == 0 || items[0].label != "模型" || items[0].rank != 0 || !items[0].model {
+		t.Fatalf("the model was not kept first inline: %+v", items)
+	}
+	if got := acpModelsFromConfigs(opts); len(got) != 4 || got[0].Name != "小模型" {
+		t.Fatalf("model list = %+v", got)
+	}
+
+	dir := newTestRepo(t)
+	cw := worktreeWindow(t, dir)
+	cw.cfg.ACPAgents = []config.ACPConnection{{Name: "PiAgent", Command: "pi"}}
+	cw.acp.configs["PiAgent"] = opts
+	cw.create.agent = "acp:PiAgent"
+	cw.openCreateTab()
+	tr := cw.tester(1000, 700, "新会话")
+	if !tr.HasText("小模型") {
+		t.Fatalf("the model list is not inline; texts: %v", tr.Texts())
+	}
+	if err := tr.Click("ACP 设置"); err != nil {
+		t.Fatal(err)
+	}
+	tr.Frame()
+	tr.Frame()
+	if tr.HasText("模型（选择）") {
+		t.Fatalf("the model list is inside the ConfigOptions popover: %v", tr.Texts())
+	}
+	if !tr.HasText("思考（开关）") {
+		t.Fatalf("the settings popover lost the other options: %v", tr.Texts())
+	}
+}
