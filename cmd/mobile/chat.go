@@ -175,7 +175,7 @@ func (a *app) openRename(s mobileapi.SessionSummary) {
 
 // renameSheet is the title editor a swiped conversation opens.
 func (a *app) renameSheet(c *ui.Context) {
-	mobile.Sheet(c, &a.renameOpen, mobile.SheetOptions{Detents: []float32{0.75}, Label: "重命名会话"}, func() {
+	sheet(c, &a.renameOpen, mobile.SheetOptions{Detents: []float32{0.75}, Label: "重命名会话"}, func() {
 		a.sheetBack(c)
 		ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {
 			ui.Text(c, "重命名会话").FontSize(17).FontWeight(600)
@@ -234,7 +234,7 @@ func (a *app) openDelete(s mobileapi.SessionSummary) {
 
 func (a *app) deleteSheet(c *ui.Context) {
 	t := c.Theme()
-	mobile.Sheet(c, &a.deleteOpen, mobile.SheetOptions{Detents: []float32{0.38}, Label: "删除会话"}, func() {
+	sheet(c, &a.deleteOpen, mobile.SheetOptions{Detents: []float32{0.38}, Label: "删除会话"}, func() {
 		a.sheetBack(c)
 		ui.Column(c).FillWidth().Padding(16).Gap(10).Children(func() {
 			ui.Text(c, "删除这个会话？").FontSize(17).FontWeight(600)
@@ -554,7 +554,7 @@ func (a *app) agentSheet(c *ui.Context) {
 	if len(a.agents) > 3 {
 		detent = 0.7
 	}
-	mobile.Sheet(c, &a.agentOpen, mobile.SheetOptions{Detents: []float32{detent}, Label: "选择 Agent"}, func() {
+	sheet(c, &a.agentOpen, mobile.SheetOptions{Detents: []float32{detent}, Label: "选择 Agent"}, func() {
 		a.sheetBack(c)
 		t := c.Theme()
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
@@ -909,7 +909,7 @@ func (a *app) modelSheet(c *ui.Context) {
 	st := a.acpState(target)
 	// The picker keeps a tall detent: the filter's keyboard covers the
 	// window's lower part, and the models must stay above it.
-	mobile.Sheet(c, &a.modelOpen, mobile.SheetOptions{Detents: []float32{0.85}, Label: "选择模型"}, func() {
+	sheet(c, &a.modelOpen, mobile.SheetOptions{Detents: []float32{0.85}, Label: "选择模型"}, func() {
 		a.sheetBack(c)
 		t := c.Theme()
 		title := "选择模型"
@@ -1038,7 +1038,7 @@ func (a *app) workspaceSheet(c *ui.Context) {
 		target = &a.roomWorkspace
 		title = "选择群聊工作区"
 	}
-	mobile.Sheet(c, &a.workspaceOpen, mobile.SheetOptions{Detents: []float32{0.75}, Label: title}, func() {
+	sheet(c, &a.workspaceOpen, mobile.SheetOptions{Detents: []float32{0.75}, Label: title}, func() {
 		a.sheetBack(c)
 		t := c.Theme()
 		ui.Column(c).Grow(1).MinHeight(0).FillWidth().Padding(16).Gap(8).Children(func() {
@@ -2026,7 +2026,7 @@ func (a *app) askSheet(c *ui.Context) {
 		a.askOpen = false
 		return
 	}
-	mobile.Sheet(c, &a.askOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "Agent 交互"}, func() {
+	sheet(c, &a.askOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "Agent 交互"}, func() {
 		a.sheetBack(c)
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {

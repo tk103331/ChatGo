@@ -366,7 +366,7 @@ func (a *app) openTaskForm(id string) {
 }
 
 func (a *app) taskFormSheet(c *ui.Context) {
-	mobile.Sheet(c, &a.taskFormOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "任务"}, func() {
+	sheet(c, &a.taskFormOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "任务"}, func() {
 		a.sheetBack(c)
 		t := c.Theme()
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {

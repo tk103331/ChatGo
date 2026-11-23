@@ -305,7 +305,7 @@ func (a *app) openRoomForm(id string) {
 
 func (a *app) roomFormSheet(c *ui.Context) {
 	t := c.Theme()
-	mobile.Sheet(c, &a.roomFormOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "群聊"}, func() {
+	sheet(c, &a.roomFormOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "群聊"}, func() {
 		a.sheetBack(c)
 		ui.Scroll(c).Grow(1).MinHeight(0).Children(func() {
 			ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {

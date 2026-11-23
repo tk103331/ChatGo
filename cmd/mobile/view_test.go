@@ -1139,6 +1139,7 @@ func TestBackAfterSheetClose(t *testing.T) {
 	if a.pairOpen {
 		t.Fatal("sheet did not close")
 	}
+	a.backAt = time.Time{} // a later press, not the one that closed the sheet
 	before := a.lastBack
 	tr.Key(0, ui.KeyBack)
 	for i := 0; i < 10; i++ {

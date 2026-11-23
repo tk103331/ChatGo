@@ -218,7 +218,7 @@ func (a *app) connectionRows(c *ui.Context) {
 }
 
 func (a *app) pairSheet(c *ui.Context) {
-	mobile.Sheet(c, &a.pairOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "配对"}, func() {
+	sheet(c, &a.pairOpen, mobile.SheetOptions{Detents: []float32{0.92}, Label: "配对"}, func() {
 		a.sheetBack(c)
 		ui.Scroll(c).Grow(1).Children(func() {
 			ui.Column(c).FillWidth().Padding(16).Gap(12).Children(func() {

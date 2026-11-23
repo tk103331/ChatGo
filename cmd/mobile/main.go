@@ -218,13 +218,13 @@ type app struct {
 	lastBack        time.Time
 	backHint        bool
 	backAt          time.Time
-	overlayWas      bool
-	termScroll      ui.ScrollState
-	termInputMu     sync.Mutex
-	termInput       []byte
-	termInputWake   chan struct{}
-	termPollCancel  context.CancelFunc
-	termSendCancel  context.CancelFunc
+
+	termScroll     ui.ScrollState
+	termInputMu    sync.Mutex
+	termInput      []byte
+	termInputWake  chan struct{}
+	termPollCancel context.CancelFunc
+	termSendCancel context.CancelFunc
 
 	projectFormOpen    bool
 	projectName        string
@@ -722,15 +722,6 @@ func (a *app) invalidate() {
 }
 
 func (a *app) view(c *ui.Context) {
-	// A sheet that closed keeps its modal in the last frame it built, which
-	// makes the phone stop routing back to this page. One more frame after
-	// its closing animation puts the page's shortcut back.
-	if a.overlayOpen() {
-		a.overlayWas = true
-	} else if a.overlayWas {
-		a.overlayWas = false
-		time.AfterFunc(400*time.Millisecond, func() { a.update(a.invalidate) })
-	}
 	// The system's back goes up a page, or asks twice before leaving the
 	// tab pages. Registering the shortcut here also tells the phone that
 	// the view takes back, so Android routes it here instead of leaving.
@@ -788,6 +779,16 @@ func (a *app) view(c *ui.Context) {
 		a.projectPickSheet(c)
 		a.filePreviewSheet(c)
 		a.gitDiffSheet(c)
+	})
+	// Android's back is Escape first, then Back. This overlay takes each as
+	// the page's back unless something on top, as a sheet, took it first:
+	// a sheet's modal in the last frame it built would otherwise keep the
+	// phone from routing back to the page after the sheet closed.
+	ui.Overlay(c, func() {
+		back := ui.Box(c).Size(1, 1)
+		if back.OverlayShortcut(0, ui.KeyEscape) || back.OverlayShortcut(0, ui.KeyBack) {
+			a.handleBack()
+		}
 	})
 }
 
@@ -987,13 +988,6 @@ func (a *app) backToRooms() {
 	a.stopWatch()
 	a.screen = screenRooms
 	a.refreshRooms()
-}
-
-// overlayOpen reports whether a sheet takes the view.
-func (a *app) overlayOpen() bool {
-	return a.projectPickOpen || a.projectFormOpen || a.filePreviewOpen || a.gitDiffOpen ||
-		a.workspaceOpen || a.roomFormOpen || a.taskFormOpen || a.modelOpen ||
-		a.agentOpen || a.askOpen || a.deleteOpen || a.renameOpen || a.pairOpen
 }
 
 // backShortcut registers the back key in the context being built: the root
