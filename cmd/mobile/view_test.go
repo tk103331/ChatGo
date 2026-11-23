@@ -708,8 +708,8 @@ func TestACPChatShowsItsRuntimeModel(t *testing.T) {
 	}
 }
 
-// An A2A agent brings its own model: the composer says so and offers no
-// picker.
+// An A2A agent brings its own model: the composer hides the picker and the
+// note entirely.
 func TestA2AAgentHasNoModelPicker(t *testing.T) {
 	a := testApp()
 	a.screen = screenChat
@@ -718,8 +718,8 @@ func TestA2AAgentHasNoModelPicker(t *testing.T) {
 	a.chatModel = "deepseek::deepseek-chat"
 	tr := ui.NewTester(a.view, 390, 844)
 	tr.Frame()
-	if !tr.HasText("远程 Agent 模型") {
-		t.Fatalf("no remote model note; texts: %v", tr.Texts())
+	if tr.HasText("远程 Agent 模型") || tr.HasText("deepseek-chat") {
+		t.Fatalf("an A2A agent showed model UI; texts: %v", tr.Texts())
 	}
 	if _, ok := tr.AccessByRole(ui.RoleButton, "模型 deepseek-chat"); ok {
 		t.Fatal("an A2A agent offered a model picker")
