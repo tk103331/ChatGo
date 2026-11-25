@@ -147,3 +147,24 @@ func TestSetThemeChangesNextFrame(t *testing.T) {
 		t.Fatal("render after theme change failed")
 	}
 }
+
+func TestRenderLegacyV08Syntax(t *testing.T) {
+	var msg a2ui.Message
+	raw := `{"version":"1.0","createSurface":{"surfaceId":"legacy","dataModel":{"name":""},"components":[
+		{"id":"root","component":{"Card":{"child":"col"}}},
+		{"id":"col","component":{"Column":{"children":{"explicitList":["t","f"]}}}},
+		{"id":"t","component":{"Text":{"text":{"literalString":"Hello"},"usageHint":"h1"}}},
+		{"id":"f","component":{"TextField":{"label":{"literalString":"Name"},"text":{"path":"/name"}}}}
+	]}}`
+	if err := json.Unmarshal([]byte(raw), &msg); err != nil {
+		t.Fatal(err)
+	}
+	r := New(Options{})
+	if errs := r.Apply(msg); len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	img := ui.Render(func(c *ui.Context) { r.View(c, "legacy") }, 600, 400, 1)
+	if img == nil {
+		t.Fatal("render failed")
+	}
+}

@@ -38,3 +38,22 @@ func TestMessageValidation(t *testing.T) {
 		t.Fatal("unknown version accepted")
 	}
 }
+
+func TestResolveLegacyLiteralsAndPaths(t *testing.T) {
+	data := map[string]any{"user": map[string]any{"name": "Ada"}}
+	for _, tc := range []struct {
+		value any
+		want  any
+	}{
+		{map[string]any{"literalString": "Hi"}, "Hi"},
+		{map[string]any{"literalNumber": 4.0}, 4.0},
+		{map[string]any{"literalBoolean": true}, true},
+		{map[string]any{"literalArray": []any{"a"}}, []any{"a"}},
+		{map[string]any{"path": "/user/name"}, "Ada"},
+		{map[string]any{"@path": "/user/name"}, "Ada"},
+	} {
+		if got := Resolve(tc.value, data, nil); !PointerEquals(got, tc.want) {
+			t.Fatalf("%#v = %#v, want %#v", tc.value, got, tc.want)
+		}
+	}
+}

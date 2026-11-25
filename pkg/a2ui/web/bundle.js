@@ -60,12 +60,33 @@
   function resolve(v, data) {
     if (v && typeof v === 'object') {
       if (Object.prototype.hasOwnProperty.call(v, '@path')) return getPath(data, v['@path']);
+      if (Object.prototype.hasOwnProperty.call(v, 'path') && typeof v.path === 'string') return getPath(data, v.path);
+      var literals = ['literalString', 'literalNumber', 'literalBoolean', 'literalArray', 'literalObject', 'literal'];
+      for (var i = 0; i < literals.length; i++) {
+        if (Object.prototype.hasOwnProperty.call(v, literals[i])) return v[literals[i]];
+      }
       if (Array.isArray(v)) return v.map(function (x) { return resolve(x, data); });
       var out = {};
       for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k)) out[k] = resolve(v[k], data);
       return out;
     }
     return v;
+  }
+
+  function normalize(comp) {
+    if (!comp || typeof comp !== 'object') return comp;
+    var out = {};
+    for (var k in comp) if (Object.prototype.hasOwnProperty.call(comp, k)) out[k] = comp[k];
+    if (out.component && typeof out.component === 'object') {
+      var name = Object.keys(out.component)[0];
+      var props = out.component[name] || {};
+      for (var p in props) if (Object.prototype.hasOwnProperty.call(props, p)) out[p] = props[p];
+      out.component = name;
+    }
+    if (out.children && !Array.isArray(out.children) && Array.isArray(out.children.explicitList)) {
+      out.children = out.children.explicitList;
+    }
+    return out;
   }
 
   function textOf(v) {
@@ -93,7 +114,7 @@
       s.components = Object.create(null);
       s.data = c.dataModel || {};
       (c.components || []).forEach(function (comp) {
-        if (comp && comp.id) s.components[comp.id] = comp;
+        if (comp && comp.id) s.components[comp.id] = normalize(comp);
       });
       render(s);
       return;
@@ -102,7 +123,7 @@
       var u = msg.updateComponents;
       var su = surfaceOf(u.surfaceId);
       (u.components || []).forEach(function (comp) {
-        if (comp && comp.id) su.components[comp.id] = comp;
+        if (comp && comp.id) su.components[comp.id] = normalize(comp);
       });
       render(su);
       return;
@@ -188,7 +209,7 @@
   function nodeOf(s, id, seen, depth) {
     if (depth > 64 || seen[id]) return placeholder('组件嵌套过深：' + id);
     seen[id] = true;
-    var comp = s.components[id];
+    var comp = normalize(s.components[id]);
     if (!comp) return placeholder('缺少组件：' + id);
     var type = comp.component || '';
     var el;
@@ -248,7 +269,7 @@
       el.textContent = m[2];
     } else {
       el.textContent = value;
-      var variant = String(comp.variant || '').toLowerCase();
+      var variant = String(comp.variant || comp.usageHint || '').toLowerCase();
       if (variant === 'h1') el.className = 'a2ui-h1';
       else if (variant === 'h2') el.className = 'a2ui-h2';
       else if (variant === 'h3' || type === 'Title') el.className = 'a2ui-h3';
@@ -282,7 +303,7 @@
     var el = document.createElement('button');
     var label = textOf(resolve(comp.label, s.data));
     if (!label && comp.child) {
-      var child = s.components[comp.child];
+      var child = normalize(s.components[comp.child]);
       if (child) label = textOf(resolve(child.text, s.data));
     }
     if (!label) label = '按钮';

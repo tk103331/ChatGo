@@ -159,14 +159,46 @@ func (c *Component) UnmarshalJSON(data []byte) error {
 	if err := decode(raw, "id", &c.ID); err != nil {
 		return err
 	}
-	if err := decode(raw, "component", &c.Type); err != nil {
-		return err
+	if component, ok := raw["component"]; ok {
+		var typeName string
+		if err := json.Unmarshal(component, &typeName); err == nil {
+			c.Type = typeName
+		} else {
+			// v0.8 nests the type and its properties:
+			// "component": {"Text": {"text": {"literalString": "Hi"}}}
+			var wrapper map[string]json.RawMessage
+			if err := json.Unmarshal(component, &wrapper); err != nil {
+				return fmt.Errorf("a2ui: component: %w", err)
+			}
+			for name, props := range wrapper {
+				c.Type = name
+				var nested map[string]any
+				if err := json.Unmarshal(props, &nested); err != nil {
+					return fmt.Errorf("a2ui: component %q: %w", name, err)
+				}
+				for k, v := range nested {
+					if k == "id" || k == "component" {
+						continue
+					}
+					c.Props[k] = v
+				}
+				mergeLegacyFields(c)
+				break
+			}
+		}
 	}
 	if err := decode(raw, "child", &c.Child); err != nil {
 		return err
 	}
 	if err := decode(raw, "children", &c.Children); err != nil {
-		return err
+		// v0.8 wraps the list: "children": {"explicitList": ["a", "b"]}
+		var wrapped struct {
+			ExplicitList []string `json:"explicitList"`
+		}
+		if e := json.Unmarshal(raw["children"], &wrapped); e != nil || len(wrapped.ExplicitList) == 0 {
+			return err
+		}
+		c.Children = wrapped.ExplicitList
 	}
 	if err := decode(raw, "@catalogId", &c.CatalogID); err != nil {
 		return err
@@ -181,6 +213,52 @@ func (c *Component) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	return nil
+}
+
+// mergeLegacyFields moves child/children and the other named fields out of
+// Props after a v0.8 nested component wrapper was unfolded.
+func mergeLegacyFields(c *Component) {
+	if child, ok := c.Props["child"].(string); ok {
+		c.Child = child
+		delete(c.Props, "child")
+	}
+	if raw, ok := c.Props["children"]; ok {
+		if list, ok := raw.([]any); ok {
+			c.Children = nil
+			for _, item := range list {
+				if s, ok := item.(string); ok {
+					c.Children = append(c.Children, s)
+				}
+			}
+		} else if m, ok := raw.(map[string]any); ok {
+			if list, ok := m["explicitList"].([]any); ok {
+				c.Children = nil
+				for _, item := range list {
+					if s, ok := item.(string); ok {
+						c.Children = append(c.Children, s)
+					}
+				}
+			}
+		}
+		delete(c.Props, "children")
+	}
+	if raw, ok := c.Props["@catalogId"].(string); ok {
+		c.CatalogID = raw
+		delete(c.Props, "@catalogId")
+	}
+	if raw, ok := c.Props["@checks"]; ok {
+		data, _ := json.Marshal(raw)
+		_ = json.Unmarshal(data, &c.Checks)
+		delete(c.Props, "@checks")
+	}
+	if raw, ok := c.Props["@accessibility"].(map[string]any); ok {
+		c.Accessibility = raw
+		delete(c.Props, "@accessibility")
+	}
+	if raw, ok := c.Props["@metadata"].(map[string]any); ok {
+		c.Metadata = raw
+		delete(c.Props, "@metadata")
+	}
 }
 
 // MarshalJSON writes the named fields back with the catalog properties.

@@ -396,7 +396,7 @@ func (r *Renderer) text(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) ui.
 	if raw == "" {
 		raw = comp.PropString("text")
 	}
-	variant := strings.ToLower(comp.PropString("variant"))
+	variant := strings.ToLower(firstProp(comp, "variant", "usageHint"))
 	size := float32(14)
 	weight := 400
 	color := r.frame.Text
@@ -437,6 +437,16 @@ func (r *Renderer) text(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) ui.
 		size, weight = 13, 600
 	}
 	return ui.Text(c, raw).FontSize(size).FontWeight(weight).TextColor(color)
+}
+
+// firstProp returns the first non-empty string among names.
+func firstProp(comp a2ui.Component, names ...string) string {
+	for _, name := range names {
+		if s := comp.PropString(name); s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // headingLevel counts leading # characters in "### Title".

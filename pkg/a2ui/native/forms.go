@@ -68,7 +68,7 @@ func (r *Renderer) childText(s *a2ui.Surface, id string) string {
 
 // button draws a Button and sends its action when clicked.
 func (r *Renderer) button(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) ui.Element {
-	label := comp.PropString("label")
+	label := a2ui.ResolveString(comp.Prop("label"), s.Data, r.funcs)
 	if label == "" && comp.Child != "" {
 		label = r.childText(s, comp.Child)
 	}
@@ -120,11 +120,14 @@ func (r *Renderer) fireAction(s *a2ui.Surface, comp a2ui.Component) {
 // textField draws a single- or multi-line field and writes its value back.
 func (r *Renderer) textField(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) ui.Element {
 	binding := comp.Prop("value")
+	if binding == nil {
+		binding = comp.Prop("text")
+	}
 	value := a2ui.Resolve(binding, s.Data, r.funcs)
 	st := r.field(s.ID, comp.ID, value)
-	label := comp.PropString("label")
-	variant := strings.ToLower(comp.PropString("variant"))
-	placeholder := comp.PropString("placeholder")
+	label := a2ui.ResolveString(comp.Prop("label"), s.Data, r.funcs)
+	variant := strings.ToLower(firstProp(comp, "variant", "usageHint"))
+	placeholder := a2ui.ResolveString(comp.Prop("placeholder"), s.Data, r.funcs)
 	errors := a2ui.CheckErrors(comp, s.Data, r.funcs)
 	return ui.Column(c).Gap(2).Children(func() {
 		if label != "" {
@@ -155,7 +158,7 @@ func (r *Renderer) checkBox(c *ui.Context, s *a2ui.Surface, comp a2ui.Component)
 	binding := comp.Prop("value")
 	value := a2ui.ResolveBool(binding, s.Data, r.funcs)
 	st := r.field(s.ID, comp.ID, value)
-	label := comp.PropString("label")
+	label := a2ui.ResolveString(comp.Prop("label"), s.Data, r.funcs)
 	el := ui.Checkbox(c, &st.flag, label)
 	if el.Changed() {
 		if path, ok := pathOf(binding); ok {
@@ -176,7 +179,7 @@ func (r *Renderer) slider(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 	if hi <= lo {
 		hi = lo + 100
 	}
-	label := comp.PropString("label")
+	label := a2ui.ResolveString(comp.Prop("label"), s.Data, r.funcs)
 	el := ui.Column(c).Gap(2).Children(func() {
 		if label != "" {
 			ui.Text(c, label).FontSize(12).TextColor(r.frame.Muted)
@@ -204,8 +207,8 @@ func (r *Renderer) optionsOf(comp a2ui.Component) []option {
 	out := make([]option, 0, len(raw))
 	for _, item := range raw {
 		m, _ := item.(map[string]any)
-		label, _ := m["label"].(string)
-		value := m["value"]
+		label := a2ui.ResolveString(m["label"], nil, nil)
+		value := a2ui.Resolve(m["value"], nil, nil)
 		if label == "" {
 			label = a2ui.ResolveString(value, nil, nil)
 		}
@@ -219,7 +222,7 @@ func (r *Renderer) choice(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 	binding := comp.Prop("value")
 	value := a2ui.Resolve(binding, s.Data, r.funcs)
 	opts := r.optionsOf(comp)
-	label := comp.PropString("label")
+	label := a2ui.ResolveString(comp.Prop("label"), s.Data, r.funcs)
 	multiple := strings.EqualFold(comp.PropString("variant"), "multipleSelection") ||
 		strings.EqualFold(comp.PropString("variant"), "multipleselection") ||
 		comp.Type == "ChoicePicker" && comp.PropBool("multiple", false)

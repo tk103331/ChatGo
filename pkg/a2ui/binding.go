@@ -1,7 +1,7 @@
 package a2ui
 
 import (
-	"fmt"
+	"encoding/json"
 	"regexp"
 	"strconv"
 	"strings"
@@ -19,11 +19,46 @@ type Functions map[string]Function
 func Resolve(value any, data any, funcs Functions) any {
 	switch v := value.(type) {
 	case map[string]any:
+		// v0.9 and v1.0 spell bindings @path/@call; v0.8 and some SDKs omit
+		// the prefix.
 		if path, ok := v["@path"].(string); ok {
 			if got, ok := PointerGet(data, path); ok {
 				return got
 			}
 			return nil
+		}
+		if path, ok := v["path"].(string); ok {
+			if got, ok := PointerGet(data, path); ok {
+				return got
+			}
+			return nil
+		}
+		// v0.8 literal wrappers: {"literalString": "Hi"}, and the other
+		// primitive variants.
+		for _, key := range []string{"literalString", "literalNumber", "literalBoolean", "literalArray", "literalObject", "literal"} {
+			if literal, ok := v[key]; ok {
+				return literal
+			}
+		}
+		if call, ok := v["call"]; ok {
+			name, _ := call.(string)
+			if name == "" || funcs == nil {
+				return nil
+			}
+			fn, ok := funcs[name]
+			if !ok {
+				return nil
+			}
+			args, _ := v["args"].(map[string]any)
+			resolved := make(map[string]any, len(args))
+			for k, arg := range args {
+				resolved[k] = Resolve(arg, data, funcs)
+			}
+			out, err := fn(resolved)
+			if err != nil {
+				return nil
+			}
+			return out
 		}
 		if call, ok := v["@call"]; ok {
 			name := ""
@@ -128,7 +163,10 @@ func toText(v any) string {
 	case nil:
 		return ""
 	default:
-		return fmt.Sprint(x)
+		if data, err := json.Marshal(x); err == nil {
+			return string(data)
+		}
+		return ""
 	}
 }
 
