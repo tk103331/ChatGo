@@ -417,9 +417,17 @@
 
   function sendAction(s, comp) {
     var action = comp.action || {};
-    var event = action.event || {};
+    var event = action.event || action;
     if (!event.name) return;
-    var context = resolve(event.context || {}, s.data) || {};
+    var rawContext = event.context || action.context || {};
+    var context = {};
+    if (Array.isArray(rawContext)) {
+      rawContext.forEach(function (item) {
+        if (item && item.key) context[item.key] = resolve(item.value, s.data);
+      });
+    } else {
+      context = resolve(rawContext, s.data) || {};
+    }
     var msg = {
       version: '1.0',
       action: {
@@ -460,6 +468,7 @@
     input.addEventListener('input', function () {
       if (path) s.data = setPath(s.data, path, input.value);
     });
+    input.addEventListener('pointerdown', function () { input.focus(); });
     wrap.appendChild(input);
     return wrap;
   }

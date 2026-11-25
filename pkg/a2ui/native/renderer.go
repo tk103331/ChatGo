@@ -463,7 +463,7 @@ func headingLevel(s string) int {
 
 // layout renders Row and Column.
 func (r *Renderer) layout(c *ui.Context, s *a2ui.Surface, comp a2ui.Component, row bool, path map[string]bool, depth int) ui.Element {
-	align := alignOf(comp.PropString("align"), ui.Stretch)
+	align := alignOf(firstProp(comp, "align", "alignment"), ui.Stretch)
 	justify := alignOf(comp.PropString("justify"), ui.Start)
 	el := ui.Column(c)
 	if row {

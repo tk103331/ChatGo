@@ -120,3 +120,39 @@ func TestBuiltinA2UIToolNeedsRootAndSink(t *testing.T) {
 		t.Fatal("missing root accepted")
 	}
 }
+
+func TestNormalizeLegacyA2UIForm(t *testing.T) {
+	raw := json.RawMessage(`{"version":"1.0","createSurface":{"surfaceId":"s","components":[
+	{"id":"t","component":"Text","text":{"literalString":"标题"}},
+	{"id":"f","component":"TextField","label":{"literalString":"姓名"},"text":{"path":"/name"},"textFieldType":"shortText"},
+	{"id":"b","component":"Button","label":{"literalString":"提交"},"action":{"name":"submit","context":[{"key":"name","value":{"path":"/name"}}]}}
+	]}}`)
+	out := normalizeA2UIEnvelopes([]json.RawMessage{raw})
+	var msg map[string]any
+	if err := json.Unmarshal(out[0], &msg); err != nil {
+		t.Fatal(err)
+	}
+	body := msg["createSurface"].(map[string]any)
+	comps := body["components"].([]any)
+	text := comps[0].(map[string]any)
+	if text["text"] != nil || text["value"] != nil {
+		// Text keeps its text, never gets moved to value.
+	}
+	if text["text"] == nil {
+		t.Fatalf("Text lost its text: %#v", text)
+	}
+	field := comps[1].(map[string]any)
+	if field["value"] == nil || field["variant"] != "shortText" {
+		t.Fatalf("TextField not normalized: %#v", field)
+	}
+	button := comps[2].(map[string]any)
+	action := button["action"].(map[string]any)
+	event := action["event"].(map[string]any)
+	if event["name"] != "submit" {
+		t.Fatalf("action = %#v", action)
+	}
+	ctx := event["context"].(map[string]any)
+	if ctx["name"] == nil {
+		t.Fatalf("context = %#v", ctx)
+	}
+}

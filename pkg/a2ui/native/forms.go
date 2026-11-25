@@ -81,17 +81,17 @@ func (r *Renderer) button(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 	variant := strings.ToLower(comp.PropString("variant"))
 	el := ui.ButtonBase(c).Padding(7, 14).Radius(7).Gap(6).AlignItems(ui.Center).
 		Role(ui.RoleButton).Label(label)
+	text := ui.Text(c, label).FontSize(13)
+	// The label paints over the button's own box; PassThrough keeps the
+	// press on the base, or a full-width label swallows every click.
+	text.PassThrough()
 	switch variant {
 	case "primary", "filled", "":
 		el.Background(r.frame.Accent)
-		el.Children(func() {
-			ui.Text(c, label).FontSize(13).FontWeight(600).TextColor(ui.RGBA(255, 255, 255, 1))
-		})
+		text.FontWeight(600).TextColor(ui.RGBA(255, 255, 255, 1))
 	default:
 		el.Background(r.frame.Surface).Border(1, r.frame.Border)
-		el.Children(func() {
-			ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(r.frame.Text)
-		})
+		text.FontWeight(500).TextColor(r.frame.Text)
 	}
 	if el.Clicked() {
 		r.fireAction(s, comp)
@@ -99,22 +99,47 @@ func (r *Renderer) button(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 	return el
 }
 
-// fireAction turns a component's action object into an Action.
+// fireAction turns a component's action object into an Action. v1.0 wraps the
+// event ({event: {name, context}}); some agents send the flat v0.8 form
+// ({name, context}) and a context array of key/value pairs.
 func (r *Renderer) fireAction(s *a2ui.Surface, comp a2ui.Component) {
 	actionProp, _ := comp.Prop("action").(map[string]any)
 	event, _ := actionProp["event"].(map[string]any)
+	if event == nil {
+		event = actionProp
+	}
 	name, _ := event["name"].(string)
 	if name == "" {
 		return
 	}
 	action := a2ui.NewAction(s.ID, comp.ID, name)
 	action.UserMessage, _ = event["userMessage"].(string)
-	if ctx, ok := a2ui.Resolve(event["context"], s.Data, r.funcs).(map[string]any); ok {
-		action.Context = ctx
-	}
+	action.Context = resolveActionContext(event["context"], s.Data, r.funcs)
 	if r.opts.OnAction != nil {
 		r.opts.OnAction(action)
 	}
+}
+
+// resolveActionContext accepts a context object or the legacy array of
+// {key, value} pairs, resolving paths and literals in each.
+func resolveActionContext(raw any, data any, funcs a2ui.Functions) map[string]any {
+	out := map[string]any{}
+	switch v := raw.(type) {
+	case map[string]any:
+		if resolved, ok := a2ui.Resolve(v, data, funcs).(map[string]any); ok {
+			return resolved
+		}
+	case []any:
+		for _, item := range v {
+			m, _ := item.(map[string]any)
+			key, _ := m["key"].(string)
+			if key == "" {
+				continue
+			}
+			out[key] = a2ui.Resolve(m["value"], data, funcs)
+		}
+	}
+	return out
 }
 
 // textField draws a single- or multi-line field and writes its value back.
@@ -126,7 +151,7 @@ func (r *Renderer) textField(c *ui.Context, s *a2ui.Surface, comp a2ui.Component
 	value := a2ui.Resolve(binding, s.Data, r.funcs)
 	st := r.field(s.ID, comp.ID, value)
 	label := a2ui.ResolveString(comp.Prop("label"), s.Data, r.funcs)
-	variant := strings.ToLower(firstProp(comp, "variant", "usageHint"))
+	variant := strings.ToLower(firstProp(comp, "variant", "textFieldType", "usageHint"))
 	placeholder := a2ui.ResolveString(comp.Prop("placeholder"), s.Data, r.funcs)
 	errors := a2ui.CheckErrors(comp, s.Data, r.funcs)
 	return ui.Column(c).Gap(2).Children(func() {
@@ -144,6 +169,12 @@ func (r *Renderer) textField(c *ui.Context, s *a2ui.Surface, comp a2ui.Component
 		}
 		if len(errors) > 0 {
 			el.Error(strings.Join(errors, "；"))
+		}
+		// A click anywhere in the field's row focuses the control itself; in
+		// a scrolling message list the press may land on the label or padding
+		// rather than the input.
+		if el.Clicked() {
+			el.Focus()
 		}
 		if el.Changed() {
 			if path, ok := pathOf(binding); ok {

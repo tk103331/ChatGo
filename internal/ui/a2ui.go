@@ -575,10 +575,96 @@ func (cw *ChatWindow) a2uiTool(ctx context.Context, raw string) (string, error) 
 		envelopes = []json.RawMessage{env}
 		surface = in.SurfaceID
 	}
+	envelopes = normalizeA2UIEnvelopes(envelopes)
 	sink(envelopes)
 	cw.invalidate()
 	if surface != "" {
 		return "已渲染 A2UI 界面：" + surface, nil
 	}
 	return fmt.Sprintf("已提交 %d 条 A2UI 消息", len(envelopes)), nil
+}
+
+// normalizeA2UIEnvelopes repairs the common legacy shapes a model writes:
+// a flat action {name, context:[{key,value}]} instead of the 1.0 event form,
+// and a legacy text field value. The UI can render either, but storing 1.0
+// keeps replay and every renderer consistent.
+func normalizeA2UIEnvelopes(envelopes []json.RawMessage) []json.RawMessage {
+	out := make([]json.RawMessage, 0, len(envelopes))
+	for _, raw := range envelopes {
+		var msg map[string]any
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			out = append(out, raw)
+			continue
+		}
+		for _, key := range []string{"createSurface", "updateComponents"} {
+			body, _ := msg[key].(map[string]any)
+			if body == nil {
+				continue
+			}
+			components, _ := body["components"].([]any)
+			for _, item := range components {
+				normalizeA2UIComponent(item)
+			}
+		}
+		clean, err := json.Marshal(msg)
+		if err != nil {
+			out = append(out, raw)
+			continue
+		}
+		out = append(out, clean)
+	}
+	return out
+}
+
+// normalizeA2UIComponent rewrites one component in place.
+func normalizeA2UIComponent(item any) {
+	comp, _ := item.(map[string]any)
+	if comp == nil {
+		return
+	}
+	if comp["component"] == "TextField" {
+		if tf, ok := comp["text"]; ok {
+			if _, has := comp["value"]; !has {
+				comp["value"] = tf
+				delete(comp, "text")
+			}
+		}
+		if typ, ok := comp["textFieldType"].(string); ok {
+			if _, has := comp["variant"]; !has {
+				comp["variant"] = typ
+			}
+			delete(comp, "textFieldType")
+		}
+	}
+	if alignment, ok := comp["alignment"]; ok {
+		if _, has := comp["align"]; !has {
+			comp["align"] = alignment
+		}
+		delete(comp, "alignment")
+	}
+	action, _ := comp["action"].(map[string]any)
+	if action == nil {
+		return
+	}
+	event, _ := action["event"].(map[string]any)
+	if event == nil {
+		if name, ok := action["name"].(string); ok && name != "" {
+			event = action
+			action = map[string]any{"event": event}
+			comp["action"] = action
+		}
+	}
+	if event == nil {
+		return
+	}
+	if list, ok := event["context"].([]any); ok {
+		context := map[string]any{}
+		for _, entry := range list {
+			m, _ := entry.(map[string]any)
+			if key, ok := m["key"].(string); ok && key != "" {
+				context[key] = m["value"]
+			}
+		}
+		event["context"] = context
+	}
 }
