@@ -4,6 +4,7 @@
 package a2a
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -20,6 +21,9 @@ import (
 	"chatgo/internal/config"
 	"chatgo/internal/netx"
 )
+
+// A2UIMediaType marks a DataPart that carries A2UI envelopes.
+const A2UIMediaType = "application/a2ui+json"
 
 // sender is the part of a2aclient.Client this package uses. It is an
 // interface so the event mapping can be tested without a server.
@@ -54,6 +58,11 @@ type ChatRequest struct {
 	Text      string
 	TaskID    sdk.TaskID
 	ContextID string
+	// A2UI holds renderer-to-agent envelopes, such as an action, sent as one
+	// application/a2ui+json DataPart alongside the text.
+	A2UI []any
+	// OnA2UI receives each agent-to-renderer envelope while the task streams.
+	OnA2UI func(json.RawMessage)
 }
 
 // Result is the text an A2A turn produced, plus the task identity the next
@@ -64,6 +73,8 @@ type Result struct {
 	ContextID     string
 	State         sdk.TaskState
 	InputRequired bool
+	// A2UI holds every A2UI envelope the agent sent, in order.
+	A2UI []json.RawMessage
 }
 
 // New resolves conn's agent card and opens a client to it. The HTTP client
@@ -179,25 +190,38 @@ func (c *Client) Card() *sdk.AgentCard { return c.card }
 // advertises streaming and onChunk is set, text arrives incrementally;
 // otherwise the turn is a single request.
 func (c *Client) Chat(ctx context.Context, req ChatRequest, onChunk func(string)) (Result, error) {
-	if strings.TrimSpace(req.Text) == "" {
+	if strings.TrimSpace(req.Text) == "" && len(req.A2UI) == 0 {
 		return Result{}, fmt.Errorf("消息为空")
 	}
-	msg := sdk.NewMessage(sdk.MessageRoleUser, sdk.NewTextPart(req.Text))
+	parts := make([]*sdk.Part, 0, 2)
+	if strings.TrimSpace(req.Text) != "" {
+		parts = append(parts, sdk.NewTextPart(req.Text))
+	}
+	if len(req.A2UI) > 0 {
+		part := sdk.NewDataPart(req.A2UI)
+		part.MediaType = A2UIMediaType
+		if part.Metadata == nil {
+			part.Metadata = map[string]any{}
+		}
+		part.Metadata["mimeType"] = A2UIMediaType
+		parts = append(parts, part)
+	}
+	msg := sdk.NewMessage(sdk.MessageRoleUser, parts...)
 	msg.TaskID = req.TaskID
 	msg.ContextID = req.ContextID
 	sendReq := &sdk.SendMessageRequest{Message: msg}
 
-	res, err := c.chat(ctx, c.sender, sendReq, onChunk)
+	res, err := c.chat(ctx, c.sender, sendReq, onChunk, req.OnA2UI)
 	if err != nil && messageRoleRejected(err) {
 		// Some agents mix a v1.0 response schema with v0.3 lowercase roles.
 		// Retrying the same transport keeps their v1.0 events parseable.
 		lowerReq := withMessageRole(sendReq, "user")
-		res, err = c.chat(ctx, c.sender, lowerReq, onChunk)
+		res, err = c.chat(ctx, c.sender, lowerReq, onChunk, req.OnA2UI)
 		if err == nil || !messageRoleRejected(err) {
 			return res, err
 		}
 		if c.legacy != nil {
-			return c.chat(ctx, c.legacy, sendReq, onChunk)
+			return c.chat(ctx, c.legacy, sendReq, onChunk, req.OnA2UI)
 		}
 	}
 	return res, err
@@ -213,9 +237,9 @@ func withMessageRole(req *sdk.SendMessageRequest, role sdk.MessageRole) *sdk.Sen
 	return &clone
 }
 
-func (c *Client) chat(ctx context.Context, s sender, sendReq *sdk.SendMessageRequest, onChunk func(string)) (Result, error) {
+func (c *Client) chat(ctx context.Context, s sender, sendReq *sdk.SendMessageRequest, onChunk func(string), onA2UI func(json.RawMessage)) (Result, error) {
 	if onChunk != nil && c.card.Capabilities.Streaming {
-		res, err := c.chatStream(ctx, s, sendReq, onChunk)
+		res, err := c.chatStream(ctx, s, sendReq, onChunk, onA2UI)
 		if err == nil {
 			return res, nil
 		}
@@ -226,7 +250,7 @@ func (c *Client) chat(ctx context.Context, s sender, sendReq *sdk.SendMessageReq
 			return res, err
 		}
 	}
-	return c.chatOnce(ctx, s, sendReq)
+	return c.chatOnce(ctx, s, sendReq, onA2UI)
 }
 
 // messageRoleRejected recognizes the schema rejection a v0.3 agent returns
@@ -247,7 +271,7 @@ func isAgentRole(role sdk.MessageRole) bool {
 	}
 }
 
-func (c *Client) chatOnce(ctx context.Context, s sender, req *sdk.SendMessageRequest) (Result, error) {
+func (c *Client) chatOnce(ctx context.Context, s sender, req *sdk.SendMessageRequest, onA2UI func(json.RawMessage)) (Result, error) {
 	resp, err := s.SendMessage(ctx, req)
 	if err != nil {
 		return Result{}, fmt.Errorf("A2A 请求失败：%w", err)
@@ -259,23 +283,38 @@ func (c *Client) chatOnce(ctx context.Context, s sender, req *sdk.SendMessageReq
 	switch v := resp.(type) {
 	case *sdk.Message:
 		res.Text = partsText(v.Parts)
+		res.A2UI = collectA2UI(v.Parts)
 		res.TaskID = firstTaskID(v.TaskID, res.TaskID)
 		res.ContextID = firstString(v.ContextID, res.ContextID)
 	case *sdk.Task:
 		applyTask(&res, v)
 		res.Text = taskText(v)
+		res.A2UI = taskA2UI(v)
 	default:
 		return res, fmt.Errorf("A2A 返回了未知响应类型 %T", resp)
+	}
+	if onA2UI != nil {
+		for _, raw := range res.A2UI {
+			onA2UI(raw)
+		}
 	}
 	return res, taskError(res)
 }
 
-func (c *Client) chatStream(ctx context.Context, s sender, req *sdk.SendMessageRequest, onChunk func(string)) (Result, error) {
+func (c *Client) chatStream(ctx context.Context, s sender, req *sdk.SendMessageRequest, onChunk func(string), onA2UI func(json.RawMessage)) (Result, error) {
 	res := Result{
 		TaskID:    req.Message.TaskID,
 		ContextID: req.Message.ContextID,
 	}
 	var text strings.Builder
+	emitA2UI := func(raws []json.RawMessage) {
+		for _, raw := range raws {
+			res.A2UI = append(res.A2UI, raw)
+			if onA2UI != nil {
+				onA2UI(raw)
+			}
+		}
+	}
 	emit := func(s string) {
 		if s == "" {
 			return
@@ -304,11 +343,13 @@ func (c *Client) chatStream(ctx context.Context, s sender, req *sdk.SendMessageR
 			}
 			res.TaskID = firstTaskID(v.TaskID, res.TaskID)
 			res.ContextID = firstString(v.ContextID, res.ContextID)
+			emitA2UI(collectA2UI(v.Parts))
 		case *sdk.Task:
 			applyTask(&res, v)
 			if text.Len() == 0 {
 				emit(taskText(v))
 			}
+			emitA2UI(taskA2UI(v))
 		case *sdk.TaskStatusUpdateEvent:
 			res.TaskID = firstTaskID(v.TaskID, res.TaskID)
 			res.ContextID = firstString(v.ContextID, res.ContextID)
@@ -323,6 +364,9 @@ func (c *Client) chatStream(ctx context.Context, s sender, req *sdk.SendMessageR
 				(v.Status.State == sdk.TaskStateInputRequired || v.Status.State.Terminal()) {
 				emit(partsText(v.Status.Message.Parts))
 			}
+			if v.Status.Message != nil {
+				emitA2UI(collectA2UI(v.Status.Message.Parts))
+			}
 		case *sdk.TaskArtifactUpdateEvent:
 			res.TaskID = firstTaskID(v.TaskID, res.TaskID)
 			res.ContextID = firstString(v.ContextID, res.ContextID)
@@ -330,6 +374,7 @@ func (c *Client) chatStream(ctx context.Context, s sender, req *sdk.SendMessageR
 				continue
 			}
 			id := v.Artifact.ID
+			emitA2UI(collectA2UI(v.Artifact.Parts))
 			next := partsText(v.Artifact.Parts)
 			if v.Append {
 				artifactText[id] += next
@@ -417,6 +462,78 @@ func (c *Client) CancelTask(ctx context.Context, id sdk.TaskID) error {
 	return err
 }
 
+// isA2UIPart reports whether a DataPart carries A2UI envelopes.
+func isA2UIPart(part *sdk.Part) bool {
+	if part == nil {
+		return false
+	}
+	if part.MediaType == A2UIMediaType {
+		return true
+	}
+	if _, ok := part.Content.(sdk.Data); !ok {
+		return false
+	}
+	if mime, _ := part.Metadata["mimeType"].(string); mime == A2UIMediaType {
+		return true
+	}
+	return false
+}
+
+// collectA2UI returns the envelopes in a list of parts.
+func collectA2UI(parts []*sdk.Part) []json.RawMessage {
+	var out []json.RawMessage
+	for _, part := range parts {
+		if !isA2UIPart(part) {
+			continue
+		}
+		data, ok := part.Content.(sdk.Data)
+		if !ok {
+			continue
+		}
+		raw, err := json.Marshal(data.Value)
+		if err != nil {
+			continue
+		}
+		out = append(out, flattenA2UI(raw)...)
+	}
+	return out
+}
+
+// taskA2UI collects envelopes from a task's history, status and artifacts.
+func taskA2UI(task *sdk.Task) []json.RawMessage {
+	if task == nil {
+		return nil
+	}
+	var out []json.RawMessage
+	for _, msg := range task.History {
+		out = append(out, collectA2UI(msg.Parts)...)
+	}
+	if task.Status.Message != nil {
+		out = append(out, collectA2UI(task.Status.Message.Parts)...)
+	}
+	for _, artifact := range task.Artifacts {
+		out = append(out, collectA2UI(artifact.Parts)...)
+	}
+	return out
+}
+
+// flattenA2UI turns an array payload into individual envelopes, leaving a
+// single envelope as it is.
+func flattenA2UI(raw json.RawMessage) []json.RawMessage {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return nil
+	}
+	if raw[0] == '[' {
+		var list []json.RawMessage
+		if err := json.Unmarshal(raw, &list); err == nil {
+			return list
+		}
+		return nil
+	}
+	return []json.RawMessage{raw}
+}
+
 func partsText(parts []*sdk.Part) string {
 	var b strings.Builder
 	for _, part := range parts {
@@ -427,6 +544,9 @@ func partsText(parts []*sdk.Part) string {
 		case sdk.Text:
 			b.WriteString(string(v))
 		case sdk.Data:
+			if isA2UIPart(part) {
+				continue
+			}
 			data, err := json.Marshal(v.Value)
 			if err != nil {
 				fmt.Fprintf(&b, "%v", v.Value)

@@ -58,6 +58,11 @@ type Message struct {
 	Timestamp time.Time  `json:"timestamp"`
 	ToolCalls []ToolCall `json:"tool_calls,omitempty"` // Tool calls made by this message
 
+	// A2UI holds the A2UI 1.0 envelopes a remote agent sent for this reply.
+	// The UI replays them into its renderer and keeps updating the surface
+	// while the turn streams, so a stored reply redraws the same form.
+	A2UI []json.RawMessage `json:"a2ui,omitempty"`
+
 	// AuthorID identifies who wrote this message: AuthorHuman for the person,
 	// or an agent reference ("agent:Name", "acp:Name", "app:Name") for an
 	// assistant. Role alone cannot carry this, because a group conversation

@@ -32,6 +32,11 @@ type Client struct {
 type ChatRequest struct {
 	ThreadID string
 	Text     string
+	// ForwardedProps ride in RunAgentInput.forwardedProps; the A2UI AG-UI
+	// binding uses it for renderer capabilities and actions.
+	ForwardedProps map[string]any
+	// OnA2UI receives each A2UI envelope while the run streams.
+	OnA2UI func(json.RawMessage)
 }
 
 // Result is the text a turn produced and the thread it belongs to.
@@ -39,6 +44,8 @@ type Result struct {
 	Text     string
 	ThreadID string
 	RunID    string
+	// A2UI holds every A2UI envelope the run sent, in order.
+	A2UI []json.RawMessage
 }
 
 // New returns a client for conn. The HTTP client has no total timeout so a
@@ -82,7 +89,7 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onChunk func(string)
 		threadID = "thread-" + randomID()
 	}
 	runID := "run-" + randomID()
-	body, err := json.Marshal(map[string]any{
+	payload := map[string]any{
 		"threadId": threadID,
 		"runId":    runID,
 		"messages": []map[string]any{{
@@ -90,7 +97,11 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onChunk func(string)
 		}},
 		"tools":   []any{},
 		"context": []any{},
-	})
+	}
+	if len(req.ForwardedProps) > 0 {
+		payload["forwardedProps"] = req.ForwardedProps
+	}
+	body, err := json.Marshal(payload)
 	if err != nil {
 		return Result{}, err
 	}
@@ -128,10 +139,12 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onChunk func(string)
 			continue
 		}
 		var ev struct {
-			Type    string `json:"type"`
-			Delta   string `json:"delta"`
-			Message string `json:"message"`
-			Error   string `json:"error"`
+			Type    string          `json:"type"`
+			Delta   string          `json:"delta"`
+			Message string          `json:"message"`
+			Error   string          `json:"error"`
+			Name    string          `json:"name"`
+			Value   json.RawMessage `json:"value"`
 		}
 		if err := json.Unmarshal([]byte(payload), &ev); err != nil {
 			continue
@@ -153,6 +166,15 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onChunk func(string)
 				msg = "AG-UI 运行失败"
 			}
 			return res, errors.New(msg)
+		case "CUSTOM":
+			if isA2UIEvent(ev.Name) {
+				for _, raw := range a2uiValues(ev.Value) {
+					res.A2UI = append(res.A2UI, raw)
+					if req.OnA2UI != nil {
+						req.OnA2UI(raw)
+					}
+				}
+			}
 		case "RUN_FINISHED":
 			return res, nil
 		}
@@ -161,6 +183,28 @@ func (c *Client) Chat(ctx context.Context, req ChatRequest, onChunk func(string)
 		return res, err
 	}
 	return res, nil
+}
+
+// isA2UIEvent recognizes the custom event names the A2UI AG-UI binding uses.
+func isA2UIEvent(name string) bool {
+	return name == "a2ui" || strings.HasPrefix(name, "a2ui.")
+}
+
+// a2uiValues flattens one CUSTOM value, which may be a single envelope or an
+// array of them, into individual envelopes.
+func a2uiValues(value json.RawMessage) []json.RawMessage {
+	value = bytes.TrimSpace(value)
+	if len(value) == 0 {
+		return nil
+	}
+	if value[0] == '[' {
+		var list []json.RawMessage
+		if err := json.Unmarshal(value, &list); err == nil {
+			return list
+		}
+		return nil
+	}
+	return []json.RawMessage{value}
 }
 
 func (c *Client) setHeaders(req *http.Request) {

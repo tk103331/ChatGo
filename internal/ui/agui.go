@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -40,8 +41,19 @@ func (cw *ChatWindow) runAGUIChat(ctx context.Context, conv *models.Conversation
 		return
 	}
 	res, err := cli.Chat(ctx, agui.ChatRequest{
-		ThreadID: conv.AGUIThreadID,
-		Text:     text,
+		ThreadID:       conv.AGUIThreadID,
+		Text:           text,
+		ForwardedProps: cw.takeA2UIForward(conv.ID),
+		OnA2UI: func(raw json.RawMessage) {
+			cw.postMain(func() {
+				if idx < 0 || idx >= len(conv.Messages) {
+					return
+				}
+				m := &conv.Messages[idx]
+				m.A2UI = append(m.A2UI, raw)
+				cw.invalidate()
+			})
+		},
 	}, func(chunk string) {
 		cw.postMain(func() {
 			if idx < 0 || idx >= len(conv.Messages) {

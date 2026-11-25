@@ -138,6 +138,7 @@ func (cw *ChatWindow) messageSegments(c *mgo.Context, msg models.Message, stream
 	if final >= 0 {
 		kit.MarkdownView(c, segs[final].Text)
 	}
+	cw.a2uiMessage(c, msg)
 	if cw.emptySegments(msg) && streaming {
 		kit.TypingIndicator(c, "Assistant")
 	}
@@ -289,11 +290,15 @@ func (cw *ChatWindow) messageLegacy(c *mgo.Context, msg models.Message, streamin
 	case streaming:
 		kit.TypingIndicator(c, "Assistant")
 	}
+	cw.a2uiMessage(c, msg)
 }
 
 // emptySegments reports whether a message has no visible text, thinking or tool
 // content yet.
 func (cw *ChatWindow) emptySegments(msg models.Message) bool {
+	if len(msg.A2UI) > 0 {
+		return false
+	}
 	for _, s := range msg.Segments {
 		if s.Kind == "tool" && s.ToolCall != nil {
 			return false
@@ -560,6 +565,7 @@ func (cw *ChatWindow) applyEdit(i int) {
 		return
 	}
 	conv := cw.cur
+	cw.dropA2UIMessages(conv.Messages[i+1:])
 	conv.Messages[i].Content = cw.editDraft
 	conv.Messages = conv.Messages[:i+1]
 	cw.editingIdx = -1
@@ -575,6 +581,7 @@ func (cw *ChatWindow) regenerate(i int) {
 	conv := cw.cur
 	prev := conv.Messages[i]
 	t := turnOf(conv, prev.ID)
+	cw.dropA2UIMessages(conv.Messages[i:])
 	conv.Messages = conv.Messages[:i]
 	// The replaced reply's author stands: regenerating asks the same agent
 	// again, not whichever one the window happens to have selected now.

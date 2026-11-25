@@ -21,6 +21,8 @@ import (
 	"chatgo/internal/mcp"
 	"chatgo/internal/plugin"
 	"chatgo/internal/ui/assets"
+	"chatgo/pkg/a2ui/hybrid"
+	"chatgo/pkg/a2ui/web"
 	"chatgo/pkg/models"
 
 	"github.com/cloudwego/eino/components/tool"
@@ -66,6 +68,17 @@ type ChatWindow struct {
 	// expandedApps records which tool calls show their inline view, keyed by
 	// conversation and tool call. Main thread only.
 	expandedApps map[string]bool
+	// a2ui renders A2UI 1.0 surfaces sent by remote agents. The manager
+	// serves the web renderer's pages; the router picks native or web per
+	// surface. fed counts the envelopes already applied per message.
+	a2uiMgr   *web.Manager
+	a2ui      *hybrid.Router
+	a2uiMu    sync.Mutex
+	a2uiFed   map[string]int
+	a2uiData  map[string]map[string]any // local surface -> latest data model
+	a2uiOwned map[string][]string       // message -> surface IDs it created
+	a2uiFwd   map[string]map[string]any // conversation -> next AG-UI forwardedProps
+	a2uiParts map[string][]any          // conversation -> next A2A DataPart values
 	// plugins owns installed JavaScript plugins and their contributions.
 	plugins  *plugin.Manager
 	pluginUI pluginUIState
@@ -351,6 +364,12 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		appModelContext: map[string]string{},
 		inlineApps:      map[string]*inlineApp{},
 		expandedApps:    map[string]bool{},
+		a2uiMgr:         web.NewManager(nil),
+		a2uiFed:         map[string]int{},
+		a2uiData:        map[string]map[string]any{},
+		a2uiOwned:       map[string][]string{},
+		a2uiFwd:         map[string]map[string]any{},
+		a2uiParts:       map[string][]any{},
 		provider:        cfg.CurrentProvider,
 		agentMode:       cfg.UseReactAgent,
 		toolOn:          map[string]bool{},
@@ -429,6 +448,11 @@ func (cw *ChatWindow) Show() {
 			log.Printf("mcp apps scheme: %v", err)
 		}
 	}
+	if cw.a2uiMgr != nil && !mygo.Protocol.IsHandled(web.Scheme) {
+		if err := mygo.Protocol.Handle(web.Scheme, cw.a2uiMgr); err != nil {
+			log.Printf("a2ui web scheme: %v", err)
+		}
+	}
 	w := mygo.NewWindow(mygo.WindowOptions{
 		Title:         "ChatGo",
 		Width:         1000,
@@ -441,6 +465,7 @@ func (cw *ChatWindow) Show() {
 	cw.winMu.Lock()
 	cw.window = w
 	cw.winMu.Unlock()
+	cw.initA2UI(w)
 	_ = w.SetIcon(assets.LogoPNG())
 	_ = mygo.App.Dock.SetIcon(assets.LogoPNG())
 	cw.applyQuickShortcut()
@@ -499,6 +524,9 @@ func (cw *ChatWindow) Show() {
 		}
 		if cw.mcpApps != nil {
 			cw.mcpApps.CloseAll()
+		}
+		if cw.a2ui != nil {
+			cw.a2ui.Close()
 		}
 	})
 	mygo.App.OnWillQuit(func(e *mygo.QuitEvent) { cw.quitting = false })

@@ -116,3 +116,50 @@ func TestPingAndPlainResponse(t *testing.T) {
 		t.Fatal("a JSON reply should not count as a run")
 	}
 }
+
+func TestChatCollectsA2UICustomEvents(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, ev := range []string{
+			`{"type":"CUSTOM","name":"a2ui","value":{"version":"1.0","createSurface":{"surfaceId":"main"}}}`,
+			`{"type":"CUSTOM","name":"a2ui.message","value":[{"version":"1.0","updateComponents":{"surfaceId":"main","components":[]}},{"version":"1.0","updateDataModel":{"surfaceId":"main","path":"/a","value":1}}]}`,
+			`{"type":"CUSTOM","name":"telemetry","value":{"ignored":true}}`,
+			`{"type":"RUN_FINISHED"}`,
+		} {
+			fmt.Fprintf(w, "data: %s\n\n", ev)
+		}
+	}))
+	defer srv.Close()
+	cli, _ := New(config.AGUIConnection{Name: "A", URL: srv.URL})
+	var live []json.RawMessage
+	res, err := cli.Chat(context.Background(), ChatRequest{
+		Text: "ui", OnA2UI: func(raw json.RawMessage) { live = append(live, raw) },
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.A2UI) != 3 || len(live) != 3 {
+		t.Fatalf("a2ui = %d live = %d", len(res.A2UI), len(live))
+	}
+}
+
+func TestChatSendsForwardedProps(t *testing.T) {
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&got)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"type\":\"RUN_FINISHED\"}\n\n")
+	}))
+	defer srv.Close()
+	cli, _ := New(config.AGUIConnection{Name: "A", URL: srv.URL})
+	_, err := cli.Chat(context.Background(), ChatRequest{
+		Text: "x", ForwardedProps: map[string]any{"a2ui": map[string]any{"clientMessage": map[string]any{}}},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	props, _ := got["forwardedProps"].(map[string]any)
+	if props == nil || props["a2ui"] == nil {
+		t.Fatalf("forwardedProps = %#v", got["forwardedProps"])
+	}
+}

@@ -106,6 +106,18 @@ ChatGo 支持 [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) 扩�
 - `ui/message` 只会把文字填入输入框，由用户确认后发送；`ui/update-model-context` 的内容会在该会话的下一轮作为上下文提供给模型。
 - 视图的 `ui/open-link` 仅允许 `http` / `https` / `mailto` 链接，并交给系统浏览器打开。
 
+### A2UI 1.0
+
+ChatGo 的远程 Agent 对话支持 [A2UI 1.0](https://a2ui.org/specification/v1.0-a2ui/) 生成式界面：
+
+- AG-UI：识别 `CUSTOM` 事件中 `name` 为 `a2ui` / `a2ui.*` 的 `value`；
+- A2A：识别 `metadata.mimeType = "application/a2ui+json"` 的 `DataPart`，它不会混进普通文本；
+- 界面渲染在回复正文下方，按 `createSurface` / `updateComponents` / `updateDataModel` / `deleteSurface` 增量更新；
+- 协议实现与渲染器在独立包 [pkg/a2ui](/Users/tk/code/open/ChatGo/pkg/a2ui/README.md)：`native` 用 MyGo 原生控件，`web` 用 WebView，`hybrid` 按 `catalogId` 选择；
+- Basic Catalog 默认走原生；自定义或富组件 catalog 走 Web Renderer；
+- 用户点击/提交界面时，AG-UI 通过 `forwardedProps.a2ui.clientMessage` 回传，A2A 通过 `application/a2ui+json` 的 `DataPart` 回传；
+- 当前不执行 `callRendererFunction` / `callAgentFunction`，未知组件显示占位。
+
 ---
 
 ## 三、Skills

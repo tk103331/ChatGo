@@ -2,6 +2,7 @@ package a2a
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"iter"
 	"net/http"
@@ -454,5 +455,31 @@ func TestParseAgentCardOpenAPISecurityScheme(t *testing.T) {
 	}
 	if len(card.SecurityRequirements) != 1 {
 		t.Fatalf("security requirements = %#v", card.SecurityRequirements)
+	}
+}
+
+func TestChatStreamDeliversA2UILive(t *testing.T) {
+	part := sdk.NewDataPart([]any{map[string]any{"version": "1.0", "createSurface": map[string]any{"surfaceId": "form"}}})
+	part.MediaType = A2UIMediaType
+	part.Metadata = map[string]any{"mimeType": A2UIMediaType}
+	s := &fakeSender{stream: []sdk.Event{
+		&sdk.TaskStatusUpdateEvent{TaskID: "t1", ContextID: "c1", Status: sdk.TaskStatus{State: sdk.TaskStateWorking}},
+		&sdk.TaskArtifactUpdateEvent{TaskID: "t1", ContextID: "c1", Artifact: &sdk.Artifact{ID: "a", Parts: sdk.ContentParts{
+			sdk.NewTextPart("hello"), part,
+		}}},
+		&sdk.TaskStatusUpdateEvent{TaskID: "t1", ContextID: "c1", Status: sdk.TaskStatus{State: sdk.TaskStateCompleted}},
+	}}
+	var live []string
+	res, err := testClient(s, true).Chat(context.Background(), ChatRequest{
+		Text: "hi", OnA2UI: func(raw json.RawMessage) { live = append(live, string(raw)) },
+	}, func(string) {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.A2UI) != 1 || len(live) != 1 {
+		t.Fatalf("a2ui = %d live = %d", len(res.A2UI), len(live))
+	}
+	if strings.Contains(res.Text, "createSurface") {
+		t.Fatalf("A2UI leaked into text: %q", res.Text)
 	}
 }

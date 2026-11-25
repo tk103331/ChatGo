@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -97,6 +98,17 @@ func (cw *ChatWindow) runA2AChat(ctx context.Context, conv *models.Conversation,
 		Text:      text,
 		TaskID:    taskID,
 		ContextID: conv.A2AContextID,
+		A2UI:      cw.takeA2UIParts(conv.ID),
+		OnA2UI: func(raw json.RawMessage) {
+			cw.postMain(func() {
+				if idx < 0 || idx >= len(conv.Messages) {
+					return
+				}
+				m := &conv.Messages[idx]
+				m.A2UI = append(m.A2UI, raw)
+				cw.invalidate()
+			})
+		},
 	}, func(chunk string) {
 		cw.postMain(func() {
 			m := &conv.Messages[idx]
@@ -136,6 +148,7 @@ func (cw *ChatWindow) finishA2ATurn(ctx context.Context, conv *models.Conversati
 		if res != nil {
 			applyA2AReply(m, res)
 			applyA2AResult(conv, res)
+			a2aResultA2UI(m, res)
 		}
 		if err != nil && ctx.Err() == nil {
 			if strings.TrimSpace(m.Content) == "" {
