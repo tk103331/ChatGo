@@ -556,6 +556,10 @@ func (cw *ChatWindow) centerWebBody(c *mgo.Context, tab *centerTab) {
 		cw.centerLoading(c)
 		return
 	}
+	if tab.Web.App != nil {
+		cw.mcpAppBody(c, tab)
+		return
+	}
 	mgo.Column(c).Fill().MinWidth(0).MinHeight(0).Children(func() {
 		cw.webToolbar(c, tab.Web)
 		mgo.Box(c).Grow(1).MinHeight(0).Children(func() {
@@ -669,6 +673,7 @@ func (cw *ChatWindow) forceCloseCenterTab(pane int, tab *centerTab) {
 	}
 	switch {
 	case tab.Web != nil && tab.Web.view != nil:
+		cw.mcpAppClosed(tab)
 		tab.Web.view.Destroy()
 	case tab.Term != nil:
 		cw.releaseTerm(tab.Term)

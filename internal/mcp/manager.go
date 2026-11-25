@@ -27,12 +27,19 @@ type MCPServerStatus struct {
 // MCPTool represents a tool from an MCP server
 type MCPTool struct {
 	Name        string
+	Title       string
 	Description string
 	InputSchema map[string]interface{}
 	// OutputSchema is the tool's declared result schema, nil when it has none.
 	OutputSchema map[string]interface{}
 	// Annotations is the tool's declared hints, such as readOnlyHint.
 	Annotations map[string]interface{}
+	// UIResourceURI is the MCP Apps view this tool renders, empty when the
+	// tool has no interactive UI.
+	UIResourceURI string
+	// UIVisibility says who may call the tool: "model", "app", or both.
+	// An empty list means both, as the MCP Apps extension specifies.
+	UIVisibility []string
 }
 
 // Manager manages MCP client connections and tools
@@ -171,6 +178,11 @@ func (m *Manager) InitializeServer(cfg config.MCPServer) (*MCPServerStatus, erro
 	initReq := mcp.InitializeRequest{}
 	initReq.Params.ProtocolVersion = mcp.LATEST_LEGACY_PROTOCOL_VERSION
 	initReq.Params.ClientInfo = mcp.Implementation{Name: "ChatGo", Version: "1.0.0"}
+	// Advertise MCP Apps so servers register UI-enabled tools, and so they
+	// can fall back to text-only variants for hosts without it.
+	initReq.Params.Capabilities = mcp.ClientCapabilities{
+		Extensions: map[string]any{UIExtension: UIExtensionCapability()},
+	}
 	_, err = mcpClient.Initialize(ctx, initReq)
 	if err != nil {
 		fmt.Printf("[MCP] Failed to initialize MCP connection: %v\n", err)
@@ -199,11 +211,19 @@ func (m *Manager) InitializeServer(cfg config.MCPServer) (*MCPServerStatus, erro
 	// Parse tools
 	status.Tools = make([]MCPTool, 0, len(toolsResult.Tools))
 	for _, tool := range toolsResult.Tools {
+		uiURI, uiVisibility := ToolUI(tool.Meta)
+		title := tool.Title
+		if title == "" && tool.Annotations.Title != "" {
+			title = tool.Annotations.Title
+		}
 		mcpTool := MCPTool{
-			Name:        tool.Name,
-			Description: tool.Description,
-			InputSchema: map[string]interface{}{"inputSchema": tool.InputSchema},
-			Annotations: annotationMap(tool.Annotations),
+			Name:          tool.Name,
+			Title:         title,
+			Description:   tool.Description,
+			InputSchema:   map[string]interface{}{"inputSchema": tool.InputSchema},
+			Annotations:   annotationMap(tool.Annotations),
+			UIResourceURI: uiURI,
+			UIVisibility:  uiVisibility,
 		}
 		if len(tool.RawOutputSchema) > 0 {
 			var out map[string]interface{}

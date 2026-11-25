@@ -234,11 +234,23 @@ func (cw *ChatWindow) mcpToolsDialog(c *mgo.Context) {
 						Title: tl.Name,
 						Trigger: func() {
 							mgo.Text(c, tl.Name).FontWeight(600).Font(mtheme.MonoFont).SingleLine()
+							if tl.UIResourceURI != "" {
+								mgo.Text(c, "交互界面").FontSize(caption).TextColor(k.Success).Shrink(0)
+							}
 						},
 					}, func() {
 						mgo.Column(c).Gap(u).Padding(u, 0).Children(func() {
 							if tl.Description != "" {
 								mgo.Text(c, tl.Description).TextColor(k.TextMuted).FontSize(caption)
+							}
+							if tl.UIResourceURI != "" {
+								vis := "model / app"
+								if len(tl.UIVisibility) > 0 {
+									vis = strings.Join(tl.UIVisibility, " / ")
+								}
+								mgo.Text(c, "MCP Apps：").FontWeight(600).FontSize(caption)
+								mgo.Text(c, tl.UIResourceURI+"（"+vis+"）").FontSize(caption).
+									Font(mtheme.MonoFont).TextColor(k.TextMuted)
 							}
 							if len(tl.Annotations) > 0 {
 								mgo.Text(c, "标注").FontWeight(600).FontSize(caption)

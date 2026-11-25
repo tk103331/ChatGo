@@ -654,6 +654,14 @@ func (cw *ChatWindow) chatMessages(conv *models.Conversation, upto int) []llm.Ch
 		}
 		sys += skills
 	}
+	// Context a view sent for this conversation goes in before the turn, so
+	// the model sees what the user did in the app.
+	if extra := cw.appModelContext[conv.ID]; extra != "" {
+		if sys != "" {
+			sys += "\n\n"
+		}
+		sys += extra
+	}
 	if sys != "" {
 		out = append([]llm.ChatMessage{{Role: "system", Content: sys}}, out...)
 	}

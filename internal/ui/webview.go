@@ -13,6 +13,7 @@ import (
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
 
+	"chatgo/internal/mcp"
 	"chatgo/internal/ui/icons"
 	"chatgo/internal/ui/kit"
 	mtheme "chatgo/internal/ui/theme"
@@ -27,6 +28,11 @@ type webTab struct {
 	URL     string
 	Address string
 	view    *mygo.WebView
+	// App is the MCP Apps host when this tab shows a tool's view. Such a tab
+	// has no address bar and stays out of the webview tool and composer.
+	App *mcp.AppHost
+	// ConvID is the conversation an MCP Apps view belongs to.
+	ConvID string
 }
 
 // newWebTab opens a web view tab for target and returns it.
@@ -95,11 +101,23 @@ func (cw *ChatWindow) watchWebTab(tab *webTab) {
 	})
 }
 
+// userWebTabs lists web tabs the composer can reference: pages, not the
+// views that belong to a tool call.
+func (cw *ChatWindow) userWebTabs() []*centerTab {
+	out := make([]*centerTab, 0)
+	for _, t := range cw.centerTabsOfKind(centerWeb) {
+		if t.Web != nil && t.Web.App == nil {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // webTabByID returns the open web tab with id, or nil. An empty id takes the
 // first open tab.
 func (cw *ChatWindow) webTabByID(id string) *webTab {
 	for _, t := range cw.centerTabsOfKind(centerWeb) {
-		if t.Web == nil {
+		if t.Web == nil || t.Web.App != nil {
 			continue
 		}
 		if id == "" || t.Web.ID == id {
@@ -403,7 +421,7 @@ func (cw *ChatWindow) closeWebTab(id string) (string, error) {
 func (cw *ChatWindow) listWebTabs() (string, error) {
 	var lines []string
 	for _, t := range cw.centerTabsOfKind(centerWeb) {
-		if t.Web == nil {
+		if t.Web == nil || t.Web.App != nil {
 			continue
 		}
 		url := t.Web.URL

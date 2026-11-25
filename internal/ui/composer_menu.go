@@ -197,7 +197,7 @@ func (cw *ChatWindow) contextButton(c *mgo.Context, allowWebview bool) {
 
 		if allowWebview && *mode == "webview" {
 			row("chevron-left", "返回", "", func() { *mode = "" })
-			for _, tab := range cw.centerTabsOfKind(centerWeb) {
+			for _, tab := range cw.userWebTabs() {
 				if tab.Web == nil {
 					continue
 				}
@@ -221,7 +221,7 @@ func (cw *ChatWindow) contextButton(c *mgo.Context, allowWebview bool) {
 			*open = false
 			cw.pickExternalDirectory()
 		})
-		if allowWebview && len(cw.centerTabsOfKind(centerWeb)) > 0 {
+		if allowWebview && len(cw.userWebTabs()) > 0 {
 			row("globe", "Webview", "引用当前打开的网页", func() { *mode = "webview" })
 		}
 	})

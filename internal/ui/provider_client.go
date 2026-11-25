@@ -202,9 +202,10 @@ func (cw *ChatWindow) buildEinoToolsEnv(toolIDs []string, root string, conv *mod
 		if !ok || status.Status != "initialized" {
 			continue
 		}
-		names := make([]string, 0, len(status.Tools))
-		for _, tl := range status.Tools {
-			names = append(names, tl.Name)
+		names := status.ModelToolNames()
+		if len(names) == 0 {
+			// Every tool on this server is app-only; the model gets none.
+			continue
 		}
 		// Listing tools talks to the server: bound it so a hung server cannot
 		// block the caller, which is the UI thread when switching chats.
@@ -245,10 +246,7 @@ func (cw *ChatWindow) toolCacheSignature(toolIDs []string, root string, conv ...
 		case strings.HasPrefix(id, "mcp:"):
 			name := strings.TrimPrefix(id, "mcp:")
 			if status, ok := cw.mcpManager.GetServerStatus(name); ok {
-				names := make([]string, 0, len(status.Tools))
-				for _, tl := range status.Tools {
-					names = append(names, tl.Name)
-				}
+				names := status.ModelToolNames()
 				sort.Strings(names)
 				fmt.Fprintf(&b, ":%p:%s", status.Client, strings.Join(names, ","))
 			}

@@ -7,6 +7,7 @@ package ui
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"sort"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"chatgo/internal/capture"
 	"chatgo/internal/config"
 	"chatgo/internal/llm"
+	"chatgo/internal/mcp"
 	"chatgo/internal/plugin"
 	"chatgo/internal/ui/assets"
 	"chatgo/pkg/models"
@@ -48,6 +50,22 @@ type ChatWindow struct {
 	cfg         *config.Config
 	convManager *models.ConversationManager
 	mcpManager  *MCPManagerWrapper
+	// mcpApps serves MCP Apps views over the chatgo-mcp custom scheme.
+	mcpApps *mcp.AppManager
+	// appModelContext holds the last context each conversation's MCP Apps
+	// views asked the model to see, keyed by conversation ID.
+	appModelContext map[string]string
+	// inlineApps are the MCP Apps views rendered in the message stream,
+	// keyed by conversation and tool call. The mutex guards the map and each
+	// view's fields, which the bridge's goroutines also touch.
+	inlineApps map[string]*inlineApp
+	inlineMu   sync.Mutex
+	// appResources caches fetched view HTML by server and ui:// URI.
+	appResources map[string]*mcp.AppResource
+	appResMu     sync.Mutex
+	// expandedApps records which tool calls show their inline view, keyed by
+	// conversation and tool call. Main thread only.
+	expandedApps map[string]bool
 	// plugins owns installed JavaScript plugins and their contributions.
 	plugins  *plugin.Manager
 	pluginUI pluginUIState
@@ -326,37 +344,41 @@ func NewChatWindow(cfg *config.Config) (*ChatWindow, error) {
 		return nil, fmt.Errorf("failed to create conversation manager: %w", err)
 	}
 	cw := &ChatWindow{
-		cfg:            cfg,
-		convManager:    cm,
-		mcpManager:     NewMCPManagerWrapper(),
-		provider:       cfg.CurrentProvider,
-		agentMode:      cfg.UseReactAgent,
-		toolOn:         map[string]bool{},
-		skillOn:        map[string]bool{},
-		acp:            newACPState(),
-		skills:         newSkillsState(),
-		mcp:            mcpState{},
-		center:         newCenterState(),
-		rightPanel:     false,
-		wsCollapsed:    map[string]bool{},
-		themeMode:      mcore.ParseMode(cfg.ThemeMode),
-		colorTheme:     mtheme.ByName(cfg.ColorTheme),
-		density:        mtheme.Compact,
-		locale:         mcore.ParseLocale(cfg.Locale),
-		editingIdx:     -1,
-		agentSecModels: true,
-		agentSecTools:  true,
-		agentSecMCP:    true,
-		agentSecSkills: true,
-		avatarPNG:      map[string]*mgo.Bitmap{},
-		iconCache:      map[string]iconImage{},
-		autoRunning:    map[string]bool{},
-		streams:        map[string]*streamState{},
-		convGit:        newConvGitState(),
-		channels:       newChannelManager(),
-		grabber:        capture.New(),
-		quickReplyIDs:  map[string]bool{},
-		acpUpd:         map[string]*acpUpdState{},
+		cfg:             cfg,
+		convManager:     cm,
+		mcpManager:      NewMCPManagerWrapper(),
+		mcpApps:         mcp.NewAppManager(),
+		appModelContext: map[string]string{},
+		inlineApps:      map[string]*inlineApp{},
+		expandedApps:    map[string]bool{},
+		provider:        cfg.CurrentProvider,
+		agentMode:       cfg.UseReactAgent,
+		toolOn:          map[string]bool{},
+		skillOn:         map[string]bool{},
+		acp:             newACPState(),
+		skills:          newSkillsState(),
+		mcp:             mcpState{},
+		center:          newCenterState(),
+		rightPanel:      false,
+		wsCollapsed:     map[string]bool{},
+		themeMode:       mcore.ParseMode(cfg.ThemeMode),
+		colorTheme:      mtheme.ByName(cfg.ColorTheme),
+		density:         mtheme.Compact,
+		locale:          mcore.ParseLocale(cfg.Locale),
+		editingIdx:      -1,
+		agentSecModels:  true,
+		agentSecTools:   true,
+		agentSecMCP:     true,
+		agentSecSkills:  true,
+		avatarPNG:       map[string]*mgo.Bitmap{},
+		iconCache:       map[string]iconImage{},
+		autoRunning:     map[string]bool{},
+		streams:         map[string]*streamState{},
+		convGit:         newConvGitState(),
+		channels:        newChannelManager(),
+		grabber:         capture.New(),
+		quickReplyIDs:   map[string]bool{},
+		acpUpd:          map[string]*acpUpdState{},
 	}
 	if wd, err := os.Getwd(); err == nil {
 		cw.workspace = wd
@@ -400,6 +422,13 @@ func (cw *ChatWindow) Show() {
 	// Register before the main window so a service request that launched the
 	// app finds its provider as soon as the app is ready.
 	installServiceProvider(cw)
+	// MCP Apps views load from a custom scheme; it has to exist before any
+	// window or web view is created.
+	if cw.mcpApps != nil && !mygo.Protocol.IsHandled(mcpAppScheme) {
+		if err := mygo.Protocol.Handle(mcpAppScheme, cw.mcpApps); err != nil {
+			log.Printf("mcp apps scheme: %v", err)
+		}
+	}
 	w := mygo.NewWindow(mygo.WindowOptions{
 		Title:         "ChatGo",
 		Width:         1000,
@@ -467,6 +496,9 @@ func (cw *ChatWindow) Show() {
 		cw.stopQuickWatch()
 		if cw.quick != nil {
 			cw.quick.destroy()
+		}
+		if cw.mcpApps != nil {
+			cw.mcpApps.CloseAll()
 		}
 	})
 	mygo.App.OnWillQuit(func(e *mygo.QuitEvent) { cw.quitting = false })

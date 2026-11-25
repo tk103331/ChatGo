@@ -94,6 +94,18 @@ MCP（Model Context Protocol）服务器为模型提供扩展工具集。你可�
 
 可在对话输入框按会话整体开关某个 MCP 服务器，并支持搜索。
 
+### MCP Apps（交互界面）
+
+ChatGo 支持 [MCP Apps](https://github.com/modelcontextprotocol/ext-apps) 扩展（SEP-1865）。服务器可以在工具上通过 `_meta.ui.resourceUri` 关联一个 `ui://` HTML 资源。模型调用该工具后，工具行会出现一个交互界面图标：点击后在消息流内展开并渲染 WebView，再次点击收起；展开后的标题栏还可以把同一个界面打开到侧边标签页。
+
+- 初始化时声明 `io.modelcontextprotocol/ui` 能力（`text/html;profile=mcp-app`）。
+- `_meta.ui.visibility` 为 `["app"]` 的工具不会出现在模型的工具列表中，但仍可被界面通过 `tools/call` 调用；`["model"]` 的工具不允许界面调用。
+- 视图默认不创建 WebView，只在点击图标后按需加载；标签页中的视图是独立实例。
+- 视图运行在沙箱 iframe 中，与宿主页面不同源；资源声明的 `_meta.ui.csp` 会生成 CSP，未声明时使用最严格的默认策略。内嵌视图高度由页面的 `ui/notifications/size-changed` 决定，滚轮滚动的是消息列表而不是页面本身。
+- 支持 `ui/initialize`、`ui/notifications/initialized`、`ui/notifications/tool-input`、`ui/notifications/tool-result`、`tools/call`、`resources/read`、`ui/open-link`、`ui/message`、`ui/update-model-context`、`ui/request-display-mode` 等消息。
+- `ui/message` 只会把文字填入输入框，由用户确认后发送；`ui/update-model-context` 的内容会在该会话的下一轮作为上下文提供给模型。
+- 视图的 `ui/open-link` 仅允许 `http` / `https` / `mailto` 链接，并交给系统浏览器打开。
+
 ---
 
 ## 三、Skills

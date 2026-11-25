@@ -120,9 +120,22 @@ func (cw *ChatWindow) toolRow(c *mgo.Context, tc models.ToolCall, kind, label, s
 			}
 		})
 		cw.acpToolState(c, tc)
+		if cw.mcpAppReady(tc) {
+			key := cw.mcpAppKey(tc)
+			label := "打开交互界面"
+			if cw.expandedApps[key] {
+				label = "收起交互界面"
+			}
+			if mcore.IconAction(c, icons.Must("layout-grid"), label).Clicked() {
+				cw.toggleInlineApp(key)
+			}
+		}
 	})
 	if b.Clicked() {
 		*open = !*open
+	}
+	if cw.mcpAppReady(tc) && cw.expandedApps[cw.mcpAppKey(tc)] {
+		cw.mcpAppInline(c, tc)
 	}
 	if *open {
 		cw.acpToolDetail(c, tc)
@@ -155,7 +168,7 @@ func (cw *ChatWindow) acpToolState(c *mgo.Context, tc models.ToolCall) {
 // room the fold has.
 func (cw *ChatWindow) acpToolDetail(c *mgo.Context, tc models.ToolCall) {
 	caption := mcore.FontSize(c, mtheme.CaptionSize)
-	if strings.TrimSpace(tc.Arguments) == "" && strings.TrimSpace(tc.Result) == "" {
+	if strings.TrimSpace(tc.Arguments) == "" && strings.TrimSpace(tc.Result) == "" && tc.Error == "" {
 		mgo.Text(c, "（无输入输出）").FontSize(caption).TextColor(mcore.Tokens(c).TextMuted)
 		return
 	}
