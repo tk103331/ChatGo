@@ -32,6 +32,9 @@ type OpenOptions struct {
 	OnResize func(width, height int)
 	// OnError receives protocol errors from the page's bundle.
 	OnError func(error)
+	// OnRendererMessage receives renderer-to-agent messages from the page,
+	// such as a renderer function response or an agent function call.
+	OnRendererMessage func(a2ui.RendererMessage)
 }
 
 // Manager serves renderer pages and their bridge endpoints. One manager per
@@ -161,12 +164,13 @@ func (m *Manager) serveBundle(w http.ResponseWriter, r *http.Request) {
 
 // rpcMessage is what the page sends to the host.
 type rpcMessage struct {
-	Type      string         `json:"type"`
-	Action    *a2ui.Action   `json:"action,omitempty"`
-	DataModel map[string]any `json:"dataModel,omitempty"`
-	Width     int            `json:"width,omitempty"`
-	Height    int            `json:"height,omitempty"`
-	Message   string         `json:"message,omitempty"`
+	Type      string          `json:"type"`
+	Action    *a2ui.Action    `json:"action,omitempty"`
+	DataModel map[string]any  `json:"dataModel,omitempty"`
+	Width     int             `json:"width,omitempty"`
+	Height    int             `json:"height,omitempty"`
+	Message   string          `json:"message,omitempty"`
+	Renderer  json.RawMessage `json:"rendererMessage,omitempty"`
 }
 
 // serveRPC handles actions, size reports and errors from the page.
@@ -197,6 +201,13 @@ func (v *View) serveRPC(w http.ResponseWriter, r *http.Request) {
 	case "error":
 		if v.opts.OnError != nil {
 			v.opts.OnError(fmt.Errorf("%s", msg.Message))
+		}
+	case "rendererMessage":
+		if v.opts.OnRendererMessage != nil && len(msg.Renderer) > 0 {
+			var m a2ui.RendererMessage
+			if err := json.Unmarshal(msg.Renderer, &m); err == nil {
+				v.opts.OnRendererMessage(m)
+			}
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)

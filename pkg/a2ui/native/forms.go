@@ -83,14 +83,14 @@ func (r *Renderer) button(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 		Role(ui.RoleButton).Label(label)
 	switch variant {
 	case "primary", "filled", "":
-		el.Background(r.theme.Accent)
+		el.Background(r.frame.Accent)
 		el.Children(func() {
 			ui.Text(c, label).FontSize(13).FontWeight(600).TextColor(ui.RGBA(255, 255, 255, 1))
 		})
 	default:
-		el.Background(r.theme.Surface).Border(1, r.theme.Border)
+		el.Background(r.frame.Surface).Border(1, r.frame.Border)
 		el.Children(func() {
-			ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(r.theme.Text)
+			ui.Text(c, label).FontSize(13).FontWeight(500).TextColor(r.frame.Text)
 		})
 	}
 	if el.Clicked() {
@@ -128,7 +128,7 @@ func (r *Renderer) textField(c *ui.Context, s *a2ui.Surface, comp a2ui.Component
 	errors := a2ui.CheckErrors(comp, s.Data, r.funcs)
 	return ui.Column(c).Gap(2).Children(func() {
 		if label != "" {
-			ui.Text(c, label).FontSize(12).TextColor(r.theme.Muted)
+			ui.Text(c, label).FontSize(12).TextColor(r.frame.Muted)
 		}
 		var el ui.Element
 		if comp.Type == "TextArea" || variant == "longtext" {
@@ -179,7 +179,7 @@ func (r *Renderer) slider(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 	label := comp.PropString("label")
 	el := ui.Column(c).Gap(2).Children(func() {
 		if label != "" {
-			ui.Text(c, label).FontSize(12).TextColor(r.theme.Muted)
+			ui.Text(c, label).FontSize(12).TextColor(r.frame.Muted)
 		}
 		slider := ui.StepSlider(c, &st.num, lo, hi, 1)
 		if slider.Changed() {
@@ -237,7 +237,7 @@ func (r *Renderer) choice(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 		}
 		el := ui.Column(c).Gap(2).Children(func() {
 			if label != "" {
-				ui.Text(c, label).FontSize(12).TextColor(r.theme.Muted)
+				ui.Text(c, label).FontSize(12).TextColor(r.frame.Muted)
 			}
 			sel := ui.Select(c, &st.choice, labels)
 			if sel.Changed() {
@@ -266,7 +266,7 @@ func (r *Renderer) choice(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 		}
 		return ui.Column(c).Gap(2).Children(func() {
 			if label != "" {
-				ui.Text(c, label).FontSize(12).TextColor(r.theme.Muted)
+				ui.Text(c, label).FontSize(12).TextColor(r.frame.Muted)
 			}
 			for _, o := range opts {
 				key := a2ui.ResolveString(o.Value, s.Data, r.funcs)
@@ -289,7 +289,7 @@ func (r *Renderer) choice(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 	}
 	return ui.RadioGroup(c, func() {
 		if label != "" {
-			ui.Text(c, label).FontSize(12).TextColor(r.theme.Muted)
+			ui.Text(c, label).FontSize(12).TextColor(r.frame.Muted)
 		}
 		for _, o := range opts {
 			key := a2ui.ResolveString(o.Value, s.Data, r.funcs)

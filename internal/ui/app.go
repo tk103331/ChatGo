@@ -21,7 +21,9 @@ import (
 	"chatgo/internal/mcp"
 	"chatgo/internal/plugin"
 	"chatgo/internal/ui/assets"
+	"chatgo/pkg/a2ui"
 	"chatgo/pkg/a2ui/hybrid"
+	"chatgo/pkg/a2ui/native"
 	"chatgo/pkg/a2ui/web"
 	"chatgo/pkg/models"
 
@@ -71,14 +73,17 @@ type ChatWindow struct {
 	// a2ui renders A2UI 1.0 surfaces sent by remote agents. The manager
 	// serves the web renderer's pages; the router picks native or web per
 	// surface. fed counts the envelopes already applied per message.
-	a2uiMgr   *web.Manager
-	a2ui      *hybrid.Router
-	a2uiMu    sync.Mutex
-	a2uiFed   map[string]int
-	a2uiData  map[string]map[string]any // local surface -> latest data model
-	a2uiOwned map[string][]string       // message -> surface IDs it created
-	a2uiFwd   map[string]map[string]any // conversation -> next AG-UI forwardedProps
-	a2uiParts map[string][]any          // conversation -> next A2A DataPart values
+	a2uiMgr    *web.Manager
+	a2ui       *hybrid.Router
+	a2uiNative *native.Renderer
+	a2uiWeb    *web.Renderer
+	a2uiMu     sync.Mutex
+	a2uiFed    map[string]int
+	a2uiData   map[string]map[string]any // local surface -> latest data model
+	a2uiOwned  map[string][]string       // message -> surface IDs it created
+	a2uiFwd    map[string]map[string]any // conversation -> next AG-UI forwardedProps
+	a2uiParts  map[string][]any          // conversation -> next A2A DataPart values
+	a2uiQueue  []a2ui.RendererMessage    // renderer messages waiting for a turn
 	// plugins owns installed JavaScript plugins and their contributions.
 	plugins  *plugin.Manager
 	pluginUI pluginUIState

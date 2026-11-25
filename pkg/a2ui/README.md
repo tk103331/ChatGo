@@ -84,15 +84,19 @@ renderer may be nil, in which case a surface that needs it is an error.
 
 ## Limits
 
-- A2UI 1.0 UI envelopes only. `callRendererFunction` and
-  `callAgentFunction` are not executed yet; the store reports them as handled
-  by the renderer.
+- A2UI 1.0 UI envelopes and renderer functions. `callRendererFunction` runs
+  a registered function and reports `rendererFunctionResponse`;
+  `callAgentFunction` is available on both renderers and completes when an
+  `agentFunctionResponse` arrives. Function results still travel through the
+  host's transport, which ChatGo sends as the next turn, not into a live run.
 - Whole-surface routing. Mixing native and web components inside one surface
   needs fragment surfaces and is left for a later pass.
 - The native renderer does not implement charts, maps, video, KaTeX or raw
   HTML; those belong to the web renderer.
 - Two-way bindings write into the protocol store; an agent update replaces the
   local field on the next frame.
+- `native.Renderer.SetTheme` and `web.Renderer.SetTheme` change the palette;
+  MyGo redraws the next frame.
 - The embedded web bundle is a reference renderer, not the CopilotKit
   `standardUI` catalog. Supply that bundle explicitly if you need its 69
   components.

@@ -6,6 +6,7 @@ import (
 
 	mgo "github.com/egoist/mygo/ui"
 
+	mcore "chatgo/internal/ui/uikit"
 	"chatgo/pkg/a2ui"
 	"chatgo/pkg/a2ui/hybrid"
 	"chatgo/pkg/a2ui/native"
@@ -59,5 +60,20 @@ func TestA2UIMessageRendersNatively(t *testing.T) {
 	}
 	if cw.a2uiFed["a1"] != 1 {
 		t.Fatalf("fed = %d", cw.a2uiFed["a1"])
+	}
+}
+
+func TestRefreshA2UITheme(t *testing.T) {
+	cw := testWindow()
+	cw.a2uiNative = native.New(native.Options{})
+	cw.themeMode = mcore.Dark
+	cw.refreshA2UITheme()
+	if cw.a2uiNative.Theme().Text != native.DarkTheme().Text {
+		t.Fatal("dark theme not applied")
+	}
+	cw.themeMode = mcore.Light
+	cw.refreshA2UITheme()
+	if cw.a2uiNative.Theme().Text != native.DefaultTheme().Text {
+		t.Fatal("light theme not applied")
 	}
 }

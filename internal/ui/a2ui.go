@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/egoist/mygo"
 	mgo "github.com/egoist/mygo/ui"
@@ -30,18 +31,64 @@ func (cw *ChatWindow) initA2UI(w *mygo.Window) {
 		theme = native.DarkTheme()
 	}
 	nat := native.New(native.Options{
-		Theme:      theme,
-		Invalidate: cw.invalidate,
-		OnAction:   cw.onA2UIAction,
+		Theme:             theme,
+		Invalidate:        cw.invalidate,
+		OnAction:          cw.onA2UIAction,
+		OnRendererMessage: cw.onA2UIRendererMessage,
 	})
 	webR := web.New(w, cw.a2uiMgr, web.Options{
 		ScrollToContainer: true,
 		Invalidate:        cw.invalidate,
 		OnAction:          cw.onA2UIWebAction,
+		OnRendererMessage: cw.onA2UIRendererMessage,
 	})
 	cw.a2uiMu.Lock()
 	cw.a2ui = hybrid.New(nat, webR)
+	cw.a2uiNative = nat
+	cw.a2uiWeb = webR
 	cw.a2uiMu.Unlock()
+	cw.refreshA2UITheme()
+}
+
+// refreshA2UITheme changes both renderers' palettes when the window's
+// appearance changes. The web page follows the same light/dark choice.
+func (cw *ChatWindow) refreshA2UITheme() {
+	cw.a2uiMu.Lock()
+	nat, wr := cw.a2uiNative, cw.a2uiWeb
+	cw.a2uiMu.Unlock()
+	if nat == nil && wr == nil {
+		return
+	}
+	theme := native.DefaultTheme()
+	webTheme := ""
+	switch cw.themeMode {
+	case mcore.Dark:
+		theme = native.DarkTheme()
+		webTheme = "dark"
+	case mcore.Light:
+		webTheme = "light"
+	default:
+		if systemIsDark() {
+			theme = native.DarkTheme()
+		}
+	}
+	if nat != nil {
+		nat.SetTheme(theme)
+	}
+	if wr != nil {
+		wr.SetTheme(webTheme)
+	}
+}
+
+// systemIsDark reads the desktop's appearance, guarding the pre-run call
+// that MyGo rejects.
+func systemIsDark() (dark bool) {
+	defer func() {
+		if recover() != nil {
+			dark = false
+		}
+	}()
+	return mygo.Theme.IsDark()
 }
 
 // a2uiMessage renders the surfaces a reply currently owns, applying any
@@ -242,7 +289,12 @@ func (cw *ChatWindow) dispatchA2UIAction(a a2ui.Action) {
 	if text == "" {
 		text = "界面操作：" + a.Name
 	}
-	envelope := a.Envelope()
+	cw.sendA2UIEnvelope(conv, a.Envelope(), original, data, text)
+}
+
+// sendA2UIEnvelope puts a renderer-to-agent envelope on the next turn of the
+// conversation's transport.
+func (cw *ChatWindow) sendA2UIEnvelope(conv *models.Conversation, envelope map[string]any, original string, data map[string]any, text string) {
 	capabilities := map[string]any{"1.0": map[string]any{
 		"supportedCatalogIds": []string{a2ui.BasicCatalogID},
 	}}
@@ -259,7 +311,7 @@ func (cw *ChatWindow) dispatchA2UIAction(a a2ui.Action) {
 			"clientMessage":      envelope,
 			"clientCapabilities": capabilities,
 		}
-		if data != nil {
+		if data != nil && original != "" {
 			payload["clientDataModel"] = map[string]any{
 				"version": "1.0", "surfaces": map[string]any{original: data},
 			}
@@ -271,6 +323,84 @@ func (cw *ChatWindow) dispatchA2UIAction(a a2ui.Action) {
 	cw.a2uiMu.Unlock()
 	cw.draft = text
 	cw.sendDraft()
+}
+
+// onA2UIRendererMessage forwards a renderer-initiated message back to the
+// agent. A function response belongs to the run that asked for it; ChatGo's
+// transports cannot inject into a live run, so it starts the next turn.
+func (cw *ChatWindow) onA2UIRendererMessage(m a2ui.RendererMessage) {
+	cw.postMain(func() {
+		if cw.cur == nil {
+			return
+		}
+		if cw.streamingCur() {
+			// The transport cannot inject into a live run. Keep the response
+			// and send it as the next turn when this one ends.
+			cw.a2uiMu.Lock()
+			cw.a2uiQueue = append(cw.a2uiQueue, m)
+			cw.a2uiMu.Unlock()
+			return
+		}
+		cw.sendRendererMessage(m)
+	})
+}
+
+// sendRendererMessage sends one renderer-to-agent message as a turn.
+func (cw *ChatWindow) sendRendererMessage(m a2ui.RendererMessage) {
+	if cw.cur == nil {
+		return
+	}
+	if m.CallAgentFunction != nil && m.CallAgentFunction.SurfaceID != "" {
+		_, original := splitA2UISurface(m.CallAgentFunction.SurfaceID)
+		m.CallAgentFunction.SurfaceID = original
+	}
+	raw, err := a2ui.MarshalRendererMessage(m)
+	if err != nil {
+		return
+	}
+	var envelope map[string]any
+	if err := json.Unmarshal(raw, &envelope); err != nil {
+		return
+	}
+	text := "界面函数回调"
+	if m.FunctionResponse != nil {
+		text = "界面函数结果"
+	}
+	cw.sendA2UIEnvelope(cw.cur, envelope, "", nil, text)
+}
+
+// flushA2UIRenderer pops one queued renderer message once the previous turn
+// has finished.
+func (cw *ChatWindow) flushA2UIRenderer() {
+	if cw.streamingCur() {
+		return
+	}
+	cw.a2uiMu.Lock()
+	if len(cw.a2uiQueue) == 0 {
+		cw.a2uiMu.Unlock()
+		return
+	}
+	m := cw.a2uiQueue[0]
+	cw.a2uiQueue = cw.a2uiQueue[1:]
+	cw.a2uiMu.Unlock()
+	cw.sendRendererMessage(m)
+}
+
+// scheduleA2UIFlush lets the finished turn settle before sending a queued
+// function response, so the new turn starts after the old one's bookkeeping.
+func (cw *ChatWindow) scheduleA2UIFlush() {
+	cw.a2uiMu.Lock()
+	has := len(cw.a2uiQueue) > 0
+	cw.a2uiMu.Unlock()
+	if !has {
+		return
+	}
+	time.AfterFunc(200*time.Millisecond, func() {
+		cw.postMain(func() {
+			cw.flushA2UIRenderer()
+			cw.scheduleA2UIFlush()
+		})
+	})
 }
 
 // takeA2UIForward consumes the AG-UI payload an action queued for the turn.

@@ -4,6 +4,7 @@
 package native
 
 import (
+	"fmt"
 	"strings"
 	"sync"
 
@@ -59,6 +60,11 @@ type Options struct {
 	OnAction func(a2ui.Action)
 	// OnError receives protocol errors; Apply also returns them.
 	OnError func(error)
+	// OnRendererMessage receives renderer-to-agent messages: function
+	// responses and renderer-initiated agent function calls.
+	OnRendererMessage func(a2ui.RendererMessage)
+	// OnAgentFunctionResult completes a renderer-initiated call.
+	OnAgentFunctionResult func(callID string, value any, err *a2ui.RendererError)
 	// Invalidate asks the host to redraw after messages change a surface.
 	Invalidate func()
 	// ImageLoader turns a URL into a MyGo image source. Without it images
@@ -75,12 +81,18 @@ type Renderer struct {
 	store   *a2ui.Store
 	opts    Options
 	funcs   a2ui.Functions
-	theme   Theme
 	maxDeep int
 
-	mu     sync.Mutex
-	cache  map[string]a2ui.SurfaceVersion
-	fields map[string]*fieldState
+	// theme is the configured palette; frame is the copy View draws with,
+	// so a theme change between frames cannot tear a frame in half.
+	themeMu sync.RWMutex
+	theme   Theme
+	frame   Theme
+
+	mu      sync.Mutex
+	cache   map[string]a2ui.SurfaceVersion
+	fields  map[string]*fieldState
+	pending map[string]bool
 }
 
 // fieldState is the local value of one form control. Inputs mutate it; the
@@ -120,7 +132,31 @@ func New(opts Options) *Renderer {
 		maxDeep: depth,
 		cache:   map[string]a2ui.SurfaceVersion{},
 		fields:  map[string]*fieldState{},
+		pending: map[string]bool{},
 	}
+}
+
+// SetTheme changes the palette the next frame draws with.
+func (r *Renderer) SetTheme(theme Theme) {
+	if theme.Text == (ui.Color{}) {
+		theme = DefaultTheme()
+	}
+	if theme.Unit <= 0 {
+		theme.Unit = 4
+	}
+	r.themeMu.Lock()
+	r.theme = theme
+	r.themeMu.Unlock()
+	if r.opts.Invalidate != nil {
+		r.opts.Invalidate()
+	}
+}
+
+// Theme returns the configured palette.
+func (r *Renderer) Theme() Theme {
+	r.themeMu.RLock()
+	defer r.themeMu.RUnlock()
+	return r.theme
 }
 
 // Store exposes the protocol store, for hosts that also feed a web renderer.
@@ -128,10 +164,30 @@ func (r *Renderer) Store() *a2ui.Store { return r.store }
 
 // Apply merges messages. It is safe from any goroutine.
 func (r *Renderer) Apply(messages ...a2ui.Message) []error {
-	errs := r.store.Apply(messages...)
-	r.mu.Lock()
-	r.cache = map[string]a2ui.SurfaceVersion{}
-	r.mu.Unlock()
+	var errs []error
+	var ui []a2ui.Message
+	for _, msg := range messages {
+		if err := msg.Validate(); err != nil {
+			errs = append(errs, err)
+			continue
+		}
+		switch {
+		case msg.CallRendererFunction != nil:
+			if err := r.callRendererFunction(msg.CallRendererFunction); err != nil {
+				errs = append(errs, err)
+			}
+		case msg.AgentFunctionResponse != nil:
+			r.completeAgentFunction(msg.AgentFunctionResponse)
+		default:
+			ui = append(ui, msg)
+		}
+	}
+	if len(ui) > 0 {
+		errs = append(errs, r.store.Apply(ui...)...)
+		r.mu.Lock()
+		r.cache = map[string]a2ui.SurfaceVersion{}
+		r.mu.Unlock()
+	}
 	if r.opts.Invalidate != nil {
 		r.opts.Invalidate()
 	}
@@ -150,6 +206,81 @@ func (r *Renderer) SupportsCatalog(id string) bool {
 	return id == "" || id == a2ui.BasicCatalogID || id == a2ui.NativeCatalog().ID
 }
 
+// callRendererFunction executes an agent-requested renderer function and
+// reports the result back through OnRendererMessage.
+func (r *Renderer) callRendererFunction(call *a2ui.CallRendererFunction) error {
+	name := functionName(call.CallFunction)
+	if name == "" {
+		return fmt.Errorf("a2ui: callRendererFunction without @call")
+	}
+	fn, ok := r.funcs[name]
+	if !ok {
+		return fmt.Errorf("a2ui: renderer function %q is not registered", name)
+	}
+	data, _ := r.store.DataModel(call.SurfaceID)
+	args := map[string]any{}
+	if raw, ok := call.CallFunction["args"].(map[string]any); ok {
+		for k, v := range raw {
+			args[k] = a2ui.Resolve(v, data, r.funcs)
+		}
+	}
+	response := &a2ui.FunctionResponse{FunctionCallID: call.FunctionCallID}
+	value, err := fn(args)
+	if err != nil {
+		response.Error = &a2ui.RendererError{Code: "INVALID_FUNCTION_CALL", Message: err.Error()}
+	} else {
+		response.Value = value
+	}
+	if r.opts.OnRendererMessage != nil {
+		r.opts.OnRendererMessage(a2ui.RendererMessage{FunctionResponse: response})
+	}
+	return nil
+}
+
+// completeAgentFunction resolves a renderer-initiated agent function call.
+func (r *Renderer) completeAgentFunction(resp *a2ui.AgentFunctionResponse) {
+	r.mu.Lock()
+	known := r.pending[resp.FunctionCallID]
+	delete(r.pending, resp.FunctionCallID)
+	r.mu.Unlock()
+	if !known {
+		return
+	}
+	if r.opts.OnAgentFunctionResult != nil {
+		var rerr *a2ui.RendererError
+		if resp.Error != nil {
+			rerr = &a2ui.RendererError{Code: "AGENT_FUNCTION_ERROR", Message: fmt.Sprint(resp.Error["message"]), Details: resp.Error}
+		}
+		r.opts.OnAgentFunctionResult(resp.FunctionCallID, resp.Value, rerr)
+	}
+}
+
+// CallAgentFunction asks the agent to run a function. The result arrives via
+// Apply as agentFunctionResponse and then OnAgentFunctionResult.
+func (r *Renderer) CallAgentFunction(surfaceID, name, catalogID string, args map[string]any) (string, error) {
+	callID, err := functionCallID()
+	if err != nil {
+		return "", err
+	}
+	r.mu.Lock()
+	r.pending[callID] = true
+	r.mu.Unlock()
+	if r.opts.OnRendererMessage == nil {
+		r.mu.Lock()
+		delete(r.pending, callID)
+		r.mu.Unlock()
+		return "", fmt.Errorf("a2ui: no renderer message sink")
+	}
+	call := map[string]any{"@call": name, "catalogId": catalogID}
+	if len(args) > 0 {
+		call["args"] = args
+	}
+	r.opts.OnRendererMessage(a2ui.RendererMessage{CallAgentFunction: &a2ui.CallAgentFunction{
+		FunctionCallID: callID, SurfaceID: surfaceID, CallFunction: call,
+	}})
+	return callID, nil
+}
+
 // SupportsComponent reports whether the native catalog draws a component.
 // Unknown components still render as placeholders, but a hybrid router can
 // send a surface with them to the web renderer instead.
@@ -162,6 +293,7 @@ func (r *Renderer) SupportsComponent(name, catalogID string) bool {
 
 // View draws one surface at the current frame. It is main-thread only.
 func (r *Renderer) View(c *ui.Context, surfaceID string) {
+	r.frame = r.Theme()
 	snap, ok := r.snapshot(surfaceID)
 	if !ok {
 		r.placeholder(c, "surface 不存在："+surfaceID)
@@ -172,7 +304,7 @@ func (r *Renderer) View(c *ui.Context, surfaceID string) {
 		r.placeholder(c, "surface 为空："+surfaceID)
 		return
 	}
-	ui.Column(c).FillWidth().Gap(r.theme.Unit * 2).Children(func() {
+	ui.Column(c).FillWidth().Gap(r.frame.Unit * 2).Children(func() {
 		r.component(c, s, "root", 0, map[string]bool{})
 	})
 }
@@ -237,7 +369,7 @@ func (r *Renderer) component(c *ui.Context, s *a2ui.Surface, id string, depth in
 	case "List":
 		return r.list(c, s, comp, next, depth)
 	case "Divider":
-		return ui.Box(c).FillWidth().Height(1).Background(r.theme.Border)
+		return ui.Box(c).FillWidth().Height(1).Background(r.frame.Border)
 	case "Button":
 		return r.button(c, s, comp)
 	case "TextField", "TextArea":
@@ -267,7 +399,7 @@ func (r *Renderer) text(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) ui.
 	variant := strings.ToLower(comp.PropString("variant"))
 	size := float32(14)
 	weight := 400
-	color := r.theme.Text
+	color := r.frame.Text
 	if n := headingLevel(raw); n > 0 {
 		raw = strings.TrimSpace(raw[n:])
 		switch n {
@@ -293,13 +425,13 @@ func (r *Renderer) text(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) ui.
 	case "h4", "h5":
 		size, weight = 16, 600
 	case "caption":
-		size, color = 12, r.theme.Muted
+		size, color = 12, r.frame.Muted
 	}
 	if comp.Type == "Title" {
 		size, weight = 18, 650
 	}
 	if comp.Type == "Caption" {
-		size, color = 12, r.theme.Muted
+		size, color = 12, r.frame.Muted
 	}
 	if comp.Type == "Label" {
 		size, weight = 13, 600
@@ -335,16 +467,16 @@ func (r *Renderer) layout(c *ui.Context, s *a2ui.Surface, comp a2ui.Component, r
 
 // card draws a bordered panel.
 func (r *Renderer) card(c *ui.Context, s *a2ui.Surface, comp a2ui.Component, path map[string]bool, depth int) ui.Element {
-	u := r.theme.Unit
+	u := r.frame.Unit
 	return ui.Column(c).FillWidth().Padding(u*3).Gap(u*2).Radius(10).
-		Background(r.theme.Surface).Border(1, r.theme.Border).Children(func() {
+		Background(r.frame.Surface).Border(1, r.frame.Border).Children(func() {
 		r.children(c, s, comp, path, depth)
 	})
 }
 
 // list draws children in order.
 func (r *Renderer) list(c *ui.Context, s *a2ui.Surface, comp a2ui.Component, path map[string]bool, depth int) ui.Element {
-	u := r.theme.Unit
+	u := r.frame.Unit
 	return ui.Column(c).FillWidth().Gap(u).Children(func() {
 		r.children(c, s, comp, path, depth)
 	})
@@ -374,7 +506,7 @@ func (r *Renderer) gap(comp a2ui.Component) float32 {
 	if g := comp.PropFloat("gap", 0); g > 0 {
 		return float32(g)
 	}
-	return r.theme.Unit * 2
+	return r.frame.Unit * 2
 }
 
 // alignOf maps A2UI alignment names to MyGo's.
@@ -401,7 +533,19 @@ func alignOf(name string, def ui.Align) ui.Align {
 // placeholder draws an explicit fallback instead of hiding a component the
 // renderer does not know.
 func (r *Renderer) placeholder(c *ui.Context, text string) ui.Element {
-	u := r.theme.Unit
-	return ui.Text(c, text).FontSize(12).TextColor(r.theme.Muted).
-		Padding(u, u*2).Background(r.theme.Surface).Radius(6)
+	u := r.frame.Unit
+	return ui.Text(c, text).FontSize(12).TextColor(r.frame.Muted).
+		Padding(u, u*2).Background(r.frame.Surface).Radius(6)
+}
+
+// functionName reads the @call name from a callFunction object.
+func functionName(call map[string]any) string {
+	if name, ok := call["@call"].(string); ok {
+		return name
+	}
+	if nested, ok := call["@call"].(map[string]any); ok {
+		name, _ := nested["name"].(string)
+		return name
+	}
+	return ""
 }

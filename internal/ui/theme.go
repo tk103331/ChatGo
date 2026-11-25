@@ -12,4 +12,5 @@ func (cw *ChatWindow) saveAppearance() {
 	cw.cfg.Locale = uikit.LocaleName(cw.locale)
 	cw.cfg.ColorTheme = cw.colorTheme.Name
 	_ = config.SaveConfig(cw.cfg)
+	cw.refreshA2UITheme()
 }

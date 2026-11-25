@@ -36,6 +36,21 @@ func (r *Router) Apply(messages ...a2ui.Message) []error {
 			errs = append(errs, err)
 			continue
 		}
+		// An agent function response names only its call id, so both
+		// renderers see it and the one waiting completes the call.
+		if msg.AgentFunctionResponse != nil {
+			if r.native != nil {
+				if e := r.native.Apply(msg); len(e) > 0 {
+					errs = append(errs, e...)
+				}
+			}
+			if r.web != nil {
+				if e := r.web.Apply(msg); len(e) > 0 {
+					errs = append(errs, e...)
+				}
+			}
+			continue
+		}
 		surfaceID := surfaceOf(msg)
 		if msg.CreateSurface != nil {
 			choice, err := r.choose(msg.CreateSurface)

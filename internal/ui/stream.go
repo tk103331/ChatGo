@@ -57,6 +57,7 @@ func (cw *ChatWindow) beginStream(convID, msgID string, cancel context.CancelFun
 func (cw *ChatWindow) endStream(msgID string) {
 	cw.unmarkQuickReply(msgID)
 	delete(cw.streams, msgID)
+	cw.scheduleA2UIFlush()
 }
 
 // streamingMsg reports whether the reply filling msgID is still running.

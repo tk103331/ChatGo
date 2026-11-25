@@ -18,6 +18,8 @@ type Options struct {
 	OnAction func(a2ui.Action, map[string]any)
 	// OnError receives protocol and page errors.
 	OnError func(error)
+	// OnRendererMessage receives renderer-to-agent messages from a page.
+	OnRendererMessage func(a2ui.RendererMessage)
 	// Invalidate asks the host to redraw after a size or message change.
 	Invalidate func()
 	// ScrollToContainer sends the wheel to the surrounding native scroll
@@ -27,6 +29,8 @@ type Options struct {
 	BackgroundColor string
 	// DefaultHeight is the initial height of a surface, in DIPs.
 	DefaultHeight float32
+	// Theme forces "light" or "dark"; empty follows the system.
+	Theme string
 }
 
 // Renderer shows A2UI surfaces with the web bundle.
@@ -38,6 +42,7 @@ type Renderer struct {
 	applyMu sync.Mutex
 	mu      sync.Mutex
 	pages   map[string]*page
+	theme   string
 }
 
 type page struct {
@@ -58,7 +63,7 @@ func New(win *mygo.Window, mgr *Manager, opts Options) *Renderer {
 	if opts.BackgroundColor == "" {
 		opts.BackgroundColor = "light-dark(#ffffff, #17191c)"
 	}
-	return &Renderer{win: win, mgr: mgr, opts: opts, pages: map[string]*page{}}
+	return &Renderer{win: win, mgr: mgr, opts: opts, pages: map[string]*page{}, theme: opts.Theme}
 }
 
 // Apply sends messages to their surface pages, creating one for createSurface.
@@ -91,6 +96,19 @@ func (r *Renderer) applyOne(msg a2ui.Message) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	switch {
+	case msg.AgentFunctionResponse != nil:
+		for _, p := range r.pages {
+			if err := r.send(p, msg); err != nil {
+				return err
+			}
+		}
+		return nil
+	case msg.CallRendererFunction != nil:
+		p := r.pages[msg.CallRendererFunction.SurfaceID]
+		if p == nil {
+			return fmt.Errorf("a2ui web: callRendererFunction for unknown surface %q", msg.CallRendererFunction.SurfaceID)
+		}
+		return r.send(p, msg)
 	case msg.UpdateComponents != nil:
 		p := r.pages[msg.UpdateComponents.SurfaceID]
 		if p == nil {
@@ -142,7 +160,8 @@ func (r *Renderer) create(in *a2ui.CreateSurface) error {
 				r.opts.Invalidate()
 			}
 		},
-		OnError: r.opts.OnError,
+		OnError:           r.opts.OnError,
+		OnRendererMessage: r.opts.OnRendererMessage,
 	})
 	if err != nil {
 		return err
@@ -174,6 +193,10 @@ func (r *Renderer) create(in *a2ui.CreateSurface) error {
 	r.mu.Lock()
 	r.pages[in.SurfaceID] = pg
 	r.mu.Unlock()
+	if p := web.Page(); p != nil {
+		p.OnDidFinishLoad(func() { r.applyTheme(pg) })
+	}
+	r.applyTheme(pg)
 	if err := r.send(pg, a2ui.Message{CreateSurface: in}); err != nil {
 		return err
 	}
@@ -193,6 +216,42 @@ func (r *Renderer) send(p *page, msg a2ui.Message) error {
 	return nil
 }
 
+// SetTheme forces the page's color scheme for the next and current frames.
+// Empty follows the system's light or dark preference.
+func (r *Renderer) SetTheme(theme string) {
+	r.mu.Lock()
+	r.theme = theme
+	pages := make([]*page, 0, len(r.pages))
+	for _, p := range r.pages {
+		pages = append(pages, p)
+	}
+	r.mu.Unlock()
+	for _, p := range pages {
+		r.applyTheme(p)
+	}
+	if r.opts.Invalidate != nil {
+		r.opts.Invalidate()
+	}
+}
+
+// applyTheme writes the color scheme into a page.
+func (r *Renderer) applyTheme(p *page) {
+	if p == nil || p.web == nil || p.web.Page() == nil {
+		return
+	}
+	scheme := r.theme
+	if scheme != "light" && scheme != "dark" {
+		scheme = ""
+	}
+	_, _ = p.web.Page().Eval("document.documentElement.style.colorScheme = " + jsonQuote(scheme))
+}
+
+// jsonQuote is a tiny JSON string encoder for a fixed set of theme names.
+func jsonQuote(s string) string {
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 // View places one surface's page. Main-thread only.
 func (r *Renderer) View(c *ui.Context, surfaceID string) {
 	r.mu.Lock()
@@ -207,6 +266,25 @@ func (r *Renderer) View(c *ui.Context, surfaceID string) {
 		return
 	}
 	ui.WebView(c, p.web).FillWidth().Height(height)
+}
+
+// CallAgentFunction asks a page's bundle to call an agent function. The page
+// creates the call id and posts the call through the bridge; the response
+// arrives at the bundle and then at Options.OnRendererMessage.
+func (r *Renderer) CallAgentFunction(surfaceID, name string, args map[string]any) error {
+	r.mu.Lock()
+	p := r.pages[surfaceID]
+	r.mu.Unlock()
+	if p == nil || p.web == nil || p.web.Page() == nil {
+		return fmt.Errorf("a2ui web: no page for surface %q", surfaceID)
+	}
+	payload, err := json.Marshal(args)
+	if err != nil {
+		return err
+	}
+	script := "window.a2ui && window.a2ui.callAgentFunction(" + jsonQuote(name) + "," + string(payload) + ")"
+	_, err = p.web.Page().Eval(script)
+	return err
 }
 
 // SupportsCatalog reports true: the bundle decides which components it can

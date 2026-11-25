@@ -116,7 +116,9 @@ ChatGo 的远程 Agent 对话支持 [A2UI 1.0](https://a2ui.org/specification/v1
 - 协议实现与渲染器在独立包 [pkg/a2ui](/Users/tk/code/open/ChatGo/pkg/a2ui/README.md)：`native` 用 MyGo 原生控件，`web` 用 WebView，`hybrid` 按 `catalogId` 选择；
 - Basic Catalog 默认走原生；自定义或富组件 catalog 走 Web Renderer；
 - 用户点击/提交界面时，AG-UI 通过 `forwardedProps.a2ui.clientMessage` 回传，A2A 通过 `application/a2ui+json` 的 `DataPart` 回传；
-- 当前不执行 `callRendererFunction` / `callAgentFunction`，未知组件显示占位。
+- `callRendererFunction` 会执行已注册的渲染器函数并回传 `rendererFunctionResponse`；`callAgentFunction` 由渲染器发起，收到 `agentFunctionResponse` 后完成。ChatGo 无法向正在进行的远程 Run 注入消息，因此函数回调会作为下一轮发送。
+- 主题切换会同步到原生 A2UI 调色板和 Web 页面的 `color-scheme`。
+- 未知组件显示占位。
 
 ---
 

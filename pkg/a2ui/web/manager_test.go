@@ -99,3 +99,28 @@ func TestManagerCustomBundle(t *testing.T) {
 		t.Fatalf("bundle = %q", rec.Body.String())
 	}
 }
+
+func TestManagerForwardsRendererMessages(t *testing.T) {
+	m := NewManager(nil)
+	var got a2ui.RendererMessage
+	v, err := m.Open(OpenOptions{
+		SurfaceID:         "s",
+		OnRendererMessage: func(msg a2ui.RendererMessage) { got = msg },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := json.Marshal(map[string]any{
+		"type": "rendererMessage",
+		"rendererMessage": map[string]any{
+			"version":                  "1.0",
+			"rendererFunctionResponse": map[string]any{"functionCallId": "f1", "value": true},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/rpc", strings.NewReader(string(body)))
+	req.URL.Host = v.token
+	m.ServeHTTP(httptest.NewRecorder(), req)
+	if got.FunctionResponse == nil || got.FunctionResponse.FunctionCallID != "f1" {
+		t.Fatalf("message = %#v", got)
+	}
+}

@@ -4,6 +4,21 @@
   var surfaces = Object.create(null);
   var root = document.getElementById('root');
   var pendingTimer = 0;
+  var agentCalls = Object.create(null);
+  var nextCall = 1;
+
+  var FUNCS = {
+    required: function (a) { return textOf(a.value) !== ''; },
+    length: function (a) { return textOf(a.value).length; },
+    numeric: function (a) { return !isNaN(Number(textOf(a.value))); },
+    email: function (a) { var v = textOf(a.value); return v.indexOf('@') > 0 && v.indexOf('.') > 0; },
+    regex: function (a) {
+      try { return new RegExp(textOf(a.pattern)).test(textOf(a.value)); } catch (e) { return false; }
+    },
+    and: function (a) { for (var k in a) if (a[k] === false) return false; return true; },
+    or: function (a) { for (var k in a) if (a[k] === true) return true; return false; },
+    not: function (a) { return !a.value; }
+  };
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -106,10 +121,56 @@
       renderAll();
       return;
     }
+    if (msg.agentFunctionResponse) {
+      var r = msg.agentFunctionResponse;
+      var pending = agentCalls[r.functionCallId];
+      if (pending) {
+        delete agentCalls[r.functionCallId];
+        if (r.error) pending.reject(new Error(r.error.message || 'agent function failed'));
+        else pending.resolve(r.value);
+      }
+      return;
+    }
     if (msg.callRendererFunction) {
-      reportError('callRendererFunction is not supported by the fallback bundle');
+      callRendererFunction(msg.callRendererFunction);
     }
   }
+
+  function callRendererFunction(call) {
+    var cf = call.callFunction || {};
+    var name = typeof cf['@call'] === 'string' ? cf['@call'] : (cf['@call'] && cf['@call'].name) || '';
+    var surface = surfaces[call.surfaceId] || surfaces[Object.keys(surfaces)[0]];
+    var data = surface ? surface.data : {};
+    var args = resolve(cf.args || {}, data) || {};
+    var response = { functionCallId: call.functionCallId };
+    if (!name || !FUNCS[name]) {
+      response.error = { code: 'INVALID_FUNCTION_CALL', message: 'unknown renderer function: ' + name };
+    } else {
+      try { response.value = FUNCS[name](args); }
+      catch (e) { response.error = { code: 'INVALID_FUNCTION_CALL', message: String(e) }; }
+    }
+    postRendererMessage({ version: '1.0', rendererFunctionResponse: response });
+  }
+
+  function postRendererMessage(message) {
+    post({ type: 'rendererMessage', rendererMessage: message });
+  }
+
+  window.a2ui = window.a2ui || {};
+  window.a2ui.callAgentFunction = function (name, args) {
+    var surfaceId = Object.keys(surfaces)[0] || '';
+    var callId = 'rfn-' + (nextCall++);
+    var promise = new Promise(function (resolve, reject) { agentCalls[callId] = { resolve: resolve, reject: reject }; });
+    postRendererMessage({
+      version: '1.0',
+      callAgentFunction: {
+        functionCallId: callId,
+        surfaceId: surfaceId,
+        callFunction: { '@call': name, catalogId: 'https://a2ui.org/specification/v1_0/catalogs/basic/catalog.json', args: args || {} }
+      }
+    });
+    return promise;
+  };
 
   function renderAll() {
     root.innerHTML = '';

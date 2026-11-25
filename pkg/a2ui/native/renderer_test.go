@@ -86,3 +86,64 @@ func TestSetDataUpdatesBinding(t *testing.T) {
 		t.Fatal("render after update failed")
 	}
 }
+
+func TestCallRendererFunctionResponds(t *testing.T) {
+	r, _ := rendererFor(t)
+	var got a2ui.RendererMessage
+	r.opts.OnRendererMessage = func(m a2ui.RendererMessage) { got = m }
+	call := &a2ui.CallRendererFunction{
+		SurfaceID: "form", FunctionCallID: "f1",
+		CallFunction: map[string]any{
+			"@call": "required", "catalogId": a2ui.BasicCatalogID,
+			"args": map[string]any{"value": map[string]any{"@path": "/contact/firstName"}},
+		},
+	}
+	errs := r.Apply(a2ui.Message{Version: a2ui.Version, CallRendererFunction: call})
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if got.FunctionResponse == nil || got.FunctionResponse.FunctionCallID != "f1" {
+		t.Fatalf("response = %#v", got)
+	}
+	if got.FunctionResponse.Value != false {
+		t.Fatalf("value = %#v", got.FunctionResponse.Value)
+	}
+}
+
+func TestRendererInitiatedAgentFunction(t *testing.T) {
+	r, _ := rendererFor(t)
+	var sent a2ui.RendererMessage
+	r.opts.OnRendererMessage = func(m a2ui.RendererMessage) { sent = m }
+	var result any
+	var resultErr *a2ui.RendererError
+	r.opts.OnAgentFunctionResult = func(id string, v any, err *a2ui.RendererError) { result, resultErr = v, err }
+	id, err := r.CallAgentFunction("form", "lookup", a2ui.BasicCatalogID, map[string]any{"q": "x"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sent.CallAgentFunction == nil || sent.CallAgentFunction.FunctionCallID != id {
+		t.Fatalf("sent = %#v", sent)
+	}
+	errs := r.Apply(a2ui.Message{Version: a2ui.Version, AgentFunctionResponse: &a2ui.AgentFunctionResponse{
+		FunctionCallID: id, Value: "ok",
+	}})
+	if len(errs) != 0 {
+		t.Fatal(errs)
+	}
+	if result != "ok" || resultErr != nil {
+		t.Fatalf("result = %#v err = %#v", result, resultErr)
+	}
+}
+
+func TestSetThemeChangesNextFrame(t *testing.T) {
+	r, _ := rendererFor(t)
+	before := r.Theme()
+	r.SetTheme(DarkTheme())
+	if r.Theme() == before {
+		t.Fatal("theme did not change")
+	}
+	img := ui.Render(func(c *ui.Context) { r.View(c, "form") }, 720, 900, 1)
+	if img == nil {
+		t.Fatal("render after theme change failed")
+	}
+}
