@@ -1,7 +1,9 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	mgo "github.com/egoist/mygo/ui"
@@ -75,5 +77,46 @@ func TestRefreshA2UITheme(t *testing.T) {
 	cw.refreshA2UITheme()
 	if cw.a2uiNative.Theme().Text != native.DefaultTheme().Text {
 		t.Fatal("light theme not applied")
+	}
+}
+
+func TestBuiltinA2UIToolRendersSurface(t *testing.T) {
+	cw := testWindow()
+	var got []json.RawMessage
+	ctx := withA2UISink(context.Background(), func(raws []json.RawMessage) { got = append(got, raws...) })
+	out, err := cw.a2uiTool(ctx, `{
+		"surface_id": "form",
+		"components": [
+			{"id": "root", "component": "Column", "children": ["t"]},
+			{"id": "t", "component": "Text", "text": "Hello"}
+		],
+		"data_model": {"name": "Ada"}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("envelopes = %d", len(got))
+	}
+	var msg a2ui.Message
+	if err := json.Unmarshal(got[0], &msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.CreateSurface == nil || msg.CreateSurface.SurfaceID != "form" {
+		t.Fatalf("message = %#v", msg)
+	}
+	if !strings.Contains(out, "已渲染") {
+		t.Fatalf("result = %q", out)
+	}
+}
+
+func TestBuiltinA2UIToolNeedsRootAndSink(t *testing.T) {
+	cw := testWindow()
+	if _, err := cw.a2uiTool(context.Background(), `{"surface_id":"s","components":[]}`); err == nil {
+		t.Fatal("tool worked without a sink")
+	}
+	ctx := withA2UISink(context.Background(), func([]json.RawMessage) {})
+	if _, err := cw.a2uiTool(ctx, `{"surface_id":"s","components":[{"id":"x","component":"Text","text":"x"}]}`); err == nil {
+		t.Fatal("missing root accepted")
 	}
 }

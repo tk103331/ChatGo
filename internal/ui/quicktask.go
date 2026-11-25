@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -322,6 +323,15 @@ func (cw *ChatWindow) quickRunBackground(task *quickTask) {
 				cw.invalidate()
 			})
 		}
+
+		ctx = withA2UISink(ctx, func(raws []json.RawMessage) {
+			cw.postMain(func() {
+				if m := task.reply(); m != nil {
+					m.A2UI = append(m.A2UI, raws...)
+					cw.invalidate()
+				}
+			})
+		})
 
 		var (
 			resp   *llm.ChatResponse

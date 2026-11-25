@@ -749,6 +749,15 @@ func (cw *ChatWindow) webRunLLM(ctx context.Context, conv *models.Conversation, 
 		})
 	}
 
+	ctx = withA2UISink(ctx, func(raws []json.RawMessage) {
+		live.Update(func(c *models.Conversation) {
+			if replyIdx < 0 || replyIdx >= len(c.Messages) {
+				return
+			}
+			c.Messages[replyIdx].A2UI = append(c.Messages[replyIdx].A2UI, raws...)
+		})
+	})
+
 	var (
 		resp *llm.ChatResponse
 		err  error

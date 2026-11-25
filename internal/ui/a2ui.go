@@ -4,6 +4,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -479,4 +480,105 @@ func a2aResultA2UI(m *models.Message, res *a2a.Result) {
 		return
 	}
 	m.A2UI = append(m.A2UI, res.A2UI...)
+}
+
+// a2uiSinkKey carries the function a built-in tool uses to attach surfaces to
+// the reply being written.
+type a2uiSinkKey struct{}
+
+func withA2UISink(ctx context.Context, fn func([]json.RawMessage)) context.Context {
+	return context.WithValue(ctx, a2uiSinkKey{}, fn)
+}
+
+func a2uiSinkFrom(ctx context.Context) func([]json.RawMessage) {
+	fn, _ := ctx.Value(a2uiSinkKey{}).(func([]json.RawMessage))
+	return fn
+}
+
+// a2uiTool is the built-in tool a local agent calls to render a surface. It
+// validates the envelopes and hands them to the running reply; the model sees
+// a short confirmation, not the UI JSON.
+func (cw *ChatWindow) a2uiTool(ctx context.Context, raw string) (string, error) {
+	sink := a2uiSinkFrom(ctx)
+	if sink == nil {
+		return "", fmt.Errorf("当前运行不支持渲染 A2UI 界面")
+	}
+	var in struct {
+		SurfaceID  string            `json:"surface_id"`
+		CatalogID  string            `json:"catalog_id"`
+		Components []json.RawMessage `json:"components"`
+		DataModel  map[string]any    `json:"data_model"`
+		DataModel2 map[string]any    `json:"dataModel"`
+		Messages   []json.RawMessage `json:"messages"`
+	}
+	if err := json.Unmarshal([]byte(raw), &in); err != nil {
+		return "", fmt.Errorf("A2UI 参数解析失败：%w", err)
+	}
+	catalog := strings.TrimSpace(in.CatalogID)
+	if catalog == "" {
+		catalog = a2ui.BasicCatalogID
+	}
+	var envelopes []json.RawMessage
+	surface := ""
+	if len(in.Messages) > 0 {
+		envelopes = in.Messages
+		for _, item := range envelopes {
+			var msg a2ui.Message
+			if err := json.Unmarshal(item, &msg); err != nil {
+				return "", fmt.Errorf("A2UI 消息格式错误：%w", err)
+			}
+			if err := msg.Validate(); err != nil {
+				return "", fmt.Errorf("A2UI 消息无效：%w", err)
+			}
+			if msg.CreateSurface != nil {
+				surface = msg.CreateSurface.SurfaceID
+			}
+		}
+	} else {
+		if strings.TrimSpace(in.SurfaceID) == "" {
+			return "", fmt.Errorf("缺少 surface_id")
+		}
+		if len(in.Components) == 0 {
+			return "", fmt.Errorf("缺少 components")
+		}
+		hasRoot := false
+		for _, c := range in.Components {
+			var head struct {
+				ID string `json:"id"`
+			}
+			if err := json.Unmarshal(c, &head); err != nil {
+				return "", fmt.Errorf("组件格式错误：%w", err)
+			}
+			if head.ID == "root" {
+				hasRoot = true
+			}
+		}
+		if !hasRoot {
+			return "", fmt.Errorf("components 必须包含 id 为 root 的根组件")
+		}
+		data := in.DataModel
+		if data == nil {
+			data = in.DataModel2
+		}
+		create := map[string]any{
+			"surfaceId":  in.SurfaceID,
+			"catalogId":  catalog,
+			"components": in.Components,
+		}
+		if data != nil {
+			create["dataModel"] = data
+		}
+		env, err := json.Marshal(map[string]any{"version": a2ui.Version, "createSurface": create})
+		if err != nil {
+			return "", err
+		}
+		envelopes = []json.RawMessage{env}
+		surface = in.SurfaceID
+	}
+	sink(envelopes)
+	cw.invalidate()
+	if surface != "" {
+		return "已渲染 A2UI 界面：" + surface, nil
+	}
+	return fmt.Sprintf("已提交 %d 条 A2UI 消息", len(envelopes)), nil
 }

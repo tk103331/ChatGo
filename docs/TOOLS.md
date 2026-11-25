@@ -120,6 +120,27 @@ ChatGo 的远程 Agent 对话支持 [A2UI 1.0](https://a2ui.org/specification/v1
 - 主题切换会同步到原生 A2UI 调色板和 Web 页面的 `color-scheme`。
 - 未知组件显示占位。
 
+#### 内置 Agent 使用 A2UI
+
+内置 Agent 通过默认启用的 **A2UI 界面** 工具生成界面。模型调用时提供：
+
+```json
+{
+  "surface_id": "contact_form",
+  "components": [
+    {"id": "root", "component": "Card", "child": "col"},
+    {"id": "col", "component": "Column", "children": ["title", "name"]},
+    {"id": "title", "component": "Text", "text": "# Contact Us"},
+    {"id": "name", "component": "TextField", "label": "Name", "value": {"@path": "/name"}}
+  ],
+  "data_model": {"name": ""}
+}
+```
+
+组件必须包含 `id` 为 `root` 的根；也可以直接给 `messages`（完整 A2UI 1.0 envelope 数组）做增量更新。工具只向模型返回一句确认，界面会渲染在当前回复下方，不会把 JSON 塞进上下文。
+
+无 UI 的运行（自动任务、渠道消息）没有渲染接收方，工具会返回错误，模型应改用文本回答。
+
 ---
 
 ## 三、Skills

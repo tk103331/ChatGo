@@ -5,6 +5,7 @@ import (
 	"chatgo/internal/llm"
 	"chatgo/pkg/models"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -328,6 +329,15 @@ func (cw *ChatWindow) applyApp(id string) {
 // runStream drives one assistant reply, updating state on the main thread.
 
 func (cw *ChatWindow) runStream(ctx context.Context, conv *models.Conversation, idx int, msgs []llm.ChatMessage) {
+	ctx = withA2UISink(ctx, func(raws []json.RawMessage) {
+		cw.postMain(func() {
+			if idx < 0 || idx >= len(conv.Messages) {
+				return
+			}
+			conv.Messages[idx].A2UI = append(conv.Messages[idx].A2UI, raws...)
+			cw.invalidate()
+		})
+	})
 	var (
 		resp *llm.ChatResponse
 		err  error

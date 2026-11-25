@@ -68,6 +68,14 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 		return map[string]*schema.ParameterInfo{
 			"questions": {Type: schema.Array, Desc: "问题列表，每项含 question（问题文本）和 options（可选回答列表，留空则只有输入框）。一次问多个问题会用分页展示", Required: true},
 		}
+	case "a2ui":
+		return map[string]*schema.ParameterInfo{
+			"surface_id": {Type: schema.String, Desc: "界面唯一标识，同一轮内不要重复"},
+			"catalog_id": {Type: schema.String, Desc: "A2UI catalog，留空使用 Basic Catalog"},
+			"components": {Type: schema.Array, Desc: "A2UI 1.0 组件列表（扁平数组），必须有一个 id 为 root 的组件；元素形如 {id, component, child/children, 属性}"},
+			"data_model": {Type: schema.Object, Desc: "界面初始数据模型，组件用 {@path: '/字段'} 绑定"},
+			"messages":   {Type: schema.Array, Desc: "可选：直接提供完整 A2UI 1.0 envelope 列表，提供后忽略 surface_id/components/data_model"},
+		}
 	}
 	return map[string]*schema.ParameterInfo{}
 }
@@ -218,6 +226,8 @@ func (cw *ChatWindow) builtinToolHandler(tool *config.BuiltinTool, root string, 
 		return cw.knowledgeSearchTool(tool.Config)
 	case "ask_question":
 		return cw.askQuestionTool(env, conv...)
+	case "a2ui":
+		return cw.a2uiTool
 	case "update_plan":
 		var target *models.Conversation
 		if len(conv) > 0 {

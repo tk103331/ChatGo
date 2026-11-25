@@ -860,6 +860,7 @@ func GetAvailableBuiltinTools() []string {
 		"knowledge_search",
 		"update_plan",
 		"ask_question",
+		"a2ui",
 	}
 }
 
@@ -880,6 +881,7 @@ func GetBuiltinToolDisplayName(toolType string) string {
 		"knowledge_search":   "知识库检索",
 		"update_plan":        "执行计划",
 		"ask_question":       "向用户提问",
+		"a2ui":               "A2UI 界面",
 	}
 	if name, ok := names[toolType]; ok {
 		return name
@@ -904,6 +906,7 @@ func GetBuiltinToolDescription(toolType string) string {
 		"knowledge_search":   "Knowledge Search - Search the local knowledge bases built from indexed text documents, returning the matching passages with their source",
 		"update_plan":        "Update Plan - Record or update the task list for a multi-step job, so progress stays visible above the composer",
 		"ask_question":       "Ask Question - Ask the user a question and wait for the answer, when a decision or missing detail blocks progress",
+		"a2ui":               "A2UI - Render a declarative interactive interface (cards, forms, charts) in the conversation. Provide a flat component list with a root component; the app draws it with its own widgets",
 	}
 	if desc, ok := descriptions[toolType]; ok {
 		return desc
@@ -939,6 +942,8 @@ func GetBuiltinToolConfigFields(toolType string) []string {
 	case "update_plan":
 		return []string{}
 	case "ask_question":
+		return []string{}
+	case "a2ui":
 		return []string{}
 	default:
 		return []string{}
@@ -1407,6 +1412,10 @@ func defaultBuiltinTool(toolType string) BuiltinTool {
 		// shows the user.
 		t.Enabled = true
 	case "ask_question":
+		t.Enabled = true
+	case "a2ui":
+		// On by default: it lets an ordinary built-in agent answer with a
+		// form or card instead of a wall of text, and executes no code.
 		t.Enabled = true
 	}
 	return t
