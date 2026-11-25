@@ -22,13 +22,13 @@ func Resolve(value any, data any, funcs Functions) any {
 		// v0.9 and v1.0 spell bindings @path/@call; v0.8 and some SDKs omit
 		// the prefix.
 		if path, ok := v["@path"].(string); ok {
-			if got, ok := PointerGet(data, path); ok {
+			if got, ok := pointerGetRelative(data, path); ok {
 				return got
 			}
 			return nil
 		}
 		if path, ok := v["path"].(string); ok {
-			if got, ok := PointerGet(data, path); ok {
+			if got, ok := pointerGetRelative(data, path); ok {
 				return got
 			}
 			return nil
@@ -42,6 +42,12 @@ func Resolve(value any, data any, funcs Functions) any {
 		}
 		if call, ok := v["call"]; ok {
 			name, _ := call.(string)
+			if name == "@index" {
+				if m, ok := data.(map[string]any); ok {
+					return m["__a2uiIndex"]
+				}
+				return nil
+			}
 			if name == "" || funcs == nil {
 				return nil
 			}
@@ -67,6 +73,12 @@ func Resolve(value any, data any, funcs Functions) any {
 				name = c
 			case map[string]any:
 				name, _ = c["name"].(string)
+			}
+			if name == "@index" {
+				if m, ok := data.(map[string]any); ok {
+					return m["__a2uiIndex"]
+				}
+				return nil
 			}
 			if name == "" || funcs == nil {
 				return nil
@@ -168,6 +180,15 @@ func toText(v any) string {
 		}
 		return ""
 	}
+}
+
+// pointerGetRelative reads a path, treating a path without a leading slash
+// as relative to the current data model (a template item).
+func pointerGetRelative(data any, path string) (any, bool) {
+	if path != "" && !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	return PointerGet(data, path)
 }
 
 // DefaultFunctions registers the validation and formatting functions the

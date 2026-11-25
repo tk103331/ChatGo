@@ -65,7 +65,10 @@ as CopilotKit's `standardUI` can be shipped as a custom bundle instead.
 
 The page receives `createSurface`, `updateComponents`, `updateDataModel` and
 `deleteSurface`, resolves `@path` bindings, updates its data model in place,
-and posts `action` / `resize` / `error` messages back.
+and posts `action` / `resize` / `error` messages back. The embedded bundle
+covers the full A2UI 1.0 Basic Catalog (18 components), including Tabs, Modal,
+Video, AudioPlayer and DateTimeInput, plus repeating `children` templates and
+the basic catalog functions.
 
 ## Hybrid
 

@@ -292,6 +292,24 @@ const pageHTML = `<!DOCTYPE html>
     border: 1px solid var(--a2ui-border); background: var(--a2ui-bg); color: var(--a2ui-text); font: inherit; }
   .a2ui-check { display: flex; gap: 8px; align-items: center; }
   .a2ui-img { max-width: 100%; max-height: 320px; border-radius: 8px; }
+  .a2ui-video { width: 100%; max-height: 360px; border-radius: 8px; background: #000; }
+  .a2ui-audio { display: flex; flex-direction: column; gap: 6px; }
+  .a2ui-audio audio { width: 100%; }
+  .a2ui-tabs { display: flex; flex-direction: column; gap: 8px; }
+  .a2ui-tabbar { display: flex; gap: 4px; border-bottom: 1px solid var(--a2ui-border); flex-wrap: wrap; }
+  .a2ui-tab { border: 0; background: transparent; color: var(--a2ui-muted); padding: 8px 12px;
+    font: inherit; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .a2ui-tab.active { color: var(--a2ui-text); border-bottom-color: var(--a2ui-accent); font-weight: 600; }
+  .a2ui-tabpanel { padding-top: 12px; }
+  .a2ui-modal-wrap { display: contents; }
+  .a2ui-modal-trigger { display: contents; }
+  .a2ui-modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.35);
+    display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
+  .a2ui-modal-content { position: relative; background: var(--a2ui-bg); color: var(--a2ui-text);
+    border: 1px solid var(--a2ui-border); border-radius: 12px; padding: 20px;
+    max-width: 560px; width: 100%; max-height: 80vh; overflow: auto; }
+  .a2ui-modal-close { position: absolute; right: 8px; top: 8px; border: 0; background: transparent;
+    color: var(--a2ui-muted); font-size: 20px; cursor: pointer; line-height: 1; }
   .a2ui-placeholder { padding: 8px 10px; border-radius: 6px; background: var(--a2ui-surface);
     color: var(--a2ui-muted); font-size: 12px; }
 </style>

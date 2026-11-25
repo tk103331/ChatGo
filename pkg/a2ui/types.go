@@ -116,15 +116,25 @@ func (m Message) PayloadName() string {
 // protocol does not name itself, and the @-prefixed envelope keys of v1.0,
 // are kept in Props.
 type Component struct {
-	ID            string         `json:"id"`
-	Type          string         `json:"component"`
-	Child         string         `json:"child,omitempty"`
-	Children      []string       `json:"children,omitempty"`
+	ID       string   `json:"id"`
+	Type     string   `json:"component"`
+	Child    string   `json:"child,omitempty"`
+	Children []string `json:"children,omitempty"`
+	// ChildTemplate renders one component per item of a data list, as the
+	// v1.0 ChildList template form does.
+	ChildTemplate *ChildTemplate `json:"-"`
 	CatalogID     string         `json:"@catalogId,omitempty"`
 	Accessibility map[string]any `json:"@accessibility,omitempty"`
 	Metadata      map[string]any `json:"@metadata,omitempty"`
 	Checks        []Check        `json:"@checks,omitempty"`
 	Props         map[string]any `json:"-"`
+}
+
+// ChildTemplate is the repeating-children form:
+// {"path": "/items", "componentId": "row"}.
+type ChildTemplate struct {
+	Path        string `json:"path"`
+	ComponentID string `json:"componentId"`
 }
 
 // Check is one component-level validation rule.
@@ -195,10 +205,19 @@ func (c *Component) UnmarshalJSON(data []byte) error {
 		var wrapped struct {
 			ExplicitList []string `json:"explicitList"`
 		}
-		if e := json.Unmarshal(raw["children"], &wrapped); e != nil || len(wrapped.ExplicitList) == 0 {
-			return err
+		if e := json.Unmarshal(raw["children"], &wrapped); e == nil && len(wrapped.ExplicitList) > 0 {
+			c.Children = wrapped.ExplicitList
+		} else {
+			// v1.0 template: {"path": "/items", "componentId": "row"}
+			var tmpl ChildTemplate
+			if e := json.Unmarshal(raw["children"], &tmpl); e != nil || tmpl.Path == "" || tmpl.ComponentID == "" {
+				if err != nil {
+					return err
+				}
+			} else {
+				c.ChildTemplate = &tmpl
+			}
 		}
-		c.Children = wrapped.ExplicitList
 	}
 	if err := decode(raw, "@catalogId", &c.CatalogID); err != nil {
 		return err
@@ -238,6 +257,10 @@ func mergeLegacyFields(c *Component) {
 						c.Children = append(c.Children, s)
 					}
 				}
+			} else if path, ok := m["path"].(string); ok {
+				if componentID, ok := m["componentId"].(string); ok {
+					c.ChildTemplate = &ChildTemplate{Path: path, ComponentID: componentID}
+				}
 			}
 		}
 		delete(c.Props, "children")
@@ -275,6 +298,8 @@ func (c Component) MarshalJSON() ([]byte, error) {
 	}
 	if len(c.Children) > 0 {
 		out["children"] = c.Children
+	} else if c.ChildTemplate != nil {
+		out["children"] = c.ChildTemplate
 	}
 	if c.CatalogID != "" {
 		out["@catalogId"] = c.CatalogID

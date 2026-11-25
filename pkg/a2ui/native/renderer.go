@@ -500,6 +500,23 @@ func (r *Renderer) children(c *ui.Context, s *a2ui.Surface, comp a2ui.Component,
 			el.Grow(w)
 		}
 	}
+	if comp.ChildTemplate != nil {
+		raw, _ := a2ui.Resolve(map[string]any{"@path": comp.ChildTemplate.Path}, s.Data, r.funcs).([]any)
+		for i, item := range raw {
+			scoped := *s
+			if m, ok := item.(map[string]any); ok {
+				cp := make(map[string]any, len(m)+1)
+				for k, v := range m {
+					cp[k] = v
+				}
+				cp["__a2uiIndex"] = float64(i)
+				scoped.Data = cp
+			} else {
+				scoped.Data = map[string]any{"__a2uiIndex": float64(i)}
+			}
+			r.component(c, &scoped, comp.ChildTemplate.ComponentID, depth+1, path)
+		}
+	}
 	for _, id := range comp.Children {
 		child, ok := s.Component(id)
 		el := r.component(c, s, id, depth+1, path)

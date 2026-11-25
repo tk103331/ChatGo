@@ -2,6 +2,7 @@ package a2ui
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -37,5 +38,20 @@ func TestLegacyNestedChildren(t *testing.T) {
 	}
 	if c.Type != "Column" || len(c.Children) != 2 || c.Children[1] != "b" {
 		t.Fatalf("component = %#v", c)
+	}
+}
+
+func TestChildTemplate(t *testing.T) {
+	var c Component
+	raw := `{"id":"list","component":"List","children":{"path":"/items","componentId":"row"}}`
+	if err := json.Unmarshal([]byte(raw), &c); err != nil {
+		t.Fatal(err)
+	}
+	if c.ChildTemplate == nil || c.ChildTemplate.Path != "/items" || c.ChildTemplate.ComponentID != "row" {
+		t.Fatalf("template = %#v", c.ChildTemplate)
+	}
+	out, _ := json.Marshal(c)
+	if !strings.Contains(string(out), `"componentId":"row"`) {
+		t.Fatalf("marshal = %s", out)
 	}
 }

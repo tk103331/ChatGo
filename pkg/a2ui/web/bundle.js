@@ -6,6 +6,7 @@
   var pendingTimer = 0;
   var agentCalls = Object.create(null);
   var nextCall = 1;
+  var uiState = Object.create(null);
 
   var FUNCS = {
     required: function (a) { return textOf(a.value) !== ''; },
@@ -17,8 +18,71 @@
     },
     and: function (a) { for (var k in a) if (a[k] === false) return false; return true; },
     or: function (a) { for (var k in a) if (a[k] === true) return true; return false; },
-    not: function (a) { return !a.value; }
+    not: function (a) { return !a.value; },
+    formatString: function (a, data) {
+      return String(a.value == null ? '' : a.value).replace(/\$\{([^}]+)\}/g, function (_, expr) {
+        var v;
+        if (expr.charAt(0) === '@') v = callFunction(expr, {}, data);
+        else if (expr.charAt(0) === '/') v = getPath(data, expr);
+        else v = getPath(data, '/' + expr);
+        return textOf(v);
+      });
+    },
+    formatNumber: function (a) {
+      var n = Number(a.value) || 0;
+      var d = a.decimals == null ? 0 : Number(a.decimals);
+      return n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: a.grouping !== false });
+    },
+    formatCurrency: function (a) {
+      var n = Number(a.value) || 0;
+      try { return n.toLocaleString(undefined, { style: 'currency', currency: a.currency || 'USD' }); }
+      catch (e) { return n.toFixed(2) + ' ' + (a.currency || ''); }
+    },
+    formatDate: function (a) {
+      var d = new Date(a.value);
+      if (isNaN(d.getTime())) return textOf(a.value);
+      var f = String(a.format || 'yyyy-MM-dd');
+      var pad = function (n) { return n < 10 ? '0' + n : String(n); };
+      var months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      var days = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      return f.replace(/yyyy|yy|MMMM|MMM|MM|M|dd|d|EEEE|E|HH|H|hh|h|mm|ss|a/g, function (t) {
+        switch (t) {
+          case 'yyyy': return String(d.getFullYear());
+          case 'yy': return pad(d.getFullYear() % 100);
+          case 'MMMM': return ['January','February','March','April','May','June','July','August','September','October','November','December'][d.getMonth()];
+          case 'MMM': return months[d.getMonth()];
+          case 'MM': return pad(d.getMonth() + 1);
+          case 'M': return String(d.getMonth() + 1);
+          case 'dd': return pad(d.getDate());
+          case 'd': return String(d.getDate());
+          case 'EEEE': return ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+          case 'E': return days[d.getDay()];
+          case 'HH': return pad(d.getHours());
+          case 'H': return String(d.getHours());
+          case 'hh': return pad(d.getHours() % 12 || 12);
+          case 'h': return String(d.getHours() % 12 || 12);
+          case 'mm': return pad(d.getMinutes());
+          case 'ss': return pad(d.getSeconds());
+          case 'a': return d.getHours() < 12 ? 'AM' : 'PM';
+        }
+        return t;
+      });
+    },
+    pluralize: function (a) {
+      var n = Number(a.value) || 0;
+      if (n === 0 && a.zero) return a.zero;
+      if (n === 1 && a.one) return a.one;
+      if (n === 2 && a.two) return a.two;
+      return a.other || '';
+    }
   };
+
+  function callFunction(name, args, data) {
+    if (name === '@index') return data && data.__a2uiIndex;
+    var fn = FUNCS[name];
+    if (!fn) return undefined;
+    return fn(args || {}, data);
+  }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -36,6 +100,8 @@
 
   function getPath(data, path) {
     var cur = data;
+    if (path === '@index') return data && data.__a2uiIndex;
+    if (typeof path === 'string' && path.charAt(0) !== '/') path = '/' + path;
     var parts = tokens(path);
     for (var i = 0; i < parts.length; i++) {
       if (cur == null) return undefined;
@@ -64,6 +130,12 @@
       var literals = ['literalString', 'literalNumber', 'literalBoolean', 'literalArray', 'literalObject', 'literal'];
       for (var i = 0; i < literals.length; i++) {
         if (Object.prototype.hasOwnProperty.call(v, literals[i])) return v[literals[i]];
+      }
+      var call = v['@call'];
+      var callName = typeof call === 'string' ? call : (call && call.name) || '';
+      if (callName) {
+        var args = resolve(v.args || {}, data) || {};
+        return callFunction(callName, args, data);
       }
       if (Array.isArray(v)) return v.map(function (x) { return resolve(x, data); });
       var out = {};
@@ -250,8 +322,23 @@
       case 'Image':
         el = imageNode(s, comp);
         break;
+      case 'Video':
+        el = videoNode(s, comp);
+        break;
+      case 'AudioPlayer':
+        el = audioNode(s, comp);
+        break;
+      case 'Tabs':
+        el = tabsNode(s, comp, seen, depth);
+        break;
+      case 'Modal':
+        el = modalNode(s, comp, seen, depth);
+        break;
+      case 'DateTimeInput':
+        el = dateTimeNode(s, comp);
+        break;
       case 'Icon':
-        el = placeholder('[图标] ' + textOf(resolve(comp.name, s.data)));
+        el = iconNode(s, comp);
         break;
       default:
         el = placeholder('暂不支持：' + type);
@@ -294,7 +381,20 @@
 
   function childrenInto(s, comp, el, seen, depth) {
     if (comp.child) el.appendChild(nodeOf(s, comp.child, seen, depth + 1));
-    (comp.children || []).forEach(function (id) {
+    var children = comp.children;
+    if (children && !Array.isArray(children) && children.componentId) {
+      var list = getPath(s.data, children.path);
+      if (Array.isArray(list)) {
+        list.forEach(function (item, index) {
+          var scoped = Object.assign({}, s, { data: item && typeof item === 'object' ? Object.assign({}, item, { __a2uiIndex: index }) : { __a2uiIndex: index } });
+          var siblingSeen = Object.assign({}, seen);
+          delete siblingSeen[children.componentId];
+          el.appendChild(nodeOf(scoped, children.componentId, siblingSeen, depth + 1));
+        });
+      }
+      return;
+    }
+    (children || []).forEach(function (id) {
       el.appendChild(nodeOf(s, id, seen, depth + 1));
     });
   }
@@ -469,15 +569,201 @@
 
   function cssEscape(s) { return String(s).replace(/"/g, '\\"'); }
 
+  function videoNode(s, comp) {
+    var url = textOf(resolve(comp.url, s.data));
+    if (!url) return placeholder('[视频]');
+    var el = document.createElement('video');
+    el.className = 'a2ui-video';
+    el.controls = true;
+    el.preload = 'metadata';
+    if (comp.posterUrl) el.poster = textOf(resolve(comp.posterUrl, s.data));
+    el.src = url;
+    el.addEventListener('error', function () { el.replaceWith(placeholder('[视频加载失败] ' + url)); });
+    return el;
+  }
+
+  function audioNode(s, comp) {
+    var wrap = document.createElement('div');
+    wrap.className = 'a2ui-audio';
+    var description = textOf(resolve(comp.description, s.data));
+    if (description) {
+      var d = document.createElement('div');
+      d.className = 'a2ui-muted';
+      d.textContent = description;
+      wrap.appendChild(d);
+    }
+    var url = textOf(resolve(comp.url, s.data));
+    if (!url) {
+      wrap.appendChild(placeholder('[音频]'));
+      return wrap;
+    }
+    var el = document.createElement('audio');
+    el.controls = true;
+    el.src = url;
+    el.addEventListener('error', function () { el.replaceWith(placeholder('[音频加载失败] ' + url)); });
+    wrap.appendChild(el);
+    return wrap;
+  }
+
+  function tabsNode(s, comp, seen, depth) {
+    var tabs = comp.tabs || [];
+    var key = s.id + ':tab:' + comp.id;
+    var active = uiState[key] || 0;
+    var wrap = document.createElement('div');
+    wrap.className = 'a2ui-tabs';
+    var bar = document.createElement('div');
+    bar.className = 'a2ui-tabbar';
+    tabs.forEach(function (tab, index) {
+      var button = document.createElement('button');
+      button.className = 'a2ui-tab' + (index === active ? ' active' : '');
+      button.textContent = textOf(resolve(tab.title, s.data));
+      button.addEventListener('click', function () {
+        uiState[key] = index;
+        render(s);
+        reportSize();
+      });
+      bar.appendChild(button);
+    });
+    wrap.appendChild(bar);
+    var panel = document.createElement('div');
+    panel.className = 'a2ui-tabpanel';
+    var current = tabs[active];
+    if (current && current.child) panel.appendChild(nodeOf(s, current.child, seen, depth + 1));
+    wrap.appendChild(panel);
+    return wrap;
+  }
+
+  function modalNode(s, comp, seen, depth) {
+    var key = s.id + ':modal:' + comp.id;
+    var open = !!uiState[key];
+    var wrap = document.createElement('div');
+    wrap.className = 'a2ui-modal-wrap';
+    var trigger = document.createElement('div');
+    trigger.className = 'a2ui-modal-trigger';
+    if (comp.trigger) trigger.appendChild(nodeOf(s, comp.trigger, seen, depth + 1));
+    trigger.addEventListener('click', function () {
+      uiState[key] = true;
+      render(s);
+      reportSize();
+    });
+    wrap.appendChild(trigger);
+    if (open) {
+      var overlay = document.createElement('div');
+      overlay.className = 'a2ui-modal-overlay';
+      var card = document.createElement('div');
+      card.className = 'a2ui-modal-content';
+      var close = document.createElement('button');
+      close.className = 'a2ui-modal-close';
+      close.textContent = '×';
+      close.setAttribute('aria-label', 'Close');
+      close.addEventListener('click', function (event) {
+        event.stopPropagation();
+        uiState[key] = false;
+        render(s);
+        reportSize();
+      });
+      card.appendChild(close);
+      if (comp.content) card.appendChild(nodeOf(s, comp.content, seen, depth + 1));
+      overlay.appendChild(card);
+      overlay.addEventListener('click', function (event) {
+        if (event.target === overlay) {
+          uiState[key] = false;
+          render(s);
+          reportSize();
+        }
+      });
+      wrap.appendChild(overlay);
+    }
+    return wrap;
+  }
+
+  function dateTimeNode(s, comp) {
+    var wrap = document.createElement('div');
+    wrap.className = 'a2ui-field';
+    var label = textOf(resolve(comp.label, s.data));
+    if (label) {
+      var l = document.createElement('label');
+      l.textContent = label;
+      wrap.appendChild(l);
+    }
+    var input = document.createElement('input');
+    var date = comp.enableDate !== false;
+    var time = !!comp.enableTime;
+    input.type = date && time ? 'datetime-local' : time ? 'time' : 'date';
+    var path = comp.value && (comp.value['@path'] || comp.value.path);
+    input.value = textOf(resolve(comp.value, s.data));
+    if (comp.min) input.min = textOf(resolve(comp.min, s.data));
+    if (comp.max) input.max = textOf(resolve(comp.max, s.data));
+    input.addEventListener('change', function () {
+      if (path) s.data = setPath(s.data, path, input.value);
+      reportSize();
+    });
+    wrap.appendChild(input);
+    return wrap;
+  }
+
   function imageNode(s, comp) {
     var url = textOf(resolve(comp.url || comp.src, s.data));
     if (!url) return placeholder('[图片]');
     var img = document.createElement('img');
     img.className = 'a2ui-img';
+    var fit = String(comp.fit || '').toLowerCase();
+    if (fit === 'cover') img.style.objectFit = 'cover';
+    else if (fit === 'contain') img.style.objectFit = 'contain';
+    else if (fit === 'none') img.style.objectFit = 'none';
+    else if (fit === 'scaledown') img.style.objectFit = 'scale-down';
     img.src = url;
-    img.alt = comp.alt || '';
+    img.alt = textOf(resolve(comp.description, s.data)) || textOf(resolve(comp.alt, s.data)) || '';
     img.addEventListener('error', function () { img.replaceWith(placeholder('[图片加载失败] ' + url)); });
     return img;
+  }
+
+  var ICON_PATHS = {
+    check: 'M20 6L9 17l-5-5',
+    close: 'M18 6L6 18M6 6l12 12',
+    add: 'M12 5v14M5 12h14',
+    search: 'M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z',
+    home: 'M3 10.5L12 3l9 7.5V21H3z',
+    mail: 'M4 5h16v14H4zM4 6l8 7 8-7',
+    person: 'M12 12a4 4 0 100-8 4 4 0 000 8zM4 21c0-4 4-6 8-6s8 2 8 6',
+    star: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20l1.1-6.2L3 9.6l6.2-.9z',
+    warning: 'M12 3L2 21h20zM12 9v6M12 18v1',
+    info: 'M12 22a10 10 0 100-20 10 10 0 000 20zM12 11v6M12 7v1',
+    settings: 'M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z',
+    edit: 'M4 20h4l10-10-4-4L4 16z',
+    delete: 'M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14',
+    download: 'M12 3v12M7 10l5 5 5-5M4 21h16',
+    upload: 'M12 21V9M7 14l5-5 5 5M4 3h16',
+    arrowBack: 'M19 12H5M12 19l-7-7 7-7',
+    arrowForward: 'M5 12h14M12 5l7 7-7 7',
+    play: 'M6 4l14 8-14 8z',
+    pause: 'M7 4h4v16H7zM13 4h4v16h-4z',
+    favorite: 'M12 3l2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20l1.1-6.2L3 9.6l6.2-.9z',
+    calendarToday: 'M4 6h16v15H4zM8 3v5M16 3v5M4 10h16',
+    locationOn: 'M12 22s8-6 8-13a8 8 0 10-16 0c0 7 8 13 8 13zM12 11a2.5 2.5 0 100-5 2.5 2.5 0 000 5z',
+    menu: 'M4 7h16M4 12h16M4 17h16',
+    moreVert: 'M12 6h.01M12 12h.01M12 18h.01',
+    send: 'M22 2L11 13M22 2l-7 20-4-9-9-4z'
+  };
+
+  function iconNode(s, comp) {
+    var name = textOf(resolve(comp.name, s.data));
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', '18');
+    svg.setAttribute('height', '18');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '2');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.style.verticalAlign = 'middle';
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    var d = ICON_PATHS[name];
+    if (!d && comp.name && typeof comp.name === 'object' && comp.name.svgPath) d = textOf(resolve(comp.name.svgPath, s.data));
+    path.setAttribute('d', d || 'M12 2a10 10 0 100 20 10 10 0 000-20z');
+    svg.appendChild(path);
+    return svg;
   }
 
   function placeholder(text) {
