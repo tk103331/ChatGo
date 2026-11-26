@@ -124,3 +124,27 @@ func TestManagerForwardsRendererMessages(t *testing.T) {
 		t.Fatalf("message = %#v", got)
 	}
 }
+
+func TestMultipleBundlesPerView(t *testing.T) {
+	m := NewManagerWithBundles(map[string]*Bundle{
+		"one": {ID: "one", JS: []byte("window.one = 1;"), CSS: []byte(".one{}")},
+		"two": {ID: "two", JS: []byte("window.two = 1;")},
+	}, "one")
+	if !m.HasBundle("two") || len(m.BundleIDs()) != 2 {
+		t.Fatalf("bundles = %v", m.BundleIDs())
+	}
+	v, err := m.Open(OpenOptions{SurfaceID: "s", BundleID: "two"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodGet, "/bundle.js", nil)
+	req.URL.Host = v.token
+	rec := httptest.NewRecorder()
+	m.ServeHTTP(rec, req)
+	if rec.Body.String() != "window.two = 1;" {
+		t.Fatalf("bundle = %q", rec.Body.String())
+	}
+	if _, err := m.Open(OpenOptions{SurfaceID: "x", BundleID: "missing"}); err == nil {
+		t.Fatal("unknown bundle accepted")
+	}
+}

@@ -523,6 +523,8 @@ func (cw *ChatWindow) a2uiTool(ctx context.Context, raw string) (string, error) 
 		DataModel  map[string]any    `json:"data_model"`
 		DataModel2 map[string]any    `json:"dataModel"`
 		Messages   []json.RawMessage `json:"messages"`
+		Renderer   string            `json:"renderer"`
+		WebBundle  string            `json:"web_bundle"`
 	}
 	if err := json.Unmarshal([]byte(raw), &in); err != nil {
 		return "", fmt.Errorf("A2UI 参数解析失败：%w", err)
@@ -589,12 +591,107 @@ func (cw *ChatWindow) a2uiTool(ctx context.Context, raw string) (string, error) 
 		surface = in.SurfaceID
 	}
 	envelopes = normalizeA2UIEnvelopes(envelopes)
+	mode := strings.ToLower(strings.TrimSpace(in.Renderer))
+	switch mode {
+	case "", a2ui.RenderAuto:
+		mode = a2ui.RenderAuto
+	case a2ui.RenderNative, a2ui.RenderWeb:
+	default:
+		return "", fmt.Errorf("renderer 必须是 auto、native 或 web")
+	}
+	bundle := strings.TrimSpace(in.WebBundle)
+	if bundle != "" && mode == a2ui.RenderNative {
+		return "", fmt.Errorf("使用 native 渲染时不能指定 web_bundle")
+	}
+	if bundle != "" && mode == a2ui.RenderAuto {
+		mode = a2ui.RenderWeb
+	}
+	if mode == a2ui.RenderWeb {
+		if bundle == "" && cw.a2uiMgr != nil {
+			bundle = cw.a2uiMgr.DefaultBundleID()
+		}
+		if cw.a2uiMgr == nil || !cw.a2uiMgr.HasBundle(bundle) {
+			return "", fmt.Errorf("未知的 web_bundle：%s", bundle)
+		}
+	}
+	if mode == a2ui.RenderNative {
+		if unsupported := unsupportedNativeComponents(envelopes); len(unsupported) > 0 {
+			return "", fmt.Errorf("native 渲染不支持这些组件：%s；请改用 web 或移除它们", strings.Join(unsupported, ", "))
+		}
+	}
+	if mode != a2ui.RenderAuto || bundle != "" {
+		var err error
+		envelopes, err = injectRenderPreference(envelopes, a2ui.RenderPreference{Mode: mode, Bundle: bundle})
+		if err != nil {
+			return "", err
+		}
+	}
 	sink(envelopes)
 	cw.invalidate()
-	if surface != "" {
-		return "已渲染 A2UI 界面：" + surface, nil
+	renderer := mode
+	if renderer == a2ui.RenderWeb && bundle != "" {
+		renderer += "（" + bundle + "）"
 	}
-	return fmt.Sprintf("已提交 %d 条 A2UI 消息", len(envelopes)), nil
+	if surface != "" {
+		return "已渲染 A2UI 界面：" + surface + "，渲染器：" + renderer, nil
+	}
+	return fmt.Sprintf("已提交 %d 条 A2UI 消息，渲染器：%s", len(envelopes), renderer), nil
+}
+
+// unsupportedNativeComponents lists component types the native renderer does
+// not know, for a surface pinned to native.
+func unsupportedNativeComponents(envelopes []json.RawMessage) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, raw := range envelopes {
+		var msg a2ui.Message
+		if json.Unmarshal(raw, &msg) != nil {
+			continue
+		}
+		var components []a2ui.Component
+		if msg.CreateSurface != nil {
+			components = msg.CreateSurface.Components
+		}
+		if msg.UpdateComponents != nil {
+			components = append(components, msg.UpdateComponents.Components...)
+		}
+		for _, comp := range components {
+			if comp.Type == "" || native.SupportsComponent(comp.Type) || seen[comp.Type] {
+				continue
+			}
+			seen[comp.Type] = true
+			out = append(out, comp.Type)
+		}
+	}
+	return out
+}
+
+// injectRenderPreference writes chatgo/render into every createSurface, so
+// the router and a later replay choose the same renderer.
+func injectRenderPreference(envelopes []json.RawMessage, pref a2ui.RenderPreference) ([]json.RawMessage, error) {
+	out := make([]json.RawMessage, 0, len(envelopes))
+	found := false
+	for _, raw := range envelopes {
+		var msg map[string]any
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			out = append(out, raw)
+			continue
+		}
+		if create, ok := msg["createSurface"].(map[string]any); ok {
+			meta, _ := create["metadata"].(map[string]any)
+			create["metadata"] = a2ui.WithRenderPreference(meta, pref)
+			found = true
+		}
+		clean, err := json.Marshal(msg)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, clean)
+	}
+	if !found {
+		return nil, fmt.Errorf("要指定渲染器，messages 中必须包含 createSurface")
+	}
+	return out, nil
 }
 
 // normalizeA2UIEnvelopes repairs the common legacy shapes a model writes:

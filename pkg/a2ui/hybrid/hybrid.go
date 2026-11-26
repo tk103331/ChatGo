@@ -5,6 +5,7 @@ package hybrid
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/egoist/mygo/ui"
@@ -85,6 +86,33 @@ func (r *Router) Apply(messages ...a2ui.Message) []error {
 // announces wins; anything else, including a per-component @catalogId, goes
 // to the web renderer.
 func (r *Router) choose(in *a2ui.CreateSurface) (render.Renderer, error) {
+	// A surface may pin its renderer, so replay and every host agree.
+	pref := a2ui.RenderPreferenceOf(in.Metadata)
+	switch pref.Mode {
+	case a2ui.RenderNative:
+		if r.native == nil {
+			return nil, fmt.Errorf("a2ui hybrid: surface %q requests native rendering, but no native renderer is configured", in.SurfaceID)
+		}
+		var unsupported []string
+		for _, comp := range in.Components {
+			if !supportsComponent(r.native, comp.Type, comp.CatalogID) {
+				unsupported = append(unsupported, comp.Type)
+			}
+		}
+		if len(unsupported) > 0 {
+			return nil, fmt.Errorf("a2ui hybrid: native renderer cannot draw %s on surface %q", strings.Join(unsupported, ", "), in.SurfaceID)
+		}
+		return r.native, nil
+	case a2ui.RenderWeb:
+		if r.web == nil {
+			return nil, fmt.Errorf("a2ui hybrid: surface %q requests web rendering, but no web renderer is configured", in.SurfaceID)
+		}
+		return r.web, nil
+	case "", a2ui.RenderAuto:
+	default:
+		return nil, fmt.Errorf("a2ui hybrid: unknown render mode %q on surface %q", pref.Mode, in.SurfaceID)
+	}
+
 	nativeOK := r.native != nil && supports(r.native, in.CatalogID)
 	if nativeOK {
 		for _, comp := range in.Components {

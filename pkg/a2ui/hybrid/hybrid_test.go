@@ -36,6 +36,9 @@ func (f *fakeRenderer) Close()                        {}
 func (f *fakeRenderer) SupportsCatalog(id string) bool {
 	return id == "" || id == f.catalog
 }
+func (f *fakeRenderer) SupportsComponent(name, catalogID string) bool {
+	return name != "Tabs"
+}
 
 func msg(t *testing.T, raw string) a2ui.Message {
 	t.Helper()
@@ -90,5 +93,23 @@ func TestMissingRendererIsAnError(t *testing.T) {
 	errs := r.Apply(msg(t, `{"version":"1.0","createSurface":{"surfaceId":"s"}}`))
 	if len(errs) != 1 {
 		t.Fatalf("errors = %v", errs)
+	}
+}
+
+func TestExplicitRenderMode(t *testing.T) {
+	native := &fakeRenderer{name: "native", catalog: a2ui.BasicCatalogID}
+	web := &fakeRenderer{name: "web"}
+	r := New(native, web)
+	r.Apply(msg(t, `{"version":"1.0","createSurface":{"surfaceId":"forced-web","catalogId":"`+a2ui.BasicCatalogID+`","metadata":{"extensions":{"chatgo/render":{"mode":"web","bundle":"basic"}}}}}`))
+	if got := r.RouteOf("forced-web"); got != "web" {
+		t.Fatalf("forced web route = %q", got)
+	}
+	r.Apply(msg(t, `{"version":"1.0","createSurface":{"surfaceId":"forced-native","catalogId":"https://example.com/custom","metadata":{"extensions":{"chatgo/render":{"mode":"native"}}},"components":[{"id":"root","component":"Text","text":"x"}]}}`))
+	if got := r.RouteOf("forced-native"); got != "native" {
+		t.Fatalf("forced native route = %q", got)
+	}
+	errs := r.Apply(msg(t, `{"version":"1.0","createSurface":{"surfaceId":"bad","metadata":{"extensions":{"chatgo/render":{"mode":"native"}}},"components":[{"id":"root","component":"Tabs","tabs":[]}]}}`))
+	if len(errs) == 0 {
+		t.Fatal("native mode accepted Tabs")
 	}
 }

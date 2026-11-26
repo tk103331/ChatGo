@@ -59,7 +59,28 @@ r.Apply(msgs...)
 ```
 
 `web.NewManager(customBundle)` accepts any JavaScript bundle that implements
-the same `apply(message)` and `POST /rpc` contract. The embedded bundle is a
+the same `apply(message)` and `POST /rpc` contract. To offer several bundles,
+build them into a registry:
+
+```go
+mgr := web.NewManagerWithBundles(map[string]*web.Bundle{
+    "basic": {ID: "basic", JS: basicJS, CSS: basicCSS},
+    "rich":  {ID: "rich", JS: richJS, CSS: richCSS},
+}, "basic")
+```
+
+A surface can select its renderer and bundle through metadata, so replay and
+remote agents make the same choice:
+
+```json
+"createSurface": {
+  "surfaceId": "form",
+  "metadata": {"extensions": {"chatgo/render": {"mode": "web", "bundle": "rich"}}}
+}
+```
+
+`hybrid.Router` honors `native` and `web` explicitly; `native` fails rather
+than silently falling back when a component is unsupported. The embedded bundle is a
 small, dependency-free renderer for the basic components; a full catalog such
 as CopilotKit's `standardUI` can be shipped as a custom bundle instead.
 

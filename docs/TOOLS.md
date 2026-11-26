@@ -139,6 +139,15 @@ ChatGo 的远程 Agent 对话支持 [A2UI 1.0](https://a2ui.org/specification/v1
 
 组件必须包含 `id` 为 `root` 的根；也可以直接给 `messages`（完整 A2UI 1.0 envelope 数组）做增量更新。工具只向模型返回一句确认，界面会渲染在当前回复下方，不会把 JSON 塞进上下文。
 
+可选渲染参数：
+
+| 参数 | 值 | 说明 |
+|---|---|---|
+| `renderer` | `auto` / `native` / `web` | `auto` 按 catalog 和组件能力路由；`native` 只允许原生支持的组件，否则报错；`web` 强制 WebView |
+| `web_bundle` | 已注册的 bundle ID | 仅 web 使用，默认 `basic`；未知 ID 报错 |
+
+选择会写入 `createSurface.metadata.extensions["chatgo/render"]`，回放和远程 Agent 可以读到同一个选择。目前 ChatGo 内置只注册了 `basic`；更多 bundle 需要在宿主代码里注册。
+
 无 UI 的运行（自动任务、渠道消息）没有渲染接收方，工具会返回错误，模型应改用文本回答。
 
 ---

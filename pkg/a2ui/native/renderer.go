@@ -576,3 +576,6 @@ func functionName(call map[string]any) string {
 	}
 	return ""
 }
+
+// SupportsComponent reports whether the native catalog has a component type.
+func SupportsComponent(name string) bool { return a2ui.NativeCatalog().Has(name) }

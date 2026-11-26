@@ -31,6 +31,9 @@ type Options struct {
 	DefaultHeight float32
 	// Theme forces "light" or "dark"; empty follows the system.
 	Theme string
+	// DefaultBundle is the web bundle for surfaces that do not name one.
+	// Empty uses the manager's default.
+	DefaultBundle string
 }
 
 // Renderer shows A2UI surfaces with the web bundle.
@@ -146,8 +149,15 @@ func (r *Renderer) create(in *a2ui.CreateSurface) error {
 	}
 	r.mu.Unlock()
 
+	bundleID := a2ui.RenderPreferenceOf(in.Metadata).Bundle
+	if bundleID == "" {
+		bundleID = r.opts.DefaultBundle
+	}
+	if bundleID != "" && !r.mgr.HasBundle(bundleID) {
+		return fmt.Errorf("a2ui web: unknown bundle %q for surface %q", bundleID, in.SurfaceID)
+	}
 	view, err := r.mgr.Open(OpenOptions{
-		SurfaceID: in.SurfaceID, CatalogID: in.CatalogID, SendDataModel: in.SendDataModel,
+		SurfaceID: in.SurfaceID, CatalogID: in.CatalogID, SendDataModel: in.SendDataModel, BundleID: bundleID,
 		OnAction: r.opts.OnAction,
 		OnResize: func(width, height int) {
 			r.mu.Lock()

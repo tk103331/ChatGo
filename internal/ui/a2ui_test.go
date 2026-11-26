@@ -12,6 +12,7 @@ import (
 	"chatgo/pkg/a2ui"
 	"chatgo/pkg/a2ui/hybrid"
 	"chatgo/pkg/a2ui/native"
+	"chatgo/pkg/a2ui/web"
 	"chatgo/pkg/models"
 )
 
@@ -154,5 +155,37 @@ func TestNormalizeLegacyA2UIForm(t *testing.T) {
 	ctx := event["context"].(map[string]any)
 	if ctx["name"] == nil {
 		t.Fatalf("context = %#v", ctx)
+	}
+}
+
+func TestBuiltinA2UIToolRendererParams(t *testing.T) {
+	cw := testWindow()
+	cw.a2uiMgr = web.NewManager(nil)
+	var got []json.RawMessage
+	ctx := withA2UISink(context.Background(), func(raws []json.RawMessage) { got = append(got, raws...) })
+
+	// web + bundle records the choice in surface metadata
+	if _, err := cw.a2uiTool(ctx, `{"surface_id":"s","renderer":"web","web_bundle":"basic","components":[{"id":"root","component":"Text","text":"x"}]}`); err != nil {
+		t.Fatal(err)
+	}
+	var msg map[string]any
+	if err := json.Unmarshal(got[0], &msg); err != nil {
+		t.Fatal(err)
+	}
+	create := msg["createSurface"].(map[string]any)
+	pref := a2ui.RenderPreferenceOf(create["metadata"].(map[string]any))
+	if pref.Mode != a2ui.RenderWeb || pref.Bundle != "basic" {
+		t.Fatalf("pref = %#v", pref)
+	}
+
+	// native rejects a component it cannot draw
+	got = nil
+	if _, err := cw.a2uiTool(ctx, `{"surface_id":"s","renderer":"native","components":[{"id":"root","component":"Tabs","tabs":[]}]}`); err == nil {
+		t.Fatal("native accepted Tabs")
+	}
+
+	// unknown bundle is an error
+	if _, err := cw.a2uiTool(ctx, `{"surface_id":"s","renderer":"web","web_bundle":"missing","components":[{"id":"root","component":"Text","text":"x"}]}`); err == nil {
+		t.Fatal("unknown bundle accepted")
 	}
 }

@@ -26,6 +26,9 @@ type OpenOptions struct {
 	SurfaceID     string
 	CatalogID     string
 	SendDataModel bool
+	// BundleID selects one registered web renderer; empty uses the manager's
+	// default.
+	BundleID string
 	// OnAction receives user actions with the surface's current data model.
 	OnAction func(a2ui.Action, map[string]any)
 	// OnResize receives the page's content size in CSS pixels.
@@ -37,28 +40,72 @@ type OpenOptions struct {
 	OnRendererMessage func(a2ui.RendererMessage)
 }
 
+// Bundle is one web renderer implementation a surface may select.
+type Bundle struct {
+	ID  string
+	JS  []byte
+	CSS []byte
+}
+
 // Manager serves renderer pages and their bridge endpoints. One manager per
 // app is enough; it is safe for concurrent surfaces.
 type Manager struct {
-	mu     sync.Mutex
-	views  map[string]*View
-	bundle []byte
+	mu        sync.Mutex
+	views     map[string]*View
+	bundles   map[string]*Bundle
+	defaultID string
 }
 
-// NewManager returns a manager serving the embedded fallback renderer, or a
-// custom bundle when one is given.
+// NewManager returns a manager serving one bundle under the id "basic": the
+// embedded fallback renderer, or the bytes given.
 func NewManager(bundle []byte) *Manager {
 	if len(bundle) == 0 {
 		bundle = defaultBundle
 	}
-	return &Manager{views: map[string]*View{}, bundle: bundle}
+	return NewManagerWithBundles(map[string]*Bundle{
+		"basic": {ID: "basic", JS: bundle},
+	}, "basic")
 }
+
+// NewManagerWithBundles serves several selectable renderer bundles. defaultID
+// names the bundle a surface gets when it does not ask for one.
+func NewManagerWithBundles(bundles map[string]*Bundle, defaultID string) *Manager {
+	if len(bundles) == 0 {
+		bundles = map[string]*Bundle{"basic": {ID: "basic", JS: defaultBundle}}
+	}
+	if defaultID == "" {
+		for id := range bundles {
+			defaultID = id
+			break
+		}
+	}
+	return &Manager{views: map[string]*View{}, bundles: bundles, defaultID: defaultID}
+}
+
+// HasBundle reports whether a bundle id is registered.
+func (m *Manager) HasBundle(id string) bool {
+	_, ok := m.bundles[id]
+	return ok
+}
+
+// BundleIDs lists the registered bundles.
+func (m *Manager) BundleIDs() []string {
+	out := make([]string, 0, len(m.bundles))
+	for id := range m.bundles {
+		out = append(out, id)
+	}
+	return out
+}
+
+// DefaultBundleID names the fallback bundle.
+func (m *Manager) DefaultBundleID() string { return m.defaultID }
 
 // View is one open renderer page.
 type View struct {
-	token   string
-	manager *Manager
-	opts    OpenOptions
+	token    string
+	manager  *Manager
+	bundleID string
+	opts     OpenOptions
 
 	mu     sync.Mutex
 	out    chan []byte
@@ -71,12 +118,19 @@ func (m *Manager) Open(opts OpenOptions) (*View, error) {
 	if strings.TrimSpace(opts.SurfaceID) == "" {
 		return nil, fmt.Errorf("a2ui web: empty surface id")
 	}
+	bundleID := strings.TrimSpace(opts.BundleID)
+	if bundleID == "" {
+		bundleID = m.defaultID
+	}
+	if _, ok := m.bundles[bundleID]; !ok {
+		return nil, fmt.Errorf("a2ui web: unknown bundle %q", bundleID)
+	}
 	token, err := randomToken()
 	if err != nil {
 		return nil, err
 	}
 	v := &View{
-		token: token, manager: m, opts: opts,
+		token: token, manager: m, opts: opts, bundleID: bundleID,
 		out: make(chan []byte, 128), closed: make(chan struct{}),
 	}
 	m.mu.Lock()
@@ -129,7 +183,9 @@ func (m *Manager) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/", "/index.html":
 		m.servePage(w, r)
 	case "/bundle.js":
-		m.serveBundle(w, r)
+		v.serveBundle(w, r)
+	case "/bundle.css":
+		v.serveCSS(w, r)
 	case "/rpc":
 		v.serveRPC(w, r)
 	case "/pending":
@@ -152,14 +208,34 @@ func (m *Manager) servePage(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.WriteString(w, pageHTML)
 }
 
-func (m *Manager) serveBundle(w http.ResponseWriter, r *http.Request) {
+func (v *View) serveBundle(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	bundle := v.manager.bundles[v.bundleID]
+	if bundle == nil {
+		http.NotFound(w, r)
+		return
+	}
 	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
-	_, _ = w.Write(m.bundle)
+	_, _ = w.Write(bundle.JS)
+}
+
+func (v *View) serveCSS(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	bundle := v.manager.bundles[v.bundleID]
+	if bundle == nil || len(bundle.CSS) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Set("Content-Type", "text/css; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(bundle.CSS)
 }
 
 // rpcMessage is what the page sends to the host.
@@ -260,6 +336,7 @@ const pageHTML = `<!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
+<link rel="stylesheet" href="/bundle.css">
 <style>
   :root {
     color-scheme: light dark;
