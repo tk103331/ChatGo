@@ -53,7 +53,11 @@ func pathOf(v any) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	path, ok := m["@path"].(string)
+	if path, ok := m["@path"].(string); ok {
+		return path, true
+	}
+	// v0.8 and some SDKs omit the @ prefix.
+	path, ok := m["path"].(string)
 	return path, ok
 }
 
@@ -81,18 +85,23 @@ func (r *Renderer) button(c *ui.Context, s *a2ui.Surface, comp a2ui.Component) u
 	variant := strings.ToLower(comp.PropString("variant"))
 	el := ui.ButtonBase(c).Padding(7, 14).Radius(7).Gap(6).AlignItems(ui.Center).
 		Role(ui.RoleButton).Label(label)
-	text := ui.Text(c, label).FontSize(13)
-	// The label paints over the button's own box; PassThrough keeps the
-	// press on the base, or a full-width label swallows every click.
-	text.PassThrough()
 	switch variant {
 	case "primary", "filled", "":
 		el.Background(r.frame.Accent)
-		text.FontWeight(600).TextColor(ui.RGBA(255, 255, 255, 1))
 	default:
 		el.Background(r.frame.Surface).Border(1, r.frame.Border)
-		text.FontWeight(500).TextColor(r.frame.Text)
 	}
+	el.Children(func() {
+		text := ui.Text(c, label).FontSize(13)
+		// The label paints over the button's own box; PassThrough keeps the
+		// press on the base, or a full-width label swallows every click.
+		text.PassThrough()
+		if variant == "primary" || variant == "filled" || variant == "" {
+			text.FontWeight(600).TextColor(ui.RGBA(255, 255, 255, 1))
+		} else {
+			text.FontWeight(500).TextColor(r.frame.Text)
+		}
+	})
 	if el.Clicked() {
 		r.fireAction(s, comp)
 	}
