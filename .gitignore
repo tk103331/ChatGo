@@ -50,3 +50,6 @@ mygo-update.pub
 /mobile
 
 .mygo/
+
+# A2UI renderer bundle build dependencies
+web/a2ui-renderers/node_modules/

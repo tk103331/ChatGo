@@ -76,7 +76,7 @@ func builtinToolParams(toolType string) map[string]*schema.ParameterInfo {
 			"data_model": {Type: schema.Object, Desc: "界面初始数据模型，组件用 {@path: '/字段'} 绑定"},
 			"messages":   {Type: schema.Array, Desc: "可选：直接提供完整 A2UI 1.0 envelope 列表，提供后忽略 surface_id/components/data_model"},
 			"renderer":   {Type: schema.String, Desc: "渲染方式：auto（默认，按 catalog 和组件能力路由）/ native（只用 MyGo 原生）/ web（只用 WebView）"},
-			"web_bundle": {Type: schema.String, Desc: "renderer=web 时选择已注册的 Web bundle，默认 basic；未知 ID 会报错"},
+			"web_bundle": {Type: schema.String, Desc: "renderer=web 时选择已注册的 Web bundle：basic（默认）/ react（官方 @a2ui/react）/ copilot（@copilotkit/a2ui-renderer）；未知 ID 会报错"},
 		}
 	}
 	return map[string]*schema.ParameterInfo{}

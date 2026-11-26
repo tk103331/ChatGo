@@ -1,0 +1,20 @@
+{
+  "name": "chatgo-a2ui-renderers",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@a2ui/markdown-it": "0.2.4",
+    "@a2ui/react": "0.16.1",
+    "@a2ui/web_core": "0.16.1",
+    "@copilotkit/a2ui-renderer": "1.90.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}

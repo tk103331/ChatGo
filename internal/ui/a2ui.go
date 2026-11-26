@@ -610,8 +610,11 @@ func (cw *ChatWindow) a2uiTool(ctx context.Context, raw string) (string, error) 
 		if bundle == "" && cw.a2uiMgr != nil {
 			bundle = cw.a2uiMgr.DefaultBundleID()
 		}
-		if cw.a2uiMgr == nil || !cw.a2uiMgr.HasBundle(bundle) {
-			return "", fmt.Errorf("未知的 web_bundle：%s", bundle)
+		if cw.a2uiMgr == nil {
+			return "", fmt.Errorf("A2UI Web 渲染器未初始化")
+		}
+		if !cw.a2uiMgr.HasBundle(bundle) {
+			return "", fmt.Errorf("未知的 web_bundle：%s（可用：%s）", bundle, strings.Join(cw.a2uiMgr.BundleIDs(), ", "))
 		}
 	}
 	if mode == a2ui.RenderNative {

@@ -148,3 +148,23 @@ func TestMultipleBundlesPerView(t *testing.T) {
 		t.Fatal("unknown bundle accepted")
 	}
 }
+
+func TestBuiltinBundlesServe(t *testing.T) {
+	m := NewManager(nil)
+	for _, id := range []string{BasicBundleID, ReactBundleID, CopilotBundleID} {
+		if !m.HasBundle(id) {
+			t.Fatalf("bundle %q not registered: %v", id, m.BundleIDs())
+		}
+		v, err := m.Open(OpenOptions{SurfaceID: "surface", BundleID: id})
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		req := httptest.NewRequest(http.MethodGet, "/bundle.js", nil)
+		req.URL.Host = v.token
+		rec := httptest.NewRecorder()
+		m.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK || rec.Body.Len() < 1024 {
+			t.Fatalf("%s: status %d, %d bytes", id, rec.Code, rec.Body.Len())
+		}
+	}
+}

@@ -64,6 +64,18 @@ only the root element's attributes changed, so it draws in the theme text
 color like every other provider mark. magpie is MIT-licensed. Source:
 https://github.com/yetone/magpie
 
+## A2UI React renderer bundles (pkg/a2ui/web/bundle.react.js, bundle.copilot.js)
+
+Built from `web/a2ui-renderers` with esbuild. The bundles embed:
+
+- `@a2ui/react` 0.16.1, `@a2ui/web_core` 0.16.1 and `@a2ui/markdown-it` 0.2.4 —
+  Apache License 2.0, Copyright Google LLC.
+- `@copilotkit/a2ui-renderer` 1.90.2 and its dependencies — MIT.
+- React and React DOM 19.3.1 — MIT.
+
+The build keeps the packages' legal comments at the end of each bundle.
+Source: https://github.com/google/a2ui and https://github.com/CopilotKit/CopilotKit
+
 ## openai-go (github.com/openai/openai-go)
 
 OpenAI's official Go SDK, used for the Responses API that eino-ext does not

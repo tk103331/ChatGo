@@ -144,9 +144,19 @@ ChatGo 的远程 Agent 对话支持 [A2UI 1.0](https://a2ui.org/specification/v1
 | 参数 | 值 | 说明 |
 |---|---|---|
 | `renderer` | `auto` / `native` / `web` | `auto` 按 catalog 和组件能力路由；`native` 只允许原生支持的组件，否则报错；`web` 强制 WebView |
-| `web_bundle` | 已注册的 bundle ID | 仅 web 使用，默认 `basic`；未知 ID 报错 |
+| `web_bundle` | 已注册的 bundle ID | 仅 web 使用，默认 `basic`；内置 `basic` / `react` / `copilot`，未知 ID 报错 |
 
-选择会写入 `createSurface.metadata.extensions["chatgo/render"]`，回放和远程 Agent 可以读到同一个选择。目前 ChatGo 内置只注册了 `basic`；更多 bundle 需要在宿主代码里注册。
+选择会写入 `createSurface.metadata.extensions["chatgo/render"]`，回放和远程 Agent 可以读到同一个选择。
+
+内置 bundle：
+
+| ID | 实现 |
+|---|---|
+| `basic` | ChatGo 自带的无依赖 JavaScript 渲染器（默认） |
+| `react` | 官方 `@a2ui/react` + `@a2ui/web_core` 0.16.1 |
+| `copilot` | `@copilotkit/a2ui-renderer` 1.90.2 |
+
+`react` / `copilot` 由 `web/a2ui-renderers` 构建后嵌入二进制；更多 bundle 需要在宿主代码里注册。
 
 无 UI 的运行（自动任务、渠道消息）没有渲染接收方，工具会返回错误，模型应改用文本回答。
 

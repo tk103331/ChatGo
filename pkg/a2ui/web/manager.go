@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -56,22 +57,23 @@ type Manager struct {
 	defaultID string
 }
 
-// NewManager returns a manager serving one bundle under the id "basic": the
-// embedded fallback renderer, or the bytes given.
+// NewManager returns a manager serving the embedded bundles: "basic",
+// "react" and "copilot". A non-empty bundle replaces the built-in "basic" one,
+// so callers can test a custom vanilla renderer.
 func NewManager(bundle []byte) *Manager {
 	if len(bundle) == 0 {
-		bundle = defaultBundle
+		return NewManagerWithBundles(BuiltinBundles(), BasicBundleID)
 	}
 	return NewManagerWithBundles(map[string]*Bundle{
-		"basic": {ID: "basic", JS: bundle},
-	}, "basic")
+		BasicBundleID: {ID: BasicBundleID, JS: bundle},
+	}, BasicBundleID)
 }
 
 // NewManagerWithBundles serves several selectable renderer bundles. defaultID
 // names the bundle a surface gets when it does not ask for one.
 func NewManagerWithBundles(bundles map[string]*Bundle, defaultID string) *Manager {
 	if len(bundles) == 0 {
-		bundles = map[string]*Bundle{"basic": {ID: "basic", JS: defaultBundle}}
+		bundles = map[string]*Bundle{BasicBundleID: {ID: BasicBundleID, JS: basicBundle}}
 	}
 	if defaultID == "" {
 		for id := range bundles {
@@ -88,12 +90,13 @@ func (m *Manager) HasBundle(id string) bool {
 	return ok
 }
 
-// BundleIDs lists the registered bundles.
+// BundleIDs lists the registered bundles, sorted for stable output.
 func (m *Manager) BundleIDs() []string {
 	out := make([]string, 0, len(m.bundles))
 	for id := range m.bundles {
 		out = append(out, id)
 	}
+	sort.Strings(out)
 	return out
 }
 

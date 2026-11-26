@@ -178,6 +178,22 @@ func TestBuiltinA2UIToolRendererParams(t *testing.T) {
 		t.Fatalf("pref = %#v", pref)
 	}
 
+	// every built-in React bundle is accepted
+	for _, id := range []string{"react", "copilot"} {
+		got = nil
+		if _, err := cw.a2uiTool(ctx, `{"surface_id":"s","renderer":"web","web_bundle":"`+id+`","components":[{"id":"root","component":"Text","text":"x"}]}`); err != nil {
+			t.Fatalf("bundle %s: %v", id, err)
+		}
+		if err := json.Unmarshal(got[0], &msg); err != nil {
+			t.Fatal(err)
+		}
+		create = msg["createSurface"].(map[string]any)
+		pref = a2ui.RenderPreferenceOf(create["metadata"].(map[string]any))
+		if pref.Bundle != id {
+			t.Fatalf("bundle = %#v", pref)
+		}
+	}
+
 	// native rejects a component it cannot draw
 	got = nil
 	if _, err := cw.a2uiTool(ctx, `{"surface_id":"s","renderer":"native","components":[{"id":"root","component":"Tabs","tabs":[]}]}`); err == nil {
