@@ -88,3 +88,29 @@ func TestLegacyFlatActionFires(t *testing.T) {
 		t.Fatalf("context = %#v", got.Context)
 	}
 }
+
+func TestActionWithoutContextUsesDataModel(t *testing.T) {
+	var msg a2ui.Message
+	raw := `{"version":"1.0","createSurface":{"surfaceId":"s","dataModel":{"name":"张伟","appointment":"2025-06-18T14:30"},"components":[
+	{"id":"root","component":"Column","children":["submit"]},
+	{"id":"submit","component":"Button","label":{"literalString":"提交预约"},"action":{"event":{"name":"submit_booking"}}}
+	]}}`
+	if err := json.Unmarshal([]byte(raw), &msg); err != nil {
+		t.Fatal(err)
+	}
+	r := New(Options{})
+	var got a2ui.Action
+	r.opts.OnAction = func(a a2ui.Action) { got = a }
+	r.Apply(msg)
+	tt := ui.NewTester(func(c *ui.Context) {
+		ui.Column(c).Padding(10).Children(func() { r.View(c, "s") })
+	}, 400, 300)
+	tt.SetFocused(true)
+	if err := tt.Click("提交预约"); err != nil {
+		t.Fatal(err)
+	}
+	tt.Frame()
+	if got.Context["name"] != "张伟" || got.Context["appointment"] != "2025-06-18T14:30" {
+		t.Fatalf("context = %#v", got.Context)
+	}
+}

@@ -275,6 +275,19 @@ func (cw *ChatWindow) dispatchA2UIAction(a a2ui.Action) {
 		return
 	}
 	a.SurfaceID = original
+	if len(a.Context) == 0 {
+		cw.a2uiMu.Lock()
+		if saved := cw.a2uiData[local]; saved != nil {
+			a.Context = saved
+		} else if cw.a2ui != nil {
+			if raw, ok := cw.a2ui.DataModel(local); ok {
+				if data, ok := raw.(map[string]any); ok {
+					a.Context = data
+				}
+			}
+		}
+		cw.a2uiMu.Unlock()
+	}
 	var data map[string]any
 	cw.a2uiMu.Lock()
 	if saved := cw.a2uiData[local]; saved != nil {

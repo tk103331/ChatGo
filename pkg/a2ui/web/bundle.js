@@ -428,6 +428,9 @@
     } else {
       context = resolve(rawContext, s.data) || {};
     }
+    if (!Object.keys(context).length && s.data && typeof s.data === 'object' && !Array.isArray(s.data)) {
+      context = s.data;
+    }
     var msg = {
       version: '1.0',
       action: {

@@ -124,6 +124,15 @@ func (r *Renderer) fireAction(s *a2ui.Surface, comp a2ui.Component) {
 	action := a2ui.NewAction(s.ID, comp.ID, name)
 	action.UserMessage, _ = event["userMessage"].(string)
 	action.Context = resolveActionContext(event["context"], s.Data, r.funcs)
+	if len(action.Context) == 0 {
+		// A button may omit context; a form submit still needs the surface's
+		// data model, which is where the inputs wrote their values.
+		if data, ok := s.Data.(map[string]any); ok {
+			for k, v := range data {
+				action.Context[k] = v
+			}
+		}
+	}
 	if r.opts.OnAction != nil {
 		r.opts.OnAction(action)
 	}
